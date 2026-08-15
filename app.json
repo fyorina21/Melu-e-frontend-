@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "melue-app",
+    "slug": "melue-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "melueapp",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F5F7"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
