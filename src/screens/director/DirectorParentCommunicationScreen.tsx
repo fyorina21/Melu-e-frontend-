@@ -1,8 +1,6 @@
-// screens/teacherparent/TeacherParentCommunicationScreen.tsx
-// SCR-TEA-005: Parent Communication (Teacher View) - the Teacher-side
-// counterpart of the Parent Portal conversations. Mirrors the Coordinator
-// Parent Communication screen layout: conversation list, thread, quick
-// actions, compose. Teachers can escalate a thread to the Coordinator.
+// screens/director/DirectorParentCommunicationScreen.js
+// SCR-DIR-004: Parent Communication (Director View) - centralized hub for
+// all parent interactions, including escalations from Coordinator/PD.
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
@@ -11,16 +9,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
-import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import {
-  getTeacherConversations,
-  getTeacherConversationThread,
-  sendTeacherMessage,
-  escalateTeacherConversation,
-  markTeacherConversationResolved,
-} from '../../api/teacherExtrasApi';
-import type { SessionStackParamList } from '../../types';
+import DirectorNav, { DIRECTOR_ROUTE_BY_TAB } from './components/DirectorNav';
+import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { getDirectorConversations, getDirectorConversationThread, sendDirectorMessage, toggleConversationRead } from '../../api/directorApi';
+import type { DirectorStackParamList } from '../../types';
 
 interface Conversation {
   id: string;
@@ -28,7 +20,7 @@ interface Conversation {
   parentName: string;
   lastMessagePreview: string;
   unreadCount: number;
-  resolved: boolean;
+  escalated: boolean;
 }
 
 interface ThreadMessage {
@@ -40,16 +32,18 @@ interface ThreadMessage {
   attachments?: { id: string; name: string }[];
 }
 
-export default function TeacherParentCommunicationScreen({ navigation }: NativeStackScreenProps<SessionStackParamList, 'TeacherParentCommunication'>) {
+export default function DirectorParentCommunicationScreen({ navigation }: NativeStackScreenProps<DirectorStackParamList, 'DirectorParentCommunication'>) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [thread, setThread] = useState<ThreadMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [showLog, setShowLog] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<{ id: string; name: string }[]>([]);
+  const [exportContent, setExportContent] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     try {
-      const { data } = await getTeacherConversations({});
+      const { data } = await getDirectorConversations({});
       setConversations(data);
       if (!activeId && data.length) setActiveId(data[0].id);
     } catch (err) {
@@ -58,15 +52,11 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
     }
   }, [activeId]);
 
-  useEffect(() => {
-    loadList();
-  }, [loadList]);
+  useEffect(() => { loadList(); }, [loadList]);
 
   useEffect(() => {
     if (!activeId) return;
-    getTeacherConversationThread(activeId)
-      .then(({ data }) => setThread(data.messages))
-      .catch(() => setThread(DEMO_THREAD));
+    getDirectorConversationThread(activeId).then(({ data }) => setThread(data.messages)).catch(() => setThread(DEMO_THREAD));
   }, [activeId]);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
@@ -83,84 +73,78 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
   const handleSend = async () => {
     if (!activeId) return;
     if (!draft.trim() && pendingAttachments.length === 0) return;
-    const newMsg: ThreadMessage = { id: `local-${Date.now()}`, sender: 'teacher', senderLabel: 'Teacher', text: draft, timestamp: 'Just now', attachments: pendingAttachments };
+    const newMsg: ThreadMessage = { id: `local-${Date.now()}`, sender: 'director', senderLabel: 'Director', text: draft, timestamp: 'Just now', attachments: pendingAttachments };
     setThread((prev) => [...prev, newMsg]);
     setDraft('');
     setPendingAttachments([]);
-    try {
-      await sendTeacherMessage(activeId, { text: newMsg.text, attachments: newMsg.attachments });
-    } catch (err) {}
+    try { await sendDirectorMessage(activeId, { text: newMsg.text, attachments: newMsg.attachments }); } catch (err) {}
   };
 
-  const handleShareSchedule = () => {
-    setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: this week's session schedule]`);
-  };
-
-  const handleShareProgress = () => {
-    setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: session progress summary]`);
-  };
-
-  const handleEscalate = () => {
+  const handleToggleRead = async () => {
     if (!activeId) return;
-    Alert.alert('Escalate to Coordinator?', 'The coordinator will be notified and can follow up.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Escalate',
-        onPress: async () => {
-          try { await escalateTeacherConversation(activeId, { to: 'coordinator' }); } catch (err) {}
-          Alert.alert('Escalated', 'Coordinator notified.');
-        },
-      },
-    ]);
+    const nextUnread = !((activeConversation?.unreadCount ?? 0) > 0);
+    try { await toggleConversationRead(activeId, { unread: nextUnread }); } catch (err) {}
+    setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, unreadCount: nextUnread ? 1 : 0 } : c)));
   };
 
-  const handleResolve = async () => {
-    if (!activeId) return;
-    try { await markTeacherConversationResolved(activeId); } catch (err) {}
-    setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, resolved: true } : c)));
-    Alert.alert('Marked as resolved');
+  const handlePrintLog = () => {
+    setExportContent(
+      [
+        `Melu'e Foundation — Parent Communication Log`,
+        `Generated ${new Date().toLocaleString()}`,
+        '',
+        ...conversations.map((c) => [
+          `${c.studentName} (${c.parentName})${c.escalated ? ' [ESCALATED]' : ''}`,
+          `  Unread: ${c.unreadCount} · Last: ${c.lastMessagePreview}`,
+        ]).flat(),
+        conversations.length === 0 ? '(no conversations)' : '',
+      ].join('\n')
+    );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Parents" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
-
+      <DirectorNav activeTab="Parents" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
       <View style={styles.body}>
         <View style={styles.sidebar}>
-          <ScrollView>
-            {conversations.map((c) => (
-              <TouchableOpacity key={c.id} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]} onPress={() => setActiveId(c.id)}>
-                <Text style={typography.bodyBold}>{c.studentName}</Text>
-                <Text style={typography.caption} numberOfLines={1}>{c.lastMessagePreview}</Text>
-                {c.unreadCount > 0 && (
-                  <View style={styles.unreadBadge}><Text style={styles.unreadBadgeText}>{c.unreadCount}</Text></View>
-                )}
-                {c.resolved && <Text style={styles.resolvedText}>Resolved</Text>}
+          <View style={styles.sidebarTabs}>
+            <TouchableOpacity style={[styles.sidebarTab, !showLog && styles.sidebarTabActive]} onPress={() => setShowLog(false)}>
+              <Text style={typography.body}>Conversations</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.sidebarTab, showLog && styles.sidebarTabActive]} onPress={() => setShowLog(true)}>
+              <Text style={typography.body}>Log</Text>
+            </TouchableOpacity>
+          </View>
+          {showLog ? (
+            <View style={{ padding: spacing.md }}>
+              <TouchableOpacity style={styles.printBtn} onPress={handlePrintLog}>
+                <Text style={styles.printBtnText}>Print Communication Log</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </View>
+          ) : (
+            <ScrollView>
+              {conversations.map((c) => (
+                <TouchableOpacity key={c.id} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]} onPress={() => setActiveId(c.id)}>
+                  <Text style={typography.bodyBold}>{c.studentName}</Text>
+                  <Text style={typography.caption} numberOfLines={1}>{c.lastMessagePreview}</Text>
+                  {c.escalated && <Text style={styles.escalatedTag}>Escalated</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
-
         <View style={styles.chatPane}>
-          {activeConversation ? (
+          {activeConversation && !showLog ? (
             <>
               <View style={styles.chatHeader}>
-                <View>
-                  <Text style={typography.h3}>{activeConversation.studentName} — {activeConversation.parentName}</Text>
-                  <Text style={typography.caption}>Teacher · {activeConversation.resolved ? 'Resolved' : 'Active'}</Text>
-                </View>
-                <View style={styles.chatHeaderActions}>
-                  <TouchableOpacity onPress={handleEscalate}>
-                    <Text style={styles.escalateText}>Escalate to Coordinator</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleResolve}>
-                    <Feather name="check-circle" size={18} color={colors.navyText} />
-                  </TouchableOpacity>
-                </View>
+                <Text style={typography.h3}>{activeConversation.studentName} — {activeConversation.parentName}</Text>
+                <TouchableOpacity onPress={handleToggleRead}>
+                  <Feather name={activeConversation.unreadCount > 0 ? 'mail' : 'inbox'} size={18} color={colors.navyText} />
+                </TouchableOpacity>
               </View>
               <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesContent}>
                 {thread.map((m) => (
-                  <View key={m.id} style={[styles.messageBubble, m.sender === 'teacher' && styles.messageBubbleMine]}>
+                  <View key={m.id} style={[styles.messageBubble, m.sender === 'director' && styles.messageBubbleMine]}>
                     <Text style={typography.caption}>{m.senderLabel}</Text>
                     {m.text ? <Text style={typography.body}>{m.text}</Text> : null}
                     {m.attachments?.map((a) => (
@@ -172,14 +156,6 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
                   </View>
                 ))}
               </ScrollView>
-              <View style={styles.quickActionsRow}>
-                <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareSchedule}>
-                  <Text style={styles.quickActionText}>Share Schedule</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareProgress}>
-                  <Text style={styles.quickActionText}>Share Progress</Text>
-                </TouchableOpacity>
-              </View>
               {pendingAttachments.length > 0 && (
                 <View style={styles.pendingRow}>
                   {pendingAttachments.map((a) => (
@@ -206,37 +182,45 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
           ) : (
             <View style={styles.emptyState}>
               <Feather name="message-circle" size={40} color={colors.mutedText} />
-              <Text style={typography.body}>Select a conversation</Text>
+              <Text style={typography.body}>{showLog ? 'Select "Print Communication Log" to export' : 'Select a conversation'}</Text>
             </View>
           )}
         </View>
       </View>
+
+      <ExportPreviewModal
+        visible={!!exportContent}
+        title="Communication Log Export"
+        filename={`ParentCommunicationLog_${new Date().toISOString().slice(0, 10)}.txt`}
+        content={exportContent ?? ''}
+        onClose={() => setExportContent(null)}
+      />
     </SafeAreaView>
   );
 }
 
 const DEMO_CONVERSATIONS: Conversation[] = [
-  { id: '1', studentName: 'Student A', parentName: 'Parent A', lastMessagePreview: 'Thank you for the update!', unreadCount: 2, resolved: false },
-  { id: '2', studentName: 'Student B', parentName: 'Parent B', lastMessagePreview: 'Can we schedule a meeting?', unreadCount: 0, resolved: false },
+  { id: '1', studentName: 'Student A', parentName: 'Parent A', lastMessagePreview: 'Escalated: needs urgent response', unreadCount: 1, escalated: true },
+  { id: '2', studentName: 'Student B', parentName: 'Parent B', lastMessagePreview: 'Can we schedule a meeting?', unreadCount: 0, escalated: false },
 ];
 const DEMO_THREAD: ThreadMessage[] = [
-  { id: '1', sender: 'parent', senderLabel: 'Parent A', text: 'How did today\u2019s session go?', timestamp: '10:00 AM' },
-  { id: '2', sender: 'teacher', senderLabel: 'Teacher', text: 'Great progress on requesting items!', timestamp: '10:15 AM', attachments: [{ id: 'att-1', name: 'session_notes.pdf' }] },
+  { id: '1', sender: 'parent', senderLabel: 'Parent A', text: 'I need to speak with someone urgently about my child.', timestamp: '8:00 AM', attachments: [{ id: 'att-1', name: 'medical_report.pdf' }] },
 ];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   body: { flex: 1, flexDirection: 'row' },
   sidebar: { width: 220, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.bgCard },
+  sidebarTabs: { flexDirection: 'row', padding: spacing.sm, gap: spacing.xs },
+  sidebarTab: { flex: 1, paddingVertical: spacing.xs, alignItems: 'center', borderRadius: radius.sm },
+  sidebarTabActive: { backgroundColor: colors.bgApp },
   convoRow: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   convoRowActive: { backgroundColor: colors.bgApp },
-  unreadBadge: { position: 'absolute', top: spacing.sm, right: spacing.sm, backgroundColor: colors.primaryYellow, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
-  unreadBadgeText: { fontSize: 9, fontWeight: '700', color: colors.navyText },
-  resolvedText: { fontSize: 10, fontWeight: '600', color: colors.statusApprovedText, marginTop: 2 },
+  escalatedTag: { fontSize: 10, fontWeight: '700', color: '#EF4444', marginTop: 2 },
+  printBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
+  printBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
   chatPane: { flex: 1 },
   chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border },
-  chatHeaderActions: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
-  escalateText: { fontSize: 11, fontWeight: '600', color: colors.statusInProgressText },
   messagesScroll: { flex: 1 },
   messagesContent: { padding: spacing.lg, gap: spacing.sm },
   messageBubble: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, maxWidth: '75%', alignSelf: 'flex-start' },
@@ -246,9 +230,6 @@ const styles = StyleSheet.create({
   pendingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   pendingChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.primaryYellowDark, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4, backgroundColor: colors.statusPendingBg },
   pendingChipText: { fontSize: 10, fontWeight: '600', color: colors.navyText, maxWidth: 160 },
-  quickActionsRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  quickActionBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  quickActionText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
   composerRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
   composerInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   attachBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },

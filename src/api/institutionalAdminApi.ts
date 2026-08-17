@@ -1,6 +1,3 @@
-// api/institutionalAdminApi.ts
-// Institutional Administrator role - assumed contract, no real backend.
-
 import client from './sessionApi';
 import type { Payload } from '../types';
 

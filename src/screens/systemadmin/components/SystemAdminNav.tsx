@@ -1,19 +1,27 @@
-// screens/programdirector/components/ProgramDirectorNav.js
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
 import { useAuth } from '../../../context/AuthContext';
+import type { SystemAdminStackParamList } from '../../../types';
 
-const TABS = ['Dashboard', 'Assessments', 'IUP', 'Library', 'Caseload', 'Goal Bank', 'Approvals', 'Enrollment', 'Charts', 'Parents'];
+const TABS = ['Admin Panel', 'Staff Accounts', 'Roles', 'Permissions', 'Audit Log'];
 
-interface ProgramDirectorNavProps {
+export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
+  'Admin Panel': 'AdminPanelOverview',
+  'Staff Accounts': 'StaffAccountManagement',
+  Roles: 'RoleManagement',
+  Permissions: 'PermissionConfiguration',
+  'Audit Log': 'AuditLog',
+};
+
+interface SystemAdminNavProps {
   activeTab: string;
   onTabPress?: (tab: string) => void;
 }
 
-export default function ProgramDirectorNav({ activeTab, onTabPress }: ProgramDirectorNavProps) {
+export default function SystemAdminNav({ activeTab, onTabPress }: SystemAdminNavProps) {
   const { session, logout } = useAuth();
   return (
     <View style={styles.wrap}>
@@ -21,22 +29,20 @@ export default function ProgramDirectorNav({ activeTab, onTabPress }: ProgramDir
         <Image source={require('../../../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
-        <View style={styles.tabs}>
-          {TABS.map((tab) => {
-            const active = tab === activeTab;
-            return (
-              <TouchableOpacity key={tab} style={[styles.tab, active && styles.tabActive]} onPress={() => onTabPress?.(tab)}>
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
+      <View style={styles.tabs}>
+        {TABS.map((tab) => {
+          const active = tab === activeTab;
+          return (
+            <TouchableOpacity key={tab} style={[styles.tab, active && styles.tabActive]} onPress={() => onTabPress?.(tab)}>
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       <View style={styles.userBlock}>
         <View>
           <Text style={typography.bodyBold}>{session?.userName}</Text>
-          <Text style={typography.caption}>Program Director</Text>
+          <Text style={typography.caption}>System Admin</Text>
         </View>
         <TouchableOpacity onPress={logout} accessibilityLabel="Log out">
           <Feather name="log-out" size={20} color={colors.navyText} />
@@ -51,8 +57,7 @@ const styles = StyleSheet.create({
   logoBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   logoImage: { width: 28, height: 28 },
   logo: { fontWeight: '700', fontSize: 15, color: colors.navyText },
-  tabsScroll: { flex: 1 },
-  tabs: { flexDirection: 'row', gap: spacing.sm },
+  tabs: { flexDirection: 'row', gap: spacing.sm, flex: 1 },
   tab: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md },
   tabActive: { backgroundColor: colors.primaryYellow },
   tabText: { fontWeight: '600', color: colors.bodyText, fontSize: 13 },

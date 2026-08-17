@@ -1,6 +1,3 @@
-// navigation/SystemAdminStack.tsx
-// System Administrator role stack - SCR-SYS-001 through SCR-SYS-003.
-
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../types';

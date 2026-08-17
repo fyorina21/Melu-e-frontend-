@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from '../components/CoordinatorNav';
+import CoordinatorNav from "./components/CoordinatorNav";
 import AppointmentFormModal from '../scheduling/components/AppointmentFormModal';
 import MarkUnavailableModal from '../scheduling/components/MarkUnavailableModal';
 import ReassignStudentsModal from './components/ReassignStudentsModal';

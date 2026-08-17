@@ -1,11 +1,3 @@
-// api/teacherExtrasApi.ts
-//
-// Covers the Teacher-facing Dashboard, Assessments, and ABC Log screens.
-// These were originally Fyori's (Dashboard) and Hanania's (Assessments,
-// ABC Log) tickets, not Daily Operations - built here now that the whole
-// project is in scope. Kept in a separate file from sessionApi.ts per the
-// "one API file per module" convention in PROJECT_NOTES.md.
-
 import client from './sessionApi';
 import type { QueryParams, Payload } from '../types';
 

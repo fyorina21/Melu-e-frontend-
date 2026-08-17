@@ -11,10 +11,9 @@ import DirectorStack from './DirectorStack';
 import InstitutionalAdminStack from './InstitutionalAdminStack';
 import SystemAdminStack from './SystemAdminStack';
 import ParentStack from './ParentStack';
-
 const Stack = createNativeStackNavigator();
 
-const STACK_BY_ROLE: Record<Role, () => JSX.Element> = {
+const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
   [ROLES.TEACHER]: SessionStack,
   [ROLES.COORDINATOR]: CoordinatorStack,
   [ROLES.PROGRAM_DIRECTOR]: ProgramDirectorStack,

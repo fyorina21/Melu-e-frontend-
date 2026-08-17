@@ -1,6 +1,3 @@
-// api/systemAdminApi.ts
-// System Administrator role - assumed contract, no real backend.
-
 import client from './sessionApi';
 import type { QueryParams, Payload } from '../types';
 

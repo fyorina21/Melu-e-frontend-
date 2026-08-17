@@ -1,17 +1,3 @@
-// screens/dailynotes/SessionNoteEditorScreen.js
-// MR-35: Session Notes & Attachments (create/edit destination)
-//
-// Per issues doc: rich text (bold/italic/bullets/tables/hyperlinks),
-// attachments (photos/videos/PDFs/worksheets/assessment docs), auto-save,
-// edit existing notes.
-//
-// SIMPLIFIED vs spec: true rich text (tables, inline hyperlinks) would
-// need a dedicated editor library (e.g. a WebView-based HTML editor) -
-// out of scope for a first pass. Built a lightweight toolbar that inserts
-// markdown-style tokens (**bold**, *italic*, "- " bullets) into a plain
-// text field instead. Flag for review - swap for a real rich-text editor
-// before shipping if markdown isn't acceptable.
-
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,

@@ -1,11 +1,3 @@
-// screens/admin/AdminPanelOverviewScreen.tsx
-// SCR-ADMIN-000: Administration Panel - Overview
-//
-// Tabbed administration dashboard that separates Clinical Configuration
-// (Institutional Admin) from System Configuration (System Admin). The
-// screen renders in whichever stack opens it; the route param `panel`
-// picks the default tab and the matching role nav bar.
-
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
