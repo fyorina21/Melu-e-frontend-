@@ -6,7 +6,8 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAr
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from './components/InstitutionalAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getScheduleCapacityConfig, saveScheduleCapacityConfig } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
@@ -55,7 +56,7 @@ export default function ScheduleCapacityConfigScreen({ navigation }: NativeStack
 
   return (
     <SafeAreaView style={styles.safe}>
-      <InstitutionalAdminNav activeTab="Schedule" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Schedule" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <View style={styles.header}><Text style={typography.h1}>Session Schedule & Capacity</Text></View>
 
       <ScrollView contentContainerStyle={styles.content}>

@@ -5,8 +5,8 @@ import type { ParamListBase } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from '../institutionaladmin/components/InstitutionalAdminNav';
-import SystemAdminNav, { SYS_ROUTE_BY_TAB } from '../systemadmin/components/SystemAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 
 interface ModuleItem {
   key: string;
@@ -71,9 +71,9 @@ export default function AdminPanelOverviewScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.safe}>
       {panel === 'system' ? (
-        <SystemAdminNav activeTab="Admin Panel" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar activeTab="Admin Panel" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t] as never)} />
       ) : (
-        <InstitutionalAdminNav activeTab="Admin Panel" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar activeTab="Admin Panel" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t] as never)} />
       )}
 
       <View style={styles.header}>

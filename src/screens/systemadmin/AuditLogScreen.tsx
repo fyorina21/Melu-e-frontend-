@@ -5,7 +5,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import SystemAdminNav, { SYS_ROUTE_BY_TAB } from './components/SystemAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAuditLogs } from '../../api/SystemAdminApi';
 import type { SystemAdminStackParamList } from '../../types';
 
@@ -65,7 +66,7 @@ export default function AuditLogScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SystemAdminNav activeTab="Audit Log" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Audit Log" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>

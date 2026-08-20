@@ -12,7 +12,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from './components/InstitutionalAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAbcLists, saveAbcList, resetAbcListsToDefault } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
@@ -149,7 +150,7 @@ export default function AbcDropdownListsScreen({ navigation }: NativeStackScreen
 
   return (
     <SafeAreaView style={styles.safe}>
-      <InstitutionalAdminNav activeTab="ABC Lists" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="ABC Lists" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <View style={styles.header}><Text style={typography.h1}>ABC Dropdown List Manager</Text></View>
 
       <View style={styles.listTabsRow}>

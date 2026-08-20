@@ -7,7 +7,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from './components/InstitutionalAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getClinicInfo, saveClinicInfo } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
@@ -54,7 +55,7 @@ export default function ClinicInfoConfigScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <InstitutionalAdminNav activeTab="Clinic Info" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Clinic Info" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <View style={styles.header}><Text style={typography.h1}>Clinic Information</Text><Text style={typography.caption}>MR-6 — clinic-level configuration</Text></View>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>

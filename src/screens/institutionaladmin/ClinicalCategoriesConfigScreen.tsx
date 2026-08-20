@@ -9,7 +9,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from './components/InstitutionalAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getClinicalCategories, saveClinicalCategory, updateClinicalCategory, deleteClinicalCategory } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList, Payload } from '../../types';
 
@@ -93,7 +94,7 @@ export default function ClinicalCategoriesConfigScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <InstitutionalAdminNav activeTab="Programs" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Programs" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <View style={styles.header}><Text style={typography.h1}>Clinical Categories</Text><Text style={typography.caption}>MR-6 — programs, assessment types, and therapy types</Text></View>
 
       <View style={styles.sectionTabs}>

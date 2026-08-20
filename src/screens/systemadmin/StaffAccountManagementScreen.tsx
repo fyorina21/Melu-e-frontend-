@@ -4,7 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
-import SystemAdminNav, { SYS_ROUTE_BY_TAB } from './components/SystemAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStaffAccounts, createStaffAccount, updateStaffAccount, deleteStaffAccount, resetStaffPassword, toggleStaffActive, bulkStaffAction } from '../../api/SystemAdminApi';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../../types';
@@ -21,48 +22,43 @@ interface StaffMember {
 }
 
 // SCR-008: Teacher-Student Linking demo data
-const LINK_STATIONS = ['Station 1 (Basic Skills)', 'Station 2 (Advanced Skills)'];
-const LINK_BLOCKS = [
-  'Monday AM (8:07-12:00)',
-  'Monday PM (1:10-4:45)',
-  'Tuesday AM (8:07-12:00)',
-  'Tuesday PM (1:10-4:45)',
-  'Wednesday AM (8:07-12:00)',
-  'Wednesday PM (1:10-4:45)',
-  'Thursday AM (8:07-12:00)',
-  'Thursday PM (1:10-4:45)',
-  'Friday AM (8:07-12:00)',
-  'Friday PM (1:10-4:45)',
-];
-const STATION_GROUP: Record<string, string> = {
-  'Station 1 (Basic Skills)': 'Basic Therapy',
-  'Station 2 (Advanced Skills)': 'Functional Living',
+type LinkStation = '1' | '2';
+type LinkRoom = 1 | 2 | 3 | 4;
+
+const STATION_GROUPS: Record<LinkStation, string> = {
+  '1': 'Basic Therapy',
+  '2': 'Functional Living',
 };
+const LINK_ROOMS = [1, 2, 3, 4] as const;
 const TEACHER_CAPACITY = 2;
 
 interface LinkStudent {
   id: string;
   name: string;
   group: string;
+  program: 'regular' | 'pooled-out';
 }
 
 const LINK_STUDENTS: LinkStudent[] = [
-  { id: 'student-a', name: 'Student A', group: 'Basic Therapy' },
-  { id: 'student-b', name: 'Student B', group: 'Basic Therapy' },
-  { id: 'student-c', name: 'Student C', group: 'Basic Therapy' },
-  { id: 'student-d', name: 'Student D', group: 'Basic Therapy' },
-  { id: 'student-e', name: 'Student E', group: 'Functional Living' },
-  { id: 'student-f', name: 'Student F', group: 'Functional Living' },
+  { id: 'student-a', name: 'Student A', group: 'Basic Therapy', program: 'regular' },
+  { id: 'student-b', name: 'Student B', group: 'Basic Therapy', program: 'regular' },
+  { id: 'student-c', name: 'Student C', group: 'Basic Therapy', program: 'pooled-out' },
+  { id: 'student-d', name: 'Student D', group: 'Basic Therapy', program: 'regular' },
+  { id: 'student-e', name: 'Student E', group: 'Functional Living', program: 'regular' },
+  { id: 'student-f', name: 'Student F', group: 'Functional Living', program: 'pooled-out' },
 ];
 
-const LINK_KEY = (station: string, block: string) => `${station}|${block}`;
+interface TeacherLinkAssignment {
+  teacherId: string;
+  teacherName: string;
+  station: LinkStation;
+  room: LinkRoom;
+  students: string[];
+}
 
-const DEMO_LINK_ASSIGNMENTS: Record<string, Record<string, string[]>> = {
-  's1': {
-    [LINK_KEY('Station 1 (Basic Skills)', 'Monday AM (8:07-12:00)')]: ['student-a', 'student-b'],
-  },
-  't-b': {},
-};
+const DEMO_LINK_ASSIGNMENTS: TeacherLinkAssignment[] = [
+  { teacherId: 's1', teacherName: 'Teacher A', station: '1', room: 1, students: ['student-a', 'student-b'] },
+];
 
 type StaffPayload = {
   id?: string;
@@ -134,126 +130,289 @@ interface TeacherLinkingPanelProps {
 }
 
 function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
-  const [station, setStation] = useState(LINK_STATIONS[0]);
-  const [block, setBlock] = useState(LINK_BLOCKS[0]);
-  const [assignments, setAssignments] = useState<Record<string, Record<string, string[]>>>(DEMO_LINK_ASSIGNMENTS);
-  const [selectedAvailable, setSelectedAvailable] = useState<string[]>([]);
-  const [selectedAssigned, setSelectedAssigned] = useState<string[]>([]);
+  const [station, setStation] = useState<LinkStation>('1');
+  const [room, setRoom] = useState<LinkRoom>(1);
+  const [assignments, setAssignments] = useState<TeacherLinkAssignment[]>(DEMO_LINK_ASSIGNMENTS);
+  const [selectedForAssign, setSelectedForAssign] = useState<string[]>([]);
+  const [selectedForRemove, setSelectedForRemove] = useState<string[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string>('all');
+  const [programFilter, setProgramFilter] = useState<string>('all');
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
-  const group = STATION_GROUP[station];
-  const key = LINK_KEY(station, block);
-  const mineInBlock = assignments[teacher.id]?.[key] ?? [];
-  const allInBlock = Object.keys(assignments).flatMap((tid) => assignments[tid][key] ?? []);
-  const available = LINK_STUDENTS.filter((s) => s.group === group && !allInBlock.includes(s.id));
+  const currentAssignment = assignments.find(
+    (a) => a.teacherId === teacher.id && a.station === station && a.room === room
+  );
+  const assignedStudentIds = currentAssignment?.students ?? [];
 
-  const toggleAvailable = (id: string) => setSelectedAvailable((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  const toggleAssigned = (id: string) => setSelectedAssigned((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const stationGroup = STATION_GROUPS[station];
+  let availableStudents = LINK_STUDENTS.filter(
+    (s) => s.group === stationGroup && !assignedStudentIds.includes(s.id)
+  );
+  if (groupFilter !== 'all') availableStudents = availableStudents.filter((s) => s.group === groupFilter);
+  if (programFilter !== 'all') availableStudents = availableStudents.filter((s) => s.program === programFilter);
 
-  const setKey = (key: string, ids: string[]) =>
-    setAssignments((prev) => ({
-      ...prev,
-      [teacher.id]: { ...prev[teacher.id], [key]: ids },
-    }));
+  const canAssignMore = assignedStudentIds.length < TEACHER_CAPACITY;
+
+  const switchContext = (fn: () => void) => {
+    setSelectedForAssign([]);
+    setSelectedForRemove([]);
+    fn();
+  };
+
+  const handleStudentToggle = (studentId: string, isForAssign: boolean) => {
+    if (isForAssign) {
+      if (selectedForAssign.includes(studentId)) {
+        setSelectedForAssign((prev) => prev.filter((id) => id !== studentId));
+      } else {
+        if (selectedForAssign.length + assignedStudentIds.length >= TEACHER_CAPACITY) return;
+        setSelectedForAssign((prev) => [...prev, studentId]);
+      }
+    } else {
+      if (selectedForRemove.includes(studentId)) {
+        setSelectedForRemove((prev) => prev.filter((id) => id !== studentId));
+      } else {
+        setSelectedForRemove((prev) => [...prev, studentId]);
+      }
+    }
+  };
 
   const handleAssign = () => {
-    if (selectedAvailable.length === 0) { Alert.alert('Select students first'); return; }
-    const combined = [...mineInBlock, ...selectedAvailable];
-    if (combined.length > TEACHER_CAPACITY) { Alert.alert('Capacity exceeded', `Each teacher is limited to ${TEACHER_CAPACITY} students per block (already ${mineInBlock.length}).`); return; }
-    setKey(key, combined);
-    setSelectedAvailable([]);
+    if (!selectedForAssign.length) return;
+
+    const newStudents = [...assignedStudentIds, ...selectedForAssign];
+
+    if (currentAssignment) {
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.teacherId === teacher.id && a.station === station && a.room === room
+            ? { ...a, students: newStudents }
+            : a
+        )
+      );
+    } else {
+      setAssignments((prev) => [
+        ...prev,
+        { teacherId: teacher.id, teacherName: teacher.name, station, room, students: newStudents },
+      ]);
+    }
+
+    setSelectedForAssign([]);
   };
 
   const handleRemove = () => {
-    if (selectedAssigned.length === 0) { Alert.alert('Select assigned students first'); return; }
-    Alert.alert('Unlink students?', 'The selected students will be freed for other teachers in this block.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Unlink', style: 'destructive', onPress: () => { setKey(key, mineInBlock.filter((id) => !selectedAssigned.includes(id))); setSelectedAssigned([]); } },
-    ]);
+    if (!selectedForRemove.length) {
+      Alert.alert('Please select students to remove');
+      return;
+    }
+    setShowRemoveConfirm(true);
   };
 
-  const summaryKeys = Object.keys(assignments[teacher.id] ?? {}).filter((k) => (assignments[teacher.id]?.[k]?.length ?? 0) > 0);
+  const handleRemoveConfirm = () => {
+    if (!selectedForRemove.length) return;
+
+    const remainingStudents = assignedStudentIds.filter((id) => !selectedForRemove.includes(id));
+
+    if (remainingStudents.length === 0) {
+      setAssignments((prev) =>
+        prev.filter((a) => !(a.teacherId === teacher.id && a.station === station && a.room === room))
+      );
+    } else {
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.teacherId === teacher.id && a.station === station && a.room === room
+            ? { ...a, students: remainingStudents }
+            : a
+        )
+      );
+    }
+
+    setSelectedForRemove([]);
+    setShowRemoveConfirm(false);
+  };
+
+  const teacherAssignments = assignments.filter((a) => a.teacherId === teacher.id);
 
   return (
     <View style={styles.linkingCard}>
       <View style={styles.linkingHeader}>
         <View style={{ flex: 1 }}>
           <Text style={typography.h2}>Teacher-Student Linking</Text>
-          <Text style={typography.caption}>SCR-008 · {teacher.name} — assign students to a station &amp; time block (max {TEACHER_CAPACITY} per block).</Text>
+          <Text style={typography.caption}>{teacher.name} — assign students to a station &amp; room (max {TEACHER_CAPACITY} per room).</Text>
         </View>
         <TouchableOpacity style={styles.iconBtn} onPress={onClose}><Feather name="x" size={14} color={colors.navyText} /></TouchableOpacity>
       </View>
 
+      {/* Station & Room Selection */}
       <View style={styles.field}>
         <Text style={typography.label}>Station</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {LINK_STATIONS.map((s) => (
-            <TouchableOpacity key={s} style={[styles.chip, station === s && styles.chipSelected]} onPress={() => setStation(s)}>
-              <Text style={[styles.chipText, station === s && styles.chipTextSelected]}>{s}</Text>
+        <View style={styles.selectorRow}>
+          {(['1', '2'] as LinkStation[]).map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.selectorBtn, station === s && styles.selectorBtnStationActive]}
+              onPress={() => switchContext(() => setStation(s))}
+            >
+              <Text style={[styles.selectorBtnText, station === s && styles.selectorBtnTextActive]}>
+                Station {s}
+              </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       <View style={styles.field}>
-        <Text style={typography.label}>Time Block</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {LINK_BLOCKS.map((b) => (
-            <TouchableOpacity key={b} style={[styles.chip, block === b && styles.chipSelected]} onPress={() => setBlock(b)}>
-              <Text style={[styles.chipText, block === b && styles.chipTextSelected]}>{b}</Text>
+        <Text style={typography.label}>Room</Text>
+        <View style={styles.selectorRow}>
+          {LINK_ROOMS.map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[styles.selectorBtn, room === r && styles.selectorBtnRoomActive]}
+              onPress={() => switchContext(() => setRoom(r))}
+            >
+              <Text style={[styles.selectorBtnText, room === r && styles.selectorBtnRoomTextActive]}>{r}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
-      <Text style={typography.caption}>Assigned in {block}: {mineInBlock.length}/{TEACHER_CAPACITY}</Text>
-
+      {/* Two-Panel Layout */}
       <View style={styles.linkingRow}>
-        <View style={styles.linkingList}>
-          <Text style={typography.label}>Available Students</Text>
-          <Text style={typography.caption}>{group} group · not assigned this block</Text>
-          {available.length === 0 && <Text style={typography.caption}>No students available.</Text>}
-          {available.map((s) => (
-            <TouchableOpacity key={s.id} style={[styles.linkingItem, selectedAvailable.includes(s.id) && styles.linkingItemActive]} onPress={() => toggleAvailable(s.id)}>
-              <Text style={typography.body}>{s.name}</Text>
-              <Feather name={selectedAvailable.includes(s.id) ? 'check-square' : 'square'} size={14} color={colors.navyText} />
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.linkingActions}>
-          <TouchableOpacity style={styles.moveBtn} onPress={handleAssign}><Feather name="chevron-right" size={14} color={colors.navyText} /><Text style={styles.moveBtnText}>Assign</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.moveBtn} onPress={handleRemove}><Feather name="chevron-left" size={14} color={colors.navyText} /><Text style={styles.moveBtnText}>Unlink</Text></TouchableOpacity>
-        </View>
-        <View style={styles.linkingList}>
-          <Text style={typography.label}>Assigned Students</Text>
-          <Text style={typography.caption}>{mineInBlock.length} of {TEACHER_CAPACITY} capacity</Text>
-          {mineInBlock.length === 0 && <Text style={typography.caption}>No students assigned in this block.</Text>}
-          {mineInBlock.map((id) => {
-            const s = LINK_STUDENTS.find((x) => x.id === id);
-            if (!s) return null;
-            return (
-              <TouchableOpacity key={id} style={[styles.linkingItem, selectedAssigned.includes(id) && styles.linkingItemActive]} onPress={() => toggleAssigned(id)}>
-                <Text style={typography.body}>{s.name}</Text>
-                <Feather name={selectedAssigned.includes(id) ? 'check-square' : 'square'} size={14} color={colors.navyText} />
+        {/* Available Students Panel */}
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <Text style={typography.bodyBold}>Available Students</Text>
+            <Text style={typography.caption}>{selectedForAssign.length} selected</Text>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            {['all', ...Object.values(STATION_GROUPS)].map((g) => (
+              <TouchableOpacity key={g} style={[styles.filterChip, groupFilter === g && styles.filterChipActive]} onPress={() => setGroupFilter(g)}>
+                <Text style={[styles.filterChipText, groupFilter === g && styles.filterChipTextActive]}>{g === 'all' ? 'All Groups' : g}</Text>
               </TouchableOpacity>
-            );
-          })}
+            ))}
+            {['all', 'regular', 'pooled-out'].map((p) => (
+              <TouchableOpacity key={`p-${p}`} style={[styles.filterChip, programFilter === p && styles.filterChipActive]} onPress={() => setProgramFilter(p)}>
+                <Text style={[styles.filterChipText, programFilter === p && styles.filterChipTextActive]}>{p === 'all' ? 'All Programs' : p === 'regular' ? 'Regular' : 'Pooled Out'}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={styles.panelList}>
+            {availableStudents.length === 0 ? (
+              <Text style={styles.emptyText}>No available students</Text>
+            ) : (
+              availableStudents.map((s) => {
+                const selected = selectedForAssign.includes(s.id);
+                const disabled = !canAssignMore && !selected;
+                return (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.checkRow, selected && styles.checkRowAvailableSelected, disabled && styles.checkRowDisabled]}
+                    onPress={() => handleStudentToggle(s.id, true)}
+                    disabled={disabled}
+                  >
+                    <Feather name={selected ? 'check-square' : 'square'} size={16} color={selected ? colors.statusInProgressText : colors.mutedText} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.body}>{s.name}</Text>
+                      <Text style={typography.caption}>{s.group} • {s.program === 'pooled-out' ? 'Pooled Out' : 'Regular'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, selectedForAssign.length > 0 && styles.primaryBtnActive]}
+            onPress={handleAssign}
+            disabled={selectedForAssign.length === 0}
+          >
+            <Text style={[styles.primaryBtnText, selectedForAssign.length > 0 && styles.primaryBtnTextActive]}>Assign Selected</Text>
+          </TouchableOpacity>
+          {!canAssignMore && (
+            <Text style={styles.warnText}>Maximum 2 students per teacher for this room</Text>
+          )}
+        </View>
+
+        {/* Assigned Students Panel */}
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <Text style={typography.bodyBold}>Assigned Students</Text>
+            <Text style={typography.caption}>{assignedStudentIds.length}/{TEACHER_CAPACITY}</Text>
+          </View>
+
+          <View style={[styles.panelList, styles.panelListAssigned]}>
+            {assignedStudentIds.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Feather name="users" size={40} color={colors.border} />
+                <Text style={styles.emptyStateText}>No students assigned</Text>
+              </View>
+            ) : (
+              assignedStudentIds.map((id) => {
+                const s = LINK_STUDENTS.find((x) => x.id === id);
+                if (!s) return null;
+                const selected = selectedForRemove.includes(s.id);
+                return (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.checkRow, styles.assignedRow, selected ? styles.checkRowRemoveSelected : styles.checkRowAssigned]}
+                    onPress={() => handleStudentToggle(s.id, false)}
+                  >
+                    <Feather name={selected ? 'check-square' : 'square'} size={16} color={selected ? colors.statusRevisionText : colors.statusInProgressText} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.body}>{s.name}</Text>
+                      <Text style={typography.caption}>{s.group} • {s.program === 'pooled-out' ? 'Pooled Out' : 'Regular'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.removeBtn, selectedForRemove.length > 0 && styles.removeBtnActive]}
+            onPress={handleRemove}
+            disabled={selectedForRemove.length === 0}
+          >
+            <Text style={[styles.removeBtnText, selectedForRemove.length > 0 && styles.removeBtnTextActive]}>Remove Selected</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
+      {/* All Assignments Summary */}
       <View style={styles.field}>
-        <Text style={typography.label}>Current Assignments Summary</Text>
-        {summaryKeys.length === 0 && <Text style={typography.caption}>No assignments yet for {teacher.name}.</Text>}
-        {summaryKeys.map((k) => {
-          const [st, bl] = k.split('|');
-          const ids = assignments[teacher.id][k];
-          return (
-            <View key={k} style={styles.summaryRow}>
-              <Text style={typography.bodyBold}>{st}</Text>
-              <Text style={typography.caption}>{bl} · {ids.map((id) => LINK_STUDENTS.find((x) => x.id === id)?.name).join(', ')}</Text>
-            </View>
-          );
-        })}
+        <Text style={typography.label}>All Assignments</Text>
+        {teacherAssignments.length === 0 ? (
+          <Text style={typography.caption}>No assignments yet for {teacher.name}.</Text>
+        ) : (
+          teacherAssignments.map((a) => {
+            const names = a.students.map((id) => LINK_STUDENTS.find((x) => x.id === id)?.name).filter(Boolean);
+            return (
+              <View key={`${a.station}|${a.room}`} style={styles.summaryRow}>
+                <Text style={typography.bodyBold}>Station {a.station} · Room {a.room}</Text>
+                <Text style={typography.caption}>{names.length ? names.join(' · ') : '—'}</Text>
+              </View>
+            );
+          })
+        )}
       </View>
+
+      {/* Remove Confirmation Modal */}
+      <Modal visible={showRemoveConfirm} transparent animationType="fade" onRequestClose={() => setShowRemoveConfirm(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modalSheet, styles.confirmModal]}>
+            <Text style={typography.h2}>Remove Students?</Text>
+            <Text style={typography.body}>
+              Remove {selectedForRemove.map((id) => LINK_STUDENTS.find((s) => s.id === id)?.name).filter(Boolean).join(', ')} from this assignment?
+            </Text>
+            <Text style={typography.caption}>Historical session data will be kept.</Text>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowRemoveConfirm(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.saveBtn, styles.confirmRemoveBtn]} onPress={handleRemoveConfirm}><Text style={styles.confirmRemoveBtnText}>Remove</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -346,7 +505,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SystemAdminNav activeTab="Staff Accounts" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Staff Accounts" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Staff Account Management</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setFormTarget(null)}>
@@ -425,6 +584,8 @@ const styles = StyleSheet.create({
   searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },
   filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginRight: spacing.xs },
   filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  filterChipText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
+  filterChipTextActive: { fontSize: 11, fontWeight: '700', color: colors.navyText },
   bulkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.statusPendingBg },
   bulkBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   bulkBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
@@ -438,13 +599,40 @@ const styles = StyleSheet.create({
   iconBtnActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   linkingCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.primaryYellow, gap: spacing.md, marginTop: spacing.sm },
   linkingHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  linkingRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'stretch' },
-  linkingList: { flex: 1, gap: spacing.xs },
-  linkingItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm },
-  linkingItemActive: { backgroundColor: colors.statusPendingBg, borderColor: colors.primaryYellow },
-  linkingActions: { justifyContent: 'center', gap: spacing.sm },
-  moveBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, backgroundColor: colors.bgApp },
-  moveBtnText: { fontSize: 11, fontWeight: '700', color: colors.navyText },
+  selectorRow: { flexDirection: 'row', gap: spacing.sm },
+  selectorBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', backgroundColor: colors.bgApp },
+  selectorBtnText: { fontWeight: '600', color: colors.bodyText },
+  selectorBtnStationActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  selectorBtnRoomActive: { backgroundColor: colors.statusInProgressText, borderColor: colors.statusInProgressText },
+  selectorBtnTextActive: { fontWeight: '700', color: colors.navyText },
+  selectorBtnRoomTextActive: { fontWeight: '700', color: colors.white },
+  linkingRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'stretch' },
+  panel: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgApp },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  filterRow: { gap: spacing.xs },
+  panelList: { gap: spacing.xs, maxHeight: 260 },
+  panelListAssigned: { minHeight: 160, backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.xs },
+  emptyText: { textAlign: 'center', color: colors.mutedText, paddingVertical: spacing.xl, fontSize: 13 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, backgroundColor: colors.bgCard },
+  checkRowAvailableSelected: { borderColor: colors.statusInProgressText, backgroundColor: colors.statusInProgressBg },
+  checkRowAssigned: { borderColor: colors.statusInProgressText, backgroundColor: colors.statusInProgressBg },
+  checkRowRemoveSelected: { borderColor: colors.statusRevisionText, backgroundColor: colors.statusRevisionBg },
+  assignedRow: { borderWidth: 2 },
+  checkRowDisabled: { opacity: 0.5 },
+  primaryBtn: { alignItems: 'center', paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
+  primaryBtnActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  primaryBtnText: { fontWeight: '600', color: colors.mutedText },
+  primaryBtnTextActive: { fontWeight: '700', color: colors.navyText },
+  warnText: { textAlign: 'center', fontSize: 11, color: '#EA580C', marginTop: spacing.xs },
+  removeBtn: { alignItems: 'center', paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
+  removeBtnActive: { backgroundColor: '#DC2626', borderColor: '#DC2626' },
+  removeBtnText: { fontWeight: '600', color: colors.mutedText },
+  removeBtnTextActive: { fontWeight: '700', color: colors.white },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
+  emptyStateText: { color: colors.mutedText, fontSize: 13 },
+  confirmModal: { maxWidth: 420, width: '100%', alignSelf: 'center' },
+  confirmRemoveBtn: { backgroundColor: '#DC2626' },
+  confirmRemoveBtnText: { fontWeight: '700', color: colors.white },
   summaryRow: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, gap: spacing.xs },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
   modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '90%' },

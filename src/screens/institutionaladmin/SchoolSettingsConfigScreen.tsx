@@ -4,7 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from './components/InstitutionalAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getSchoolSettings, saveSchoolSettings } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
@@ -51,7 +52,7 @@ export default function SchoolSettingsConfigScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <InstitutionalAdminNav activeTab="Schools" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Schools" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <View style={styles.header}><Text style={typography.h1}>School Settings</Text><Text style={typography.caption}>MR-6 — term, session length and capacity defaults</Text></View>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>

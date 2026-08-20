@@ -4,7 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import InstitutionalAdminNav, { IA_ROUTE_BY_TAB } from './components/InstitutionalAdminNav';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getTaskAnalysisTemplates, saveTaskAnalysisTemplate, deleteTaskAnalysisTemplate } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
@@ -147,7 +148,7 @@ export default function TaskAnalysisTemplatesScreen({ navigation }: NativeStackS
 
   return (
     <SafeAreaView style={styles.safe}>
-      <InstitutionalAdminNav activeTab="Task Analysis" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Task Analysis" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Task Analysis Templates</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setEditorTarget(null)}>
