@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
@@ -88,7 +88,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} onLogout={logout} />
+      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>

@@ -7,15 +7,18 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
+  Modal,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill, { StatusType } from '../../components/StatusPill';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getDailyNotes, getWeeklySummary, resubmitSessionNote } from '../../api/sessionApi';
+import { downloadTextFile } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'DailyNotes'>;
@@ -50,11 +53,14 @@ const STATUS_KEY_MAP: Record<string, StatusType> = {
 };
 
 export default function DailyNotesScreen({ navigation }: Props) {
-  const { logout } = useAuth();
+  const { logout, session } = useAuth();
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<NoteRecord[]>([]);
   const [summary, setSummary] = useState<WeeklySummaryData | null>(null);
   const [stats, setStats] = useState<DailyNotesStats>({ sessionsCompleted: 0, totalTrials: 0, avgIndependence: 0, reviewsPending: 0 });
+  const [feedbackTarget, setFeedbackTarget] = useState<NoteRecord | null>(null);
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState('All');
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +82,41 @@ export default function DailyNotesScreen({ navigation }: Props) {
     load();
   }, [load]);
 
+  const filteredRecords = records.filter((r) => {
+    if (statusFilter !== 'All' && r.status !== statusFilter) return false;
+    if (dateFilter !== 'All') {
+      const d = new Date(r.date);
+      if (isNaN(d.getTime())) return true;
+      const now = new Date();
+      if (dateFilter === 'This Week') {
+        const day = now.getDay();
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+        weekStart.setHours(0, 0, 0, 0);
+        if (d < weekStart) return false;
+      }
+      if (dateFilter === 'This Month') {
+        if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false;
+      }
+    }
+    return true;
+  });
+
+  const handleExportWeekly = () => {
+    if (!summary) return;
+    const lines = [
+      'MELU\u2019E FOUNDATION \u2014 WEEKLY SUMMARY',
+      `Week of: ${summary.weekRange}`,
+      '',
+      `Sessions completed: ${summary.sessionsThisWeek}`,
+      `Total trials logged: ${summary.totalTrialsThisWeek}`,
+      `Average independence: ${summary.avgIndependenceThisWeek}%`,
+      '',
+      'Teacher: ' + (session?.userName ?? 'Teacher A'),
+    ];
+    downloadTextFile(`WeeklySummary_${summary.weekRange.replace(/[^a-z0-9]/gi, '_')}.html`, lines.map((l) => `<p>${l}</p>`).join(''));
+  };
+
   const handleResubmit = async (sessionId: string) => {
     try {
       await resubmitSessionNote(sessionId, {});
@@ -87,7 +128,7 @@ export default function DailyNotesScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Daily Notes" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} onLogout={logout} />
+      <AppNavbar activeTab="Daily Notes" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.h1}>Daily Notes & Summaries</Text>
 
@@ -108,15 +149,35 @@ export default function DailyNotesScreen({ navigation }: Props) {
             value={search}
             onChangeText={setSearch}
           />
-          {/* TODO: wire real dropdowns; using static labels for now to match Figma */}
-          <View style={styles.filterChip}><Text style={typography.body}>This Month</Text></View>
-          <View style={styles.filterChip}><Text style={typography.body}>All Statuses</Text></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            {['All', 'Approved', 'Pending', 'Revision Required', 'Draft'].map((s) => (
+              <TouchableOpacity
+                key={`status-${s}`}
+                style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
+                onPress={() => setStatusFilter(s)}
+              >
+                <Text style={[styles.filterChipText, statusFilter === s && styles.filterChipTextActive]}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+            {['All', 'This Week', 'This Month'].map((d) => (
+              <TouchableOpacity
+                key={`date-${d}`}
+                style={[styles.filterChip, dateFilter === d && styles.filterChipActive]}
+                onPress={() => setDateFilter(d)}
+              >
+                <Text style={[styles.filterChipText, dateFilter === d && styles.filterChipTextActive]}>{d}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* Session records */}
         <View style={styles.card}>
           <Text style={typography.h2}>Session Records</Text>
-          {records.map((r) => (
+          {filteredRecords.length === 0 && (
+            <Text style={styles.noRecordsText}>No sessions match the current filters.</Text>
+          )}
+          {filteredRecords.map((r) => (
             <View key={r.id} style={styles.recordRow}>
               <View style={{ flex: 1 }}>
                 <Text style={typography.bodyBold}>{r.date}</Text>
@@ -139,6 +200,11 @@ export default function DailyNotesScreen({ navigation }: Props) {
                     <Text style={styles.actionBtnText}>{r.status === 'Draft' ? 'Edit Draft' : 'Resubmit'}</Text>
                   </TouchableOpacity>
                 )}
+                {r.status === 'Revision Required' && (
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => setFeedbackTarget(r)}>
+                    <Text style={[styles.actionBtnText, { color: colors.statusInProgressText }]}>View Feedback</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ))}
@@ -147,7 +213,13 @@ export default function DailyNotesScreen({ navigation }: Props) {
         {/* Weekly summary */}
         {summary && (
           <View style={styles.card}>
-            <Text style={typography.h2}>Weekly Summary</Text>
+            <View style={styles.summaryHeader}>
+              <Text style={typography.h2}>Weekly Summary</Text>
+              <TouchableOpacity style={styles.exportBtn} onPress={handleExportWeekly}>
+                <Feather name="download" size={13} color={colors.navyText} />
+                <Text style={styles.exportBtnText}>Export PDF</Text>
+              </TouchableOpacity>
+            </View>
             <SummaryRow label="Week of" value={summary.weekRange} />
             <SummaryRow label="Sessions this week" value={summary.sessionsThisWeek} bold />
             <SummaryRow label="Total trials this week" value={summary.totalTrialsThisWeek} bold />
@@ -155,6 +227,31 @@ export default function DailyNotesScreen({ navigation }: Props) {
           </View>
         )}
       </ScrollView>
+
+      {/* View Feedback Modal */}
+      <Modal visible={!!feedbackTarget} transparent animationType="slide" onRequestClose={() => setFeedbackTarget(null)}>
+        <View style={styles.overlay}>
+          <View style={styles.feedbackModal}>
+            <View style={styles.feedbackHeader}>
+              <Text style={typography.h2}>Coordinator Feedback</Text>
+              <TouchableOpacity onPress={() => setFeedbackTarget(null)}>
+                <Feather name="x" size={18} color={colors.navyText} />
+              </TouchableOpacity>
+            </View>
+            {feedbackTarget && (
+              <>
+                <Text style={typography.caption}>{feedbackTarget.date} · {feedbackTarget.students.join(', ')} · {feedbackTarget.station} {feedbackTarget.room}</Text>
+                <Text style={typography.caption}>From: Coordinator A</Text>
+                <View style={styles.feedbackBody}>
+                  <Text style={typography.body}>
+                    Please revise the session notes for this block. Missing behavior data for {feedbackTarget.students[1] || feedbackTarget.students[0]} — include the antecedent, behavior, and consequence for the observed incident, and correct the trial counts to match the data collection sheet.
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -212,13 +309,30 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
   },
+  filterScroll: { gap: spacing.sm },
   filterChip: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.bgCard,
   },
+  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
+  filterChipTextActive: { fontSize: 12, fontWeight: '700', color: colors.navyText },
+  summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primaryYellow,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  exportBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
+  noRecordsText: { color: colors.mutedText, textAlign: 'center', paddingVertical: spacing.lg, fontSize: 13 },
   card: {
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
@@ -248,5 +362,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.xs,
+  },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
+  feedbackModal: {
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  feedbackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  feedbackBody: {
+    backgroundColor: colors.statusRevisionBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.statusRevisionText,
   },
 });

@@ -5,7 +5,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import {
   getTeacherConversations,
@@ -14,6 +14,7 @@ import {
   escalateTeacherConversation,
   markTeacherConversationResolved,
 } from '../../api/teacherExtrasApi';
+import { downloadTextFile } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
 
 interface Conversation {
@@ -40,6 +41,9 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
   const [thread, setThread] = useState<ThreadMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<{ id: string; name: string }[]>([]);
+  const [search, setSearch] = useState('');
+  const [studentFilter, setStudentFilter] = useState('All');
+  const [showLog, setShowLog] = useState(false);
 
   const loadList = useCallback(async () => {
     try {
@@ -65,6 +69,18 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
 
   const activeConversation = conversations.find((c) => c.id === activeId);
 
+  const uniqueStudents = Array.from(new Set(conversations.map((c) => c.studentName)));
+  const visibleConversations = conversations.filter((c) => {
+    const matchesStudent = studentFilter === 'All' || c.studentName === studentFilter;
+    const term = search.trim().toLowerCase();
+    const matchesSearch =
+      !term ||
+      c.studentName.toLowerCase().includes(term) ||
+      c.parentName.toLowerCase().includes(term) ||
+      c.lastMessagePreview.toLowerCase().includes(term);
+    return matchesStudent && matchesSearch;
+  });
+
   const handleAttach = async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*', '*/*'], copyToCacheDirectory: true });
     if (result.canceled) return;
@@ -86,12 +102,42 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
     } catch (err) {}
   };
 
-  const handleShareSchedule = () => {
-    setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: this week's session schedule]`);
+  const handleShareSessionSummary = () => {
+    const filename = `SessionSummary_${activeConversation?.studentName || 'Student'}.html`;
+    const content = [
+      '<h2>Session Summary</h2>',
+      `<p><b>Student:</b> ${activeConversation?.studentName || 'Student A'}</p>`,
+      '<p><b>Station:</b> Station 1 — Basic Skills · Room 2</p>',
+      '<p><b>Date:</b> ' + new Date().toLocaleDateString() + '</p>',
+      '<p><b>Status:</b> Approved by Coordinator</p>',
+      '<p>Highlights: 12/15 trials independent; requesting items shows steady improvement; continue practicing requesting help.</p>',
+    ].join('\n');
+    downloadTextFile(filename, content);
+    setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: latest approved session summary (PDF)]`);
   };
 
-  const handleShareProgress = () => {
-    setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: session progress summary]`);
+  const handleShareProgressUpdate = () => {
+    const filename = `ProgressChart_${activeConversation?.studentName || 'Student'}.html`;
+    const content = [
+      '<h2>Goal Progress Chart</h2>',
+      `<p><b>Student:</b> ${activeConversation?.studentName || 'Student A'}</p>`,
+      '<p><b>Goal:</b> Request Items (E2)</p>',
+      '<p><b>Range:</b> Last 6 weeks</p>',
+      '<p>Weekly independence: 40% → 55% → 62% → 70% → 78% → 85%</p>',
+    ].join('\n');
+    downloadTextFile(filename, content);
+    setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: goal progress chart]`);
+  };
+
+  const handleRequestHomeObservation = () => {
+    Alert.alert('Request Home Observation?', 'A standardized observation request will be sent to the parent.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Send Request', onPress: () => setDraft((prev) => `${prev}${prev ? ' ' : ''}[Requested: home observation]`) },
+    ]);
+  };
+
+  const handleViewHomeObservation = () => {
+    Alert.alert('Home Observation', 'Parent A last logged an observation on July 30, 2026:\n\nThe student requested a snack independently at home (no prompting). Practice continues with requesting help.', [{ text: 'OK' }]);
   };
 
   const handleEscalate = () => {
@@ -117,12 +163,32 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Parents" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar activeTab="Parents" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.body}>
         <View style={styles.sidebar}>
+          <View style={styles.sidebarSearchRow}>
+            <Feather name="search" size={14} color={colors.mutedText} />
+            <TextInput
+              style={styles.sidebarSearch}
+              placeholder="Search conversations..."
+              placeholderTextColor={colors.mutedText}
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sidebarFilterRow}>
+            {['All', ...uniqueStudents].map((s) => (
+              <TouchableOpacity key={s} style={[styles.sidebarFilterChip, studentFilter === s && styles.sidebarFilterChipActive]} onPress={() => setStudentFilter(s)}>
+                <Text style={[styles.sidebarFilterChipText, studentFilter === s && styles.sidebarFilterChipTextActive]}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
           <ScrollView>
-            {conversations.map((c) => (
+            {visibleConversations.length === 0 && (
+              <Text style={styles.sidebarEmpty}>No conversations match.</Text>
+            )}
+            {visibleConversations.map((c) => (
               <TouchableOpacity key={c.id} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]} onPress={() => setActiveId(c.id)}>
                 <Text style={typography.bodyBold}>{c.studentName}</Text>
                 <Text style={typography.caption} numberOfLines={1}>{c.lastMessagePreview}</Text>
@@ -144,6 +210,11 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
                   <Text style={typography.caption}>Teacher · {activeConversation.resolved ? 'Resolved' : 'Active'}</Text>
                 </View>
                 <View style={styles.chatHeaderActions}>
+                  <TouchableOpacity onPress={() => setShowLog((v) => !v)}>
+                    <Text style={[styles.escalateText, showLog && { color: colors.navyText, fontWeight: '700' }]}>
+                      {showLog ? 'Back to Chat' : 'Communication Log'}
+                    </Text>
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={handleEscalate}>
                     <Text style={styles.escalateText}>Escalate to Coordinator</Text>
                   </TouchableOpacity>
@@ -152,6 +223,29 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
                   </TouchableOpacity>
                 </View>
               </View>
+              {showLog ? (
+                <ScrollView style={styles.logScroll} contentContainerStyle={styles.logContent}>
+                  <Text style={typography.h3}>Communication Audit Trail</Text>
+                  <Text style={typography.caption}>Historical communication summary for {activeConversation.studentName}.</Text>
+                  {thread.length === 0 && <Text style={styles.logEmpty}>No communication recorded yet.</Text>}
+                  {thread.map((m) => (
+                    <View key={m.id} style={styles.logEntry}>
+                      <View style={styles.logDot} />
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.logEntryHeader}>
+                          <Text style={styles.logActor}>{m.senderLabel}</Text>
+                          <Text style={typography.caption}>{m.timestamp}</Text>
+                        </View>
+                        {m.text ? <Text style={typography.body}>{m.text}</Text> : null}
+                        {m.attachments?.map((a) => (
+                          <Text key={a.id} style={styles.logAttachment}>Attachment: {a.name}</Text>
+                        ))}
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : (
+              <>
               <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesContent}>
                 {thread.map((m) => (
                   <View key={m.id} style={[styles.messageBubble, m.sender === 'teacher' && styles.messageBubbleMine]}>
@@ -167,11 +261,17 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
                 ))}
               </ScrollView>
               <View style={styles.quickActionsRow}>
-                <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareSchedule}>
-                  <Text style={styles.quickActionText}>Share Schedule</Text>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareSessionSummary}>
+                  <Text style={styles.quickActionText}>Share Session Summary</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareProgress}>
-                  <Text style={styles.quickActionText}>Share Progress</Text>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareProgressUpdate}>
+                  <Text style={styles.quickActionText}>Share Progress Update</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={handleRequestHomeObservation}>
+                  <Text style={styles.quickActionText}>Request Home Observation</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={handleViewHomeObservation}>
+                  <Text style={styles.quickActionText}>View Home Observation</Text>
                 </TouchableOpacity>
               </View>
               {pendingAttachments.length > 0 && (
@@ -196,6 +296,8 @@ export default function TeacherParentCommunicationScreen({ navigation }: NativeS
                   <Feather name="send" size={16} color={colors.navyText} />
                 </TouchableOpacity>
               </View>
+              </>
+              )}
             </>
           ) : (
             <View style={styles.emptyState}>
@@ -222,6 +324,14 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   body: { flex: 1, flexDirection: 'row' },
   sidebar: { width: 220, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.bgCard },
+  sidebarSearchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  sidebarSearch: { flex: 1, fontSize: 13, color: colors.navyText },
+  sidebarFilterRow: { padding: spacing.sm, gap: spacing.xs },
+  sidebarFilterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  sidebarFilterChipActive: { backgroundColor: colors.statusInProgressBg, borderColor: colors.statusInProgressText },
+  sidebarFilterChipText: { fontSize: 10, fontWeight: '600', color: colors.bodyText },
+  sidebarFilterChipTextActive: { color: colors.statusInProgressText },
+  sidebarEmpty: { padding: spacing.lg, textAlign: 'center', color: colors.mutedText, fontSize: 12 },
   convoRow: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   convoRowActive: { backgroundColor: colors.bgApp },
   unreadBadge: { position: 'absolute', top: spacing.sm, right: spacing.sm, backgroundColor: colors.primaryYellow, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
@@ -240,7 +350,7 @@ const styles = StyleSheet.create({
   pendingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   pendingChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.primaryYellowDark, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4, backgroundColor: colors.statusPendingBg },
   pendingChipText: { fontSize: 10, fontWeight: '600', color: colors.navyText, maxWidth: 160 },
-  quickActionsRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  quickActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   quickActionBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   quickActionText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
   composerRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
@@ -248,4 +358,12 @@ const styles = StyleSheet.create({
   attachBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primaryYellow, alignItems: 'center', justifyContent: 'center' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  logScroll: { flex: 1 },
+  logContent: { padding: spacing.lg, gap: spacing.md },
+  logEmpty: { color: colors.mutedText },
+  logEntry: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  logDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.statusInProgressText, marginTop: 4 },
+  logEntryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logActor: { fontWeight: '700', color: colors.navyText, fontSize: 13 },
+  logAttachment: { fontSize: 11, color: colors.statusInProgressText, marginTop: 2 },
 });

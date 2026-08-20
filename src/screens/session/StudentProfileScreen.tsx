@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import StatusPill, { StatusType } from '../../components/StatusPill';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -83,10 +83,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav
+      <AppNavbar
         activeTab="Session"
         onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-        onLogout={logout}
       />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation?.goBack?.()} style={styles.backBtn} accessibilityLabel="Go back">

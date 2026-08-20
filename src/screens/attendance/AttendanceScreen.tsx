@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } fr
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -136,7 +136,7 @@ export default function AttendanceScreen({ route, navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Attendance" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} onLogout={logout} />
+      <AppNavbar activeTab="Attendance" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Attendance</Text>

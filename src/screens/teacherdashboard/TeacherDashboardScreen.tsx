@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
@@ -15,10 +15,37 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'TeacherDashboard'>;
 interface TodaySchedule {
   stationName: string;
   roomName: string;
+  sessionBlock: string;
   startTime: string;
   endTime: string;
   startsIn: string;
   students: { id: string; name: string; initial: string }[];
+}
+
+function parseClock(time: string): { hour: number; minute: number } {
+  const match = time.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+  if (!match) return { hour: 9, minute: 0 };
+  let hour = parseInt(match[1], 10) % 12;
+  if (match[3] === 'PM') hour += 12;
+  return { hour, minute: parseInt(match[2], 10) };
+}
+
+function getCountdown(startTime: string, endTime: string, now: Date): string {
+  const s = parseClock(startTime);
+  const e = parseClock(endTime);
+  const start = new Date(now);
+  start.setHours(s.hour, s.minute, 0, 0);
+  const end = new Date(now);
+  end.setHours(e.hour, e.minute, 0, 0);
+
+  if (now >= start && now < end) return 'Session Active';
+  if (now >= end) return 'Session Ended';
+
+  const diffMin = Math.floor((start.getTime() - now.getTime()) / 60000);
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  if (hours > 0) return `Starts in ${hours}h ${mins}m`;
+  return `Starts in ${mins}m`;
 }
 
 interface AssessmentTask {
@@ -92,7 +119,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Dashboard" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} onLogout={logout} />
+      <AppNavbar activeTab="Dashboard" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
@@ -116,9 +143,10 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
             <View style={{ flex: 1 }}>
               <Text style={typography.bodyBold}>{data.todaySchedule.stationName}</Text>
               <Text style={typography.caption}>{data.todaySchedule.roomName}</Text>
+              <Text style={[typography.caption, { color: colors.navyText, fontWeight: '600' }]}>Block: {data.todaySchedule.sessionBlock}</Text>
             </View>
             <View style={styles.startsInPill}>
-              <Text style={styles.startsInText}>{data.todaySchedule.startsIn}</Text>
+              <Text style={styles.startsInText}>{getCountdown(data.todaySchedule.startTime, data.todaySchedule.endTime, now)}</Text>
             </View>
           </View>
           <View style={styles.timeRow}>
@@ -251,6 +279,7 @@ const DEMO_DATA: TeacherDashboardData = {
   todaySchedule: {
     stationName: 'Station 1 — Basic Skills',
     roomName: 'Room 2',
+    sessionBlock: 'Block B · Daily Living',
     startTime: '9:00 AM',
     endTime: '10:30 AM',
     startsIn: 'Starts in 2h 1m',

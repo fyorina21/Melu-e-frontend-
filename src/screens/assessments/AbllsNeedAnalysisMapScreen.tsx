@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
+import { downloadBlob, openPrintWindow } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
 
 type Score = 0 | 1 | 2 | 'NA';
@@ -111,13 +112,145 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     return lines.join('\n');
   };
 
-  const handleExport = () => setExportContent(buildMapText());
+  const buildMapHtml = (): string => {
+    const cells = (items: AbllsItem[]) =>
+      items
+        .map(
+          (i) =>
+            `<div style="display:inline-flex;flex-direction:column;align-items:center;margin:4px;"><div style="width:44px;height:44px;border-radius:6px;background:${SCORE_COLOR[i.score]};color:white;font-weight:700;display:flex;align-items:center;justify-content:center;">${SCORE_LABEL[i.score]}</div><div style="font-size:10px;color:#555;margin-top:2px;">${i.id}</div></div>`
+        )
+        .join('');
+    const domains = allDomains
+      .map(
+        (d) =>
+          `<div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div>${cells(d.items)}</div></div>`
+      )
+      .join('');
+    const priority = priorityAreas
+      .map((p, idx) => `<li><b>${idx + 1}. ${p.domain}</b> — ${p.need} need item(s)</li>`)
+      .join('');
+    return `
+<html><head><meta charset="utf-8"><title>ABLLS Need Analysis Map</title></head>
+<body style="font-family:Helvetica,Arial,sans-serif;padding:24px;">
+<h1 style="font-size:20px;">ABLLS Need Analysis Map</h1>
+<p style="color:#555;">Student: <b>${studentName}</b> · Generated: ${new Date().toLocaleDateString()}</p>
+<div style="padding:8px 0;margin-bottom:14px;">
+<span style="margin-right:12px;"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#EF4444;"></span> 0 = Not Demonstrated</span>
+<span style="margin-right:12px;"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#F59E0B;"></span> 1 = Emerging</span>
+<span style="margin-right:12px;"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#22C55E;"></span> 2 = Mastered</span>
+<span style="margin-right:12px;"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#9CA3AF;"></span> N/A</span>
+</div>
+${domains}
+<h2 style="font-size:16px;">Priority Areas</h2>
+<div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px;"><ol>${priority}</ol></div>
+</body></html>`;
+  };
 
-  const handlePrint = () => setExportContent(buildMapText());
+  const exportPng = (): void => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      setExportContent(buildMapText());
+      return;
+    }
+    const itemW = 64;
+    const itemH = 58;
+    const matchW = 48;
+    const width = Math.max(640, allDomains.reduce((max, d) => Math.max(max, d.items.length * itemW), 0) + 24);
+    const legendH = 40;
+    const headerH = 40;
+    const domainGap = 14;
+    const pad = 16;
+    const height = pad * 2 + headerH + legendH + allDomains.length * (itemH * 2 + 18) + (allDomains.length - 1) * domainGap + 80;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setExportContent(buildMapText());
+      return;
+    }
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#1A2233';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText('ABLLS Need Analysis Map', pad, 28);
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`Student: ${studentName} · ${new Date().toLocaleDateString()}`, pad, 44);
+
+    const legend = [
+      { label: '0 = Not Demonstrated', color: '#EF4444' },
+      { label: '1 = Emerging', color: '#F59E0B' },
+      { label: '2 = Mastered', color: '#22C55E' },
+      { label: 'N/A', color: '#9CA3AF' },
+    ];
+    let legendX = pad;
+    ctx.font = '11px sans-serif';
+    legend.forEach((l) => {
+      ctx.fillStyle = l.color;
+      ctx.beginPath();
+      ctx.arc(legendX + 6, 62, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4B5563';
+      ctx.fillText(l.label, legendX + 16, 66);
+      legendX += ctx.measureText(l.label).width + 40;
+    });
+
+    let y = 92;
+    allDomains.forEach((d) => {
+      ctx.fillStyle = '#1A2233';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(d.name, pad + 8, y + 14);
+      let x = pad + 8;
+      d.items.forEach((item) => {
+        ctx.fillStyle = SCORE_COLOR[item.score];
+        ctx.fillRect(x, y + 22, matchW, matchW);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px sans-serif';
+        const label = SCORE_LABEL[item.score];
+        const tw = ctx.measureText(label).width;
+        ctx.fillText(label, x + (matchW - tw) / 2, y + 22 + matchW / 2 + 5);
+        ctx.fillStyle = '#9CA3AF';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(item.id, x + 2, y + 22 + matchW + 12);
+        x += itemW;
+      });
+      y += itemH * 2 + 18 + domainGap;
+    });
+
+    y += 10;
+    ctx.fillStyle = '#1A2233';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText('Priority Areas', pad, y);
+    ctx.fillStyle = '#4B5563';
+    ctx.font = '12px sans-serif';
+    priorityAreas.forEach((p, idx) => {
+      y += 18;
+      ctx.fillText(`${idx + 1}. ${p.domain} — ${p.need} need item(s)`, pad + 8, y);
+    });
+
+    const url = canvas.toDataURL('image/png');
+    const filename = `AbllsNeedMap_${studentName}_${new Date().toISOString().slice(0, 10)}.png`;
+    fetch(url)
+      .then((r) => r.blob())
+      .then((blob) => downloadBlob(filename, blob, 'image/png'))
+      .catch(() => downloadBlob(filename, url, 'image/png'));
+  };
+
+  const handleExport = () => {
+    if (Platform.OS === 'web') exportPng();
+    else setExportContent(buildMapText());
+  };
+
+  const handlePrint = () => {
+    const ok = openPrintWindow(buildMapHtml(), 'ABLLS Need Analysis Map');
+    if (!ok) setExportContent(buildMapText());
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} onLogout={logout} />
+      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>
