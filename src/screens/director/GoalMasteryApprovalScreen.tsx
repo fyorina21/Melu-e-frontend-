@@ -5,9 +5,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import DirectorNav, { DIRECTOR_ROUTE_BY_TAB } from './components/DirectorNav';
-import ProgramDirectorNav from '../programdirector/components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from '../programdirector/components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { DIRECTOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { getPendingMasteryApprovals, getMasteryApprovalDetail, approveMastery, rejectMastery } from '../../api/directorApi';
@@ -155,9 +154,9 @@ export default function GoalMasteryApprovalScreen({ navigation }: NativeStackScr
   return (
     <SafeAreaView style={styles.safe}>
       {isProgramDirector ? (
-        <ProgramDirectorNav activeTab="Approvals" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar activeTab="Approvals" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
       ) : (
-        <DirectorNav activeTab="Approvals" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar activeTab="Approvals" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t] as never)} />
       )}
       <View style={styles.header}>
         <Text style={typography.h1}>Goal Mastery Approval</Text>

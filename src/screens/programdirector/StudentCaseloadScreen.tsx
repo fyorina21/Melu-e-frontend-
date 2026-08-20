@@ -6,8 +6,8 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } fr
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import ProgramDirectorNav from './components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from './components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStudentCaseload } from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
@@ -63,7 +63,7 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ProgramDirectorNav activeTab="Caseload" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Caseload" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Student Caseload Management</Text>
       </View>

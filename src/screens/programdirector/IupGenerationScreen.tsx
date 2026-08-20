@@ -8,9 +8,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
-import ProgramDirectorNav from './components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from './components/pdNavRoutes';
-import CoordinatorNav from '../coordinator/components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { getIupCandidates, getIupContext, saveIupDraft, finalizeIup, getGoalBank } from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
@@ -321,9 +320,9 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
   return (
     <SafeAreaView style={styles.safe}>
       {isCoordinator ? (
-        <CoordinatorNav activeTab="Schedule" onTabPress={(t) => t !== 'Schedule' && navigation?.navigate?.(coordinatorRouteForTab(t) as never)} />
+        <AppNavbar activeTab="Schedule" onTabPress={(t) => t !== 'Schedule' && navigation?.navigate?.(coordinatorRouteForTab(t) as never)} />
       ) : (
-        <ProgramDirectorNav activeTab="IUP" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar activeTab="IUP" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
       )}
 
       <View style={styles.header}>

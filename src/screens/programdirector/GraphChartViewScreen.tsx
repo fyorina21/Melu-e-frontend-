@@ -7,8 +7,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import ProgramDirectorNav from './components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from './components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getChartData, exportChart } from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList } from '../../types';
@@ -94,7 +94,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ProgramDirectorNav activeTab="Charts" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Charts" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Graph & Chart View</Text>
         <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>

@@ -6,8 +6,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import ProgramDirectorNav from './components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from './components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getPdConversations, getPdConversationThread, sendPdMessage, escalateToDirector } from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
@@ -81,7 +81,7 @@ export default function PdParentCommunicationScreen({ navigation }: NativeStackS
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ProgramDirectorNav activeTab="Parents" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Parents" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
       <View style={styles.body}>
         <View style={styles.sidebar}>
           <ScrollView>

@@ -5,7 +5,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import DirectorNav, { DIRECTOR_ROUTE_BY_TAB } from './components/DirectorNav';
+import AppNavbar from '../../components/AppNavbar';
+import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import StatusPill from '../../components/StatusPill';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { generateCustomReport } from '../../api/directorApi';
@@ -129,7 +130,7 @@ export default function ReportBuilderScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <DirectorNav activeTab="Builder" onTabPress={(t) => t !== 'Builder' && navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Builder" onTabPress={(t) => t !== 'Builder' && navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>

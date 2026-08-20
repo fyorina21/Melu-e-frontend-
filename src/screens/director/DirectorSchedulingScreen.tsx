@@ -3,7 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, SafeAreaVi
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import DirectorNav, { DIRECTOR_ROUTE_BY_TAB } from './components/DirectorNav';
+import AppNavbar from '../../components/AppNavbar';
+import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import type { DirectorStackParamList } from '../../types';
 
@@ -122,7 +123,7 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
 
   return (
     <SafeAreaView style={styles.safe}>
-      <DirectorNav activeTab="Scheduling" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Scheduling" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Staff Scheduling</Text>
       </View>

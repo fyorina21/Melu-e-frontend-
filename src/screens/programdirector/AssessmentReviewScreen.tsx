@@ -9,8 +9,8 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill, { type StatusType } from '../../components/StatusPill';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
-import ProgramDirectorNav from './components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from './components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAssessmentsForReview, getAssessmentReport, markAssessmentReviewed, addAssessmentNote } from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
@@ -148,7 +148,7 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ProgramDirectorNav activeTab="Assessments" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Assessments" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Assessment Review & Approval</Text>

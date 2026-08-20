@@ -9,7 +9,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import DirectorNav, { DIRECTOR_ROUTE_BY_TAB } from './components/DirectorNav';
+import AppNavbar from '../../components/AppNavbar';
+import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getDirectorConversations, getDirectorConversationThread, sendDirectorMessage, toggleConversationRead } from '../../api/directorApi';
 import type { DirectorStackParamList } from '../../types';
@@ -104,7 +105,7 @@ export default function DirectorParentCommunicationScreen({ navigation }: Native
 
   return (
     <SafeAreaView style={styles.safe}>
-      <DirectorNav activeTab="Parents" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Parents" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
       <View style={styles.body}>
         <View style={styles.sidebar}>
           <View style={styles.sidebarTabs}>

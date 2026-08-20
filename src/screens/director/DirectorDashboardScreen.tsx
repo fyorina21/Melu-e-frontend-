@@ -7,7 +7,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import DirectorNav, { DIRECTOR_ROUTE_BY_TAB } from './components/DirectorNav';
+import AppNavbar from '../../components/AppNavbar';
+import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorDashboard } from '../../api/directorApi';
 import type { DirectorStackParamList } from '../../types';
 
@@ -50,7 +51,7 @@ export default function DirectorDashboardScreen({ navigation }: NativeStackScree
 
   return (
     <SafeAreaView style={styles.safe}>
-      <DirectorNav activeTab="Dashboard" onTabPress={goto} />
+      <AppNavbar activeTab="Dashboard" onTabPress={goto} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <Text style={typography.h1}>Director Dashboard</Text>

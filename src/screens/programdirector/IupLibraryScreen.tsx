@@ -9,8 +9,8 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
-import ProgramDirectorNav from './components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from './components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getIupLibrary, archiveIup } from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
@@ -77,7 +77,7 @@ export default function IupLibraryScreen({ navigation }: NativeStackScreenProps<
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ProgramDirectorNav activeTab="Library" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Library" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>IUP Library Management</Text>
       </View>
