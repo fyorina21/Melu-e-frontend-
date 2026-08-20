@@ -6,7 +6,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getObservations, createObservation, getRequestedLogs } from '../../api/parentApi';
+import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
 
 type Category = 'Behavior' | 'Achievement' | 'Concern' | 'General';
@@ -278,8 +278,8 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getObservations({});
-      setObservations(Array.isArray(data) ? data.map(toObservation) : []);
+      const rows = await parentApi.observations({});
+      setObservations(Array.isArray(rows) ? rows.map(toObservation) : []);
     } catch (err) {
       setObservations(DEMO_OBSERVATIONS.map(toObservation));
     }
@@ -296,21 +296,27 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
   };
 
   const handleSubmitObservation = async (payload: ObsPayload) => {
-    const newObs: Observation = {
-      id: `local-${Date.now()}`,
-      date: payload.date,
-      time: payload.time,
-      category: payload.category,
-      text: payload.text,
-      status: 'Pending',
-      location: payload.location,
-      duration: payload.duration,
-    };
-    setObservations((prev) => [newObs, ...prev]);
     setShowAddModal(false);
     try {
-      await createObservation({ behavior: payload.text, context: `${payload.location}${payload.duration ? ` · ${payload.duration}` : ''}`, notes: `Category: ${payload.category}` });
-    } catch (err) {}
+      await parentApi.createObservation({
+        behavior: payload.text,
+        context: `${payload.location}${payload.duration ? ` · ${payload.duration}` : ''}`,
+        notes: `Category: ${payload.category}`,
+      });
+      await load();
+    } catch (err) {
+      const newObs: Observation = {
+        id: `local-${Date.now()}`,
+        date: payload.date,
+        time: payload.time,
+        category: payload.category,
+        text: payload.text,
+        status: 'Pending',
+        location: payload.location,
+        duration: payload.duration,
+      };
+      setObservations((prev) => [newObs, ...prev]);
+    }
     Alert.alert('Observation submitted!');
   };
 

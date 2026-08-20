@@ -7,13 +7,14 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { downloadTextFile } from '../../utils/webExport';
-import { getChildProgress, getSessionSummaryForParent } from '../../api/parentApi';
+import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
 
 const CHILD_NAME = 'Student A';
 const CHILD_AGE = 6;
 const PROGRAM = 'Regular';
 const GROUP = 'Basic Therapy';
+const CHILD_ID = 'stu-001';
 
 type GoalStatus = 'Active' | 'Mastered' | 'In Progress';
 
@@ -257,7 +258,7 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
 
   const load = useCallback(async () => {
     try {
-      const { data: res } = await getChildProgress('student-a');
+      const res: any = await parentApi.childProgress(CHILD_ID);
       const goals: Goal[] = (res.goals || []).map((g: any) => ({
         id: String(g.id ?? g.name),
         name: g.friendlyName ?? g.name ?? 'Goal',
@@ -302,7 +303,7 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
 
   const handleOpenSession = async (session: Session) => {
     try {
-      const { data: res } = await getSessionSummaryForParent(session.id);
+      const res: any = await parentApi.sessionSummary(session.id);
       setSelectedSession({
         id: session.id,
         date: res.date ?? session.date ?? '',
