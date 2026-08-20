@@ -6,7 +6,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getParentConversations, getParentConversationThread, sendParentMessage, setParentConversationResolved } from '../../api/parentApi';
+import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
 
 type MessageSender = 'parent' | 'team';
@@ -128,15 +128,15 @@ export default function ParentCommunicationScreen({ navigation }: NativeStackScr
 
   const loadList = useCallback(async () => {
     try {
-      const { data } = await getParentConversations();
-      const mapped: Conversation[] = data.map((c: { id: string; teamMemberName: string; teamMemberRole: string; lastMessagePreview: string; unreadCount: number }) => ({
+      const rows = await parentApi.conversations();
+      const mapped: Conversation[] = rows.map((c) => ({
         id: c.id,
-        recipient: c.teamMemberName,
-        role: c.teamMemberRole ?? 'Coordinator',
-        avatarLetter: (c.teamMemberName ?? '?').charAt(0).toUpperCase(),
-        lastMessage: c.lastMessagePreview ?? '',
-        time: '',
-        unread: c.unreadCount ?? 0,
+        recipient: c.recipient,
+        role: c.role,
+        avatarLetter: (c.recipient ?? '?').charAt(0).toUpperCase(),
+        lastMessage: c.lastMessage ?? '',
+        time: c.time ?? '',
+        unread: c.unread ?? 0,
         messages: [],
       }));
       setConversations(mapped);
@@ -153,14 +153,15 @@ export default function ParentCommunicationScreen({ navigation }: NativeStackScr
     if (!selectedId) return;
     const convo = conversations.find((c) => c.id === selectedId);
     if (convo && convo.messages.length > 0) return;
-    getParentConversationThread(selectedId)
-      .then(({ data }) => {
-        const msgs: Message[] = (data.messages ?? []).map((m: { sender: string; senderLabel: string; roleTag: string | null; text: string; timestamp?: string }) => ({
-          from: m.sender === 'parent' ? 'parent' : 'team',
-          senderName: m.senderLabel ?? m.sender,
-          senderRole: m.roleTag ?? 'Coordinator',
+    parentApi
+      .conversationThread(selectedId)
+      .then((res: any) => {
+        const msgs: Message[] = (res.messages ?? []).map((m: any) => ({
+          from: m.from === 'parent' ? 'parent' : 'team',
+          senderName: m.senderName ?? m.sender ?? '',
+          senderRole: m.role ?? 'Coordinator',
           text: m.text ?? '',
-          time: m.timestamp ?? '',
+          time: m.sentAt ?? m.timestamp ?? '',
         }));
         setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, messages: msgs } : c)));
       })
@@ -184,7 +185,7 @@ export default function ParentCommunicationScreen({ navigation }: NativeStackScr
     setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!newMessage.trim() || !selectedId) return;
     const msg: Message = { from: 'parent', senderName: 'Parent A', senderRole: 'Parent', text: newMessage.trim(), time: 'Just now' };
     const updated = conversations.map((c) =>
@@ -192,7 +193,7 @@ export default function ParentCommunicationScreen({ navigation }: NativeStackScr
     );
     setConversations(updated);
     setNewMessage('');
-    try { sendParentMessage(selectedId, { text: msg.text }).catch(() => {}); } catch (err) {}
+    try { await parentApi.sendMessage(selectedId, msg.text); } catch (err) {}
   };
 
   const applyTemplate = (text: string) => {
@@ -210,7 +211,7 @@ export default function ParentCommunicationScreen({ navigation }: NativeStackScr
   const handleResolve = async () => {
     setShowResolveConfirm(false);
     if (selectedId) {
-      try { await setParentConversationResolved(selectedId, true); } catch (err) {}
+      try { await parentApi.setConversationResolved(selectedId, true); } catch (err) {}
     }
     Alert.alert('Conversation marked as resolved');
   };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -6,6 +6,7 @@ import { radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useBreakpoint } from '../../utils/useBreakpoint';
+import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
 
 const PARENT_NAME = 'Parent A';
@@ -78,15 +79,60 @@ function ProgressRing({ percent, size = 104, stroke = 10 }: { percent: number; s
 
 export default function ParentDashboardScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'ParentDashboard'>) {
   const [notifications, setNotifications] = useState(initialNotifications);
+  const [dash, setDash] = useState<{
+    childName: string;
+    childAge: number;
+    childProgram: string;
+    independence: number;
+    sessionsThisWeek: number;
+    sessionsTotal: number;
+    latestMessage: { from: string; preview: string; time: string } | null;
+    unreadCount: number;
+  } | null>(null);
   const bp = useBreakpoint();
   const isMobile = bp === 'mobile';
   const ringSize = isMobile ? 96 : 108;
+
+  const load = useCallback(async () => {
+    try {
+      const res = await parentApi.dashboard();
+      setDash({
+        childName: res.childSummary?.fullName ?? CHILD_NAME,
+        childAge: res.childSummary?.age ?? CHILD_AGE,
+        childProgram: res.childSummary?.programType ?? 'ABA',
+        independence: res.independencePercent ?? INDEPENDENCE,
+        sessionsThisWeek: res.sessionsThisWeek ?? SESSIONS_DONE,
+        sessionsTotal: res.sessionsTotal ?? SESSIONS_TOTAL,
+        latestMessage: res.latestMessage,
+        unreadCount: (res as any).unreadCount ?? 0,
+      });
+    } catch (err) {
+      setDash({
+        childName: CHILD_NAME,
+        childAge: CHILD_AGE,
+        childProgram: 'ABA',
+        independence: INDEPENDENCE,
+        sessionsThisWeek: SESSIONS_DONE,
+        sessionsTotal: SESSIONS_TOTAL,
+        latestMessage: null,
+        unreadCount: 0,
+      });
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const dismissNotification = (id: number) => setNotifications((prev) => prev.filter((n) => n.id !== id));
 
   const goto = (tab: string) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[tab]);
 
   const cardW = (key: 'child' | 'updates' | 'actions' | 'notifs' | 'message') => ({ flex: cardFlex[bp][key] });
+
+  const childName = dash?.childName ?? CHILD_NAME;
+  const childAge = dash?.childAge ?? CHILD_AGE;
+  const independence = dash?.independence ?? INDEPENDENCE;
+  const sessionsDone = dash?.sessionsThisWeek ?? SESSIONS_DONE;
+  const sessionsTotal = dash?.sessionsTotal ?? SESSIONS_TOTAL;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -102,24 +148,24 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
           <View style={bp === 'desktop' ? styles.gridRow : undefined}>
             <View style={[styles.card, cardW('child')]}>
               <View style={styles.childHeader}>
-                <View style={styles.childAvatar}><Text style={styles.childAvatarText}>{CHILD_NAME[0]}</Text></View>
+                <View style={styles.childAvatar}><Text style={styles.childAvatarText}>{childName[0]}</Text></View>
                 <View>
-                  <Text style={styles.childName}>{CHILD_NAME}</Text>
-                  <Text style={styles.childMeta}>Age {CHILD_AGE} · ABA Therapy Program</Text>
+                  <Text style={styles.childName}>{childName}</Text>
+                  <Text style={styles.childMeta}>Age {childAge} · {dash?.childProgram ?? 'ABA'} Therapy Program</Text>
                 </View>
               </View>
 
               <View style={[styles.childStatsRow, bp === 'mobile' && styles.childStatsRowMobile]}>
                 <View style={styles.independenceCol}>
-                  <ProgressRing percent={INDEPENDENCE} size={ringSize} />
+                  <ProgressRing percent={independence} size={ringSize} />
                   <Text style={styles.independenceLabel}>Overall{"\n"}Independence</Text>
                 </View>
                 <View style={styles.statCol}>
                   <View style={styles.sessionsCard}>
                     <Text style={styles.statLabel}>Sessions this week</Text>
-                    <Text style={styles.statValue}>{SESSIONS_DONE} <Text style={styles.statSubValue}>of {SESSIONS_TOTAL} scheduled</Text></Text>
+                    <Text style={styles.statValue}>{sessionsDone} <Text style={styles.statSubValue}>of {sessionsTotal} scheduled</Text></Text>
                     <View style={styles.barTrack}>
-                      <View style={[styles.barFill, { width: `${(SESSIONS_DONE / SESSIONS_TOTAL) * 100}%` }]} />
+                      <View style={[styles.barFill, { width: `${sessionsTotal ? (sessionsDone / sessionsTotal) * 100 : 0}%` }]} />
                     </View>
                   </View>
                   <View style={styles.lastSessionCard}>
@@ -181,11 +227,19 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
                 <View style={styles.latestMessageMain}>
                   <View style={styles.latestMessageLabelRow}>
                     <Text style={styles.latestMessageLabel}>Latest Message</Text>
-                    <View style={styles.unreadPill}><Text style={styles.unreadPillText}>2 unread</Text></View>
+                    {(dash?.unreadCount ?? 0) > 0 && (
+                      <View style={styles.unreadPill}><Text style={styles.unreadPillText}>{dash?.unreadCount} unread</Text></View>
+                    )}
                   </View>
                   <Text style={styles.latestMessageText}>
-                    <Text style={styles.latestMessageSender}>{TEACHER}:</Text>{' '}
-                    {CHILD_NAME} had a great session today...
+                    {dash?.latestMessage ? (
+                      <>
+                        <Text style={styles.latestMessageSender}>{dash.latestMessage.from}:</Text>{' '}
+                        {dash.latestMessage.preview}
+                      </>
+                    ) : (
+                      `${TEACHER}: ${childName} had a great session today...`
+                    )}
                   </Text>
                 </View>
                 <View style={styles.messageIconCircle}>
