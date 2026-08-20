@@ -11,6 +11,10 @@ export { env, apiBaseUrl, isDemoMode } from './config/env';
 export { getAccessToken, setAccessToken, loadToken } from './token';
 export { queryKeys } from './query-keys';
 
+// Demo-mode database (used by the http client when no backend is configured).
+export { mockDb, MockDatabase, seed } from './mock';
+export type { MockDatabaseShape, SeededStudent, DemoUser } from './mock';
+
 export { authApi } from './resources/auth';
 export { sessionsApi } from './resources/sessions';
 export { trialsApi } from './resources/trials';
