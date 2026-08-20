@@ -2,7 +2,7 @@ import React from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
-import CoordinatorNav from '../coordinator/components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
 import { getCoordinatorNotifications } from '../../api/coordinatorApi';
 import NotificationsList, { type AppNotification } from './NotificationsList';
 import type { CoordinatorStackParamList } from '../../types';
@@ -12,7 +12,7 @@ type Props = NativeStackScreenProps<CoordinatorStackParamList, 'Notifications'>;
 export default function CoordinatorNotificationsScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Notifications" onTabPress={(t) => t !== 'Notifications' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Notifications" onTabPress={(t) => t !== 'Notifications' && navigation?.navigate?.(navRouteForTab(t) as never)} />
       <NotificationsList
         title="Notifications"
         subtitle="MR-52 — session alerts and review requests"

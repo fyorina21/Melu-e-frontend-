@@ -2,7 +2,7 @@ import React from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
-import TopNav from '../../components/TopNav';
+import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherNotifications, markNotificationRead } from '../../api/teacherExtrasApi';
@@ -15,7 +15,7 @@ export default function TeacherNotificationsScreen({ navigation }: Props) {
   const { logout } = useAuth();
   return (
     <SafeAreaView style={styles.safe}>
-      <TopNav activeTab="Notifications" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} onLogout={logout} />
+      <AppNavbar activeTab="Notifications" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
       <NotificationsList
         title="Notifications"
         subtitle="MR-52 — reminders and alerts for your sessions"

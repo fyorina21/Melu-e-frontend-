@@ -5,7 +5,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
-import ParentNav, { PARENT_ROUTE_BY_TAB } from './components/ParentNav';
+import AppNavbar from '../../components/AppNavbar';
+import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getObservations, createObservation, getRequestedLogs } from '../../api/parentApi';
 import type { ParentStackParamList } from '../../types';
 
@@ -21,9 +22,17 @@ interface Observation {
   date: string;
   behavior: string;
   context: string;
+  notes?: string;
   acknowledged: string;
   teamResponse: string | null;
 }
+
+const ackInfo = (o: Observation): { status: 'approved' | 'pending' | 'notStarted'; label: string } =>
+  o.acknowledged === 'acknowledged'
+    ? { status: 'approved', label: 'Acknowledged' }
+    : o.acknowledged === 'pending'
+      ? { status: 'pending', label: 'Pending Review' }
+      : { status: 'notStarted', label: 'Not Acknowledged' };
 
 type ObservationPayload = {
   behavior: string;
@@ -69,10 +78,54 @@ function ObservationFormModal({ visible, prefill, onClose, onSave }: {
   );
 }
 
+function ObservationDetailModal({ observation, onClose }: {
+  observation: Observation | null;
+  onClose: () => void;
+}) {
+  if (!observation) return null;
+  const ack = ackInfo(observation);
+  return (
+    <Modal visible={!!observation} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.modalSheet}>
+          <View style={styles.obsHeaderRow}>
+            <Text style={typography.h3}>{observation.date}</Text>
+            <StatusPill status={ack.status} label={ack.label} />
+          </View>
+          <View style={styles.field}>
+            <Text style={typography.label}>What was observed</Text>
+            <Text style={typography.body}>{observation.behavior}</Text>
+          </View>
+          <View style={styles.field}>
+            <Text style={typography.label}>When / Where</Text>
+            <Text style={typography.body}>{observation.context}</Text>
+          </View>
+          {observation.notes ? (
+            <View style={styles.field}>
+              <Text style={typography.label}>Additional Notes</Text>
+              <Text style={typography.body}>{observation.notes}</Text>
+            </View>
+          ) : null}
+          {observation.teamResponse && (
+            <View style={styles.teamResponseBox}>
+              <Text style={styles.teamResponseLabel}>Team Response</Text>
+              <Text style={typography.body}>{observation.teamResponse}</Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <Text style={styles.closeBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function HomeObservationLogScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'HomeObservationLog'>) {
   const [observations, setObservations] = useState<Observation[]>([]);
   const [requestedLogs, setRequestedLogs] = useState<RequestedLog[]>([]);
   const [formTarget, setFormTarget] = useState<RequestedLog | null | undefined>(undefined);
+  const [detailTarget, setDetailTarget] = useState<Observation | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -100,7 +153,7 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ParentNav activeTab="Observations" onTabPress={(t) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Observations" onTabPress={(t) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Home Observation Log</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setFormTarget(null)}>
@@ -126,28 +179,32 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
 
         <View style={styles.card}>
           <Text style={typography.h3}>Observation History</Text>
-          {observations.map((o) => (
-            <View key={o.id} style={styles.obsRow}>
-              <View style={styles.obsHeaderRow}>
-                <Text style={typography.bodyBold}>{o.date}</Text>
-                <StatusPill
-                  status={o.acknowledged === 'acknowledged' ? 'approved' : o.acknowledged === 'pending' ? 'pending' : 'notStarted'}
-                  label={o.acknowledged === 'acknowledged' ? 'Acknowledged' : 'Pending Review'}
-                />
-              </View>
-              <Text style={typography.body}>{o.behavior}</Text>
-              <Text style={typography.caption}>{o.context}</Text>
-              {o.teamResponse && (
-                <View style={styles.teamResponseBox}>
-                  <Text style={typography.caption}>Team response: {o.teamResponse}</Text>
+          {observations.map((o) => {
+            const ack = ackInfo(o);
+            return (
+              <TouchableOpacity key={o.id} style={styles.obsRow} onPress={() => setDetailTarget(o)}>
+                <View style={styles.obsHeaderRow}>
+                  <Text style={typography.bodyBold}>{o.date}</Text>
+                  <View style={styles.obsHeaderRight}>
+                    <StatusPill status={ack.status} label={ack.label} />
+                    <Feather name="chevron-right" size={14} color={colors.mutedText} />
+                  </View>
                 </View>
-              )}
-            </View>
-          ))}
+                <Text style={typography.body}>{o.behavior}</Text>
+                <Text style={typography.caption}>{o.context}</Text>
+                {o.teamResponse && (
+                  <View style={styles.teamResponseBox}>
+                    <Text style={typography.caption}>Team response: {o.teamResponse}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
 
       <ObservationFormModal visible={formTarget !== undefined} prefill={formTarget} onClose={() => setFormTarget(undefined)} onSave={handleSave} />
+      <ObservationDetailModal observation={detailTarget} onClose={() => setDetailTarget(null)} />
     </SafeAreaView>
   );
 }
@@ -171,7 +228,11 @@ const styles = StyleSheet.create({
   fillInBtnText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
   obsRow: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, gap: spacing.xs },
   obsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  teamResponseBox: { backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.sm, marginTop: spacing.xs },
+  obsHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  teamResponseBox: { backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.sm, marginTop: spacing.xs, gap: 2 },
+  teamResponseLabel: { fontSize: 11, fontWeight: '700', color: colors.navyText },
+  closeBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  closeBtnText: { fontWeight: '600', color: colors.navyText },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
   modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
   field: { gap: spacing.xs },

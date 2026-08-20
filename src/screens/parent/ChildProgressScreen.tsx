@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import ParentNav, { PARENT_ROUTE_BY_TAB } from './components/ParentNav';
+import AppNavbar from '../../components/AppNavbar';
+import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { downloadTextFile } from '../../utils/webExport';
 import { getChildProgress, getSessionSummaryForParent } from '../../api/parentApi';
 import type { ParentStackParamList } from '../../types';
 
@@ -40,6 +43,25 @@ interface ProgressGoal {
   id: string;
   friendlyName: string;
   percent: number;
+  weekly: number[];
+}
+
+function GoalChart({ weeks, percent }: { weeks: number[]; percent: number }) {
+  const max = Math.max(100, ...weeks);
+  return (
+    <View style={styles.chartTrack}>
+      {weeks.map((w, i) => (
+        <View key={i} style={styles.chartCol}>
+          <View style={[styles.chartBar, { height: `${Math.max(4, Math.round((w / max) * 100))}%` }]} />
+          <Text style={styles.chartBarLabel}>W{i + 1}</Text>
+        </View>
+      ))}
+      <View style={styles.chartPercentWrap}>
+        <Text style={styles.chartBarLabel}>Now</Text>
+        <Text style={styles.chartPercent}>{percent}%</Text>
+      </View>
+    </View>
+  );
 }
 
 interface SessionHistoryEntry {
@@ -111,11 +133,33 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
     );
   };
 
+  const handleDownloadIupPdf = () => {
+    if (!data) return;
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = [
+      '<h1>Melu\'e Foundation</h1>',
+      '<h2>Individualized Upgrade Plan (IUP) Summary</h2>',
+      `<p><strong>Child:</strong> ${esc(data.childName)} · Age ${data.age} · ${esc(data.program)}</p>`,
+      `<p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>`,
+      '<h3>Plan Summary</h3>',
+      `<p>${esc(data.iupSummary)}</p>`,
+      '<h3>Goal Progress</h3>',
+      `<ul>${data.goals.map((g) => `<li>${esc(g.friendlyName)}: ${g.percent}% toward the goal</li>`).join('')}</ul>`,
+      '<h3>Overall Progress</h3>',
+      `<p>${esc(data.overallSummary)}</p>`,
+      '<h3>Behavior Trends</h3>',
+      `<p>${esc(data.behaviorSummary)}</p>`,
+      '<h3>Assessment Results</h3>',
+      `<p>${esc(data.assessmentSummary)}</p>`,
+    ].join('');
+    downloadTextFile(`IupSummary_${new Date().toISOString().slice(0, 10)}.html`, lines);
+  };
+
   if (!data) return null;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ParentNav activeTab="Progress" onTabPress={(t) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Progress" onTabPress={(t) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
           <Text style={typography.h2}>{data.childName}</Text>
@@ -124,17 +168,28 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
 
         <View style={styles.card}>
           <Text style={typography.h3}>Overall Progress</Text>
+          {data.goals.length > 0 && (
+            <View style={styles.statRow}>
+              <View style={styles.statItem}>
+                <Text style={typography.h3}>{data.goals.length}</Text>
+                <Text style={styles.statLabel}>Goals</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={typography.h3}>{data.sessionHistory.length}</Text>
+                <Text style={styles.statLabel}>Sessions</Text>
+              </View>
+            </View>
+          )}
           <Text style={typography.body}>{data.overallSummary}</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={typography.h3}>Goal Progress</Text>
+          <Text style={styles.sectionHint}>Weekly visualization, updated after each session</Text>
           {data.goals.map((g) => (
             <View key={g.id} style={styles.goalRow}>
               <Text style={typography.bodyBold}>{g.friendlyName}</Text>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${g.percent}%` }]} />
-              </View>
+              <GoalChart weeks={g.weekly} percent={g.percent} />
               <Text style={typography.caption}>{g.percent}% toward the goal</Text>
             </View>
           ))}
@@ -163,9 +218,15 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
         <View style={styles.card}>
           <Text style={typography.h3}>Therapy Plan (IUP) Summary</Text>
           <Text style={typography.body}>{data.iupSummary}</Text>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={handleExportIup}>
-            <Text style={styles.secondaryBtnText}>Export IUP Summary</Text>
-          </TouchableOpacity>
+          <View style={styles.exportRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleExportIup}>
+              <Text style={styles.secondaryBtnText}>Preview</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.exportBtn} onPress={handleDownloadIupPdf}>
+              <Feather name="download" size={14} color={colors.navyText} />
+              <Text style={styles.secondaryBtnText}>Export PDF</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -193,8 +254,8 @@ const DEMO_DATA: ChildProgressData = {
   program: 'Regular Program',
   overallSummary: 'Making steady progress across all goal areas this month, with strong gains in requesting items.',
   goals: [
-    { id: 'g1', friendlyName: 'Naming Colors', percent: 45 },
-    { id: 'g2', friendlyName: 'Asking for Things', percent: 68 },
+    { id: 'g1', friendlyName: 'Naming Colors', percent: 45, weekly: [20, 28, 36, 45] },
+    { id: 'g2', friendlyName: 'Asking for Things', percent: 68, weekly: [41, 50, 58, 68] },
   ],
   sessionHistory: [
     { id: '1', date: 'Aug 11, 2026' },
@@ -212,12 +273,23 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.lg },
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
   goalRow: { gap: spacing.xs, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  progressTrack: { height: 8, borderRadius: radius.pill, backgroundColor: colors.bgApp, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: colors.statusInProgressText },
+  sectionHint: { fontSize: 11, color: colors.mutedText },
+  statRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  statItem: { flex: 1, backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.md, gap: 2 },
+  statLabel: { fontSize: 11, color: colors.mutedText },
+  chartRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  chartTrack: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginTop: spacing.xs, height: 80 },
+  chartCol: { flex: 1, alignItems: 'center', gap: 2, height: '100%', justifyContent: 'flex-end' },
+  chartBar: { width: '100%', maxWidth: 28, backgroundColor: colors.statusInProgressText, borderTopLeftRadius: radius.sm, borderTopRightRadius: radius.sm, minHeight: 3 },
+  chartBarLabel: { fontSize: 9, color: colors.mutedText },
+  chartPercentWrap: { alignItems: 'center', gap: 2 },
+  chartPercent: { fontSize: 11, fontWeight: '700', color: colors.navyText },
   sessionRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
   linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 12 },
-  secondaryBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
+  secondaryBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   secondaryBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
+  exportRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  exportBtn: { flex: 1, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryYellow, borderWidth: 1, borderColor: colors.primaryYellowDark, borderRadius: radius.md, paddingVertical: spacing.sm },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
   modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '70%' },
   closeBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },

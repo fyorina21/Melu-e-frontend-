@@ -4,7 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import ParentNav, { PARENT_ROUTE_BY_TAB } from './components/ParentNav';
+import AppNavbar from '../../components/AppNavbar';
+import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getParentDocuments, downloadDocument } from '../../api/parentApi';
 import type { ParentStackParamList } from '../../types';
@@ -95,7 +96,7 @@ export default function ParentReportsScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ParentNav activeTab="Reports" onTabPress={(t) => t !== 'Reports' && navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Reports" onTabPress={(t) => t !== 'Reports' && navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
 
       <View style={styles.header}>
         <View>
