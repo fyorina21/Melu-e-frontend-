@@ -24,7 +24,3 @@ export const setParentConversationResolved = (id: string, resolved: boolean) =>
 export const getParentNotifications = () => client.get('/parent/notifications');
 export const markParentNotificationRead = (notificationId: string) =>
   client.post(`/parent/notifications/${notificationId}/read`);
-
-// MR-50: Parent Reports & Documents library
-export const getParentDocuments = () => client.get('/parent/documents');
-export const downloadDocument = (documentId: string) => client.get(`/parent/documents/${documentId}/download`);

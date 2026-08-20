@@ -18,7 +18,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
   program_director: ['Dashboard', 'Assessments', 'IUP', 'Library', 'Caseload', 'Goal Bank', 'Approvals', 'Enrollment', 'Charts', 'Parents'],
   institutional_admin: ['Admin Panel', 'Forms', 'Trial Logging', 'ABC Lists', 'Schedule', 'Goal Domains', 'Task Analysis', 'Programs', 'Clinic Info', 'Working Hours', 'Schools'],
   system_admin: ['Admin Panel', 'Staff Accounts', 'Roles', 'Permissions', 'Audit Log'],
-  parent: ['Dashboard', 'Progress', 'Observations', 'Reports', 'Messages', 'Notifications'],
+  parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -47,7 +47,6 @@ export const PARENT_ROUTE_BY_TAB: Record<string, keyof ParentStackParamList> = {
   Dashboard: 'ParentDashboard',
   Progress: 'ChildProgress',
   Observations: 'HomeObservationLog',
-  Reports: 'ParentReports',
   Messages: 'ParentCommunication',
   Notifications: 'Notifications',
 };

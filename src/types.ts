@@ -198,6 +198,5 @@ export type ParentStackParamList = {
   ChildProgress: undefined;
   HomeObservationLog: undefined;
   ParentCommunication: undefined;
-  ParentReports: undefined;
   Notifications: undefined;
 };

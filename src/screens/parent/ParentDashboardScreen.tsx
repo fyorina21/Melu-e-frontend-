@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
+import { useBreakpoint } from '../../utils/useBreakpoint';
 import type { ParentStackParamList } from '../../types';
 
 const PARENT_NAME = 'Parent A';
@@ -35,11 +36,18 @@ const quickActions = [
   { label: 'View Progress', tab: 'Progress', iconBg: '#F0F9FF', iconColor: '#38BDF8', icon: 'bar-chart-2' as const },
   { label: 'Log Observation', tab: 'Observations', iconBg: '#F0FDF4', iconColor: '#22C55E', icon: 'edit-3' as const },
   { label: 'Messages', tab: 'Messages', iconBg: '#FFFBEB', iconColor: '#EAB308', icon: 'message-circle' as const },
-  { label: 'Progress Report', tab: 'Reports', iconBg: '#FAF5FF', iconColor: '#A855F7', icon: 'file-text' as const },
 ];
 
 const SKY = '#38BDF8';
 const YELLOW = '#FCD34D';
+
+type Layout = 'mobile' | 'tablet' | 'desktop';
+
+const cardFlex: Record<Layout, Record<string, number>> = {
+  mobile: { child: 1, updates: 1, actions: 1, notifs: 1, message: 1 },
+  tablet: { child: 1, updates: 1, actions: 1, notifs: 1, message: 1 },
+  desktop: { child: 2, updates: 2, actions: 3, notifs: 1, message: 1 },
+};
 
 function ProgressRing({ percent, size = 104, stroke = 10 }: { percent: number; size?: number; stroke?: number }) {
   const track = '#F3F4F6';
@@ -70,77 +78,131 @@ function ProgressRing({ percent, size = 104, stroke = 10 }: { percent: number; s
 
 export default function ParentDashboardScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'ParentDashboard'>) {
   const [notifications, setNotifications] = useState(initialNotifications);
+  const bp = useBreakpoint();
+  const isMobile = bp === 'mobile';
+  const ringSize = isMobile ? 96 : 108;
 
   const dismissNotification = (id: number) => setNotifications((prev) => prev.filter((n) => n.id !== id));
 
   const goto = (tab: string) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[tab]);
+
+  const cardW = (key: 'child' | 'updates' | 'actions' | 'notifs' | 'message') => ({ flex: cardFlex[bp][key] });
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Dashboard" onTabPress={goto} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.mainCol}>
+        <View style={[styles.mainCol, bp === 'desktop' && styles.mainColDesktop]}>
           <View style={styles.mobileWelcome}>
             <Text style={styles.mobileWelcomeTitle}>Welcome back, {PARENT_NAME} 👋</Text>
             <Text style={styles.mobileWelcomeDate}>{today}</Text>
           </View>
 
-          <View style={styles.card}>
-            <View style={styles.childHeader}>
-              <View style={styles.childAvatar}><Text style={styles.childAvatarText}>{CHILD_NAME[0]}</Text></View>
-              <View>
-                <Text style={styles.childName}>{CHILD_NAME}</Text>
-                <Text style={styles.childMeta}>Age {CHILD_AGE} · ABA Therapy Program</Text>
-              </View>
-            </View>
-
-            <View style={styles.childStatsRow}>
-              <View style={styles.independenceCol}>
-                <ProgressRing percent={INDEPENDENCE} />
-                <Text style={styles.independenceLabel}>Overall{"\n"}Independence</Text>
-              </View>
-              <View style={styles.statCol}>
-                <View style={styles.sessionsCard}>
-                  <Text style={styles.statLabel}>Sessions this week</Text>
-                  <Text style={styles.statValue}>{SESSIONS_DONE} <Text style={styles.statSubValue}>of {SESSIONS_TOTAL} scheduled</Text></Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { width: `${(SESSIONS_DONE / SESSIONS_TOTAL) * 100}%` }]} />
-                  </View>
-                </View>
-                <View style={styles.lastSessionCard}>
-                  <Text style={styles.statLabel}>Last session</Text>
-                  <Text style={styles.lastSessionValue}>Today at 9:00 AM</Text>
+          <View style={bp === 'desktop' ? styles.gridRow : undefined}>
+            <View style={[styles.card, cardW('child')]}>
+              <View style={styles.childHeader}>
+                <View style={styles.childAvatar}><Text style={styles.childAvatarText}>{CHILD_NAME[0]}</Text></View>
+                <View>
+                  <Text style={styles.childName}>{CHILD_NAME}</Text>
+                  <Text style={styles.childMeta}>Age {CHILD_AGE} · ABA Therapy Program</Text>
                 </View>
               </View>
-            </View>
 
-            <TouchableOpacity style={styles.fullProgressBtn} onPress={() => goto('Progress')}>
-              <Text style={styles.fullProgressBtnText}>View Full Progress →</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Recent Updates</Text>
-            <View style={styles.updatesList}>
-              {recentUpdates.map((u) => (
-                <TouchableOpacity key={u.id} style={styles.updateRow} onPress={() => goto('Progress')}>
-                  <View style={[styles.updateIconBg, { backgroundColor: u.iconBg }]}><Text style={styles.updateIcon}>{u.icon}</Text></View>
-                  <View style={styles.updateMain}>
-                    <Text style={styles.updateText}>{u.text}</Text>
-                    <Text style={styles.updateTime}>{u.time}</Text>
+              <View style={[styles.childStatsRow, bp === 'mobile' && styles.childStatsRowMobile]}>
+                <View style={styles.independenceCol}>
+                  <ProgressRing percent={INDEPENDENCE} size={ringSize} />
+                  <Text style={styles.independenceLabel}>Overall{"\n"}Independence</Text>
+                </View>
+                <View style={styles.statCol}>
+                  <View style={styles.sessionsCard}>
+                    <Text style={styles.statLabel}>Sessions this week</Text>
+                    <Text style={styles.statValue}>{SESSIONS_DONE} <Text style={styles.statSubValue}>of {SESSIONS_TOTAL} scheduled</Text></Text>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${(SESSIONS_DONE / SESSIONS_TOTAL) * 100}%` }]} />
+                    </View>
                   </View>
-                  <Feather name="chevron-right" size={16} color="#D1D5DB" />
-                </TouchableOpacity>
-              ))}
+                  <View style={styles.lastSessionCard}>
+                    <Text style={styles.statLabel}>Last session</Text>
+                    <Text style={styles.lastSessionValue}>Today at 9:00 AM</Text>
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.fullProgressBtn} onPress={() => goto('Progress')}>
+                <Text style={styles.fullProgressBtnText}>View Full Progress →</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.card, cardW('notifs')]}>
+              <View style={styles.notifCardHeader}>
+                <Text style={styles.cardTitle}>Notifications</Text>
+                {notifications.length > 0 && (
+                  <View style={styles.newBadge}><Text style={styles.newBadgeText}>{notifications.length} new</Text></View>
+                )}
+              </View>
+              {notifications.length === 0 ? (
+                <Text style={styles.noNotifText}>No new notifications.</Text>
+              ) : (
+                <View style={styles.notifList}>
+                  {notifications.map((n) => (
+                    <View key={n.id} style={styles.notifRow}>
+                      <View style={styles.notifOrangeDot} />
+                      <Text style={styles.notifText}>{n.text}</Text>
+                      <TouchableOpacity onPress={() => dismissNotification(n.id)} accessibilityLabel="Dismiss notification">
+                        <Text style={styles.notifX}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
 
-          <View>
+          <View style={bp === 'desktop' ? styles.gridRow : undefined}>
+            <View style={[styles.card, cardW('updates')]}>
+              <Text style={styles.cardTitle}>Recent Updates</Text>
+              <View style={styles.updatesList}>
+                {recentUpdates.map((u) => (
+                  <TouchableOpacity key={u.id} style={styles.updateRow} onPress={() => goto('Progress')}>
+                    <View style={[styles.updateIconBg, { backgroundColor: u.iconBg }]}><Text style={styles.updateIcon}>{u.icon}</Text></View>
+                    <View style={styles.updateMain}>
+                      <Text style={styles.updateText}>{u.text}</Text>
+                      <Text style={styles.updateTime}>{u.time}</Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color="#D1D5DB" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={[styles.card, cardW('message')]}>
+              <View style={styles.latestMessageHeader}>
+                <View style={styles.latestMessageMain}>
+                  <View style={styles.latestMessageLabelRow}>
+                    <Text style={styles.latestMessageLabel}>Latest Message</Text>
+                    <View style={styles.unreadPill}><Text style={styles.unreadPillText}>2 unread</Text></View>
+                  </View>
+                  <Text style={styles.latestMessageText}>
+                    <Text style={styles.latestMessageSender}>{TEACHER}:</Text>{' '}
+                    {CHILD_NAME} had a great session today...
+                  </Text>
+                </View>
+                <View style={styles.messageIconCircle}>
+                  <Feather name="message-circle" size={20} color={SKY} />
+                </View>
+              </View>
+              <TouchableOpacity style={styles.openMessagesBtn} onPress={() => goto('Messages')}>
+                <Text style={styles.openMessagesBtnText}>Open Messages</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={[styles.card, cardW('actions')]}>
             <Text style={styles.cardTitle}>Quick Actions</Text>
-            <View style={styles.quickActionsGrid}>
+            <View style={[styles.quickActionsGrid, bp === 'desktop' && styles.quickActionsGridDesktop]}>
               {quickActions.map((action) => (
-                <TouchableOpacity key={action.label} style={styles.quickActionCard} onPress={() => goto(action.tab)}>
+                <TouchableOpacity key={action.label} style={[styles.quickActionCard, bp === 'desktop' && styles.quickActionCardDesktop]} onPress={() => goto(action.tab)}>
                   <View style={[styles.quickActionIconBg, { backgroundColor: action.iconBg }]}>
                     <Feather name={action.icon} size={24} color={action.iconColor} />
                   </View>
@@ -148,51 +210,6 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.notifCardHeader}>
-              <Text style={styles.cardTitle}>Notifications</Text>
-              {notifications.length > 0 && (
-                <View style={styles.newBadge}><Text style={styles.newBadgeText}>{notifications.length} new</Text></View>
-              )}
-            </View>
-            {notifications.length === 0 ? (
-              <Text style={styles.noNotifText}>No new notifications.</Text>
-            ) : (
-              <View style={styles.notifList}>
-                {notifications.map((n) => (
-                  <View key={n.id} style={styles.notifRow}>
-                    <View style={styles.notifOrangeDot} />
-                    <Text style={styles.notifText}>{n.text}</Text>
-                    <TouchableOpacity onPress={() => dismissNotification(n.id)} accessibilityLabel="Dismiss notification">
-                      <Text style={styles.notifX}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.latestMessageHeader}>
-              <View style={styles.latestMessageMain}>
-                <View style={styles.latestMessageLabelRow}>
-                  <Text style={styles.latestMessageLabel}>Latest Message</Text>
-                  <View style={styles.unreadPill}><Text style={styles.unreadPillText}>2 unread</Text></View>
-                </View>
-                <Text style={styles.latestMessageText}>
-                  <Text style={styles.latestMessageSender}>{TEACHER}:</Text>{' '}
-                  {CHILD_NAME} had a great session today...
-                </Text>
-              </View>
-              <View style={styles.messageIconCircle}>
-                <Feather name="message-circle" size={20} color={SKY} />
-              </View>
-            </View>
-            <TouchableOpacity style={styles.openMessagesBtn} onPress={() => goto('Messages')}>
-              <Text style={styles.openMessagesBtnText}>Open Messages</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -204,7 +221,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
 
   scrollContent: { padding: spacing.lg, paddingBottom: spacing.xxl },
-  mainCol: { width: '100%', maxWidth: 620, alignSelf: 'center', gap: spacing.xl },
+  mainCol: { width: '100%', gap: spacing.xl },
+  mainColDesktop: { gap: spacing.lg },
+
+  gridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
 
   mobileWelcome: { marginBottom: spacing.xs },
   mobileWelcomeTitle: { fontSize: 24, fontWeight: '700', color: '#1F2937' },
@@ -219,6 +239,7 @@ const styles = StyleSheet.create({
   childMeta: { fontSize: 12, color: '#9CA3AF' },
 
   childStatsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl },
+  childStatsRowMobile: { gap: spacing.lg },
   independenceCol: { alignItems: 'center', gap: 4 },
   independenceLabel: { fontSize: 12, color: '#6B7280', textAlign: 'center', lineHeight: 16, marginTop: 4 },
   statCol: { flex: 1, gap: spacing.md },
@@ -248,7 +269,9 @@ const styles = StyleSheet.create({
   updateTime: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
 
   quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  quickActionsGridDesktop: { gap: spacing.lg },
   quickActionCard: { width: '48%', flexGrow: 1, backgroundColor: '#FFFFFF', borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.lg, alignItems: 'center', gap: spacing.sm, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+  quickActionCardDesktop: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', width: 'auto', flex: 1, gap: spacing.md },
   quickActionIconBg: { width: 48, height: 48, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
   quickActionLabel: { fontSize: 13, fontWeight: '600', color: '#374151', textAlign: 'center' },
 

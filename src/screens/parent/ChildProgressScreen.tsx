@@ -1,37 +1,220 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Modal } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { downloadTextFile } from '../../utils/webExport';
 import { getChildProgress, getSessionSummaryForParent } from '../../api/parentApi';
 import type { ParentStackParamList } from '../../types';
 
-interface SessionSummary {
-  date: string;
-  parentFriendlyNote: string;
+const CHILD_NAME = 'Student A';
+const CHILD_AGE = 6;
+const PROGRAM = 'Regular';
+const GROUP = 'Basic Therapy';
+
+type GoalStatus = 'Active' | 'Mastered' | 'In Progress';
+
+interface Goal {
+  id: string;
+  name: string;
+  pct: number;
+  status: GoalStatus;
+  updated: string;
 }
 
-function SessionSummaryModal({ visible, summary, onClose }: {
-  visible: boolean;
-  summary: SessionSummary | null;
-  onClose: () => void;
-}) {
-  if (!summary) return null;
+function goalStatus(pct: number, raw?: string): GoalStatus {
+  if (raw === 'Mastered' || pct >= 80) return 'Mastered';
+  if (raw === 'In Progress' || pct >= 60) return 'In Progress';
+  return 'Active';
+}
+
+interface Session {
+  id: string;
+  date: string;
+  teacher: string;
+  duration: string;
+  trials: number;
+  independence: number;
+  time: string;
+  goals: string[];
+  behavior: string;
+  notes: string;
+}
+
+interface SessionSummary {
+  id: string;
+  date: string;
+  teacher: string;
+  duration: string;
+  trials?: number;
+  independence: number;
+  time: string;
+  goals: string[];
+  behavior: string;
+  notes: string;
+}
+
+interface BehaviorTrend {
+  month: string;
+  incidents: number;
+}
+
+interface ChildProgressData {
+  childName: string;
+  age: number;
+  program: string;
+  group: string;
+  goals: Goal[];
+  sessions: Session[];
+  sessionsThisMonth: number;
+  goalsMastered: number;
+  totalTrials: number;
+  averageIndependence: number;
+  behaviorTrends: BehaviorTrend[];
+  behaviorSummary: string;
+  iupStation1: string[];
+  iupStation2: string[];
+}
+
+const DEMO_DATA: ChildProgressData = {
+  childName: 'Student A',
+  age: 6,
+  program: 'Regular',
+  group: 'Basic Therapy',
+  goals: [
+    { id: 'colors', name: 'Learning Colors', pct: 85, status: 'Mastered', updated: 'Aug 12, 2026' },
+    { id: 'instructions', name: 'Following Instructions', pct: 72, status: 'Active', updated: 'Aug 14, 2026' },
+    { id: 'counting', name: 'Counting Numbers', pct: 60, status: 'In Progress', updated: 'Aug 13, 2026' },
+    { id: 'eyecontact', name: 'Making Eye Contact', pct: 44, status: 'Active', updated: 'Aug 11, 2026' },
+  ],
+  sessions: [
+    { id: '1', date: 'Aug 14, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 24, independence: 82, time: '9:00 AM', goals: ['Learning Colors', 'Following Instructions'], behavior: 'None', notes: 'Student A did really well today! Great focus throughout the whole session.' },
+    { id: '2', date: 'Aug 12, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 22, independence: 76, time: '9:00 AM', goals: ['Counting Numbers', 'Making Eye Contact'], behavior: 'None', notes: 'Solid effort with counting — kept going even when it was tricky!' },
+    { id: '3', date: 'Aug 11, 2026', teacher: 'Mr. Santos', duration: '40 min', trials: 20, independence: 68, time: '10:15 AM', goals: ['Following Instructions', 'Making Eye Contact'], behavior: '1 incident — brief moment of frustration, resolved quickly', notes: 'Student A needed a bit more support today, but bounced back really well.' },
+    { id: '4', date: 'Aug 8, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 26, independence: 74, time: '9:00 AM', goals: ['Learning Colors', 'Counting Numbers'], behavior: 'None', notes: 'A great session — Student A was very engaged with the color activities.' },
+    { id: '5', date: 'Aug 7, 2026', teacher: 'Mr. Santos', duration: '40 min', trials: 18, independence: 61, time: '10:15 AM', goals: ['Following Instructions'], behavior: 'None', notes: 'Steady progress. Student A is building confidence with instructions.' },
+    { id: '6', date: 'Aug 5, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 23, independence: 70, time: '9:00 AM', goals: ['Learning Colors', 'Making Eye Contact'], behavior: '1 incident — sensory moment, lasted under a minute', notes: 'Overall a positive session. Great improvement in eye contact!' },
+  ],
+  sessionsThisMonth: 16,
+  goalsMastered: 2,
+  totalTrials: 126,
+  averageIndependence: 72,
+  behaviorTrends: [
+    { month: 'Mar', incidents: 8 },
+    { month: 'Apr', incidents: 7 },
+    { month: 'May', incidents: 5 },
+    { month: 'Jun', incidents: 4 },
+    { month: 'Jul', incidents: 5 },
+    { month: 'Aug', incidents: 3 },
+  ],
+  behaviorSummary: 'This month: 3 incidents recorded (improving from 8 last month).',
+  iupStation1: ['Learning Colors', 'Following Instructions'],
+  iupStation2: ['Counting Numbers', 'Making Eye Contact'],
+};
+
+const DEMO_SUMMARIES: Record<string, SessionSummary> = {
+  '1': { id: '1', date: 'Aug 14, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 82, time: '9:00 AM', goals: ['Learning Colors', 'Following Instructions'], behavior: 'None', notes: 'Student A did really well today! Great focus throughout the whole session.' },
+  '2': { id: '2', date: 'Aug 12, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 76, time: '9:00 AM', goals: ['Counting Numbers', 'Making Eye Contact'], behavior: 'None', notes: 'Solid effort with counting — kept going even when it was tricky!' },
+  '3': { id: '3', date: 'Aug 11, 2026', teacher: 'Mr. Santos', duration: '40 min', independence: 68, time: '10:15 AM', goals: ['Following Instructions', 'Making Eye Contact'], behavior: '1 incident — brief moment of frustration, resolved quickly', notes: 'Student A needed a bit more support today, but bounced back really well.' },
+  '4': { id: '4', date: 'Aug 8, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 74, time: '9:00 AM', goals: ['Learning Colors', 'Counting Numbers'], behavior: 'None', notes: 'A great session — Student A was very engaged with the color activities.' },
+  '5': { id: '5', date: 'Aug 7, 2026', teacher: 'Mr. Santos', duration: '40 min', independence: 61, time: '10:15 AM', goals: ['Following Instructions'], behavior: 'None', notes: 'Steady progress. Student A is building confidence with instructions.' },
+  '6': { id: '6', date: 'Aug 5, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 70, time: '9:00 AM', goals: ['Learning Colors', 'Making Eye Contact'], behavior: '1 incident — sensory moment, lasted under a minute', notes: 'Overall a positive session. Great improvement in eye contact!' },
+};
+
+function goalBarColor(pct: number) {
+  if (pct >= 80) return '#4ADE80';
+  if (pct >= 50) return '#FACC15';
+  return '#F87171';
+}
+
+function statusBadge(status: GoalStatus): { bg: string; text: string } {
+  if (status === 'Mastered') return { bg: '#DCFCE7', text: '#15803D' };
+  if (status === 'Active') return { bg: '#E0F2FE', text: '#0369A1' };
+  return { bg: '#FEF9C3', text: '#A16207' };
+}
+
+function independenceColor(pct: number) {
+  if (pct >= 80) return '#16A34A';
+  if (pct >= 60) return '#CA8A04';
+  return '#EF4444';
+}
+
+function behaviorBox(behavior: string) {
+  const clean = behavior === 'None' || behavior === 'No incidents' || !behavior;
+  return {
+    isClean: clean,
+    bg: clean ? '#F0FDF4' : '#FEFCE8',
+    text: clean ? '#15803D' : '#A16207',
+  };
+}
+
+function SessionSummaryModal({ session, onClose }: { session: SessionSummary | null; onClose: () => void }) {
+  if (!session) return null;
+  const bh = behaviorBox(session.behavior);
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{summary.date}</Text>
-          <ScrollView style={{ maxHeight: 300 }}>
-            <Text style={typography.body}>{summary.parentFriendlyNote}</Text>
-          </ScrollView>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>Close</Text>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay} onStartShouldSetResponder={() => true} onResponderRelease={onClose}>
+        <View style={styles.modalCard} onStartShouldSetResponder={() => true} onResponderRelease={() => {}}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Session Summary</Text>
+            <TouchableOpacity style={styles.modalX} onPress={onClose}>
+              <Feather name="x" size={16} color={colors.mutedText} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.sheetBody}>
+            <View style={styles.statPair}>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxLabel}>Teacher</Text>
+                <Text style={styles.statBoxValue}>{session.teacher}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxLabel}>Date</Text>
+                <Text style={styles.statBoxValue}>{session.date}</Text>
+              </View>
+            </View>
+            <View style={styles.statPair}>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxLabel}>Time</Text>
+                <Text style={styles.statBoxValue}>{session.time}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxLabel}>Duration</Text>
+                <Text style={styles.statBoxValue}>{session.duration}</Text>
+              </View>
+            </View>
+
+            <View style={[styles.sectionBox, styles.skyBox]}>
+              <Text style={[styles.sectionBoxLabel, { color: '#0EA5E9' }]}>Goals Worked On</Text>
+              {session.goals.map((g) => (
+                <View key={g} style={styles.goalListItem}>
+                  <View style={[styles.goalDot, { backgroundColor: '#38BDF8' }]} />
+                  <Text style={styles.goalListText}>{g}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={[styles.sectionBox, { backgroundColor: '#F0FDF4', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+              <Text style={[styles.sectionBoxLabel, { color: '#15803D' }]}>Independence</Text>
+              <Text style={styles.independenceValue}>{session.independence}%</Text>
+            </View>
+
+            <View style={[styles.sectionBox, { backgroundColor: bh.bg }]}>
+              <Text style={styles.sectionBoxPlainLabel}>Behavior Observations</Text>
+              <Text style={[styles.sectionBoxText, { color: bh.text }]}>{bh.isClean ? 'No incidents — great session!' : session.behavior}</Text>
+            </View>
+
+            <View style={[styles.sectionBox, { backgroundColor: '#F9FAFB' }]}>
+              <Text style={styles.sectionBoxPlainLabel}>Teacher Notes</Text>
+              <Text style={styles.notesText}>{session.notes}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
+            <Text style={styles.modalCloseBtnText}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -39,58 +222,77 @@ function SessionSummaryModal({ visible, summary, onClose }: {
   );
 }
 
-interface ProgressGoal {
-  id: string;
-  friendlyName: string;
-  percent: number;
-  weekly: number[];
-}
-
-function GoalChart({ weeks, percent }: { weeks: number[]; percent: number }) {
-  const max = Math.max(100, ...weeks);
+function StatCard({ icon, bg, color, value, label }: { icon: keyof typeof Feather.glyphMap; bg: string; color: string; value: string; label: string }) {
   return (
-    <View style={styles.chartTrack}>
-      {weeks.map((w, i) => (
-        <View key={i} style={styles.chartCol}>
-          <View style={[styles.chartBar, { height: `${Math.max(4, Math.round((w / max) * 100))}%` }]} />
-          <Text style={styles.chartBarLabel}>W{i + 1}</Text>
-        </View>
-      ))}
-      <View style={styles.chartPercentWrap}>
-        <Text style={styles.chartBarLabel}>Now</Text>
-        <Text style={styles.chartPercent}>{percent}%</Text>
+    <View style={styles.statCard}>
+      <View style={[styles.statIconWrap, { backgroundColor: bg }]}>
+        <Feather name={icon} size={20} color={color} />
       </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-interface SessionHistoryEntry {
-  id: string;
-  date: string;
-}
-
-interface ChildProgressData {
-  childName: string;
-  age: number;
-  program: string;
-  overallSummary: string;
-  goals: ProgressGoal[];
-  sessionHistory: SessionHistoryEntry[];
-  behaviorSummary: string;
-  assessmentSummary: string;
-  iupSummary: string;
-  sharedNotes: string;
+function BehaviorChart({ data }: { data: BehaviorTrend[] }) {
+  const max = Math.max(1, ...data.map((d) => d.incidents));
+  return (
+    <View style={styles.chartWrap}>
+      <View style={styles.chartRow}>
+        {data.map((d) => (
+          <View key={d.month} style={styles.chartCol}>
+            <View style={[styles.chartBar, { height: `${Math.max(6, Math.round((d.incidents / max) * 100))}%`, backgroundColor: '#38BDF8' }]} />
+            <Text style={styles.chartX}>{d.month}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.chartCaption}>Monthly behavior incidents — lower is better</Text>
+    </View>
+  );
 }
 
 export default function ChildProgressScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'ChildProgress'>) {
   const [data, setData] = useState<ChildProgressData | null>(null);
-  const [summaryModal, setSummaryModal] = useState<SessionSummary | null>(null);
-  const [exportContent, setExportContent] = useState<string | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionSummary | null>(null);
 
   const load = useCallback(async () => {
     try {
       const { data: res } = await getChildProgress('student-a');
-      setData(res);
+      const goals: Goal[] = (res.goals || []).map((g: any) => ({
+        id: String(g.id ?? g.name),
+        name: g.friendlyName ?? g.name ?? 'Goal',
+        pct: Number(g.percent ?? g.pct ?? 0),
+        status: goalStatus(Number(g.percent ?? g.pct ?? 0), g.status),
+        updated: g.updated ?? '',
+      }));
+      const sessions: Session[] = (res.sessionHistory || []).map((s: any, i: number) => ({
+        id: String(s.id ?? i),
+        date: s.date ?? '',
+        teacher: s.teacher ?? '—',
+        duration: s.duration ?? '—',
+        trials: Number(s.trials ?? 0),
+        independence: Number(s.independence ?? 0),
+        time: s.time ?? '',
+        goals: s.goals ?? [],
+        behavior: s.behavior ?? 'None',
+        notes: s.notes ?? '',
+      }));
+      setData({
+        childName: res.childName ?? CHILD_NAME,
+        age: Number(res.age ?? CHILD_AGE),
+        program: res.program ?? PROGRAM,
+        group: res.group ?? GROUP,
+        goals: goals.length ? goals : DEMO_DATA.goals,
+        sessions: sessions.length ? sessions : DEMO_DATA.sessions,
+        sessionsThisMonth: Number(res.sessionsThisMonth ?? 16),
+        goalsMastered: Number(res.goalsMastered ?? goals.filter((g) => g.status === 'Mastered').length),
+        totalTrials: Number(res.totalTrials ?? 126),
+        averageIndependence: Number(res.averageIndependence ?? 72),
+        behaviorTrends: res.behaviorTrends?.length ? res.behaviorTrends : DEMO_DATA.behaviorTrends,
+        behaviorSummary: res.behaviorSummary ?? DEMO_DATA.behaviorSummary,
+        iupStation1: res.iupStation1?.length ? res.iupStation1 : DEMO_DATA.iupStation1,
+        iupStation2: res.iupStation2?.length ? res.iupStation2 : DEMO_DATA.iupStation2,
+      });
     } catch (err) {
       setData(DEMO_DATA);
     }
@@ -98,200 +300,233 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
 
   useEffect(() => { load(); }, [load]);
 
-  const handleOpenSession = async (sessionId: string) => {
+  const handleOpenSession = async (session: Session) => {
     try {
-      const { data: res } = await getSessionSummaryForParent(sessionId);
-      setSummaryModal(res);
+      const { data: res } = await getSessionSummaryForParent(session.id);
+      setSelectedSession({
+        id: session.id,
+        date: res.date ?? session.date ?? '',
+        teacher: res.teacher ?? session.teacher ?? '—',
+        duration: res.duration ?? session.duration ?? '—',
+        independence: Number(res.independence ?? session.independence ?? 0),
+        time: res.time ?? session.time ?? '',
+        goals: res.goals ?? session.goals ?? [],
+        behavior: res.behavior ?? session.behavior ?? 'None',
+        notes: res.parentFriendlyNote ?? res.notes ?? session.notes ?? '',
+      });
     } catch (err) {
-      setSummaryModal(DEMO_SESSION_SUMMARY);
+      setSelectedSession(DEMO_SUMMARIES[session.id] ?? DEMO_SUMMARIES['1']);
     }
   };
 
-  const handleExportIup = () => {
-    if (!data) return;
-    setExportContent(
-      [
-        'INDIVIDUALIZED UPGRADE PLAN (IUP) SUMMARY',
-        `Child: ${data.childName} · Age ${data.age} · ${data.program}`,
-        `Generated: ${new Date().toLocaleDateString()}`,
-        '',
-        'PLAN SUMMARY',
-        data.iupSummary,
-        '',
-        'GOAL PROGRESS',
-        ...data.goals.map((g) => `- ${g.friendlyName}: ${g.percent}% toward the goal`),
-        '',
-        'OVERALL PROGRESS',
-        data.overallSummary,
-        '',
-        'BEHAVIOR TRENDS',
-        data.behaviorSummary,
-        '',
-        'ASSESSMENT RESULTS',
-        data.assessmentSummary,
-      ].join('\n')
-    );
-  };
-
-  const handleDownloadIupPdf = () => {
+  const handleDownloadIup = () => {
     if (!data) return;
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const lines = [
       '<h1>Melu\'e Foundation</h1>',
-      '<h2>Individualized Upgrade Plan (IUP) Summary</h2>',
-      `<p><strong>Child:</strong> ${esc(data.childName)} · Age ${data.age} · ${esc(data.program)}</p>`,
+      '<h2>Individualized Upgrade Plan (IUP)</h2>',
+      `<p><strong>Child:</strong> ${esc(data.childName)} · Age ${data.age} · ${esc(data.program)} · Group: ${esc(data.group)}</p>`,
       `<p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>`,
-      '<h3>Plan Summary</h3>',
-      `<p>${esc(data.iupSummary)}</p>`,
-      '<h3>Goal Progress</h3>',
-      `<ul>${data.goals.map((g) => `<li>${esc(g.friendlyName)}: ${g.percent}% toward the goal</li>`).join('')}</ul>`,
-      '<h3>Overall Progress</h3>',
-      `<p>${esc(data.overallSummary)}</p>`,
-      '<h3>Behavior Trends</h3>',
-      `<p>${esc(data.behaviorSummary)}</p>`,
-      '<h3>Assessment Results</h3>',
-      `<p>${esc(data.assessmentSummary)}</p>`,
+      '<h3>Station 1 Goals</h3>',
+      `<ul>${data.iupStation1.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>`,
+      '<h3>Station 2 Goals</h3>',
+      `<ul>${data.iupStation2.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>`,
+      `<p><strong>Status:</strong> Finalized</p>`,
     ].join('');
-    downloadTextFile(`IupSummary_${new Date().toISOString().slice(0, 10)}.html`, lines);
+    downloadTextFile(`Iup_${new Date().toISOString().slice(0, 10)}.html`, lines);
   };
 
   if (!data) return null;
+
+  const thisMonthCount = data.sessions.filter((s) => s.date.includes('Aug')).length || data.sessionsThisMonth;
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Progress" onTabPress={(t) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <Text style={typography.h2}>{data.childName}</Text>
-          <Text style={typography.caption}>Age {data.age} · {data.program}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Overall Progress</Text>
-          {data.goals.length > 0 && (
-            <View style={styles.statRow}>
-              <View style={styles.statItem}>
-                <Text style={typography.h3}>{data.goals.length}</Text>
-                <Text style={styles.statLabel}>Goals</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={typography.h3}>{data.sessionHistory.length}</Text>
-                <Text style={styles.statLabel}>Sessions</Text>
-              </View>
-            </View>
-          )}
-          <Text style={typography.body}>{data.overallSummary}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Goal Progress</Text>
-          <Text style={styles.sectionHint}>Weekly visualization, updated after each session</Text>
-          {data.goals.map((g) => (
-            <View key={g.id} style={styles.goalRow}>
-              <Text style={typography.bodyBold}>{g.friendlyName}</Text>
-              <GoalChart weeks={g.weekly} percent={g.percent} />
-              <Text style={typography.caption}>{g.percent}% toward the goal</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Session History</Text>
-          {data.sessionHistory.map((s) => (
-            <TouchableOpacity key={s.id} style={styles.sessionRow} onPress={() => handleOpenSession(s.id)}>
-              <Text style={typography.body}>{s.date}</Text>
-              <Text style={styles.linkText}>View →</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Behavior Trends</Text>
-          <Text style={typography.body}>{data.behaviorSummary}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Assessment Results</Text>
-          <Text style={typography.body}>{data.assessmentSummary}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Therapy Plan (IUP) Summary</Text>
-          <Text style={typography.body}>{data.iupSummary}</Text>
-          <View style={styles.exportRow}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={handleExportIup}>
-              <Text style={styles.secondaryBtnText}>Preview</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.exportBtn} onPress={handleDownloadIupPdf}>
-              <Feather name="download" size={14} color={colors.navyText} />
-              <Text style={styles.secondaryBtnText}>Export PDF</Text>
-            </TouchableOpacity>
+        <View style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{data.childName.charAt(0)}</Text>
+          </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{data.childName}</Text>
+            <Text style={styles.profileMeta}>Age {data.age} · Program: {data.program} · Group: {data.group}</Text>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={typography.h3}>Shared Notes</Text>
-          <Text style={typography.body}>{data.sharedNotes}</Text>
+        <View style={styles.statsGrid}>
+          <StatCard icon="clipboard" bg="#E0F2FE" color="#38BDF8" value={String(data.goals.length)} label="Goals Active" />
+          <StatCard icon="check-circle" bg="#DCFCE7" color="#22C55E" value={String(data.goalsMastered)} label="Goals Mastered" />
+          <StatCard icon="calendar" bg="#FEF9C3" color="#EAB308" value={String(data.sessionsThisMonth)} label="Sessions This Month" />
+          <StatCard icon="trending-up" bg="#F3E8FF" color="#A855F7" value={`${data.averageIndependence}%`} label="Independence Rate" />
         </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>How is {data.childName} doing with their goals?</Text>
+          {data.goals.map((g) => {
+            const sb = statusBadge(g.status);
+            return (
+              <View key={g.id} style={styles.goalRow}>
+                <View style={styles.goalHeader}>
+                  <Text style={styles.goalName}>{g.name}</Text>
+                  <View style={styles.goalHeaderRight}>
+                    <Text style={styles.goalPct}>{g.pct}%</Text>
+                    <View style={[styles.goalBadge, { backgroundColor: sb.bg }]}>
+                      <Text style={[styles.goalBadgeText, { color: sb.text }]}>{g.status}</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${g.pct}%`, backgroundColor: goalBarColor(g.pct) }]} />
+                </View>
+                {g.updated ? <Text style={styles.goalUpdated}>Last updated: {g.updated}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Recent Sessions</Text>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.th, styles.thDate]}>Date</Text>
+            <Text style={[styles.th, styles.thTeacher]}>Teacher</Text>
+            <Text style={styles.th}>Duration</Text>
+            <Text style={styles.th}>Trials</Text>
+            <Text style={styles.th}>Indep.</Text>
+          </View>
+          {data.sessions.map((s) => (
+            <TouchableOpacity key={s.id} style={styles.tableRow} onPress={() => handleOpenSession(s)}>
+              <Text style={[styles.td, styles.tdDate]}>{s.date}</Text>
+              <Text style={[styles.td, styles.tdTeacher]}>{s.teacher}</Text>
+              <Text style={[styles.td, styles.tdCenter]}>{s.duration}</Text>
+              <Text style={[styles.td, styles.tdCenter]}>{s.trials}</Text>
+              <Text style={[styles.td, styles.tdCenter, { color: independenceColor(s.independence), fontWeight: '700' }]}>{s.independence}%</Text>
+            </TouchableOpacity>
+          ))}
+          <Text style={styles.tableHint}>Tap any row to see session details</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Behavior Observations</Text>
+          <Text style={styles.behaviorSub}>This month: <Text style={styles.behaviorSubBold}>3 incidents recorded</Text> <Text style={{ color: '#16A34A' }}>(improving from 8 last month)</Text></Text>
+          <BehaviorChart data={data.behaviorTrends} />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.iupHeader}>
+            <Text style={styles.cardTitle}>Therapy Plan (IUP)</Text>
+            <View style={styles.finalizedBadge}>
+              <Feather name="check-circle" size={14} color="#16A34A" />
+              <Text style={styles.finalizedText}>Finalized</Text>
+            </View>
+          </View>
+          <View style={[styles.iupStation, { backgroundColor: '#F0F9FF' }]}>
+            <Text style={[styles.iupStationLabel, { color: '#0EA5E9' }]}>STATION 1 GOALS</Text>
+            {data.iupStation1.map((g) => (
+              <View key={g} style={styles.goalListItem}>
+                <View style={[styles.goalDot, { backgroundColor: '#38BDF8' }]} />
+                <Text style={styles.goalListText}>{g}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={[styles.iupStation, { backgroundColor: '#FFFBEB' }]}>
+            <Text style={[styles.iupStationLabel, { color: '#EAB308' }]}>STATION 2 GOALS</Text>
+            {data.iupStation2.map((g) => (
+              <View key={g} style={styles.goalListItem}>
+                <View style={[styles.goalDot, { backgroundColor: '#FACC15' }]} />
+                <Text style={styles.goalListText}>{g}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={styles.iupBtn} onPress={handleDownloadIup}>
+            <Feather name="download" size={16} color={colors.navyText} />
+            <Text style={styles.iupBtnText}>Download IUP (PDF)</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.navigate?.('ParentDashboard')}>
+          <Text style={styles.backBtnText}>← Back to Dashboard</Text>
+        </TouchableOpacity>
       </ScrollView>
 
-      <SessionSummaryModal visible={!!summaryModal} summary={summaryModal} onClose={() => setSummaryModal(null)} />
-
-      <ExportPreviewModal
-        visible={!!exportContent}
-        title="IUP Summary"
-        filename={`IupSummary_${new Date().toISOString().slice(0, 10)}.txt`}
-        content={exportContent ?? ''}
-        onClose={() => setExportContent(null)}
-      />
+      <SessionSummaryModal session={selectedSession} onClose={() => setSelectedSession(null)} />
     </SafeAreaView>
   );
 }
 
-const DEMO_DATA: ChildProgressData = {
-  childName: 'Student A',
-  age: 6,
-  program: 'Regular Program',
-  overallSummary: 'Making steady progress across all goal areas this month, with strong gains in requesting items.',
-  goals: [
-    { id: 'g1', friendlyName: 'Naming Colors', percent: 45, weekly: [20, 28, 36, 45] },
-    { id: 'g2', friendlyName: 'Asking for Things', percent: 68, weekly: [41, 50, 58, 68] },
-  ],
-  sessionHistory: [
-    { id: '1', date: 'Aug 11, 2026' },
-    { id: '2', date: 'Aug 8, 2026' },
-  ],
-  behaviorSummary: 'A couple of tough moments during transitions this month, but overall behavior has been calm and cooperative.',
-  assessmentSummary: 'Recent assessments show strengths in following directions and playing with others.',
-  iupSummary: 'Current therapy plan focuses on communication and self-help skills, reviewed every 6 months.',
-  sharedNotes: 'Loves bubbles and music during breaks - these work great as rewards at home too!',
-};
-const DEMO_SESSION_SUMMARY: SessionSummary = { date: 'Aug 11, 2026', parentFriendlyNote: 'Great session today! Student A asked for toys independently five times and stayed calm during cleanup.' };
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  goalRow: { gap: spacing.xs, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  sectionHint: { fontSize: 11, color: colors.mutedText },
-  statRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
-  statItem: { flex: 1, backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.md, gap: 2 },
-  statLabel: { fontSize: 11, color: colors.mutedText },
-  chartRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
-  chartTrack: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginTop: spacing.xs, height: 80 },
-  chartCol: { flex: 1, alignItems: 'center', gap: 2, height: '100%', justifyContent: 'flex-end' },
-  chartBar: { width: '100%', maxWidth: 28, backgroundColor: colors.statusInProgressText, borderTopLeftRadius: radius.sm, borderTopRightRadius: radius.sm, minHeight: 3 },
-  chartBarLabel: { fontSize: 9, color: colors.mutedText },
-  chartPercentWrap: { alignItems: 'center', gap: 2 },
-  chartPercent: { fontSize: 11, fontWeight: '700', color: colors.navyText },
-  sessionRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
-  linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 12 },
-  secondaryBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
-  secondaryBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  exportRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  exportBtn: { flex: 1, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryYellow, borderWidth: 1, borderColor: colors.primaryYellowDark, borderRadius: radius.md, paddingVertical: spacing.sm },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '70%' },
-  closeBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  closeBtnText: { fontWeight: '600', color: colors.navyText },
+  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
+  profileCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.lg },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#38BDF8', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 26, fontWeight: '700', color: colors.white },
+  profileInfo: { flex: 1 },
+  profileName: { fontSize: 20, fontWeight: '700', color: '#1F2937' },
+  profileMeta: { fontSize: 13, color: colors.mutedText, marginTop: 2 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  statCard: { flexBasis: '47%', flexGrow: 1, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.md, alignItems: 'center', gap: 2 },
+  statIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs },
+  statValue: { fontSize: 24, fontWeight: '700', color: '#1F2937' },
+  statLabel: { fontSize: 11, color: colors.mutedText, textAlign: 'center', fontWeight: '500' },
+  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.lg },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#1F2937', marginBottom: spacing.md },
+  goalRow: { gap: 4, marginBottom: spacing.lg },
+  goalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  goalName: { fontSize: 13, fontWeight: '600', color: '#1F2937' },
+  goalHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  goalPct: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  goalBadge: { borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 3 },
+  goalBadgeText: { fontSize: 11, fontWeight: '500' },
+  progressTrack: { height: 12, backgroundColor: '#F3F4F6', borderRadius: 6, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 6 },
+  goalUpdated: { fontSize: 11, color: '#9CA3AF', marginTop: 4 },
+  tableHeader: { flexDirection: 'row', paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  th: { fontSize: 11, color: '#9CA3AF', fontWeight: '500', flex: 1, textAlign: 'center' },
+  thDate: { textAlign: 'left', flex: 1.4 },
+  thTeacher: { flex: 1.3, textAlign: 'left' },
+  tableRow: { flexDirection: 'row', paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: '#F9FAFB', alignItems: 'center' },
+  td: { fontSize: 12, color: '#4B5563', flex: 1, textAlign: 'center' },
+  tdDate: { textAlign: 'left', flex: 1.4, fontWeight: '600', color: '#374151' },
+  tdTeacher: { flex: 1.3, textAlign: 'left' },
+  tdCenter: {},
+  tableHint: { fontSize: 11, color: '#9CA3AF', marginTop: spacing.md },
+  behaviorSub: { fontSize: 13, color: colors.mutedText, marginBottom: spacing.md },
+  behaviorSubBold: { fontWeight: '600', color: '#374151' },
+  chartWrap: { gap: spacing.xs },
+  chartRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md, height: 130 },
+  chartCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 4 },
+  chartBar: { width: '70%', maxWidth: 28, borderTopLeftRadius: 4, borderTopRightRadius: 4, minHeight: 6 },
+  chartX: { fontSize: 11, color: '#9CA3AF' },
+  chartCaption: { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginTop: spacing.xs },
+  iupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  finalizedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  finalizedText: { fontSize: 12, color: '#15803D', fontWeight: '500' },
+  iupStation: { borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.md, gap: spacing.xs },
+  iupStationLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm },
+  goalListItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
+  goalDot: { width: 6, height: 6, borderRadius: 3 },
+  goalListText: { fontSize: 13, color: '#374151' },
+  iupBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: '#FCD34D', borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.xs },
+  iupBtnText: { fontSize: 13, fontWeight: '700', color: colors.navyText },
+  backBtn: { borderWidth: 2, borderColor: '#E5E7EB', borderRadius: radius.lg, paddingVertical: spacing.md, alignItems: 'center' },
+  backBtnText: { fontSize: 13, fontWeight: '600', color: '#4B5563' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: spacing.lg },
+  modalCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937' },
+  modalX: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9FAFB' },
+  sheetBody: { gap: spacing.md },
+  statPair: { flexDirection: 'row', gap: spacing.md },
+  statBox: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: radius.md, padding: spacing.md },
+  statBoxLabel: { fontSize: 11, color: '#9CA3AF', marginBottom: 2 },
+  statBoxValue: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
+  sectionBox: { borderRadius: radius.md, padding: spacing.md, gap: 4 },
+  skyBox: { backgroundColor: '#F0F9FF' },
+  sectionBoxLabel: { fontSize: 11, fontWeight: '500', marginBottom: spacing.xs },
+  sectionBoxPlainLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '500', marginBottom: 2 },
+  sectionBoxText: { fontSize: 13, fontWeight: '500' },
+  independenceValue: { fontSize: 18, fontWeight: '700', color: '#16A34A' },
+  notesText: { fontSize: 13, lineHeight: 19, color: '#374151' },
+  modalCloseBtn: { marginTop: spacing.lg, backgroundColor: '#1F2937', borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  modalCloseBtnText: { fontSize: 13, fontWeight: '600', color: colors.white },
 });

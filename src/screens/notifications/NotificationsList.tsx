@@ -5,6 +5,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { useBreakpoint } from '../../utils/useBreakpoint';
 
 export interface AppNotification {
   id: string;
@@ -45,6 +46,9 @@ export default function NotificationsList({ title, subtitle, fetchData, demoData
   const [items, setItems] = useState<AppNotification[]>([]);
   const [filter, setFilter] = useState('All');
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const bp = useBreakpoint();
+  const isWide = bp !== 'mobile';
+  const rowStyle = isWide ? styles.rowWide : styles.row;
 
   const load = useCallback(async () => {
     try {
@@ -82,44 +86,48 @@ export default function NotificationsList({ title, subtitle, fetchData, demoData
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Feather name="bell" size={18} color={colors.navyText} />
-          <View>
-            <Text style={typography.h1}>{title}</Text>
-            <Text style={typography.caption}>{subtitle}</Text>
+        <View style={[styles.headerInner, isWide && styles.headerInnerWide]}>
+          <View style={styles.headerLeft}>
+            <Feather name="bell" size={18} color={colors.navyText} />
+            <View>
+              <Text style={typography.h1}>{title}</Text>
+              <Text style={typography.caption}>{subtitle}</Text>
+            </View>
           </View>
+          {unreadCount > 0 && (
+            <View style={styles.unreadPill}><Text style={styles.unreadPillText}>{unreadCount} unread</Text></View>
+          )}
         </View>
-        {unreadCount > 0 && (
-          <View style={styles.unreadPill}><Text style={styles.unreadPillText}>{unreadCount} unread</Text></View>
-        )}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersRow}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity key={f} style={[styles.filterChip, filter === f && styles.filterChipActive]} onPress={() => setFilter(f)}>
-            <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.filtersWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersRow}>
+          {FILTERS.map((f) => (
+            <TouchableOpacity key={f} style={[styles.filterChip, filter === f && styles.filterChipActive]} onPress={() => setFilter(f)}>
+              <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>{f}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
         {filtered.map((n) => {
           const meta = TYPE_META[n.type];
           return (
-            <View key={n.id} style={[styles.row, n.read && styles.rowRead]}>
+            <View key={n.id} style={[rowStyle, n.read && styles.rowRead]}>
               <TouchableOpacity style={styles.rowMain} onPress={() => handlePress(n)}>
-                <View style={[styles.iconWrap, { backgroundColor: meta.color + '1A' }]}>
-                  <Feather name={meta.icon} size={16} color={meta.color} />
+                <View style={styles.iconWrap}>
+                  <Feather name={meta.icon} size={14} color={meta.color} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[typography.bodyBold, n.read && { color: colors.bodyText }]}>{n.title}</Text>
-                  <Text style={typography.caption}>{n.body}</Text>
+                  <Text style={styles.body}>{n.body}</Text>
                   <Text style={styles.date}>{n.date}</Text>
                 </View>
                 {!n.read && <View style={styles.unreadDot} />}
               </TouchableOpacity>
               <TouchableOpacity style={styles.archiveBtn} onPress={() => handleArchive(n)}>
-                <Feather name="archive" size={15} color={colors.mutedText} />
+                <Feather name="archive" size={14} color={colors.mutedText} />
               </TouchableOpacity>
             </View>
           );
@@ -132,21 +140,27 @@ export default function NotificationsList({ title, subtitle, fetchData, demoData
 
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header: { padding: spacing.lg, backgroundColor: colors.bgCard },
+  headerInner: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerInnerWide: { maxWidth: 1200, alignSelf: 'center' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   unreadPill: { backgroundColor: colors.statusRevisionBg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
   unreadPillText: { fontSize: 12, fontWeight: '700', color: colors.statusRevisionText },
-  filtersRow: { padding: spacing.md, paddingBottom: 0, backgroundColor: colors.bgCard },
-  filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginRight: spacing.xs, backgroundColor: colors.bgApp },
+  filtersWrap: { backgroundColor: colors.bgCard, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  filtersRow: { paddingHorizontal: spacing.lg, gap: spacing.xs },
+  filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: colors.bgApp },
   filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   filterChipText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
   filterChipTextActive: { color: colors.navyText, fontWeight: '700' },
-  content: { padding: spacing.lg, gap: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
-  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
+  content: { padding: spacing.lg, gap: spacing.sm, alignItems: 'center' },
+  contentWide: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', maxWidth: 1200, alignSelf: 'center', gap: spacing.md },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, width: '100%' },
+  rowWide: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, width: '48%', flexGrow: 1 },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
   rowRead: { opacity: 0.6 },
-  archiveBtn: { padding: spacing.md, borderLeftWidth: 1, borderLeftColor: colors.border },
-  iconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  archiveBtn: { padding: spacing.md, borderLeftWidth: 1, borderLeftColor: colors.border, alignSelf: 'stretch', justifyContent: 'center' },
+  iconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgApp },
+  body: { fontSize: 13, color: colors.bodyText, marginTop: 2 },
   date: { fontSize: 11, color: colors.mutedText, marginTop: spacing.xs },
   unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.statusRevisionText },
 });
