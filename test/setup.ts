@@ -6,15 +6,22 @@
 import { afterEach, beforeEach, vi } from 'vitest';
 
 beforeEach(() => {
-  if (typeof localStorage === 'undefined') {
-    (globalThis as Record<string, unknown>).localStorage = createMemoryStorage();
-  }
+  // Node ships a non-functional `localStorage` global (object), so guard on
+  // usability, not just typeof. Force the in-memory polyfill so every test
+  // sees a working, isolated storage.
+  replaceUnusableLocalStorage();
   localStorage.clear();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+function replaceUnusableLocalStorage(): void {
+  const existing = (globalThis as Record<string, unknown>).localStorage as Storage | undefined;
+  if (existing && typeof existing.getItem === 'function') return;
+  (globalThis as Record<string, unknown>).localStorage = createMemoryStorage();
+}
 
 function createMemoryStorage(): Storage {
   const store = new Map<string, string>();
