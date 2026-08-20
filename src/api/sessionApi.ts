@@ -1,5 +1,4 @@
 
-import axios from 'axios';
 import type { QueryParams, Payload } from '../types';
 import {
   addAppointment,
@@ -13,17 +12,13 @@ import {
   updateAppointmentById,
 } from '../stores/scheduleStore';
 
-const BASE_URL = 'https://REPLACE_WITH_REAL_API_HOST/api/v1';
-
-const client = axios.create({
-  baseURL: BASE_URL,
-  timeout: 10000,
-});
-
-// Attach auth token to every request (token comes from your auth/login flow)
-export function setAuthToken(token: string) {
-  client.defaults.headers.common.Authorization = `Bearer ${token}`;
-}
+// The legacy session API delegates to the shared http client from the API
+// foundation (src/api/http/client.ts). Config, auth headers, error
+// normalization and demo-mode fail-fast live there; this file keeps the
+// endpoint helpers that existing screens already import.
+export { isDemoMode } from './config/env';
+export { setAuthToken } from './http/client';
+import { http as client } from './http/client';
 
 // ---- MR-4: Forgot / Reset Password ----
 export const requestResetCode = (payload: Payload) =>
