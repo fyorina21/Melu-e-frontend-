@@ -5,7 +5,8 @@
 //   - point at the configured base URL
 //   - attach the bearer token when available
 //   - normalize errors into ApiError
-//   - fail fast in demo mode (rejecting with ApiError, not a raw Error)
+//   - in demo mode, route requests to the in-memory mock database
+//     (src/api/mock) so the app is fully usable without a backend
 //   - on 401, transparently refresh the token once via an opt-in handler and
 //     replay the original request
 //   - log requests through an opt-in hook
@@ -17,8 +18,7 @@ import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig 
 import { apiBaseUrl, env, isDemoMode } from '../config/env';
 import { getAccessToken, setAccessToken } from '../token';
 import { toApiError, ApiError } from './errors';
-
-const DEMO_MESSAGE = 'Demo mode: no backend connected';
+import { mockHttp } from '../mock/client';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -50,23 +50,14 @@ export function setApiLogger(handler: Logger | null) {
   logger = handler;
 }
 
-// ---- Demo mode: fail fast with the normalized error shape ----
+// ---- Demo mode: route through the mock database ----
 
-const failFastHandler = <TArgs extends unknown[]>(..._args: TArgs): Promise<never> =>
-  Promise.reject(new ApiError(DEMO_MESSAGE, null, [], { isNetwork: true }));
-
-const failFastClient = {
-  get: failFastHandler,
-  post: failFastHandler,
-  patch: failFastHandler,
-  put: failFastHandler,
-  delete: failFastHandler,
-} as unknown as AxiosInstance;
+const demoClient = mockHttp as unknown as AxiosInstance;
 
 // ---- Real client ----
 
 function createHttpClient(): AxiosInstance {
-  if (isDemoMode) return failFastClient;
+  if (isDemoMode) return demoClient;
 
   const instance = axios.create({
     baseURL: apiBaseUrl,
