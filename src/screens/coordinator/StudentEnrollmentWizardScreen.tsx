@@ -6,9 +6,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
-import ProgramDirectorNav from '../programdirector/components/ProgramDirectorNav';
-import { PD_ROUTE_BY_TAB } from '../programdirector/components/pdNavRoutes';
+import AppNavbar from '../../components/AppNavbar';
+import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { createStudentEnrollment } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList, ProgramDirectorStackParamList } from '../../types';
@@ -177,9 +176,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe}>
       {isProgramDirector ? (
-        <ProgramDirectorNav activeTab="Enrollment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar activeTab="Enrollment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
       ) : (
-        <CoordinatorNav activeTab="Enrollment" onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+        <AppNavbar activeTab="Enrollment" onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)} />
       )}
 
       <View style={styles.header}>

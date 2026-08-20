@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
 import { getWorkloadDashboard, getWorkloadTrend } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -53,7 +53,7 @@ export default function WorkloadDashboardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Workload" onTabPress={(t) => t !== 'Workload' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Workload" onTabPress={(t) => t !== 'Workload' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>

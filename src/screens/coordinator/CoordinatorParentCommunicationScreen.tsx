@@ -5,7 +5,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
 import {
   getCoordinatorConversations,
   getConversationThread,
@@ -20,6 +20,7 @@ interface Conversation {
   studentName: string;
   parentName: string;
   lastMessagePreview: string;
+  lastMessageDate: string;
   unreadCount: number;
   resolved: boolean;
 }
@@ -40,6 +41,39 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
   const [draft, setDraft] = useState('');
   const [tab, setTab] = useState('active'); // 'active' | 'log'
   const [pendingAttachments, setPendingAttachments] = useState<{ id: string; name: string }[]>([]);
+  const [search, setSearch] = useState('');
+  const [studentFilter, setStudentFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState('All');
+
+  const studentOptions = ['All', ...Array.from(new Set(conversations.map((c) => c.studentName)))];
+
+  const filterByDate = (dateStr: string, filter: string) => {
+    if (filter === 'All') return true;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return true;
+    const now = new Date();
+    if (filter === 'This Week') {
+      const day = now.getDay();
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      weekStart.setHours(0, 0, 0, 0);
+      return d >= weekStart;
+    }
+    if (filter === 'This Month') {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  };
+
+  const filteredConversations = conversations.filter(
+    (c) =>
+      (studentFilter === 'All' || c.studentName === studentFilter) &&
+      filterByDate(c.lastMessageDate, dateFilter) &&
+      (!search ||
+        c.studentName.toLowerCase().includes(search.toLowerCase()) ||
+        c.parentName.toLowerCase().includes(search.toLowerCase()) ||
+        c.lastMessagePreview.toLowerCase().includes(search.toLowerCase()))
+  );
 
   const loadList = useCallback(async () => {
     try {
@@ -117,7 +151,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Parents" onTabPress={(t) => t !== 'Parents' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Parents" onTabPress={(t) => t !== 'Parents' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
       <View style={styles.body}>
         <View style={styles.sidebar}>
@@ -129,8 +163,31 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
               <Text style={typography.body}>Log</Text>
             </TouchableOpacity>
           </View>
+          <View style={styles.sidebarFilters}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search messages..."
+              placeholderTextColor={colors.mutedText}
+              value={search}
+              onChangeText={setSearch}
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {studentOptions.map((s) => (
+                <TouchableOpacity key={s} style={[styles.filterChip, studentFilter === s && styles.filterChipActive]} onPress={() => setStudentFilter(s)}>
+                  <Text style={[styles.filterChipText, studentFilter === s && styles.filterChipTextActive]}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {['All', 'This Week', 'This Month'].map((f) => (
+                <TouchableOpacity key={f} style={[styles.filterChip, dateFilter === f && styles.filterChipActive]} onPress={() => setDateFilter(f)}>
+                  <Text style={[styles.filterChipText, dateFilter === f && styles.filterChipTextActive]}>{f}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
           <ScrollView>
-            {conversations.map((c) => (
+            {filteredConversations.map((c) => (
               <TouchableOpacity key={c.id} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]} onPress={() => setActiveId(c.id)}>
                 <Text style={typography.bodyBold}>{c.studentName}</Text>
                 <Text style={typography.caption} numberOfLines={1}>{c.lastMessagePreview}</Text>
@@ -232,8 +289,8 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
 }
 
 const DEMO_CONVERSATIONS: Conversation[] = [
-  { id: '1', studentName: 'Student A', parentName: 'Parent A', lastMessagePreview: 'Thank you for the update!', unreadCount: 2, resolved: false },
-  { id: '2', studentName: 'Student B', parentName: 'Parent B', lastMessagePreview: 'Can we schedule a meeting?', unreadCount: 0, resolved: false },
+  { id: '1', studentName: 'Student A', parentName: 'Parent A', lastMessagePreview: 'Thank you for the update!', lastMessageDate: 'Aug 11, 2026', unreadCount: 2, resolved: false },
+  { id: '2', studentName: 'Student B', parentName: 'Parent B', lastMessagePreview: 'Can we schedule a meeting?', lastMessageDate: 'Jul 2, 2026', unreadCount: 0, resolved: false },
 ];
 const DEMO_THREAD: ThreadMessage[] = [
   { id: '1', sender: 'parent', senderLabel: 'Parent A', text: 'How did today\u2019s session go?', timestamp: '10:00 AM' },
@@ -247,6 +304,12 @@ const styles = StyleSheet.create({
   sidebarTabs: { flexDirection: 'row', padding: spacing.sm, gap: spacing.xs },
   sidebarTab: { flex: 1, paddingVertical: spacing.xs, alignItems: 'center', borderRadius: radius.sm },
   sidebarTabActive: { backgroundColor: colors.bgApp },
+  sidebarFilters: { gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
+  searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, backgroundColor: colors.bgApp, color: colors.navyText },
+  filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3, marginRight: spacing.xs },
+  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  filterChipText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
+  filterChipTextActive: { color: colors.navyText },
   convoRow: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   convoRowActive: { backgroundColor: colors.bgApp },
   unreadBadge: { position: 'absolute', top: spacing.sm, right: spacing.sm, backgroundColor: colors.primaryYellow, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' },

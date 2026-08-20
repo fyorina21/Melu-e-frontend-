@@ -4,8 +4,9 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { downloadTextFile } from '../../utils/webExport';
 import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -20,6 +21,46 @@ interface LiveSession {
   timer: string;
   trialCount: number;
   studentNames: string[];
+  students: { name: string; trials: number; independencePercent: number }[];
+  incidents: { time: string; type: string; note: string }[];
+}
+
+function SessionDetailModal({ visible, session, onClose }: {
+  visible: boolean;
+  session: LiveSession | null;
+  onClose: () => void;
+}) {
+  if (!session) return null;
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.modalSheet}>
+          <Text style={typography.h2}>{session.teacherName}</Text>
+          <Text style={typography.caption}>{session.stationName} · {session.timer} remaining · {session.status}</Text>
+          <ScrollView style={{ maxHeight: 320 }}>
+            <Text style={styles.detailLabel}>Students</Text>
+            {session.students.map((s) => (
+              <View key={s.name} style={styles.detailRow}>
+                <Text style={typography.bodyBold}>{s.name}</Text>
+                <Text style={typography.caption}>{s.trials} trials · {s.independencePercent}% independence</Text>
+              </View>
+            ))}
+            <Text style={styles.detailLabel}>Incidents</Text>
+            {session.incidents.length === 0 && <Text style={[typography.body, { color: colors.mutedText }]}>No incidents logged.</Text>}
+            {session.incidents.map((inc, i) => (
+              <View key={i} style={styles.detailRow}>
+                <Text style={typography.caption}>{inc.time} · {inc.type}</Text>
+                <Text style={typography.body}>{inc.note}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <Text style={styles.cancelBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 function AlertModal({ visible, session, onClose, onSend }: {
@@ -72,6 +113,7 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
   const [statusFilter, setStatusFilter] = useState('All');
   const [stationFilter, setStationFilter] = useState('All');
   const [alertTarget, setAlertTarget] = useState<LiveSession | null>(null);
+  const [detailTarget, setDetailTarget] = useState<LiveSession | null>(null);
   const [exportContent, setExportContent] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -121,6 +163,12 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
     } catch (err) {
       // fall through to local export
     }
+    const header = 'Teacher,Station,Status,Timer (mm:ss),Trials,Students';
+    const rows = filtered.map((s) => [s.teacherName, s.stationName, s.status, s.timer, String(s.trialCount), s.studentNames.join('; ')].join(','));
+    downloadTextFile(
+      `LiveSessionLog_${statusFilter.replace(/\s+/g, '_')}.csv`,
+      `${header}\n${rows.join('\n')}`
+    );
     setExportContent(
       [
         `Melu'e Foundation — Live Session Log`,
@@ -138,7 +186,7 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Live Sessions" onTabPress={(t) => t !== 'Live Sessions' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Live Sessions" onTabPress={(t) => t !== 'Live Sessions' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Live Session Monitoring</Text>
@@ -206,6 +254,9 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
               <TouchableOpacity style={styles.actionBtn} onPress={() => setAlertTarget(s)}>
                 <Text style={styles.actionBtnText}>Send Alert</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => setDetailTarget(s)}>
+                <Text style={styles.actionBtnText}>View Details</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDisabled]} disabled>
                 <Text style={styles.actionBtnTextDisabled}>View Teacher Screen (Post-MVP)</Text>
               </TouchableOpacity>
@@ -218,6 +269,8 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
       </ScrollView>
 
       <AlertModal visible={!!alertTarget} session={alertTarget} onClose={() => setAlertTarget(null)} onSend={handleSendAlert} />
+
+      <SessionDetailModal visible={!!detailTarget} session={detailTarget} onClose={() => setDetailTarget(null)} />
 
       <ExportPreviewModal
         visible={!!exportContent}
@@ -245,8 +298,8 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
 }
 
 const DEMO_SESSIONS: LiveSession[] = [
-  { id: '1', teacherName: 'Teacher A', stationName: 'Station 1', status: 'On Track', timer: '42:10', trialCount: 18, studentNames: ['Student A', 'Student B'] },
-  { id: '2', teacherName: 'Teacher B', stationName: 'Station 2', status: 'Needs Attention', timer: '05:22', trialCount: 4, studentNames: ['Student C'] },
+  { id: '1', teacherName: 'Teacher A', stationName: 'Station 1', status: 'On Track', timer: '42:10', trialCount: 18, studentNames: ['Student A', 'Student B'], students: [{ name: 'Student A', trials: 12, independencePercent: 70 }, { name: 'Student B', trials: 6, independencePercent: 55 }], incidents: [] },
+  { id: '2', teacherName: 'Teacher B', stationName: 'Station 2', status: 'Needs Attention', timer: '05:22', trialCount: 4, studentNames: ['Student C'], students: [{ name: 'Student C', trials: 4, independencePercent: 40 }], incidents: [{ time: '02:15', type: 'Behavior', note: 'Transition difficulty during snack' }] },
 ];
 
 const styles = StyleSheet.create({
@@ -282,6 +335,8 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
   chipTextSelected: { color: colors.navyText },
   textArea: { minHeight: 80, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, textAlignVertical: 'top', color: colors.navyText },
+  detailLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: colors.mutedText, marginTop: spacing.sm },
+  detailRow: { paddingVertical: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border },
   modalFooter: { flexDirection: 'row', gap: spacing.sm },
   cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   cancelBtnText: { fontWeight: '600', color: colors.navyText },

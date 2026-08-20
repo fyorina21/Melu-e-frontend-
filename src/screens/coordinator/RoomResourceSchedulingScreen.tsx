@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import { getRoomsResources, updateRoomStatus, updateResourceStatus } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
@@ -71,7 +71,7 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Rooms" onTabPress={(t) => t !== 'Rooms' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Rooms" onTabPress={(t) => t !== 'Rooms' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
       <View style={styles.header}>
         <View>

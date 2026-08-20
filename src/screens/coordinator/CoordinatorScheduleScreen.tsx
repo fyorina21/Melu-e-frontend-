@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from "./components/CoordinatorNav";
+import AppNavbar from '../../components/AppNavbar';
 import AppointmentFormModal from '../scheduling/components/AppointmentFormModal';
 import MarkUnavailableModal from '../scheduling/components/MarkUnavailableModal';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { downloadTextFile } from '../../utils/webExport';
 import type { CoordinatorStackParamList, Payload } from '../../types';
 import {
   getOperationalSchedule,
@@ -61,6 +62,62 @@ const ROOM_OPTIONS: Option[] = [
   { id: 'room-3', name: 'Room 3' },
 ];
 
+function TeacherAnalyticsModal({ visible, metrics, onClose }: {
+  visible: boolean;
+  metrics: Metric[];
+  onClose: () => void;
+}) {
+  const maxTrials = Math.max(1, ...metrics.map((m) => m.trials));
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.modalSheet}>
+          <Text style={typography.h2}>Teacher Summaries</Text>
+          <Text style={typography.caption}>Full performance view — sessions, trials, independence, incidents</Text>
+          <ScrollView style={{ maxHeight: 380 }}>
+            {metrics.map((m) => (
+              <View key={m.teacherId} style={styles.analyticsCard}>
+                <Text style={typography.bodyBold}>{m.teacherName}</Text>
+                <View style={styles.metricRow}>
+                  <Text style={styles.metricLabel}>Sessions</Text>
+                  <View style={styles.metricBarTrack}>
+                    <View style={[styles.metricBar, { backgroundColor: '#059669', width: `${Math.max(4, m.sessions * 8)}%` }]} />
+                  </View>
+                  <Text style={styles.metricValue}>{m.sessions}</Text>
+                </View>
+                <View style={styles.metricRow}>
+                  <Text style={styles.metricLabel}>Trials</Text>
+                  <View style={styles.metricBarTrack}>
+                    <View style={[styles.metricBar, { backgroundColor: '#D97706', width: `${Math.max(4, Math.round((m.trials / maxTrials) * 100))}%` }]} />
+                  </View>
+                  <Text style={styles.metricValue}>{m.trials}</Text>
+                </View>
+                <View style={styles.metricRow}>
+                  <Text style={styles.metricLabel}>Independence</Text>
+                  <View style={styles.metricBarTrack}>
+                    <View style={[styles.metricBar, { backgroundColor: '#2563EB', width: `${Math.max(4, m.independencePercent)}%` }]} />
+                  </View>
+                  <Text style={styles.metricValue}>{m.independencePercent}%</Text>
+                </View>
+                <View style={styles.metricRow}>
+                  <Text style={styles.metricLabel}>Incidents</Text>
+                  <View style={styles.metricBarTrack}>
+                    <View style={[styles.metricBar, { backgroundColor: m.incidents > 0 ? '#EF4444' : '#9CA3AF', width: `${Math.min(100, 20 + m.incidents * 40)}%` }]} />
+                  </View>
+                  <Text style={styles.metricValue}>{m.incidents}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={onClose}>
+            <Text style={styles.secondaryBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorSchedule'>;
 
 export default function CoordinatorScheduleScreen({ navigation }: Props) {
@@ -73,6 +130,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [exportContent, setExportContent] = useState<string | null>(null);
   const [unavailableVisible, setUnavailableVisible] = useState(false);
   const [reassignVisible, setReassignVisible] = useState(false);
+  const [analyticsVisible, setAnalyticsVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -195,6 +253,10 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       '',
       `Unassigned students: ${unassignedStudents.length}`,
     ];
+    downloadTextFile(
+      `StaffSchedule_${DAYS[selectedDay]}.html`,
+      lines.map((l) => `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`).join('')
+    );
     setExportContent(lines.join('\n'));
   };
 
@@ -202,7 +264,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Schedule" onTabPress={(t) => t !== 'Schedule' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Schedule" onTabPress={(t) => t !== 'Schedule' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Operational Management</Text>
@@ -256,6 +318,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
         <View style={styles.card}>
           <Text style={typography.h3}>Performance Metrics</Text>
+          <View style={styles.cardActionsRow}>
+            <TouchableOpacity style={styles.cardActionBtn} onPress={() => setAnalyticsVisible(true)}>
+              <Feather name="bar-chart-2" size={13} color={colors.navyText} />
+              <Text style={styles.cardActionText}>View Teacher Summary</Text>
+            </TouchableOpacity>
+          </View>
           {metrics.map((m) => (
             <View key={m.teacherId} style={styles.metricsRow}>
               <Text style={typography.bodyBold}>{m.teacherName}</Text>
@@ -313,6 +381,8 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         onClose={() => setReassignVisible(false)}
         onSubmit={handleReassignSubmit}
       />
+
+      <TeacherAnalyticsModal visible={analyticsVisible} metrics={metrics} onClose={() => setAnalyticsVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -356,4 +426,15 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: 'row', gap: spacing.sm },
   secondaryBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   secondaryBtnText: { fontWeight: '600', fontSize: 11, color: colors.navyText, textAlign: 'center' },
+  cardActionsRow: { marginTop: spacing.xs },
+  cardActionBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, alignSelf: 'flex-start' },
+  cardActionText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
+  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '85%' },
+  analyticsCard: { backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm, marginBottom: spacing.sm },
+  metricRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  metricLabel: { width: 90, fontSize: 11, color: colors.mutedText },
+  metricBarTrack: { flex: 1, height: 8, borderRadius: radius.pill, backgroundColor: colors.bgCard, overflow: 'hidden' },
+  metricBar: { height: '100%', borderRadius: radius.pill },
+  metricValue: { width: 44, fontSize: 11, fontWeight: '700', color: colors.navyText, textAlign: 'right' },
 });

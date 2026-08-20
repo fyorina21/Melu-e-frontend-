@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
+import { downloadTextFile } from '../../utils/webExport';
 import { getPendingSummaries, approveSummary, requestSummaryChanges, bulkApproveSummaries } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -16,28 +18,67 @@ interface PendingSummary {
   bodyPreview: string;
 }
 
-function ReviewModal({ visible, summary, onClose, onApprove, onRequestChanges }: {
+const SECTION_OPTIONS = ['Session Notes', 'Trial Data', 'Behavior', 'Attendance'];
+const STATION_FILTERS = ['All', 'Station 1', 'Station 2'];
+const DATE_FILTERS = ['All', 'This Week', 'This Month'];
+
+const filterByDate = (dateStr: string, filter: string) => {
+  if (filter === 'All') return true;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return true;
+  const now = new Date();
+  if (filter === 'This Week') {
+    const day = now.getDay();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    weekStart.setHours(0, 0, 0, 0);
+    return d >= weekStart;
+  }
+  if (filter === 'This Month') {
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }
+  return true;
+};
+
+function ReviewModal({ visible, summary, onClose, onApprove, onRequestChanges, onExportPdf, onViewProgress }: {
   visible: boolean;
   summary: PendingSummary | null;
   onClose: () => void;
   onApprove: (id: string, notes: string) => void;
-  onRequestChanges: (id: string, reason: string, notes: string) => void;
+  onRequestChanges: (id: string, reason: string, sections: string[], notes: string) => void;
+  onExportPdf: (summary: PendingSummary, notes: string) => void;
+  onViewProgress: (summary: PendingSummary) => void;
 }) {
   const [notes, setNotes] = useState('');
   const [changeReason, setChangeReason] = useState('');
+  const [sections, setSections] = useState<string[]>([]);
   if (!summary) return null;
+
+  const toggleSection = (s: string) =>
+    setSections((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
           <Text style={typography.h2}>{summary.studentNames.join(', ')}</Text>
-          <Text style={typography.caption}>{summary.teacherName} · {summary.date}</Text>
-          <ScrollView style={{ maxHeight: 260 }}>
+          <Text style={typography.caption}>{summary.teacherName} · {summary.stationName} · {summary.date}</Text>
+          <ScrollView style={{ maxHeight: 200 }}>
             <Text style={typography.body}>{summary.bodyPreview}</Text>
           </ScrollView>
           <View style={styles.field}>
             <Text style={typography.label}>Coordinator Notes (internal only)</Text>
             <TextInput style={styles.textArea} multiline value={notes} onChangeText={setNotes} placeholderTextColor={colors.mutedText} placeholder="Internal notes..." />
+          </View>
+          <View style={styles.field}>
+            <Text style={typography.label}>Sections to revise (required if requesting changes)</Text>
+            <View style={styles.chipRow}>
+              {SECTION_OPTIONS.map((s) => (
+                <TouchableOpacity key={s} style={[styles.chip, sections.includes(s) && styles.chipActive]} onPress={() => toggleSection(s)}>
+                  <Text style={[styles.chipText, sections.includes(s) && styles.chipTextActive]}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
           <View style={styles.field}>
             <Text style={typography.label}>Reason (required if requesting changes)</Text>
@@ -48,13 +89,24 @@ function ReviewModal({ visible, summary, onClose, onApprove, onRequestChanges }:
               style={styles.requestChangesBtn}
               onPress={() => {
                 if (!changeReason.trim()) { Alert.alert('Reason required'); return; }
-                onRequestChanges(summary.id, changeReason, notes);
+                if (sections.length === 0) { Alert.alert('Select sections'); return; }
+                onRequestChanges(summary.id, changeReason, sections, notes);
               }}
             >
               <Text style={styles.requestChangesBtnText}>Request Changes</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.approveBtn} onPress={() => onApprove(summary.id, notes)}>
               <Text style={styles.approveBtnText}>Approve</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.modalFooter}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={() => onExportPdf(summary, notes)}>
+              <Feather name="download" size={13} color={colors.navyText} />
+              <Text style={styles.secondaryBtnText}>Export PDF</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={() => onViewProgress(summary)}>
+              <Feather name="trending-up" size={13} color={colors.navyText} />
+              <Text style={styles.secondaryBtnText}>View Student Progress</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -66,6 +118,8 @@ function ReviewModal({ visible, summary, onClose, onApprove, onRequestChanges }:
 export default function SessionSummaryReviewScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'SessionSummaryReview'>) {
   const [pending, setPending] = useState<PendingSummary[]>([]);
   const [search, setSearch] = useState('');
+  const [stationFilter, setStationFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [reviewTarget, setReviewTarget] = useState<PendingSummary | null>(null);
 
@@ -82,6 +136,10 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     load();
   }, [load]);
 
+  const visiblePending = pending.filter(
+    (s) => (stationFilter === 'All' || s.stationName === stationFilter) && filterByDate(s.date, dateFilter)
+  );
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
@@ -95,13 +153,33 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     Alert.alert('Approved', "Moved to student's permanent record.");
   };
 
-  const handleRequestChanges = async (id: string, reason: string, notes: string) => {
+  const handleRequestChanges = async (id: string, reason: string, sections: string[], notes: string) => {
     try {
-      await requestSummaryChanges(id, { reason, notes });
+      await requestSummaryChanges(id, { reason, sections, notes });
     } catch (err) {}
     setPending((prev) => prev.filter((s) => s.id !== id));
     setReviewTarget(null);
-    Alert.alert('Sent back for revision', 'Teacher will be notified.');
+    Alert.alert('Sent back for revision', `Teacher will be notified. Sections: ${sections.join(', ')}`);
+  };
+
+  const handleExportPdf = (summary: PendingSummary, notes: string) => {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const html = [
+      '<h1>Melu\'e Foundation</h1>',
+      '<h2>Session Summary Review</h2>',
+      `<p><strong>Students:</strong> ${esc(summary.studentNames.join(', '))}</p>`,
+      `<p><strong>Teacher:</strong> ${esc(summary.teacherName)} · <strong>Station:</strong> ${esc(summary.stationName)} · <strong>Date:</strong> ${esc(summary.date)}</p>`,
+      '<h3>Summary</h3>',
+      `<p>${esc(summary.bodyPreview)}</p>`,
+      '<h3>Coordinator Notes (internal)</h3>',
+      `<p>${esc(notes || '(none)')}</p>`,
+    ].join('');
+    downloadTextFile(`SessionReview_${summary.id}.html`, html);
+  };
+
+  const handleViewProgress = (summary: PendingSummary) => {
+    setReviewTarget(null);
+    navigation?.navigate?.('CoordinatorStudentProgress');
   };
 
   const handleBulkApprove = async () => {
@@ -123,7 +201,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Review" onTabPress={(t) => t !== 'Review' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Review" onTabPress={(t) => t !== 'Review' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Session Summary Review</Text>
@@ -137,9 +215,27 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
       <View style={styles.searchRow}>
         <TextInput style={styles.searchInput} placeholder="Search student, teacher, station..." placeholderTextColor={colors.mutedText} value={search} onChangeText={setSearch} />
       </View>
+      <View style={styles.filterRow}>
+        <View style={styles.chipRow}>
+          <Text style={[typography.label, styles.filterLabel]}>Station</Text>
+          {STATION_FILTERS.map((f) => (
+            <TouchableOpacity key={f} style={[styles.chip, stationFilter === f && styles.chipActive]} onPress={() => setStationFilter(f)}>
+              <Text style={[styles.chipText, stationFilter === f && styles.chipTextActive]}>{f}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.chipRow}>
+          <Text style={[typography.label, styles.filterLabel]}>Date</Text>
+          {DATE_FILTERS.map((f) => (
+            <TouchableOpacity key={f} style={[styles.chip, dateFilter === f && styles.chipActive]} onPress={() => setDateFilter(f)}>
+              <Text style={[styles.chipText, dateFilter === f && styles.chipTextActive]}>{f}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {pending.map((s) => (
+        {visiblePending.map((s) => (
           <View key={s.id} style={styles.row}>
             <TouchableOpacity onPress={() => toggleSelect(s.id)} style={styles.checkbox}>
               <View style={[styles.checkboxInner, selectedIds.includes(s.id) && styles.checkboxChecked]} />
@@ -153,7 +249,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
             </TouchableOpacity>
           </View>
         ))}
-        {pending.length === 0 && (
+        {visiblePending.length === 0 && (
           <Text style={[typography.body, { textAlign: 'center', color: colors.mutedText }]}>Nothing pending review.</Text>
         )}
       </ScrollView>
@@ -164,6 +260,8 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
         onClose={() => setReviewTarget(null)}
         onApprove={handleApprove}
         onRequestChanges={handleRequestChanges}
+        onExportPdf={handleExportPdf}
+        onViewProgress={handleViewProgress}
       />
     </SafeAreaView>
   );
@@ -211,4 +309,13 @@ const styles = StyleSheet.create({
   requestChangesBtnText: { fontWeight: '600', color: '#EF4444', fontSize: 12 },
   approveBtn: { flex: 1, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   approveBtnText: { fontWeight: '700', color: colors.navyText },
+  secondaryBtn: { flex: 1, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md },
+  secondaryBtnText: { fontWeight: '600', fontSize: 12, color: colors.navyText },
+  filterRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard, borderTopWidth: 1, borderTopColor: colors.border },
+  filterLabel: { paddingVertical: spacing.xs },
+  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  chipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
+  chipTextActive: { color: colors.navyText },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
 });

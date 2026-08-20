@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import CoordinatorNav from './components/CoordinatorNav';
+import AppNavbar from '../../components/AppNavbar';
 import { getCoordinatorDashboard } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -91,7 +91,7 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <CoordinatorNav activeTab="Dashboard" onTabPress={handleTabPress} />
+      <AppNavbar activeTab="Dashboard" onTabPress={handleTabPress} unreadCount={data.unreadCount} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
@@ -103,12 +103,6 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
             <Feather name="clock" size={14} color={colors.mutedText} style={{ marginRight: spacing.xs }} />
             <Text style={styles.clockText}>{timeStr}</Text>
           </View>
-          <TouchableOpacity style={styles.notifBell} onPress={() => navigation?.navigate?.('Notifications')}>
-            <Feather name="bell" size={18} color={colors.navyText} />
-            {data.unreadCount > 0 && (
-              <View style={styles.notifBadge}><Text style={styles.notifBadgeText}>{data.unreadCount}</Text></View>
-            )}
-          </TouchableOpacity>
         </View>
 
         <View style={styles.statsGrid}>
@@ -195,9 +189,6 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
   clockPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   clockText: { fontWeight: '700', color: colors.navyText, fontVariant: ['tabular-nums'] },
-  notifBell: { position: 'relative' },
-  notifBadge: { position: 'absolute', top: -4, right: -6, backgroundColor: '#EF4444', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
-  notifBadgeText: { color: colors.white, fontSize: 9, fontWeight: '700' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   statCard: { flexGrow: 1, minWidth: '45%', backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
   statValue: { fontSize: 24, fontWeight: '700', color: colors.navyText },
