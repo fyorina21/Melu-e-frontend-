@@ -13,6 +13,7 @@ import { colors, radius, spacing } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE } from './appNavConfig';
+import { useBreakpoint } from '../utils/useBreakpoint';
 import type { Role } from '../types';
 
 interface AppNavbarProps {
@@ -25,6 +26,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const { session, logout } = useAuth();
   const navigation = useNavigation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const bp = useBreakpoint();
+  const isCompact = bp !== 'desktop';
 
   const role = (session?.role ?? 'teacher') as Role;
   const tabs = ROLE_TABS[role] ?? [];
@@ -40,32 +44,49 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
 
   const handleLogout = () => {
     setMenuOpen(false);
+    setDrawerOpen(false);
     logout();
   };
 
+  const handleTabPress = (tab: string) => {
+    setDrawerOpen(false);
+    onTabPress?.(tab);
+  };
+
+  const renderTabs = () => (
+    <View style={styles.tabs}>
+      {tabs.map((tab) => {
+        const active = tab === activeTab;
+        return (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, active && styles.tabActive]}
+            onPress={() => handleTabPress(tab)}
+          >
+            <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
+        {isCompact && (
+          <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.hamburgerBtn} accessibilityLabel="Open menu">
+            <Feather name="menu" size={20} color={colors.navyText} />
+          </TouchableOpacity>
+        )}
         <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
-        <View style={styles.tabs}>
-          {tabs.map((tab) => {
-            const active = tab === activeTab;
-            return (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tab, active && styles.tabActive]}
-                onPress={() => onTabPress?.(tab)}
-              >
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
+      {!isCompact && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
+          {renderTabs()}
+        </ScrollView>
+      )}
 
       <View style={styles.rightBlock}>
         {notificationRoute && (
@@ -80,11 +101,15 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         <View style={styles.profileWrap}>
           <TouchableOpacity onPress={() => setMenuOpen((v) => !v)} style={styles.profileBtn} accessibilityLabel="Profile menu">
             <View style={styles.avatar}><Text style={styles.avatarText}>{initial}</Text></View>
-            <View style={styles.profileText}>
-              <Text style={typography.bodyBold} numberOfLines={1}>{userName}</Text>
-              <Text style={typography.caption}>{roleLabel}</Text>
-            </View>
-            <Feather name="chevron-down" size={14} color={colors.mutedText} />
+            {!isCompact && (
+              <>
+                <View style={styles.profileText}>
+                  <Text style={typography.bodyBold} numberOfLines={1}>{userName}</Text>
+                  <Text style={typography.caption}>{roleLabel}</Text>
+                </View>
+                <Feather name="chevron-down" size={14} color={colors.mutedText} />
+              </>
+            )}
           </TouchableOpacity>
 
           <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
@@ -106,6 +131,42 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
           </Modal>
         </View>
       </View>
+
+      <Modal transparent visible={drawerOpen} animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
+        <View style={styles.drawerRoot}>
+          <View style={styles.drawer}>
+            <View style={styles.drawerHeader}>
+              <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+              <Text style={styles.logo}>Melu'e Foundation</Text>
+              <TouchableOpacity onPress={() => setDrawerOpen(false)} style={styles.drawerClose} accessibilityLabel="Close menu">
+                <Feather name="x" size={20} color={colors.navyText} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.drawerList}>
+              {tabs.map((tab) => {
+                const active = tab === activeTab;
+                return (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[styles.drawerItem, active && styles.drawerItemActive]}
+                    onPress={() => handleTabPress(tab)}
+                  >
+                    <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>{tab}</Text>
+                    {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.drawerFooter}>
+              <TouchableOpacity style={styles.drawerLogout} onPress={handleLogout}>
+                <Feather name="log-out" size={16} color={colors.navyText} />
+                <Text style={styles.drawerLogoutText}>Log out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <Pressable style={styles.drawerOverlay} onPress={() => setDrawerOpen(false)} />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -121,9 +182,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     gap: spacing.lg,
   },
+  wrapCompact: { gap: spacing.sm, justifyContent: 'space-between' },
   logoBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   logoImage: { width: 28, height: 28 },
   logo: { fontWeight: '700', fontSize: 15, color: colors.navyText },
+  hamburgerBtn: { padding: spacing.xs },
   tabsScroll: { flex: 1 },
   tabs: { flexDirection: 'row', gap: spacing.sm },
   tab: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md },
@@ -175,4 +238,18 @@ const styles = StyleSheet.create({
   menuAvatar: { width: 40, height: 40, borderRadius: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, borderRadius: radius.md },
   menuItemText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
+
+  drawerRoot: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.4)' },
+  drawerOverlay: { flex: 1 },
+  drawer: { width: 300, backgroundColor: colors.bgCard, height: '100%', padding: spacing.md, flexDirection: 'column' },
+  drawerHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  drawerClose: { marginLeft: 'auto', padding: spacing.xs },
+  drawerList: { paddingVertical: spacing.sm, gap: spacing.xs },
+  drawerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  drawerItemActive: { backgroundColor: colors.primaryYellow, borderRadius: radius.md },
+  drawerItemText: { fontSize: 14, fontWeight: '500', color: colors.bodyText },
+  drawerItemTextActive: { fontWeight: '700', color: colors.navyText },
+  drawerFooter: { marginTop: 'auto', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
+  drawerLogout: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  drawerLogoutText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
 });
