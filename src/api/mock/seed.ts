@@ -1,25 +1,41 @@
 // src/api/mock/seed.ts
 //
-// Deterministic fixture data used to populate the demo database on first
-// load (and on every manual reset). Values mirror the domain types in
-// src/api/resources/types.ts plus the resource-specific interfaces.
+// Deterministic baseline data for the demo database.
+//
+// Business data (students, incidents, notes, summaries, goal bank, IUPs,
+// staff, conversations, observations, ...) intentionally starts EMPTY so
+// every record in demo mode comes from real actions through the mock API
+// (screen flows or POST requests).
+//
+// Only three system collections are pre-provisioned because the app cannot
+// function without them:
+//   - users        → without an account nobody can pass /auth/login
+//   - promptLevels → the trial-entry buttons on SCR-002 render from these
+//   - sysRoles     → RBAC permission screen needs roles to configure
 
 import type {
   EnrollmentDraft,
   ISODateTimeString,
   Notification,
   PromptLevel,
-  StudentSummary,
-  Trial,
-  UUID,
 } from '../resources/types';
 import type { ParentObservation } from '../resources/parent';
 import type { SensoryActivity } from '../resources/sensory';
 import type { TeacherScheduleEntry, Assignment } from '../resources/staffScheduling';
 import type { MasteryCheck } from '../resources/masteryChecks';
 
-export interface SeededStudent extends StudentSummary {
-  currentFocusStudentGoalId: UUID | null;
+export interface SeededStudent {
+  id: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  age: number;
+  programType: string;
+  therapyGroup: string;
+  status: string;
+  headshotUrl: string | null;
+  currentFocusStudentGoalId: string | null;
   goals: Array<{ id: string; name: string; status: string; progressPercent: number }>;
 }
 
@@ -34,16 +50,16 @@ export type DemoRole =
 
 /** Plain-text demo credentials (never use in production). */
 export interface DemoUser {
-  id: UUID;
+  id: string;
   name: string;
   email: string;
   password: string;
   role: DemoRole;
-  childIds: UUID[];
+  childIds: string[];
 }
 
 export interface DemoMessage {
-  id: UUID;
+  id: string;
   from: 'parent' | 'team';
   senderName: string;
   text: string;
@@ -51,7 +67,11 @@ export interface DemoMessage {
 }
 
 export interface DemoConversation {
-  id: UUID;
+  id: string;
+  studentId?: string;
+  studentName?: string;
+  parentName?: string;
+  teacherName?: string;
   recipient: string;
   role: string;
   unread: number;
@@ -60,90 +80,58 @@ export interface DemoConversation {
   messages: DemoMessage[];
 }
 
-export const seed = {
+// Demo login accounts. Emails are role-based so they are easy to remember:
+//   teacher@melue.org · coordinator@melue.org · pd@melue.org
+//   parent@melue.org · director@melue.org · admin@melue.org · sysadmin@melue.org
+// Password for all: demo1234
+// Explicit shape annotation keeps inference stable across circular imports.
+export interface SeedShape {
+  students: SeededStudent[];
+  promptLevels: PromptLevel[];
+  users: DemoUser[];
+  enrollments: EnrollmentDraft[];
+  conversations: DemoConversation[];
+  trials: Array<import('../resources/types').Trial>;
+  notifications: Notification[];
+  observations: ParentObservation[];
+  sensoryActivities: SensoryActivity[];
+  teacherSchedule: TeacherScheduleEntry[];
+  assignments: Assignment[];
+  masteryChecks: MasteryCheck[];
+  incidents: MockSeedIncident[];
+  sessionNotes: MockSeedNote[];
+  sessionSummaries: MockSeedSummary[];
+  goalBank: MockSeedGoal[];
+  iups: MockSeedIup[];
+  staffMembers: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status: string;
+    assignedStudents: string[];
+  }>;
+  sysRoles: Array<{ id: string; name: string; description: string }>;
+  auditLogs: MockSeedAuditLog[];
+  adminConfigs: Record<string, unknown>;
+  attendanceRecords: MockSeedAttendance[];
+  assessments: MockSeedAssessment[];
+}
+
+export const seed: SeedShape = {
   students: [
-    {
-      id: 'stu-001',
-      fullName: 'Aiden Rivera',
-      firstName: 'Aiden',
-      lastName: 'Rivera',
-      dateOfBirth: '2018-03-14',
-      age: 8,
-      programType: 'ABA',
-      therapyGroup: 'Sunrise',
-      status: 'active',
-      headshotUrl: null,
-      currentFocusStudentGoalId: 'goal-100',
-      goals: [
-        { id: 'goal-100', name: 'Requesting (mand)', status: 'in_progress', progressPercent: 64 },
-        { id: 'goal-101', name: 'Following 2-step instructions', status: 'active', progressPercent: 38 },
-        { id: 'goal-102', name: 'Toilet training', status: 'in_progress', progressPercent: 72 },
-      ],
-    },
-    {
-      id: 'stu-002',
-      fullName: 'Maya Chen',
-      firstName: 'Maya',
-      lastName: 'Chen',
-      dateOfBirth: '2019-07-22',
-      age: 7,
-      programType: 'PECS',
-      therapyGroup: 'Sunrise',
-      status: 'active',
-      headshotUrl: null,
-      currentFocusStudentGoalId: 'goal-200',
-      goals: [
-        { id: 'goal-200', name: 'Picture exchange initiation', status: 'active', progressPercent: 41 },
-        { id: 'goal-201', name: 'Sustained joint attention', status: 'in_progress', progressPercent: 55 },
-      ],
-    },
-    {
-      id: 'stu-003',
-      fullName: 'Lucas Osei',
-      firstName: 'Lucas',
-      lastName: 'Osei',
-      dateOfBirth: '2017-01-30',
-      age: 9,
-      programType: 'ABA',
-      therapyGroup: 'Pioneer',
-      status: 'active',
-      headshotUrl: null,
-      currentFocusStudentGoalId: 'goal-301',
-      goals: [
-        { id: 'goal-300', name: 'Labeling (tact)', status: 'mastered', progressPercent: 100 },
-        { id: 'goal-301', name: 'Conversational turn-taking', status: 'in_progress', progressPercent: 48 },
-      ],
-    },
-    {
-      id: 'stu-004',
-      fullName: 'Sofia Martinez',
-      firstName: 'Sofia',
-      lastName: 'Martinez',
-      dateOfBirth: '2020-11-05',
-      age: 5,
-      programType: 'PECS',
-      therapyGroup: 'Pioneer',
-      status: 'active',
-      headshotUrl: null,
-      currentFocusStudentGoalId: 'goal-400',
-      goals: [
-        { id: 'goal-400', name: 'Discrimination between symbols', status: 'active', progressPercent: 29 },
-      ],
-    },
-    {
-      id: 'stu-005',
-      fullName: 'Ethan Brooks',
-      firstName: 'Ethan',
-      lastName: 'Brooks',
-      dateOfBirth: '2016-05-18',
-      age: 10,
-      programType: 'ABA',
-      therapyGroup: 'Horizon',
-      status: 'paused',
-      headshotUrl: null,
-      currentFocusStudentGoalId: null,
-      goals: [],
-    },
+    { id: 'student-a', fullName: 'Aiden Rivera', firstName: 'Aiden', lastName: 'Rivera', dateOfBirth: '2018-03-15', age: 8, programType: 'ABA', therapyGroup: 'Sunrise', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [
+      { id: 'goal-1', name: 'Identify Colors', status: 'active', progressPercent: 45 },
+      { id: 'goal-2', name: 'Follow 2-Step Commands', status: 'active', progressPercent: 70 },
+    ] },
+    { id: 'student-b', fullName: 'Maya Chen', firstName: 'Maya', lastName: 'Chen', dateOfBirth: '2019-07-22', age: 7, programType: 'PECS', therapyGroup: 'Horizon', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [
+      { id: 'goal-3', name: 'Request Items', status: 'active', progressPercent: 60 },
+      { id: 'goal-4', name: 'Hand Washing Steps', status: 'active', progressPercent: 30 },
+    ] },
+    { id: 'student-c', fullName: 'Liam Okafor', firstName: 'Liam', lastName: 'Okafor', dateOfBirth: '2017-11-10', age: 8, programType: 'ABA', therapyGroup: 'Sunrise', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [
+      { id: 'goal-5', name: 'Turn Taking', status: 'active', progressPercent: 55 },
+    ] },
+    { id: 'student-d', fullName: 'Sofia Patel', firstName: 'Sofia', lastName: 'Patel', dateOfBirth: '2018-06-03', age: 8, programType: 'ABA', therapyGroup: 'Horizon', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [] },
   ] satisfies SeededStudent[],
 
   promptLevels: [
@@ -154,316 +142,62 @@ export const seed = {
   ] satisfies PromptLevel[],
 
   users: [
-    { id: 'user-1', name: 'Rosa Delgado', email: 'teacher@melue.org', password: 'demo1234', role: 'teacher', childIds: ['stu-001', 'stu-002'] },
+    { id: 'user-1', name: 'Rosa Delgado', email: 'teacher@melue.org', password: 'demo1234', role: 'teacher', childIds: [] },
     { id: 'user-2', name: 'Marcus Chen', email: 'coordinator@melue.org', password: 'demo1234', role: 'coordinator', childIds: [] },
     { id: 'user-3', name: 'Aisha Patel', email: 'pd@melue.org', password: 'demo1234', role: 'program_director', childIds: [] },
-    { id: 'user-4', name: 'Elena Martinez', email: 'parent@melue.org', password: 'demo1234', role: 'parent', childIds: ['stu-001', 'stu-004'] },
+    { id: 'user-4', name: 'Elena Martinez', email: 'parent@melue.org', password: 'demo1234', role: 'parent', childIds: ['student-a', 'student-b'] },
     { id: 'user-5', name: 'Dev Ops', email: 'sysadmin@melue.org', password: 'demo1234', role: 'system_admin', childIds: [] },
     { id: 'user-6', name: 'Director A', email: 'director@melue.org', password: 'demo1234', role: 'director', childIds: [] },
     { id: 'user-7', name: 'Admin A', email: 'admin@melue.org', password: 'demo1234', role: 'institutional_admin', childIds: [] },
   ] satisfies DemoUser[],
 
-  enrollments: [
-    {
-      id: 'enr-1',
-      currentStep: 'student_details',
-      studentId: null,
-      guardianId: null,
-      data: { firstName: 'Zoe', lastName: 'Bishop', programType: 'ABA' },
-      createdAt: '2026-08-18T09:00:00.000Z',
-      updatedAt: '2026-08-18T09:10:00.000Z',
-    },
-  ] satisfies EnrollmentDraft[],
+  enrollments: [] satisfies EnrollmentDraft[],
 
-  conversations: [
-    {
-      id: 'conv-1',
-      recipient: 'Ms. Rosa Delgado',
-      role: 'Lead Therapist',
-      unread: 2,
-      lastMessage: 'Great progress this week!',
-      time: '10m',
-      messages: [
-        { id: 'msg-1', from: 'team', senderName: 'Ms. Rosa Delgado', text: 'Great progress this week!', sentAt: '2026-08-20T09:00:00.000Z' },
-        { id: 'msg-2', from: 'parent', senderName: 'Parent A', text: 'Thank you, we noticed at home too!', sentAt: '2026-08-20T09:15:00.000Z' },
-      ],
-    },
-    {
-      id: 'conv-2',
-      recipient: 'Dr. Marcus Chen',
-      role: 'Coordinator',
-      unread: 0,
-      lastMessage: 'Please review the new IUP.',
-      time: '1d',
-      messages: [
-        { id: 'msg-3', from: 'team', senderName: 'Dr. Marcus Chen', text: 'Please review the new IUP.', sentAt: '2026-08-19T15:00:00.000Z' },
-      ],
-    },
-  ] satisfies DemoConversation[],
+  conversations: [] satisfies DemoConversation[],
 
-  trials: [
-    {
-      id: 'tr-1',
-      outcome: 'correct',
-      promptLabel: 'G',
-      promptLevelId: 'pl-3',
-      studentGoalId: 'goal-100',
-      studentGoalStepId: null,
-      clientEventId: 'evt-1',
-      loggedAt: '2026-08-20T09:02:00.000Z',
-    },
-    {
-      id: 'tr-2',
-      outcome: 'prompted',
-      promptLabel: 'PP',
-      promptLevelId: 'pl-2',
-      studentGoalId: 'goal-100',
-      studentGoalStepId: null,
-      clientEventId: 'evt-2',
-      loggedAt: '2026-08-20T09:05:00.000Z',
-    },
-    {
-      id: 'tr-3',
-      outcome: 'incorrect',
-      promptLabel: 'FP',
-      promptLevelId: 'pl-1',
-      studentGoalId: 'goal-101',
-      studentGoalStepId: null,
-      clientEventId: 'evt-3',
-      loggedAt: '2026-08-20T09:08:00.000Z',
-    },
-  ] satisfies Trial[],
+  trials: [] as Array<import('../resources/types').Trial>,
 
-  notifications: [
-    {
-      id: 'ntf-1',
-      type: 'observation',
-      payload: null,
-      read: false,
-      readAt: null,
-      createdAt: '2026-08-19T15:30:00.000Z',
-    },
-    {
-      id: 'ntf-2',
-      type: 'progress',
-      payload: { goalId: 'goal-300', name: 'Labeling (tact)' },
-      read: false,
-      readAt: null,
-      createdAt: '2026-08-18T11:00:00.000Z',
-    },
-    {
-      id: 'ntf-3',
-      type: 'message',
-      payload: null,
-      read: true,
-      readAt: '2026-08-17T08:45:00.000Z',
-      createdAt: '2026-08-17T08:40:00.000Z',
-    },
-  ] satisfies Notification[],
+  notifications: [] satisfies Notification[],
 
-  observations: [
-    {
-      id: 'obs-1',
-      date: '2026-08-19',
-      time: '09:15 AM',
-      category: 'Achievement',
-      text: 'Aiden independently requested his preferred snack during break.',
-      status: 'Acknowledged',
-      teamResponse: 'Great progress on mand training!',
-      therapistName: 'Ms. Thompson',
-      location: 'Sunrise Room',
-      duration: '5 min',
-    },
-    {
-      id: 'obs-2',
-      date: '2026-08-18',
-      time: '10:00 AM',
-      category: 'Behavior',
-      text: 'Maya had difficulty transitioning from the sensory room to circle time.',
-      status: 'Needs Response',
-      teamResponse: null,
-      therapistName: 'Mr. Delgado',
-      location: 'Sensory Room',
-      duration: '10 min',
-    },
-  ] satisfies ParentObservation[],
+  observations: [] satisfies ParentObservation[],
 
-  sensoryActivities: [
-    { id: 'sen-1', name: 'Ball pit', category: 'Proprioceptive', description: 'Deep pressure through full-body contact with balls.' },
-    { id: 'sen-2', name: 'Weighted blanket', category: 'Tactile', description: 'Calming input through even weight distribution.' },
-    { id: 'sen-3', name: 'Swing', category: 'Vestibular', description: 'Rhythmic swinging to regulate arousal levels.' },
-    { id: 'sen-4', name: 'Chew necklaces', category: 'Oral motor', description: 'Provides jaw input for sensory seekers.' },
-  ] satisfies SensoryActivity[],
+  sensoryActivities: [] satisfies SensoryActivity[],
 
-  teacherSchedule: [
-    {
-      id: 'sch-1',
-      teacherName: 'Ms. Thompson',
-      day: 'Monday',
-      blockName: 'Block 1',
-      stationName: 'Station A',
-      roomName: 'Sunrise Room',
-      status: 'confirmed',
-    },
-    {
-      id: 'sch-2',
-      teacherName: 'Mr. Delgado',
-      day: 'Monday',
-      blockName: 'Block 2',
-      stationName: 'Station B',
-      roomName: 'Horizon Room',
-      status: 'confirmed',
-    },
-    {
-      id: 'sch-3',
-      teacherName: 'Ms. Thompson',
-      day: 'Wednesday',
-      blockName: 'Block 1',
-      stationName: 'Station A',
-      roomName: 'Sunrise Room',
-      status: 'pending',
-    },
-  ] satisfies TeacherScheduleEntry[],
+  teacherSchedule: [] satisfies TeacherScheduleEntry[],
 
-  assignments: [
-    {
-      id: 'asn-1',
-      teacherId: 'stf-1',
-      studentIds: ['stu-001', 'stu-002'],
-      blockId: 'blk-1',
-      stationId: 'stn-1',
-      scheduledDate: '2026-08-20',
-      status: 'confirmed',
-    },
-  ] satisfies Assignment[],
+  assignments: [] satisfies Assignment[],
 
-  masteryChecks: [
-    {
-      id: 'mc-1',
-      studentGoalId: 'goal-300',
-      status: 'pending',
-      requestedByName: 'Ms. Thompson',
-      requestedAt: '2026-08-19T14:00:00.000Z',
-      approvedAt: null,
-    },
-    {
-      id: 'mc-2',
-      studentGoalId: 'goal-100',
-      status: 'approved',
-      requestedByName: 'Mr. Delgado',
-      requestedAt: '2026-08-15T10:00:00.000Z',
-      approvedAt: '2026-08-16T09:00:00.000Z',
-    },
-  ] satisfies MasteryCheck[],
+  masteryChecks: [] satisfies MasteryCheck[],
 
-  // New seeded collections for demo persistence
   incidents: [
-    {
-      id: 'inc-1',
-      studentId: 'stu-001',
-      sessionId: 'sess-1',
-      date: '2026-08-19',
-      time: '10:15 AM',
-      location: 'Therapy Room',
-      behavior: 'Unable to remain seated',
-      behaviorDefinition: 'Student leaves designated seat/area without permission during instruction.',
-      frequency: 'Occasionally',
-      intensity: 'Mild',
-      category: 'Not sitting still/Hyperactivity',
-      antecedent: 'Demand placed',
-      consequence: 'Redirected',
-      notes: 'Triggered when asked to transition from preferred activity.',
-      recordedBy: 'Ms. Rosa Delgado',
-      createdAt: '2026-08-19T10:20:00.000Z',
-    },
-  ],
+    { id: 'inc-1', studentId: 'student-a', sessionId: 'sess-1', date: '08/01/2026', time: '9:12 AM', location: 'Room 2', behavior: 'Tantrum', behaviorDefinition: 'Crying and screaming on the floor', frequency: '2 times', intensity: 'High', category: 'Disruptive', antecedent: 'Transitions', consequence: 'Verbal redirection', notes: '', recordedBy: 'Rosa Delgado', createdAt: '2026-08-01T09:12:00Z' },
+    { id: 'inc-2', studentId: 'student-a', sessionId: 'sess-1', date: '08/01/2026', time: '10:40 AM', location: 'Playground', behavior: 'Aggression', behaviorDefinition: 'Hitting peer', frequency: '1 time', intensity: 'High', category: 'Physical', antecedent: 'Peer proximity', consequence: 'Time-out', notes: '', recordedBy: 'Rosa Delgado', createdAt: '2026-08-01T10:40:00Z' },
+    { id: 'inc-3', studentId: 'student-b', sessionId: 'sess-2', date: '08/02/2026', time: '10:15 AM', location: 'Library', behavior: 'Non-compliance', behaviorDefinition: 'Refusing to follow instruction', frequency: '2 times', intensity: 'Low', category: 'Verbal', antecedent: 'Quiet time prompt', consequence: 'Guided choices', notes: '', recordedBy: 'Rosa Delgado', createdAt: '2026-08-02T10:15:00Z' },
+    { id: 'inc-4', studentId: 'student-a', sessionId: 'sess-3', date: '08/10/2026', time: '11:30 AM', location: 'Room 2', behavior: 'Elopement', behaviorDefinition: 'Running out of the room', frequency: '1 time', intensity: 'Medium', category: 'Safety concerns', antecedent: 'Demand placed', consequence: 'Physical prompt', notes: '', recordedBy: 'Rosa Delgado', createdAt: '2026-08-10T11:30:00Z' },
+    { id: 'inc-5', studentId: 'student-b', sessionId: 'sess-3', date: '08/15/2026', time: '9:45 AM', location: 'Sensory Room', behavior: 'Self-injury', behaviorDefinition: 'Head hitting', frequency: '3 times', intensity: 'High', category: 'Safety concerns', antecedent: 'Overstimulation', consequence: 'Sensory break', notes: '', recordedBy: 'Rosa Delgado', createdAt: '2026-08-15T09:45:00Z' },
+  ] satisfies MockSeedIncident[],
 
-  sessionNotes: [
-    {
-      id: 'note-1',
-      sessionId: 'sess-1',
-      studentId: 'stu-001',
-      teacher: 'Ms. Rosa Delgado',
-      status: 'completed',
-      bodyMarkdown: 'Great session with Aiden. Showed progress on Requesting (mand) skill. Independent on 64% of trials.',
-      submittedAt: '2026-08-20T12:00:00.000Z',
-      draft: false,
-    },
-  ],
+  sessionNotes: [] satisfies MockSeedNote[],
 
-  sessionSummaries: [
-    {
-      id: 'sum-1',
-      sessionId: 'sess-1',
-      studentIds: ['stu-001'],
-      station: 'Station 1',
-      teacher: 'Ms. Rosa Delgado',
-      startedAt: '2026-08-20T09:00:00.000Z',
-      endedAt: '2026-08-20T10:30:00.000Z',
-      status: 'pending_review',
-      trialsTotal: 25,
-      trialsCorrect: 15,
-      independencePercent: 60,
-      notes: 'Solid work on goal mand. Student needed redirection during transitions.',
-      incidentCount: 1,
-      createdAt: '2026-08-20T10:35:00.000Z',
-    },
-  ],
+  sessionSummaries: [] satisfies MockSeedSummary[],
 
-  goalBank: [
-    {
-      id: 'goal-100',
-      name: 'Requesting (mand)',
-      domain: 'Communication',
-      description: 'Student initiates requests for desired items, activities, or escape using spoken words, gestures, or signs.',
-      masteryCriteria: '100% independence across 3 consecutive sessions',
-      status: 'active',
-      createdAt: '2026-08-01T00:00:00.000Z',
-    },
-    {
-      id: 'goal-101',
-      name: 'Following 2-step instructions',
-      domain: 'Cognition',
-      description: 'Student follows verbal instructions that require 2 sequential actions.',
-      masteryCriteria: '100% independence',
-      status: 'active',
-      createdAt: '2026-08-01T00:00:00.000Z',
-    },
-    {
-      id: 'goal-102',
-      name: 'Toilet training',
-      domain: 'Self-Help',
-      description: 'Student uses toilet independently for urination and defecation.',
-      masteryCriteria: '90% success across 5 opportunities',
-      status: 'active',
-      createdAt: '2026-08-01T00:00:00.000Z',
-    },
-  ],
+  goalBank: [] satisfies MockSeedGoal[],
 
-  iups: [
-    {
-      id: 'iup-1',
-      studentId: 'stu-001',
-      status: 'active',
-      createdAt: '2026-08-10T00:00:00.000Z',
-      updatedAt: '2026-08-10T00:00:00.000Z',
-      goals: ['goal-100', 'goal-102'],
-      interventionStrategies: ['Differential reinforcement of requesting', 'Visual preference cues'],
-      reinforcementStrategies: ['Token economy', 'Preferred snacks'],
-      antecedentManipulations: ['Provide choice before demand', 'Check for sensory needs'],
-    },
-  ],
+  iups: [] satisfies MockSeedIup[],
 
   staffMembers: [
-    {
-      id: 'stf-1',
-      name: 'Rosa Delgado',
-      email: 'teacher@melue.org',
-      role: 'teacher',
-      status: 'active',
-      assignedStudents: ['stu-001', 'stu-002'],
-    },
-  ],
+    { id: 'staff-1', name: 'Rosa Delgado', email: 'teacher@melue.org', role: 'teacher', status: 'active', assignedStudents: ['student-a', 'student-b'] },
+    { id: 'staff-2', name: 'Marcus Chen', email: 'coordinator@melue.org', role: 'coordinator', status: 'active', assignedStudents: [] },
+    { id: 'staff-3', name: 'Jared Cruz', email: 'jared@melue.org', role: 'teacher', status: 'active', assignedStudents: ['student-c'] },
+    { id: 'staff-4', name: 'Jeah Torres', email: 'jeah@melue.org', role: 'teacher', status: 'active', assignedStudents: ['student-d'] },
+  ] satisfies Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status: string;
+    assignedStudents: string[];
+  }>,
 
   sysRoles: [
     { id: 'role-1', name: 'system_admin', description: 'Full administrative access' },
@@ -473,23 +207,9 @@ export const seed = {
     { id: 'role-5', name: 'teacher', description: 'In-session data collection' },
   ],
 
-  auditLogs: [],
+  auditLogs: [] satisfies MockSeedAuditLog[],
 
   adminConfigs: {
-    trialLoggingFormat: {
-      promptLevels: [
-        { id: 'pl-1', label: 'FP', color: '#E5484D', order: 1 },
-        { id: 'pl-2', label: 'PP', color: '#F5A623', order: 2 },
-        { id: 'pl-3', label: 'G', color: '#30A46C', order: 3 },
-        { id: 'pl-4', label: '+', color: '#0091FF', order: 4 },
-      ],
-    },
-    abcLists: {
-      locations: ['Therapy Room', 'Snack Place', 'Playground', 'Sensory Room', 'Circle Time'],
-      behaviors: ['Unable to remain seated', 'Biting others', 'Flopping', 'Screaming'],
-      antecedents: ['Demand placed', 'Transition', 'Item removed'],
-      consequences: ['Redirected', 'Ignored', 'Item given'],
-    },
     goalDomains: [
       { id: 'gd-1', name: 'Communication', description: 'Expressive and receptive language skills' },
       { id: 'gd-2', name: 'Social', description: 'Peer interaction and social skills' },
@@ -499,7 +219,47 @@ export const seed = {
     ],
   },
 
-  attendanceRecords: [],
+  attendanceRecords: [] satisfies MockSeedAttendance[],
 
-  assessments: [],
+  assessments: [] satisfies MockSeedAssessment[],
+}
+
+// Local structural aliases so the empty business collections stay typed
+// without importing the mock db module (which imports this file).
+type MockSeedIncident = {
+  id: string; studentId: string; sessionId?: string; date: string; time: string;
+  location: string; behavior: string; behaviorDefinition: string; frequency: string;
+  intensity: string; category: string; antecedent: string; consequence: string;
+  notes: string; recordedBy: string; createdAt: string;
+};
+type MockSeedNote = {
+  id: string; sessionId: string; studentId: string; teacher: string;
+  status: string; bodyMarkdown: string; submittedAt?: string; draft: boolean;
+};
+type MockSeedSummary = {
+  id: string; sessionId: string; studentIds: string[]; station: string; teacher: string;
+  startedAt: string; endedAt: string; status: string; trialsTotal: number; trialsCorrect: number;
+  independencePercent: number; notes: string; incidentCount: number; createdAt: string;
+};
+type MockSeedGoal = {
+  id: string; name: string; domain: string; description: string;
+  masteryCriteria: string; status: string; createdAt: string;
+};
+type MockSeedIup = {
+  id: string; studentId: string; status: string; createdAt: string; updatedAt: string;
+  goals: string[]; interventionStrategies: string[]; reinforcementStrategies: string[];
+  antecedentManipulations: string[];
+};
+type MockSeedAuditLog = {
+  id: string; action: string; resource: string; resourceId: string; user: string;
+  timestamp: string; details?: Record<string, unknown>;
+};
+type MockSeedAttendance = {
+  id: string; sessionId: string; personId: string;
+  personType: 'student' | 'therapist' | 'support_staff';
+  status: string; note?: string; loggedAt: string;
+};
+type MockSeedAssessment = {
+  id: string; studentId: string; type: 'skills' | 'behavior' | 'preference' | 'sensory';
+  status: string; data: Record<string, unknown>; createdAt: string; updatedAt: string;
 };

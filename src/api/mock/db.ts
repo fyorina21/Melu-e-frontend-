@@ -145,7 +145,7 @@ export interface MockAssessment {
 
 export interface MockAdminConfig {
   id: string;
-  value: Record<string, unknown>;
+  value: unknown;
 }
 
 export interface MockDatabaseShape {
@@ -178,7 +178,7 @@ export interface MockDatabaseShape {
 type CollectionName = keyof MockDatabaseShape;
 type MockItem = MockDatabaseShape[CollectionName][number];
 
-const DB_KEY = 'melue.mock.db.v1';
+const DB_KEY = 'melue.mock.db.v2';
 
 function cloneSeed(): MockDatabaseShape {
   return {
