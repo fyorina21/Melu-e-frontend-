@@ -9,29 +9,7 @@ import { useBreakpoint } from '../../utils/useBreakpoint';
 import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
 
-const PARENT_NAME = 'Parent A';
-const CHILD_NAME = 'Student A';
-const CHILD_AGE = 6;
-const TEACHER = 'Teacher A';
-const INDEPENDENCE = 72;
-const SESSIONS_DONE = 4;
-const SESSIONS_TOTAL = 5;
-
 const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-const recentUpdates = [
-  { id: 1, icon: '✅', iconBg: '#DCFCE7', text: 'Session completed — Goal: Identify Colors mastered', time: '2h ago' },
-  { id: 2, icon: '📋', iconBg: '#E0F2FE', text: `Session summary submitted by ${TEACHER}`, time: 'Yesterday' },
-  { id: 3, icon: '🎯', iconBg: '#FFEDD5', text: 'New goal assigned: Follow 2-step commands', time: '2 days ago' },
-  { id: 4, icon: '💬', iconBg: '#FAE8FF', text: `${TEACHER} left a note on today's session`, time: '3 days ago' },
-  { id: 5, icon: '📊', iconBg: '#FEF9C3', text: 'Monthly progress report is ready to view', time: '1 week ago' },
-];
-
-const initialNotifications = [
-  { id: 1, text: 'Assessment results ready for review' },
-  { id: 2, text: 'IUP has been updated — please review' },
-  { id: 3, text: `Message from ${TEACHER}` },
-];
 
 const quickActions = [
   { label: 'View Progress', tab: 'Progress', iconBg: '#F0F9FF', iconColor: '#38BDF8', icon: 'bar-chart-2' as const },
@@ -78,8 +56,10 @@ function ProgressRing({ percent, size = 104, stroke = 10 }: { percent: number; s
 }
 
 export default function ParentDashboardScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'ParentDashboard'>) {
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [recentUpdates, setRecentUpdates] = useState<Array<{ id: number; icon: string; iconBg: string; text: string; time: string }>>([]);
+  const [notifications, setNotifications] = useState<Array<{ id: number; text: string }>>([]);
   const [dash, setDash] = useState<{
+    parentName: string;
     childName: string;
     childAge: number;
     childProgram: string;
@@ -97,23 +77,46 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
     try {
       const res = await parentApi.dashboard();
       setDash({
-        childName: res.childSummary?.fullName ?? CHILD_NAME,
-        childAge: res.childSummary?.age ?? CHILD_AGE,
+        parentName: res.parentName ?? 'Parent',
+        childName: res.childSummary?.fullName ?? 'Student',
+        childAge: res.childSummary?.age ?? 0,
         childProgram: res.childSummary?.programType ?? 'ABA',
-        independence: res.independencePercent ?? INDEPENDENCE,
-        sessionsThisWeek: res.sessionsThisWeek ?? SESSIONS_DONE,
-        sessionsTotal: res.sessionsTotal ?? SESSIONS_TOTAL,
+        independence: res.independencePercent ?? 0,
+        sessionsThisWeek: res.sessionsThisWeek ?? 0,
+        sessionsTotal: res.sessionsTotal ?? 0,
         latestMessage: res.latestMessage,
         unreadCount: (res as any).unreadCount ?? 0,
       });
+      // Build recent updates from real data
+      const updates: Array<{ id: number; icon: string; iconBg: string; text: string; time: string }> = [];
+      let uid = 1;
+      const goals = res.childSummary?.goals ?? [];
+      for (const g of goals) {
+        if (g.status === 'mastered') {
+          updates.push({ id: uid++, icon: '✅', iconBg: '#DCFCE7', text: `Goal mastered: ${g.name}`, time: 'Recent' });
+        } else if (g.progressPercent > 0) {
+          updates.push({ id: uid++, icon: '📊', iconBg: '#FEF9C3', text: `Goal progress: ${g.name} at ${g.progressPercent}%`, time: 'Recent' });
+        }
+      }
+      if (res.sessionsThisWeek > 0) {
+        updates.push({ id: uid++, icon: '📋', iconBg: '#E0F2FE', text: `${res.sessionsThisWeek} sessions completed this week`, time: 'This week' });
+      }
+      setRecentUpdates(updates.length > 0 ? updates : [{ id: 1, icon: '📋', iconBg: '#E0F2FE', text: 'No recent updates yet', time: '' }]);
+
+      // Build notifications from unread messages
+      const notifs: Array<{ id: number; text: string }> = [];
+      if (res.unreadCount > 0) notifs.push({ id: 1, text: `${res.unreadCount} unread message(s)` });
+      if (res.latestMessage) notifs.push({ id: 2, text: `Latest: ${res.latestMessage.from} — ${res.latestMessage.preview}` });
+      setNotifications(notifs);
     } catch (err) {
       setDash({
-        childName: CHILD_NAME,
-        childAge: CHILD_AGE,
+        parentName: 'Parent',
+        childName: 'Student',
+        childAge: 0,
         childProgram: 'ABA',
-        independence: INDEPENDENCE,
-        sessionsThisWeek: SESSIONS_DONE,
-        sessionsTotal: SESSIONS_TOTAL,
+        independence: 0,
+        sessionsThisWeek: 0,
+        sessionsTotal: 0,
         latestMessage: null,
         unreadCount: 0,
       });
@@ -128,11 +131,12 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
 
   const cardW = (key: 'child' | 'updates' | 'actions' | 'notifs' | 'message') => ({ flex: cardFlex[bp][key] });
 
-  const childName = dash?.childName ?? CHILD_NAME;
-  const childAge = dash?.childAge ?? CHILD_AGE;
-  const independence = dash?.independence ?? INDEPENDENCE;
-  const sessionsDone = dash?.sessionsThisWeek ?? SESSIONS_DONE;
-  const sessionsTotal = dash?.sessionsTotal ?? SESSIONS_TOTAL;
+  const parentName = dash?.parentName ?? 'Parent';
+  const childName = dash?.childName ?? 'Student';
+  const childAge = dash?.childAge ?? 0;
+  const independence = dash?.independence ?? 0;
+  const sessionsDone = dash?.sessionsThisWeek ?? 0;
+  const sessionsTotal = dash?.sessionsTotal ?? 0;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -141,7 +145,7 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={[styles.mainCol, bp === 'desktop' && styles.mainColDesktop]}>
           <View style={styles.mobileWelcome}>
-            <Text style={styles.mobileWelcomeTitle}>Welcome back, {PARENT_NAME} 👋</Text>
+            <Text style={styles.mobileWelcomeTitle}>Welcome back, {parentName} 👋</Text>
             <Text style={styles.mobileWelcomeDate}>{today}</Text>
           </View>
 
@@ -238,7 +242,7 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
                         {dash.latestMessage.preview}
                       </>
                     ) : (
-                      `${TEACHER}: ${childName} had a great session today...`
+                      'No messages yet'
                     )}
                   </Text>
                 </View>

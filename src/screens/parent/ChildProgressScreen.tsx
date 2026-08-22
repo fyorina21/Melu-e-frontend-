@@ -10,12 +10,6 @@ import { downloadTextFile } from '../../utils/webExport';
 import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
 
-const CHILD_NAME = 'Student A';
-const CHILD_AGE = 6;
-const PROGRAM = 'Regular';
-const GROUP = 'Basic Therapy';
-const CHILD_ID = 'stu-001';
-
 type GoalStatus = 'Active' | 'Mastered' | 'In Progress';
 
 interface Goal {
@@ -80,50 +74,7 @@ interface ChildProgressData {
   iupStation2: string[];
 }
 
-const DEMO_DATA: ChildProgressData = {
-  childName: 'Student A',
-  age: 6,
-  program: 'Regular',
-  group: 'Basic Therapy',
-  goals: [
-    { id: 'colors', name: 'Learning Colors', pct: 85, status: 'Mastered', updated: 'Aug 12, 2026' },
-    { id: 'instructions', name: 'Following Instructions', pct: 72, status: 'Active', updated: 'Aug 14, 2026' },
-    { id: 'counting', name: 'Counting Numbers', pct: 60, status: 'In Progress', updated: 'Aug 13, 2026' },
-    { id: 'eyecontact', name: 'Making Eye Contact', pct: 44, status: 'Active', updated: 'Aug 11, 2026' },
-  ],
-  sessions: [
-    { id: '1', date: 'Aug 14, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 24, independence: 82, time: '9:00 AM', goals: ['Learning Colors', 'Following Instructions'], behavior: 'None', notes: 'Student A did really well today! Great focus throughout the whole session.' },
-    { id: '2', date: 'Aug 12, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 22, independence: 76, time: '9:00 AM', goals: ['Counting Numbers', 'Making Eye Contact'], behavior: 'None', notes: 'Solid effort with counting — kept going even when it was tricky!' },
-    { id: '3', date: 'Aug 11, 2026', teacher: 'Mr. Santos', duration: '40 min', trials: 20, independence: 68, time: '10:15 AM', goals: ['Following Instructions', 'Making Eye Contact'], behavior: '1 incident — brief moment of frustration, resolved quickly', notes: 'Student A needed a bit more support today, but bounced back really well.' },
-    { id: '4', date: 'Aug 8, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 26, independence: 74, time: '9:00 AM', goals: ['Learning Colors', 'Counting Numbers'], behavior: 'None', notes: 'A great session — Student A was very engaged with the color activities.' },
-    { id: '5', date: 'Aug 7, 2026', teacher: 'Mr. Santos', duration: '40 min', trials: 18, independence: 61, time: '10:15 AM', goals: ['Following Instructions'], behavior: 'None', notes: 'Steady progress. Student A is building confidence with instructions.' },
-    { id: '6', date: 'Aug 5, 2026', teacher: 'Ms. Rivera', duration: '45 min', trials: 23, independence: 70, time: '9:00 AM', goals: ['Learning Colors', 'Making Eye Contact'], behavior: '1 incident — sensory moment, lasted under a minute', notes: 'Overall a positive session. Great improvement in eye contact!' },
-  ],
-  sessionsThisMonth: 16,
-  goalsMastered: 2,
-  totalTrials: 126,
-  averageIndependence: 72,
-  behaviorTrends: [
-    { month: 'Mar', incidents: 8 },
-    { month: 'Apr', incidents: 7 },
-    { month: 'May', incidents: 5 },
-    { month: 'Jun', incidents: 4 },
-    { month: 'Jul', incidents: 5 },
-    { month: 'Aug', incidents: 3 },
-  ],
-  behaviorSummary: 'This month: 3 incidents recorded (improving from 8 last month).',
-  iupStation1: ['Learning Colors', 'Following Instructions'],
-  iupStation2: ['Counting Numbers', 'Making Eye Contact'],
-};
 
-const DEMO_SUMMARIES: Record<string, SessionSummary> = {
-  '1': { id: '1', date: 'Aug 14, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 82, time: '9:00 AM', goals: ['Learning Colors', 'Following Instructions'], behavior: 'None', notes: 'Student A did really well today! Great focus throughout the whole session.' },
-  '2': { id: '2', date: 'Aug 12, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 76, time: '9:00 AM', goals: ['Counting Numbers', 'Making Eye Contact'], behavior: 'None', notes: 'Solid effort with counting — kept going even when it was tricky!' },
-  '3': { id: '3', date: 'Aug 11, 2026', teacher: 'Mr. Santos', duration: '40 min', independence: 68, time: '10:15 AM', goals: ['Following Instructions', 'Making Eye Contact'], behavior: '1 incident — brief moment of frustration, resolved quickly', notes: 'Student A needed a bit more support today, but bounced back really well.' },
-  '4': { id: '4', date: 'Aug 8, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 74, time: '9:00 AM', goals: ['Learning Colors', 'Counting Numbers'], behavior: 'None', notes: 'A great session — Student A was very engaged with the color activities.' },
-  '5': { id: '5', date: 'Aug 7, 2026', teacher: 'Mr. Santos', duration: '40 min', independence: 61, time: '10:15 AM', goals: ['Following Instructions'], behavior: 'None', notes: 'Steady progress. Student A is building confidence with instructions.' },
-  '6': { id: '6', date: 'Aug 5, 2026', teacher: 'Ms. Rivera', duration: '45 min', independence: 70, time: '9:00 AM', goals: ['Learning Colors', 'Making Eye Contact'], behavior: '1 incident — sensory moment, lasted under a minute', notes: 'Overall a positive session. Great improvement in eye contact!' },
-};
 
 function goalBarColor(pct: number) {
   if (pct >= 80) return '#4ADE80';
@@ -258,7 +209,14 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
 
   const load = useCallback(async () => {
     try {
-      const res: any = await parentApi.childProgress(CHILD_ID);
+      // Get the child ID from the parent dashboard
+      const dashRes: any = await parentApi.dashboard();
+      const childId = dashRes.childSummary?.id;
+      if (!childId) {
+        setData(null);
+        return;
+      }
+      const res: any = await parentApi.childProgress(childId);
       const goals: Goal[] = (res.goals || []).map((g: any) => ({
         id: String(g.id ?? g.name),
         name: g.friendlyName ?? g.name ?? 'Goal',
@@ -279,23 +237,23 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
         notes: s.notes ?? '',
       }));
       setData({
-        childName: res.childName ?? CHILD_NAME,
-        age: Number(res.age ?? CHILD_AGE),
-        program: res.program ?? PROGRAM,
-        group: res.group ?? GROUP,
-        goals: goals.length ? goals : DEMO_DATA.goals,
-        sessions: sessions.length ? sessions : DEMO_DATA.sessions,
-        sessionsThisMonth: Number(res.sessionsThisMonth ?? 16),
+        childName: res.childName ?? 'Student',
+        age: Number(res.age ?? 0),
+        program: res.program ?? 'ABA',
+        group: res.group ?? '',
+        goals,
+        sessions,
+        sessionsThisMonth: Number(res.sessionsThisMonth ?? 0),
         goalsMastered: Number(res.goalsMastered ?? goals.filter((g) => g.status === 'Mastered').length),
-        totalTrials: Number(res.totalTrials ?? 126),
-        averageIndependence: Number(res.averageIndependence ?? 72),
-        behaviorTrends: res.behaviorTrends?.length ? res.behaviorTrends : DEMO_DATA.behaviorTrends,
-        behaviorSummary: res.behaviorSummary ?? DEMO_DATA.behaviorSummary,
-        iupStation1: res.iupStation1?.length ? res.iupStation1 : DEMO_DATA.iupStation1,
-        iupStation2: res.iupStation2?.length ? res.iupStation2 : DEMO_DATA.iupStation2,
+        totalTrials: Number(res.totalTrials ?? 0),
+        averageIndependence: Number(res.averageIndependence ?? 0),
+        behaviorTrends: res.behaviorTrends ?? [],
+        behaviorSummary: res.behaviorSummary ?? 'No data yet.',
+        iupStation1: res.iupStation1 ?? [],
+        iupStation2: res.iupStation2 ?? [],
       });
     } catch (err) {
-      setData(DEMO_DATA);
+      setData(null);
     }
   }, []);
 
@@ -316,7 +274,11 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
         notes: res.parentFriendlyNote ?? res.notes ?? session.notes ?? '',
       });
     } catch (err) {
-      setSelectedSession(DEMO_SUMMARIES[session.id] ?? DEMO_SUMMARIES['1']);
+      setSelectedSession({
+        ...session,
+        goals: session.goals,
+        notes: session.notes || 'No notes available.',
+      });
     }
   };
 

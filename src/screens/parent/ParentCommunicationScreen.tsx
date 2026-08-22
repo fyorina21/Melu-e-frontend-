@@ -69,6 +69,14 @@ interface TeacherThreadMessage {
   attachments?: { id: string; name: string }[];
 }
 
+const PARENT_TEMPLATES = [
+  { label: 'Thank you message', text: 'Thank you so much for the update! We really appreciate the care your team puts in.' },
+  { label: 'Question about progress', text: 'Hi, I was wondering about my child\'s progress this week. Could you share an update?' },
+  { label: 'Availability update', text: 'Just a heads up — my child will be absent on the following dates: [dates]. Please let me know if this affects anything.' },
+];
+
+const PARENT_LOG: LogEntry[] = [];
+
 const TEACHER_COLOR = '#38BDF8';
 const DIRECTOR_COLOR = '#A855F7';
 const COORDINATOR_COLOR = '#FBBF24';
@@ -105,8 +113,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
       setConversations(data);
       if (!activeId && data.length) setActiveId(data[0].id);
     } catch (err) {
-      setConversations(DEMO_TEACHER_CONVERSATIONS);
-      if (!activeId) setActiveId(DEMO_TEACHER_CONVERSATIONS[0].id);
+      setConversations([]);
     }
   }, [activeId]);
 
@@ -117,8 +124,8 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
   useEffect(() => {
     if (!activeId) return;
     getTeacherConversationThread(activeId)
-      .then(({ data }) => setThread(data.messages))
-      .catch(() => setThread(DEMO_TEACHER_THREAD));
+      .then(({ data }) => setThread(data.messages ?? []))
+      .catch(() => setThread([]));
   }, [activeId]);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
@@ -286,7 +293,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
 
               <ScrollView contentContainerStyle={styles.messagesList}>
                 {thread.map((m) => {
-                  const isMe = m.sender === 'teacher';
+                  const isMe = m.sender === 'teacher' || m.sender === 'team' || (m as any).from === 'team' || (m as any).from === 'teacher';
                   return (
                     <View key={m.id} style={[styles.msgWrap, isMe ? styles.msgWrapMe : styles.msgWrapOther]}>
                       <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleOther]}>
@@ -329,15 +336,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
   );
 }
 
-const DEMO_TEACHER_CONVERSATIONS: TeacherConversation[] = [
-  { id: 'tcon-1', studentName: 'Aiden Smith', parentName: 'Sarah Smith', lastMessagePreview: 'Auto-shared progress report card...', unreadCount: 1, resolved: false },
-  { id: 'tcon-2', studentName: 'Emma Watson', parentName: 'John Watson', lastMessagePreview: 'Perfect, thank you!', unreadCount: 0, resolved: false },
-];
 
-const DEMO_TEACHER_THREAD: TeacherThreadMessage[] = [
-  { id: 'tmsg-1', sender: 'parent', senderLabel: 'Sarah Smith (Parent)', text: 'Hello! How did Aiden do during circle time today?', timestamp: 'Yesterday 3:00 PM' },
-  { id: 'tmsg-2', sender: 'teacher', senderLabel: 'Teacher A', text: 'He did fantastic! Aiden sat for the entire 15 minutes and responded to color identification prompts.', timestamp: 'Yesterday 4:00 PM' },
-];
 
 // =========================================================================
 // PARENT WORKSPACE PANEL
@@ -371,8 +370,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
       setConversations(mapped);
       if (mapped.length) setSelectedId(mapped[0].id);
     } catch (err) {
-      setConversations(DEMO_PARENT_CONVERSATIONS);
-      setSelectedId(DEMO_PARENT_CONVERSATIONS[0].id);
+      setConversations([]);
     }
   }, []);
 
@@ -394,7 +392,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
         }));
         setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, messages: msgs } : c)));
       })
-      .catch(() => {});
+      .catch(() => setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, messages: [] } : c))));
   }, [selectedId]);
 
   useEffect(() => {
@@ -524,7 +522,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
               ) : (
                 <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
                   <Text style={typography.bodyBold}>Past Reports & Logs Shared</Text>
-                  {DEMO_PARENT_LOG.map((log, idx) => (
+                  {PARENT_LOG.map((log: any, idx: number) => (
                     <View key={idx} style={styles.logCard}>
                       <View style={{ flex: 1 }}>
                         <Text style={typography.bodyBold}>{log.preview}</Text>
@@ -547,7 +545,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
         <Pressable style={styles.menuOverlay} onPress={() => setShowTemplateMenu(false)}>
           <View style={styles.menuCard}>
             <Text style={styles.menuTitle}>Standard Responses</Text>
-            {DEMO_PARENT_TEMPLATES.map((t, i) => (
+            {PARENT_TEMPLATES.map((t, i) => (
               <TouchableOpacity key={i} style={styles.menuItem} onPress={() => applyTemplate(t.text)}><Text style={styles.menuItemText}>{t.label}</Text></TouchableOpacity>
             ))}
           </View>
@@ -584,28 +582,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
   );
 }
 
-const DEMO_PARENT_CONVERSATIONS: ParentConversation[] = [
-  {
-    id: 'pcon-1',
-    recipient: 'Teacher A',
-    role: 'Teacher',
-    avatarLetter: 'T',
-    lastMessage: 'Aiden had an excellent session...',
-    time: 'Today',
-    unread: 1,
-    messages: [
-      { from: 'team', senderName: 'Teacher A', senderRole: 'Teacher', text: 'Good morning! Aiden had a great session today. He independently identified all 5 colors.', time: '9:15 AM' },
-    ],
-  },
-];
 
-const DEMO_PARENT_LOG: LogEntry[] = [
-  { date: '2026-08-18', from: 'Teacher A', preview: 'Color identification milestone report', status: 'Read' },
-];
-
-const DEMO_PARENT_TEMPLATES = [
-  { label: 'Thank you message', text: 'Thank you so much for the update! We really appreciate the care your team puts into Aiden.' },
-];
 
 // =========================================================================
 // MAIN EXPORT CONTROLLER
