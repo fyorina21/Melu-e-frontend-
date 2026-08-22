@@ -10,7 +10,6 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { openPrintWindow } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
@@ -164,7 +163,6 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'AbllsNeedMap'>;
 export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
   const studentName = DEMO_STUDENT_NAME[studentId] || 'Student A';
-  const [exportContent, setExportContent] = useState<string | null>(null);
 
   const summaryData = DEMO_DOMAINS.map((d) => {
     const c0 = d.items.filter((i) => i.score === 0).length;
@@ -192,16 +190,82 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     { rank: 3, name: 'Requesting', c0: 3, c1: 2 },
   ];
 
-  const buildMapText = (): string => {
-    return `ABLLS NEED ANALYSIS MAP\nStudent: ${studentName}\n...`;
-  };
-
   const handleExport = () => {
-    setExportContent(buildMapText());
-  };
+    const title = 'ABLLS Need Analysis Map';
+    const formattedHtml = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: sans-serif; padding: 30px; color: #1e293b; line-height: 1.6; }
+            h1 { font-size: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; }
+            .meta { margin-bottom: 30px; font-size: 14px; color: #64748b; }
+            .section-title { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #facc15; padding-left: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 13px; }
+            th { background-color: #f8fafc; font-weight: bold; }
+            .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+            .badge-priority { background-color: #fca5a5; color: #7f1d1d; }
+          </style>
+        </head>
+        <body>
+          <h1>ABLLS Need Analysis Map</h1>
+          <div class="meta">
+            <strong>Student:</strong> ${studentName} &middot; 
+            <strong>Date Generated:</strong> ${new Date().toLocaleDateString()}
+          </div>
 
-  const handlePrint = () => {
-    openPrintWindow('<html><body><h1>ABLLS Need Map</h1></body></html>', 'ABLLS Map');
+          <div class="section-title">Priority Areas (Needs Assessment)</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Domain Area</th>
+                <th>Incorrect (Score 0)</th>
+                <th>Inconsistent (Score 1)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${priorityAreas.map((a) => `
+                <tr>
+                  <td><strong>#${a.rank}</strong></td>
+                  <td>${a.name}</td>
+                  <td>${a.c0} skills</td>
+                  <td>${a.c1} skills</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="section-title">Detailed Domain Analysis</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Domain Area</th>
+                <th>Score 0 (Incorrect)</th>
+                <th>Score 1 (Inconsistent)</th>
+                <th>Score 2 (Mastered)</th>
+                <th>Mastered %</th>
+                <th>Priority Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${summaryData.map((d) => `
+                <tr>
+                  <td><strong>${d.name}</strong></td>
+                  <td>${d.c0} items</td>
+                  <td>${d.c1} items</td>
+                  <td>${d.c2} items</td>
+                  <td>${d.masteredPct}%</td>
+                  <td>${d.isPriority ? '<span class="badge badge-priority">HIGH</span>' : 'Normal'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    openPrintWindow(formattedHtml, title);
   };
 
   return (
@@ -362,24 +426,11 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
 
       {/* Floating Bottom Action Bar */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.bottomBtn} onPress={handleExport}>
-          <Feather name="download" size={16} color="#0F172A" />
-          <Text style={styles.bottomBtnText}>Export Map</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.bottomBtn} onPress={handlePrint}>
-          <Feather name="printer" size={16} color="#0F172A" />
-          <Text style={styles.bottomBtnText}>Print</Text>
+        <TouchableOpacity style={[styles.bottomBtn, { flex: 1, justifyContent: 'center' }]} onPress={handleExport}>
+          <Feather name="file-text" size={16} color="#0F172A" />
+          <Text style={styles.bottomBtnText}>Export PDF</Text>
         </TouchableOpacity>
       </View>
-
-      <ExportPreviewModal
-        visible={!!exportContent}
-        title="ABLLS Need Analysis Map"
-        filename={`AbllsNeedMap_${studentName}_${new Date().toISOString().slice(0, 10)}.txt`}
-        content={exportContent ?? ''}
-        onClose={() => setExportContent(null)}
-      />
     </SafeAreaView>
   );
 }

@@ -68,7 +68,7 @@ describe('mock http client', () => {
 
   it('accepts a seeded demo login', async () => {
     const { data } = await mockHttp.post<{ token: string; role: string }>('/auth/login', {
-      email: 'elena@melue.demo',
+      email: 'parent@melue.org',
       password: 'demo1234',
     });
     expect(data.token).toContain('demo.');

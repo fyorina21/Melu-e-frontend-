@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { savePreferenceAssessment } from '../../api/teacherExtrasApi';
+import { openPrintWindow } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
 
 interface StimulusItem {
@@ -95,6 +96,59 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
   const updateNotes = (id: string, notes: string) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i)));
+  };
+
+  const handleExport = () => {
+    const title = 'Preference Assessment Report';
+    const formattedHtml = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: sans-serif; padding: 30px; color: #1e293b; line-height: 1.6; }
+            h1 { font-size: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; }
+            .meta { margin-bottom: 30px; font-size: 14px; color: #64748b; }
+            .section-title { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #facc15; padding-left: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 13px; }
+            th { background-color: #f8fafc; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <h1>Preference Assessment Report</h1>
+          <div class="meta">
+            <strong>Student ID:</strong> ${studentId} &middot; 
+            <strong>Assessment Window:</strong> ${activeTab} &middot; 
+            <strong>Date:</strong> ${new Date().toLocaleDateString()}
+          </div>
+
+          <div class="section-title">Tested Stimulus Items</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th>Frequency of Choice</th>
+                <th>Total Interaction Duration</th>
+                <th>Observations / Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((i) => `
+                <tr>
+                  <td><strong>${i.name}</strong></td>
+                  <td>${i.category}</td>
+                  <td>${i.frequency} times</td>
+                  <td>${formatMMSS(i.durationSeconds)}</td>
+                  <td>${i.notes || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    openPrintWindow(formattedHtml, title);
   };
 
   const handleOpenModal = () => {
@@ -240,7 +294,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
           <TouchableOpacity style={styles.submitBtn} onPress={() => handleSave('submitted')}>
             <Text style={styles.submitBtnText}>Submit Assessment</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.printBtn}>
+          <TouchableOpacity style={styles.printBtn} onPress={handleExport}>
             <Text style={styles.printBtnText}>Print / Export</Text>
           </TouchableOpacity>
         </View>

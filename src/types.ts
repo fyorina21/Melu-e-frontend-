@@ -128,6 +128,7 @@ export type SessionStackParamList = {
   GoalMasteryCheck: { studentId: string; goalId: string };
   SessionSummary: { sessionId: string };
   TeacherParentCommunication: undefined;
+  ParentCommunication: undefined;
   Notifications: undefined;
   StudentProfile: { studentId: string };
 };

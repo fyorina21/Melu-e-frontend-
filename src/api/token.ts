@@ -17,7 +17,6 @@ export function getAccessToken(): string | null {
 }
 
 export async function loadToken(): Promise<string | null> {
-  if (isDemoMode) return null;
   if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
     accessToken = localStorage.getItem(TOKEN_KEY);
     return accessToken;
@@ -27,7 +26,6 @@ export async function loadToken(): Promise<string | null> {
 
 export async function setAccessToken(token: string | null): Promise<void> {
   accessToken = token;
-  if (isDemoMode) return;
   if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);

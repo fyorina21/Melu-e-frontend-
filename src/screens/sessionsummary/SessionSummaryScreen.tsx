@@ -15,7 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { getSessionSummary, submitSessionSummary, saveSessionDraft } from '../../api/sessionApi';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
 import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal, Trial } from '../../types';
 
@@ -169,7 +169,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [notes, setNotes] = useState('');
   const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -249,7 +248,20 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       '',
       `Preview generated ${new Date().toLocaleString()}`,
     ];
-    setPreviewContent(lines.join('\n'));
+    const text = lines.join('\n');
+    const title = 'Session Summary';
+    const formattedHtml = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: monospace; white-space: pre-wrap; padding: 20px; font-size: 14px; line-height: 1.5; color: #1e293b; }
+          </style>
+        </head>
+        <body>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</body>
+      </html>
+    `;
+    openPrintWindow(formattedHtml, title);
   };
 
   if (!summary) return null;
@@ -360,14 +372,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         goalName={trialLogTarget?.goalName}
         trials={trialLogTarget?.trials}
         onClose={() => setTrialLogTarget(null)}
-      />
-
-      <ExportPreviewModal
-        visible={!!previewContent}
-        title="Session Summary"
-        filename={`SessionSummary_${summary?.stationName.replace(/\s+/g, '_')}.txt`}
-        content={previewContent ?? ''}
-        onClose={() => setPreviewContent(null)}
       />
     </SafeAreaView>
   );

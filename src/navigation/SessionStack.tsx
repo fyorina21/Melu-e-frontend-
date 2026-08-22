@@ -17,7 +17,7 @@ import SkillsAssessmentScreen from '../screens/assessments/SkillsAssessmentScree
 import BehaviorAssessmentScreen from '../screens/assessments/BehaviorAssessmentScreen';
 import PreferenceAssessmentScreen from '../screens/assessments/PreferenceAssessmentScreen';
 import SensoryAssessmentScreen from '../screens/assessments/SensoryAssessmentScreen';
-import TeacherParentCommunicationScreen from '../screens/teacherparent/TeacherParentCommunicationScreen';
+import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScreen';
 import TeacherNotificationsScreen from '../screens/notifications/TeacherNotificationsScreen';
 import StudentProfileScreen from '../screens/session/StudentProfileScreen';
 // MR-39 Appointment & Session Management is now built as
@@ -45,7 +45,7 @@ export default function SessionStack() {
       <Stack.Screen name="BehaviorAssessment" component={BehaviorAssessmentScreen} />
       <Stack.Screen name="PreferenceAssessment" component={PreferenceAssessmentScreen} />
       <Stack.Screen name="SensoryAssessment" component={SensoryAssessmentScreen} />
-      <Stack.Screen name="TeacherParentCommunication" component={TeacherParentCommunicationScreen} />
+      <Stack.Screen name="ParentCommunication" component={ParentCommunicationScreen} />
       <Stack.Screen name="Notifications" component={TeacherNotificationsScreen} />
       <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
     </Stack.Navigator>

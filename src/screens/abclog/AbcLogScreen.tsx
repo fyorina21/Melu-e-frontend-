@@ -5,10 +5,11 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAbcLog, exportAbcLog } from '../../api/teacherExtrasApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
+import { openPrintWindow } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AbcLog'>;
@@ -29,13 +30,6 @@ interface AbcLogData {
   incidents: AbcIncidentRow[];
 }
 
-const STUDENT_OPTIONS = [
-  { id: 'student-a', name: 'Student A', age: 7 },
-  { id: 'student-b', name: 'Student B', age: 6 },
-  { id: 'student-c', name: 'Student C', age: 8 },
-  { id: 'student-d', name: 'Student D', age: 7 },
-];
-
 const COLUMNS = ['Date', 'Time', 'Location', 'Behavior', 'Frequency', 'Intensity', 'Category', 'Antecedent', 'Consequence', 'Teacher'];
 const OUTCOME_OPTIONS = [
   'Independent with Novel Person',
@@ -44,28 +38,27 @@ const OUTCOME_OPTIONS = [
   'Failed - Required Prompt',
 ];
 
-const DEMO_INCIDENTS_BY_STUDENT: Record<string, AbcIncidentRow[]> = {
-  'student-a': [
-    { date: '08/01/2026', time: '9:12 AM', location: 'Room 2', behavior: 'Tantrum', frequency: '2 times', intensity: 'High', category: 'Disruptive', antecedent: 'Transitions', consequence: 'Verbal redirection', teacher: 'Teacher A' },
-    { date: '08/01/2026', time: '10:40 AM', location: 'Playground', behavior: 'Aggression', frequency: '1 time', intensity: 'High', category: 'Physical', antecedent: 'Peer proximity', consequence: 'Time-out', teacher: 'Teacher A' },
-  ],
-  'student-b': [
-    { date: '08/02/2026', time: '10:15 AM', location: 'Library', behavior: 'Non-compliance', frequency: '2 times', intensity: 'Low', category: 'Verbal', antecedent: 'Quiet time prompt', consequence: 'Guided choices', teacher: 'Teacher B' },
-  ],
-  'student-c': [],
-  'student-d': [],
-};
+
 
 export default function AbcLogScreen({ navigation }: Props) {
   const { logout } = useAuth();
   const [studentId, setStudentId] = useState('student-a');
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [from, setFrom] = useState('07/07/2026');
   const [to, setTo] = useState('08/22/2026');
   const [behaviorFilter, setBehaviorFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [data, setData] = useState<AbcLogData | null>(null);
-  const [exportContent, setExportContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    getStudentOptions().then(({ data: opts }) => {
+      setStudentOptions(opts);
+      if (opts.length > 0 && !opts.some((o) => o.id === studentId)) {
+        setStudentId(opts[0].id);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Workflow & Verification Form State
   const [status, setStatus] = useState<'draft' | 'pending_director_review'>('draft');
@@ -82,8 +75,10 @@ export default function AbcLogScreen({ navigation }: Props) {
     setStatus('pending_director_review');
   };
 
-  const buildData = useCallback((activeStudentId: string, behavior: string, category: string): AbcLogData => {
-    const studentIncidents = DEMO_INCIDENTS_BY_STUDENT[activeStudentId] ?? [];
+  const buildData = useCallback((_activeStudentId: string, behavior: string, category: string): AbcLogData => {
+    // API is the source of truth; this fallback only computes stats from
+    // whatever the API returned (data.incidents is already populated by load).
+    const studentIncidents = data?.incidents ?? [];
     const filtered = studentIncidents.filter(
       (r) =>
         (behavior === 'All' || r.behavior === behavior) &&
@@ -122,7 +117,49 @@ export default function AbcLogScreen({ navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const currentStudent = STUDENT_OPTIONS.find((s) => s.id === studentId);
+  const cycleFilter = (current: string, options: string[]) => {
+    const idx = options.indexOf(current);
+    return options[(idx + 1) % options.length];
+  };
+
+  const handleExport = async () => {
+    try {
+      await exportAbcLog({ studentId, from, to });
+    } catch (err) {}
+    const rows = data?.incidents ?? [];
+    const header = COLUMNS.join(',');
+    const lines = rows.map((r) => COLUMNS.map((c) => `"${(r[c.toLowerCase()] || '').replace(/"/g, '""')}"`).join(','));
+    const stats = data?.stats;
+    const content = [
+      `Melu'e Foundation — ABC Data Sheet`,
+      `Student: ${currentStudent?.name}`,
+      `Range: ${from} to ${to}`,
+      `Filters: Behavior ${behaviorFilter} · Category ${categoryFilter}`,
+      '',
+      `TOTAL INCIDENTS: ${stats?.totalIncidents ?? 0}`,
+      `MOST COMMON BEHAVIOR: ${stats?.mostCommonBehavior ?? 'N/A'}`,
+      `MOST COMMON ANTECEDENT: ${stats?.mostCommonAntecedent ?? 'N/A'}`,
+      `THIS WEEK: ${stats?.thisWeek ?? 0}`,
+      '',
+      header,
+      ...lines,
+    ].join('\n');
+
+    const title = 'ABC Data Sheet Export';
+    const formattedHtml = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: monospace; white-space: pre-wrap; padding: 20px; font-size: 14px; line-height: 1.5; color: #1e293b; }
+          </style>
+        </head>
+        <body>${content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</body>
+      </html>
+    `;
+    openPrintWindow(formattedHtml, title);
+  };
+  const currentStudent = studentOptions.find((s) => s.id === studentId);
 
   if (!data) return null;
 
@@ -155,11 +192,9 @@ export default function AbcLogScreen({ navigation }: Props) {
               <Text style={styles.draftBadgeText}>Draft</Text>
             </View>
           )}
-        </View>
-
-        {isDropdownOpen && (
+        </View>          {isDropdownOpen && (
           <View style={styles.dropdownMenu}>
-            {STUDENT_OPTIONS.map((student) => (
+            {studentOptions.map((student) => (
               <TouchableOpacity
                 key={student.id}
                 style={[
@@ -260,14 +295,6 @@ export default function AbcLogScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      <ExportPreviewModal
-        visible={!!exportContent}
-        title="ABC Data Sheet Export"
-        filename={`ABC_Data_${currentStudent?.name?.replace(/\s+/g, '_')}_${from}_to_${to}.txt`}
-        content={exportContent ?? ''}
-        onClose={() => setExportContent(null)}
-      />
     </SafeAreaView>
   );
 }

@@ -29,7 +29,8 @@ export type DemoRole =
   | 'coordinator'
   | 'program_director'
   | 'teacher'
-  | 'parent';
+  | 'parent'
+  | 'director';
 
 /** Plain-text demo credentials (never use in production). */
 export interface DemoUser {
@@ -153,11 +154,13 @@ export const seed = {
   ] satisfies PromptLevel[],
 
   users: [
-    { id: 'user-1', name: 'Rosa Delgado', email: 'rosa@melue.demo', password: 'demo1234', role: 'teacher', childIds: ['stu-001', 'stu-002'] },
-    { id: 'user-2', name: 'Marcus Chen', email: 'marcus@melue.demo', password: 'demo1234', role: 'coordinator', childIds: [] },
-    { id: 'user-3', name: 'Aisha Patel', email: 'aisha@melue.demo', password: 'demo1234', role: 'program_director', childIds: [] },
-    { id: 'user-4', name: 'Elena Martinez', email: 'elena@melue.demo', password: 'demo1234', role: 'parent', childIds: ['stu-001', 'stu-004'] },
-    { id: 'user-5', name: 'Dev Ops', email: 'dev@melue.demo', password: 'demo1234', role: 'system_admin', childIds: [] },
+    { id: 'user-1', name: 'Rosa Delgado', email: 'teacher@melue.org', password: 'demo1234', role: 'teacher', childIds: ['stu-001', 'stu-002'] },
+    { id: 'user-2', name: 'Marcus Chen', email: 'coordinator@melue.org', password: 'demo1234', role: 'coordinator', childIds: [] },
+    { id: 'user-3', name: 'Aisha Patel', email: 'pd@melue.org', password: 'demo1234', role: 'program_director', childIds: [] },
+    { id: 'user-4', name: 'Elena Martinez', email: 'parent@melue.org', password: 'demo1234', role: 'parent', childIds: ['stu-001', 'stu-004'] },
+    { id: 'user-5', name: 'Dev Ops', email: 'sysadmin@melue.org', password: 'demo1234', role: 'system_admin', childIds: [] },
+    { id: 'user-6', name: 'Director A', email: 'director@melue.org', password: 'demo1234', role: 'director', childIds: [] },
+    { id: 'user-7', name: 'Admin A', email: 'admin@melue.org', password: 'demo1234', role: 'institutional_admin', childIds: [] },
   ] satisfies DemoUser[],
 
   enrollments: [
@@ -352,4 +355,151 @@ export const seed = {
       approvedAt: '2026-08-16T09:00:00.000Z',
     },
   ] satisfies MasteryCheck[],
+
+  // New seeded collections for demo persistence
+  incidents: [
+    {
+      id: 'inc-1',
+      studentId: 'stu-001',
+      sessionId: 'sess-1',
+      date: '2026-08-19',
+      time: '10:15 AM',
+      location: 'Therapy Room',
+      behavior: 'Unable to remain seated',
+      behaviorDefinition: 'Student leaves designated seat/area without permission during instruction.',
+      frequency: 'Occasionally',
+      intensity: 'Mild',
+      category: 'Not sitting still/Hyperactivity',
+      antecedent: 'Demand placed',
+      consequence: 'Redirected',
+      notes: 'Triggered when asked to transition from preferred activity.',
+      recordedBy: 'Ms. Rosa Delgado',
+      createdAt: '2026-08-19T10:20:00.000Z',
+    },
+  ],
+
+  sessionNotes: [
+    {
+      id: 'note-1',
+      sessionId: 'sess-1',
+      studentId: 'stu-001',
+      teacher: 'Ms. Rosa Delgado',
+      status: 'completed',
+      bodyMarkdown: 'Great session with Aiden. Showed progress on Requesting (mand) skill. Independent on 64% of trials.',
+      submittedAt: '2026-08-20T12:00:00.000Z',
+      draft: false,
+    },
+  ],
+
+  sessionSummaries: [
+    {
+      id: 'sum-1',
+      sessionId: 'sess-1',
+      studentIds: ['stu-001'],
+      station: 'Station 1',
+      teacher: 'Ms. Rosa Delgado',
+      startedAt: '2026-08-20T09:00:00.000Z',
+      endedAt: '2026-08-20T10:30:00.000Z',
+      status: 'pending_review',
+      trialsTotal: 25,
+      trialsCorrect: 15,
+      independencePercent: 60,
+      notes: 'Solid work on goal mand. Student needed redirection during transitions.',
+      incidentCount: 1,
+      createdAt: '2026-08-20T10:35:00.000Z',
+    },
+  ],
+
+  goalBank: [
+    {
+      id: 'goal-100',
+      name: 'Requesting (mand)',
+      domain: 'Communication',
+      description: 'Student initiates requests for desired items, activities, or escape using spoken words, gestures, or signs.',
+      masteryCriteria: '100% independence across 3 consecutive sessions',
+      status: 'active',
+      createdAt: '2026-08-01T00:00:00.000Z',
+    },
+    {
+      id: 'goal-101',
+      name: 'Following 2-step instructions',
+      domain: 'Cognition',
+      description: 'Student follows verbal instructions that require 2 sequential actions.',
+      masteryCriteria: '100% independence',
+      status: 'active',
+      createdAt: '2026-08-01T00:00:00.000Z',
+    },
+    {
+      id: 'goal-102',
+      name: 'Toilet training',
+      domain: 'Self-Help',
+      description: 'Student uses toilet independently for urination and defecation.',
+      masteryCriteria: '90% success across 5 opportunities',
+      status: 'active',
+      createdAt: '2026-08-01T00:00:00.000Z',
+    },
+  ],
+
+  iups: [
+    {
+      id: 'iup-1',
+      studentId: 'stu-001',
+      status: 'active',
+      createdAt: '2026-08-10T00:00:00.000Z',
+      updatedAt: '2026-08-10T00:00:00.000Z',
+      goals: ['goal-100', 'goal-102'],
+      interventionStrategies: ['Differential reinforcement of requesting', 'Visual preference cues'],
+      reinforcementStrategies: ['Token economy', 'Preferred snacks'],
+      antecedentManipulations: ['Provide choice before demand', 'Check for sensory needs'],
+    },
+  ],
+
+  staffMembers: [
+    {
+      id: 'stf-1',
+      name: 'Rosa Delgado',
+      email: 'teacher@melue.org',
+      role: 'teacher',
+      status: 'active',
+      assignedStudents: ['stu-001', 'stu-002'],
+    },
+  ],
+
+  sysRoles: [
+    { id: 'role-1', name: 'system_admin', description: 'Full administrative access' },
+    { id: 'role-2', name: 'director', description: 'Director-level oversight' },
+    { id: 'role-3', name: 'program_director', description: 'Program-specific management' },
+    { id: 'role-4', name: 'coordinator', description: 'Session coordination' },
+    { id: 'role-5', name: 'teacher', description: 'In-session data collection' },
+  ],
+
+  auditLogs: [],
+
+  adminConfigs: {
+    trialLoggingFormat: {
+      promptLevels: [
+        { id: 'pl-1', label: 'FP', color: '#E5484D', order: 1 },
+        { id: 'pl-2', label: 'PP', color: '#F5A623', order: 2 },
+        { id: 'pl-3', label: 'G', color: '#30A46C', order: 3 },
+        { id: 'pl-4', label: '+', color: '#0091FF', order: 4 },
+      ],
+    },
+    abcLists: {
+      locations: ['Therapy Room', 'Snack Place', 'Playground', 'Sensory Room', 'Circle Time'],
+      behaviors: ['Unable to remain seated', 'Biting others', 'Flopping', 'Screaming'],
+      antecedents: ['Demand placed', 'Transition', 'Item removed'],
+      consequences: ['Redirected', 'Ignored', 'Item given'],
+    },
+    goalDomains: [
+      { id: 'gd-1', name: 'Communication', description: 'Expressive and receptive language skills' },
+      { id: 'gd-2', name: 'Social', description: 'Peer interaction and social skills' },
+      { id: 'gd-3', name: 'Motor', description: 'Fine and gross motor skills' },
+      { id: 'gd-4', name: 'Self-Help', description: 'Daily living skills' },
+      { id: 'gd-5', name: 'Cognition', description: 'Academic and problem-solving skills' },
+    ],
+  },
+
+  attendanceRecords: [],
+
+  assessments: [],
 };

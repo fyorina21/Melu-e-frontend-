@@ -9,6 +9,7 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getScheduleCapacityConfig, saveScheduleCapacityConfig } from '../../api/institutionalAdminApi';
+import { useToast } from '../../context/ToastContext';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
 interface ScheduleBlock {
@@ -19,6 +20,7 @@ interface ScheduleBlock {
 }
 
 export default function ScheduleCapacityConfigScreen({ navigation }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'ScheduleCapacityConfig'>) {
+  const { showToast } = useToast();
   const [morningStart, setMorningStart] = useState('8:07 AM');
   const [morningEnd, setMorningEnd] = useState('12:00 PM');
   const [afternoonStart, setAfternoonStart] = useState('1:10 PM');
@@ -50,8 +52,10 @@ export default function ScheduleCapacityConfigScreen({ navigation }: NativeStack
     if (expiry < 1 || expiry > 30) { Alert.alert('Draft expiry must be 1-30 days'); return; }
     try {
       await saveScheduleCapacityConfig({ morningStart, morningEnd, afternoonStart, afternoonEnd, preTherapyDuration: Number(preTherapyDuration), capacity: cap, draftExpiry: expiry, blocks });
-    } catch (err) {}
-    Alert.alert('Configuration saved');
+      showToast('Configuration saved successfully', 'success');
+    } catch (err) {
+      showToast('Failed to save configuration', 'error');
+    }
   };
 
   return (

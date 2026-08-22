@@ -20,11 +20,133 @@ import type {
   PromptLevel,
   SessionState,
   Trial,
+  UUID,
 } from '../resources/types';
 import type { ParentObservation } from '../resources/parent';
 import type { SensoryActivity } from '../resources/sensory';
 import type { TeacherScheduleEntry, Assignment } from '../resources/staffScheduling';
 import type { MasteryCheck } from '../resources/masteryChecks';
+
+export interface MockIncident {
+  id: UUID;
+  studentId: string;
+  sessionId?: string;
+  date: string;
+  time: string;
+  location: string;
+  behavior: string;
+  behaviorDefinition: string;
+  frequency: string;
+  intensity: string;
+  category: string;
+  antecedent: string;
+  consequence: string;
+  notes: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
+export interface MockSessionNote {
+  id: UUID;
+  sessionId: string;
+  studentId: string;
+  teacher: string;
+  status: 'draft' | 'submitted' | 'revised' | 'approved';
+  bodyMarkdown: string;
+  submittedAt?: string;
+  draft: boolean;
+}
+
+export interface MockSessionSummary {
+  id: UUID;
+  sessionId: string;
+  studentIds: string[];
+  station: string;
+  teacher: string;
+  startedAt: string;
+  endedAt: string;
+  status: 'pending_review' | 'approved' | 'revised_required';
+  trialsTotal: number;
+  trialsCorrect: number;
+  independencePercent: number;
+  notes: string;
+  incidentCount: number;
+  createdAt: string;
+}
+
+export interface MockGoal {
+  id: UUID;
+  name: string;
+  domain: string;
+  description: string;
+  masteryCriteria: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+}
+
+export interface MockIup {
+  id: UUID;
+  studentId: string;
+  status: 'draft' | 'active' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+  goals: string[];
+  interventionStrategies: string[];
+  reinforcementStrategies: string[];
+  antecedentManipulations: string[];
+}
+
+export interface MockStaffMember {
+  id: UUID;
+  name: string;
+  email: string;
+  role: string;
+  status: 'active' | 'inactive';
+  assignedStudents: string[];
+}
+
+export interface MockSysRole {
+  id: UUID;
+  name: string;
+  description: string;
+}
+
+export type MockRole = MockSysRole;
+
+export interface MockAuditLog {
+  id: UUID;
+  action: string;
+  resource: string;
+  resourceId: string;
+  user: string;
+  timestamp: string;
+  details?: Record<string, unknown>;
+}
+
+export interface MockAttendanceRecord {
+  id: UUID;
+  sessionId: string;
+  personId: string;
+  personType: 'student' | 'therapist' | 'support_staff';
+  status: 'present' | 'absent' | 'late' | 'excused';
+  note?: string;
+  loggedAt: string;
+}
+
+export interface MockAssessment {
+  id: UUID;
+  studentId: string;
+  type: 'skills' | 'behavior' | 'preference' | 'sensory';
+  status: 'in_progress' | 'completed' | 'submitted';
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MockAdminConfig {
+  id: string;
+  value: Record<string, unknown>;
+}
 
 export interface MockDatabaseShape {
   students: SeededStudent[];
@@ -40,6 +162,17 @@ export interface MockDatabaseShape {
   masteryChecks: MasteryCheck[];
   enrollments: EnrollmentDraft[];
   conversations: DemoConversation[];
+  incidents: MockIncident[];
+  sessionNotes: MockSessionNote[];
+  sessionSummaries: MockSessionSummary[];
+  goalBank: MockGoal[];
+  iups: MockIup[];
+  staffMembers: MockStaffMember[];
+  sysRoles: MockRole[];
+  auditLogs: MockAuditLog[];
+  adminConfigs: MockAdminConfig[];
+  attendanceRecords: MockAttendanceRecord[];
+  assessments: MockAssessment[];
 }
 
 type CollectionName = keyof MockDatabaseShape;
@@ -65,6 +198,32 @@ function cloneSeed(): MockDatabaseShape {
       ...c,
       messages: c.messages.map((m) => ({ ...m })),
     })),
+    incidents: seed.incidents.map((i) => ({ ...i })),
+    sessionNotes: seed.sessionNotes.map((n) => ({
+      ...n,
+      status: n.status as 'draft' | 'submitted' | 'revised' | 'approved',
+    })),
+    sessionSummaries: seed.sessionSummaries.map((s) => ({
+      ...s,
+      status: s.status as 'pending_review' | 'approved' | 'revised_required',
+    })),
+    goalBank: seed.goalBank.map((g) => ({
+      ...g,
+      status: g.status as 'active' | 'inactive',
+    })),
+    iups: seed.iups.map((i) => ({
+      ...i,
+      status: i.status as 'draft' | 'active' | 'archived',
+    })),
+    staffMembers: seed.staffMembers.map((s) => ({
+      ...s,
+      status: s.status as 'active' | 'inactive',
+    })),
+    sysRoles: seed.sysRoles.map((r) => ({ ...r })),
+    auditLogs: [],
+    adminConfigs: Object.entries(seed.adminConfigs).map(([id, value]) => ({ id, value: value as any })),
+    attendanceRecords: [],
+    assessments: [],
   };
 }
 

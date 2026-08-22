@@ -7,6 +7,8 @@ import StatusPill from '../../components/StatusPill';
 import AppNavbar from '../../components/AppNavbar';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStaffAccounts, createStaffAccount, updateStaffAccount, deleteStaffAccount, resetStaffPassword, toggleStaffActive, bulkStaffAction } from '../../api/SystemAdminApi';
+import { getDirectorSchedule, saveAssignment } from '../../api/directorApi';
+import { useToast } from '../../context/ToastContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../../types';
 
@@ -130,14 +132,38 @@ interface TeacherLinkingPanelProps {
 }
 
 function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
+  const { showToast } = useToast();
   const [station, setStation] = useState<LinkStation>('1');
   const [room, setRoom] = useState<LinkRoom>(1);
-  const [assignments, setAssignments] = useState<TeacherLinkAssignment[]>(DEMO_LINK_ASSIGNMENTS);
+  const [assignments, setAssignments] = useState<TeacherLinkAssignment[]>([]);
   const [selectedForAssign, setSelectedForAssign] = useState<string[]>([]);
   const [selectedForRemove, setSelectedForRemove] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [programFilter, setProgramFilter] = useState<string>('all');
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  const loadAssignments = useCallback(async () => {
+    try {
+      const { data } = await getDirectorSchedule({ teacherId: teacher.id });
+      const mapped = data.map((b: any) => {
+        const parsedStation: LinkStation = b.stationName.includes('Station 2') ? '2' : '1';
+        return {
+          teacherId: teacher.id,
+          teacherName: teacher.name,
+          station: parsedStation,
+          room: (b.id === 'b1' ? 1 : 2) as LinkRoom,
+          students: b.studentIds || [],
+        };
+      });
+      setAssignments(mapped);
+    } catch (err) {
+      console.warn('Failed to load assignments:', err);
+    }
+  }, [teacher.id, teacher.name]);
+
+  useEffect(() => {
+    loadAssignments();
+  }, [loadAssignments]);
 
   const currentAssignment = assignments.find(
     (a) => a.teacherId === teacher.id && a.station === station && a.room === room
@@ -176,24 +202,19 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
     }
   };
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (!selectedForAssign.length) return;
 
     const newStudents = [...assignedStudentIds, ...selectedForAssign];
+    const blockId = room === 1 ? 'b1' : 'b2';
 
-    if (currentAssignment) {
-      setAssignments((prev) =>
-        prev.map((a) =>
-          a.teacherId === teacher.id && a.station === station && a.room === room
-            ? { ...a, students: newStudents }
-            : a
-        )
-      );
-    } else {
-      setAssignments((prev) => [
-        ...prev,
-        { teacherId: teacher.id, teacherName: teacher.name, station, room, students: newStudents },
-      ]);
+    try {
+      await saveAssignment({ blockId, studentIds: newStudents, teacherId: teacher.id });
+      await loadAssignments();
+      showToast('Students assigned successfully', 'success');
+    } catch (err) {
+      console.warn('Failed to save assignment:', err);
+      showToast('Failed to assign students', 'error');
     }
 
     setSelectedForAssign([]);
@@ -201,29 +222,25 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
 
   const handleRemove = () => {
     if (!selectedForRemove.length) {
-      Alert.alert('Please select students to remove');
+      showToast('Please select students to remove', 'info');
       return;
     }
     setShowRemoveConfirm(true);
   };
 
-  const handleRemoveConfirm = () => {
+  const handleRemoveConfirm = async () => {
     if (!selectedForRemove.length) return;
 
     const remainingStudents = assignedStudentIds.filter((id) => !selectedForRemove.includes(id));
+    const blockId = room === 1 ? 'b1' : 'b2';
 
-    if (remainingStudents.length === 0) {
-      setAssignments((prev) =>
-        prev.filter((a) => !(a.teacherId === teacher.id && a.station === station && a.room === room))
-      );
-    } else {
-      setAssignments((prev) =>
-        prev.map((a) =>
-          a.teacherId === teacher.id && a.station === station && a.room === room
-            ? { ...a, students: remainingStudents }
-            : a
-        )
-      );
+    try {
+      await saveAssignment({ blockId, studentIds: remainingStudents, teacherId: teacher.id });
+      await loadAssignments();
+      showToast('Students removed successfully', 'success');
+    } catch (err) {
+      console.warn('Failed to remove assignment:', err);
+      showToast('Failed to remove students', 'error');
     }
 
     setSelectedForRemove([]);
@@ -418,6 +435,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
 }
 
 export default function StaffAccountManagementScreen({ navigation }: NativeStackScreenProps<SystemAdminStackParamList, 'StaffAccountManagement'>) {
+  const { showToast } = useToast();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -451,13 +469,16 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       if (payload.id) {
         await updateStaffAccount(payload.id, payload);
         setStaff((prev) => prev.map((s) => (s.id === payload.id ? { ...s, ...payload, id: s.id } : s)));
+        showToast('Staff account updated successfully', 'success');
       } else {
         const { data } = await createStaffAccount(payload);
         setStaff((prev) => [...prev, data]);
+        showToast('Staff account created successfully', 'success');
       }
     } catch (err) {
       if (payload.id) setStaff((prev) => prev.map((s) => (s.id === payload.id ? { ...s, ...payload, id: s.id } : s)));
       else setStaff((prev) => [...prev, { ...payload, id: `local-${Date.now()}` }]);
+      showToast('Staff account saved (local fallback)', 'info');
     }
     setFormTarget(undefined);
   };
@@ -465,14 +486,17 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   const handleResetPassword = (s: StaffMember) => {
     Alert.alert('Send password reset email?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Send', onPress: async () => { try { await resetStaffPassword(s.id); } catch (err) {} Alert.alert('Reset email sent'); } },
+      { text: 'Send', onPress: async () => { try { await resetStaffPassword(s.id); } catch (err) {} showToast('Reset email sent successfully', 'success'); } },
     ]);
   };
 
   const handleToggleActive = async (s: StaffMember) => {
     const next = !s.active;
     setStaff((prev) => prev.map((x) => (x.id === s.id ? { ...x, active: next } : x)));
-    try { await toggleStaffActive(s.id, next); } catch (err) {}
+    try {
+      await toggleStaffActive(s.id, next);
+      showToast(`Account ${next ? 'activated' : 'deactivated'} successfully`, 'success');
+    } catch (err) {}
   };
 
   const handleDelete = (s: StaffMember) => {
@@ -484,6 +508,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
         onPress: async () => {
           try { await deleteStaffAccount(s.id); } catch (err) {}
           setStaff((prev) => prev.filter((x) => x.id !== s.id));
+          showToast('Staff account deleted successfully', 'success');
         },
       },
     ]);
@@ -498,6 +523,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
           try { await bulkStaffAction(selectedIds, action); } catch (err) {}
           if (action === 'Deactivate') setStaff((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, active: false } : s)));
           setSelectedIds([]);
+          showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
         },
       },
     ]);
