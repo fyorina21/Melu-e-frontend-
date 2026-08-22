@@ -177,6 +177,13 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
+      <View style={styles.backRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+          <Feather name="arrow-left" size={16} color="#334155" />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Feather name="alert-triangle" size={18} color={colors.navyText} />
@@ -354,6 +361,8 @@ const DEMO_RECORDS: BehaviorRecord[] = [
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   header: { padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
+  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   tabsRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.bgCard },
   tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.bgApp, borderWidth: 1, borderColor: colors.border },

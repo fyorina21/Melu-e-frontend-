@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { saveSkillsAssessment } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
@@ -132,6 +133,7 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
 
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
+  const { showToast } = useToast();
   const [activeDomain, setActiveDomain] = useState(0);
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -165,10 +167,10 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const handleSaveDraft = async () => {
     try {
       await saveSkillsAssessment(studentId, { scores, notes });
-    } catch (err) {}
-    Alert.alert('Assessment Draft Saved', `${studentName} ABLLS assessment draft saved.`, [
-      { text: 'OK' },
-    ]);
+      showToast(`${studentName} ABLLS assessment draft saved.`, 'success');
+    } catch (err) {
+      showToast('Failed to save assessment draft', 'error');
+    }
   };
 
   const openNeedMap = () => navigation?.navigate?.('AbllsNeedMap', { studentId });
@@ -247,70 +249,72 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         </Text>
       </View>
 
-      {/* Card Items Content */}
-      <ScrollView contentContainerStyle={styles.content}>
-        {domain.items.map((item) => (
-          <View key={item.id} style={styles.itemCard}>
-            <View style={styles.itemTitleRow}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{item.id}</Text>
+      {/* Scrollable card area + pinned bottom bar in a flex column */}
+      <View style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.content}>
+          {domain.items.map((item) => (
+            <View key={item.id} style={styles.itemCard}>
+              <View style={styles.itemTitleRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{item.id}</Text>
+                </View>
+                <Text style={styles.itemDescription}>{item.description}</Text>
               </View>
-              <Text style={styles.itemDescription}>{item.description}</Text>
-            </View>
 
-            {/* Score Selector Options */}
-            <View style={styles.scoreRow}>
-              {SCORES.map((s) => {
-                const selected = scores[item.id] === s;
-                return (
-                  <TouchableOpacity
-                    key={String(s)}
-                    style={[
-                      styles.scoreBtn,
-                      { borderColor: SCORE_COLOR[s] },
-                      selected && { backgroundColor: SCORE_COLOR[s] },
-                    ]}
-                    onPress={() => setScore(item.id, s)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
+              {/* Score Selector Options */}
+              <View style={styles.scoreRow}>
+                {SCORES.map((s) => {
+                  const selected = scores[item.id] === s;
+                  return (
+                    <TouchableOpacity
+                      key={String(s)}
                       style={[
-                        styles.scoreBtnText,
-                        { color: SCORE_COLOR[s] },
-                        selected && styles.scoreBtnTextActive,
+                        styles.scoreBtn,
+                        { borderColor: SCORE_COLOR[s] },
+                        selected && { backgroundColor: SCORE_COLOR[s] },
                       ]}
+                      onPress={() => setScore(item.id, s)}
+                      activeOpacity={0.7}
                     >
-                      {s === 'NA' ? 'N/A' : SCORE_LABEL[s]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                      <Text
+                        style={[
+                          styles.scoreBtnText,
+                          { color: SCORE_COLOR[s] },
+                          selected && styles.scoreBtnTextActive,
+                        ]}
+                      >
+                        {s === 'NA' ? 'N/A' : SCORE_LABEL[s]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Notes Input */}
+              <TextInput
+                style={styles.notesInput}
+                placeholder="Add notes..."
+                placeholderTextColor="#94A3B8"
+                value={notes[item.id] || ''}
+                onChangeText={(t) => setNotes((prev) => ({ ...prev, [item.id]: t }))}
+              />
             </View>
+          ))}
+        </ScrollView>
 
-            {/* Notes Input */}
-            <TextInput
-              style={styles.notesInput}
-              placeholder="Add notes..."
-              placeholderTextColor="#94A3B8"
-              value={notes[item.id] || ''}
-              onChangeText={(t) => setNotes((prev) => ({ ...prev, [item.id]: t }))}
-            />
-          </View>
-        ))}
-      </ScrollView>
+        {/* Bottom Action Bar — sits at the bottom of the flex column, always tappable */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
+            <Feather name="file-text" size={16} color="#0F172A" />
+            <Text style={styles.saveDraftText}>Save Draft</Text>
+          </TouchableOpacity>
 
-      {/* Floating Bottom Action Bar */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
-          <Feather name="file-text" size={16} color="#0F172A" />
-          <Text style={styles.saveDraftText}>Save Draft</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.needMapBtn} onPress={openNeedMap}>
-          <Feather name="bar-chart-2" size={16} color="#0F172A" />
-          <Text style={styles.needMapText}>View Need Analysis Map</Text>
-          <Feather name="chevron-right" size={16} color="#0F172A" />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.needMapBtn} onPress={openNeedMap}>
+            <Feather name="bar-chart-2" size={16} color="#0F172A" />
+            <Text style={styles.needMapText}>View Need Analysis Map</Text>
+            <Feather name="chevron-right" size={16} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -490,7 +494,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 12,
-    paddingBottom: 90,
   },
   itemCard: {
     backgroundColor: '#FFFFFF',
@@ -552,10 +555,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     padding: 12,
