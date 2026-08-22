@@ -1,18 +1,27 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Modal,
+  Alert,
+  Switch,
+} from 'react-native';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
 const FORMS = ['Enrollment Wizard', 'IUP Form', 'ABLLS Assessment Form'];
-const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Checkbox', 'Radio', 'Text Area', 'File Upload'];
+const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Checkbox', 'Radio', 'TextArea', 'File'];
 
 interface FormField {
   id: string;
@@ -20,7 +29,6 @@ interface FormField {
   label: string;
   required: boolean;
   visible: boolean;
-  helpText?: string;
 }
 
 interface HistoryEntry {
@@ -31,60 +39,31 @@ interface HistoryEntry {
   newValue: string;
 }
 
-function FieldPropertiesModal({ visible, field, onClose, onSave }: {
-  visible: boolean;
-  field: FormField | null;
-  onClose: () => void;
-  onSave: (updated: FormField) => void;
-}) {
-  const [label, setLabel] = useState('');
-  const [required, setRequired] = useState(false);
-  const [helpText, setHelpText] = useState('');
-  useEffect(() => {
-    if (field) { setLabel(field.label); setRequired(field.required); setHelpText(field.helpText || ''); }
-  }, [field, visible]);
-  if (!field) return null;
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h3}>Field Properties</Text>
-          <View style={styles.field}>
-            <Text style={typography.label}>Label</Text>
-            <TextInput style={styles.textInput} value={label} onChangeText={setLabel} />
-          </View>
-          <View style={styles.field}>
-            <Text style={typography.label}>Help Text</Text>
-            <TextInput style={styles.textInput} value={helpText} onChangeText={setHelpText} />
-          </View>
-          <TouchableOpacity style={styles.toggleRow} onPress={() => setRequired((r) => !r)}>
-            <View style={[styles.checkbox, required && styles.checkboxChecked]} />
-            <Text style={typography.body}>Required</Text>
-          </TouchableOpacity>
-          <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={() => onSave({ ...field, label, required, helpText })}><Text style={styles.saveBtnText}>Save</Text></TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 export default function FormBuilderScreen({ navigation }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
-  const [selectedForm, setSelectedForm] = useState(FORMS[0]);
+  const [selectedForm, setSelectedForm] = useState<string>(FORMS[0]);
   const [fields, setFields] = useState<FormField[]>([]);
-  const [isDefault, setIsDefault] = useState(true);
-  const [editingField, setEditingField] = useState<FormField | null>(null);
+  const [isDefault, setIsDefault] = useState<boolean>(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
+
+  // Form Dropdown State
+  const [showFormModal, setShowFormModal] = useState<boolean>(false);
+
+  // Add New Field Inline Form State
+  const [showAddFieldBox, setShowAddFieldBox] = useState<boolean>(false);
+  const [newFieldType, setNewFieldType] = useState<string>('Text');
+  const [showTypeModal, setShowTypeModal] = useState<boolean>(false);
+  const [newFieldLabel, setNewFieldLabel] = useState<string>('');
+  const [newFieldRequired, setNewFieldRequired] = useState<boolean>(false);
+
+  // Preview Modal State
+  const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
 
   const load = useCallback(async () => {
     try {
       const { data } = await getFormConfig(selectedForm);
       setFields(data.fields);
       setIsDefault(data.isDefault);
-      setHistory(data.history || []);
+      setHistory(data.history || DEMO_HISTORY);
     } catch (err) {
       setFields(DEMO_FIELDS[selectedForm] || []);
       setIsDefault(true);
@@ -92,70 +71,137 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     }
   }, [selectedForm]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const move = (index: number, dir: number) => {
-    setFields((prev) => {
-      const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+  const toggleRequired = (id: string) => {
+    const fieldObj = fields.find((f) => f.id === id);
+    if (fieldObj) {
+      const today = new Date().toISOString().split('T')[0];
+      const newHistoryEntry: HistoryEntry = {
+        date: today,
+        user: 'Admin A',
+        field: fieldObj.label,
+        oldValue: fieldObj.required ? 'Required' : 'Optional',
+        newValue: !fieldObj.required ? 'Required' : 'Optional',
+      };
+      setHistory((prev) => [newHistoryEntry, ...prev]);
+    }
+
+    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, required: !f.required } : f)));
     setIsDefault(false);
   };
 
   const toggleVisible = (id: string) => {
+    const fieldObj = fields.find((f) => f.id === id);
+    if (fieldObj) {
+      const today = new Date().toISOString().split('T')[0];
+      const newHistoryEntry: HistoryEntry = {
+        date: today,
+        user: 'Admin A',
+        field: fieldObj.label,
+        oldValue: fieldObj.visible ? 'Visible' : 'Hidden',
+        newValue: !fieldObj.visible ? 'Visible' : 'Hidden',
+      };
+      setHistory((prev) => [newHistoryEntry, ...prev]);
+    }
+
     setFields((prev) => prev.map((f) => (f.id === id ? { ...f, visible: !f.visible } : f)));
     setIsDefault(false);
   };
 
-  const handleAddField = (type: string) => {
-    setFields((prev) => [...prev, { id: `f-${Date.now()}`, type, label: `New ${type} Field`, required: false, visible: true }]);
-    setIsDefault(false);
-  };
-
-  const handleSaveField = (updated: FormField) => {
-    setFields((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
-    setIsDefault(false);
-    setEditingField(null);
-  };
-
   const handleDeleteField = (id: string) => {
-    Alert.alert('Delete this field?', undefined, [
+    const fieldObj = fields.find((f) => f.id === id);
+    Alert.alert('Delete Field', 'Are you sure you want to delete this field?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { setFields((prev) => prev.filter((f) => f.id !== id)); setIsDefault(false); } },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          if (fieldObj) {
+            const today = new Date().toISOString().split('T')[0];
+            const newHistoryEntry: HistoryEntry = {
+              date: today,
+              user: 'Admin A',
+              field: fieldObj.label,
+              oldValue: fieldObj.type,
+              newValue: 'Deleted',
+            };
+            setHistory((prev) => [newHistoryEntry, ...prev]);
+          }
+          setFields((prev) => prev.filter((f) => f.id !== id));
+          setIsDefault(false);
+        },
+      },
     ]);
   };
 
-  const handlePreview = () => {
-    const lines: string[] = [];
-    lines.push(`FORM PREVIEW — ${selectedForm}`);
-    lines.push('(read-only render of the configured field order, visibility and required rules)');
-    lines.push('');
-    fields.forEach((f) => {
-      lines.push(`${f.visible ? '' : '[hidden] '}${f.label}${f.required ? ' *' : ''}`);
-      lines.push(`    Type: ${f.type}${f.helpText ? ` · ${f.helpText}` : ''}`);
-    });
-    setPreviewContent(lines.join('\n'));
+  const handleConfirmAddField = () => {
+    if (!newFieldLabel.trim()) {
+      Alert.alert('Error', 'Please enter a field label.');
+      return;
+    }
+
+    const trimmedLabel = newFieldLabel.trim();
+    const newEntry: FormField = {
+      id: `f-${Date.now()}`,
+      type: newFieldType,
+      label: trimmedLabel,
+      required: newFieldRequired,
+      visible: true,
+    };
+
+    setFields((prev) => [...prev, newEntry]);
+    setIsDefault(false);
+
+    // Append to Modification History Card
+    const today = new Date().toISOString().split('T')[0];
+    const newHistoryEntry: HistoryEntry = {
+      date: today,
+      user: 'Admin A',
+      field: trimmedLabel,
+      oldValue: 'None',
+      newValue: 'Added',
+    };
+    setHistory((prev) => [newHistoryEntry, ...prev]);
+
+    // Reset inline box state
+    setNewFieldLabel('');
+    setNewFieldRequired(false);
+    setShowAddFieldBox(false);
   };
 
   const handleSave = async () => {
-    if (fields.length === 0) { Alert.alert('At least one field required'); return; }
-    try { await saveFormConfig(selectedForm, { fields }); } catch (err) {}
-    Alert.alert('Configuration saved');
+    if (fields.length === 0) {
+      Alert.alert('Error', 'At least one field is required.');
+      return;
+    }
+    try {
+      await saveFormConfig(selectedForm, { fields, history });
+    } catch (err) {}
+    Alert.alert('Success', 'Configuration saved successfully.');
   };
 
   const handleReset = () => {
-    Alert.alert('Reset to default configuration?', 'This discards all customizations.', [
+    Alert.alert('Reset to Default', 'This will discard all customizations.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Reset',
         style: 'destructive',
         onPress: async () => {
-          try { await resetFormToDefault(selectedForm); } catch (err) {}
-          setFields(DEMO_FIELDS[selectedForm] || []);
+          try {
+            await resetFormToDefault(selectedForm);
+          } catch (err) {}
+
+          const defaultFields = DEMO_FIELDS[selectedForm] || [];
+          
+          // Purge dynamically added fields & reset to defaults
+          setFields(defaultFields.filter((f) => !f.id.startsWith('f-')));
           setIsDefault(true);
+
+          // Clear 'Added' entries from history state
+          setHistory(DEMO_HISTORY.filter((item) => item.newValue !== 'Added'));
         },
       },
     ]);
@@ -163,139 +209,549 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Forms" onTabPress={(t) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
-      <View style={styles.header}>
-        <Text style={typography.h1}>Form Builder</Text>
-        <View style={[styles.templateBadge, !isDefault && styles.templateBadgeCustom]}>
-          <Text style={styles.templateBadgeText}>{isDefault ? 'Using Default Template' : 'Custom Template'}</Text>
-        </View>
-      </View>
-
-      <View style={styles.formSelectorRow}>
-        {FORMS.map((f) => (
-          <TouchableOpacity key={f} style={[styles.formChip, selectedForm === f && styles.formChipActive]} onPress={() => setSelectedForm(f)}>
-            <Text style={[typography.bodyBold, selectedForm === f && { color: colors.navyText }]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
+      <AppNavbar activeTab="Forms" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <Text style={typography.h3}>Form Canvas</Text>
-          {fields.map((field, i) => (
-            <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
-              <View style={styles.fieldOrderCol}>
-                <TouchableOpacity onPress={() => move(i, -1)} disabled={i === 0}>
-                  <Feather name="chevron-up" size={16} color={i === 0 ? colors.mutedText : colors.navyText} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => move(i, 1)} disabled={i === fields.length - 1}>
-                  <Feather name="chevron-down" size={16} color={i === fields.length - 1 ? colors.mutedText : colors.navyText} />
-                </TouchableOpacity>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.bodyBold}>{field.label}{field.required ? ' *' : ''}</Text>
-                <Text style={typography.caption}>{field.type}</Text>
-              </View>
-              <TouchableOpacity onPress={() => toggleVisible(field.id)}>
-                <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color={colors.navyText} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setEditingField(field)}>
-                <Feather name="edit-2" size={16} color={colors.navyText} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDeleteField(field.id)}>
-                <Feather name="trash-2" size={16} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Add New Field</Text>
-          <View style={styles.fieldTypeGrid}>
-            {FIELD_TYPES.map((t) => (
-              <TouchableOpacity key={t} style={styles.fieldTypeBtn} onPress={() => handleAddField(t)}>
-                <Text style={styles.fieldTypeBtnText}>{t}</Text>
-              </TouchableOpacity>
-            ))}
+        {/* Header Title & Subtitle */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Form Builder</Text>
+            <Text style={styles.headerSubtitle}>
+              SCR-ADMIN-001 · Configure enrollment and assessment form templates
+            </Text>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={typography.h3}>Modification History</Text>
-          {history.map((h, i) => (
-            <Text key={i} style={typography.caption}>{h.date} — {h.user} changed {h.field}: "{h.oldValue}" → "{h.newValue}"</Text>
+        {/* Top Control Row */}
+        <View style={styles.topControlRow}>
+          <TouchableOpacity
+            style={styles.selectDropdown}
+            onPress={() => setShowFormModal(true)}
+          >
+            <Text style={styles.selectDropdownText}>{selectedForm}</Text>
+            <Feather name="chevron-down" size={16} color="#475569" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.uploadBtn}>
+            <Feather name="upload" size={14} color="#334155" />
+            <Text style={styles.uploadBtnText}>Upload Template</Text>
+          </TouchableOpacity>
+
+          <View style={{ flex: 1 }} />
+
+          <View style={[styles.badge, isDefault ? styles.badgeDefault : styles.badgeCustom]}>
+            <Text style={[styles.badgeText, isDefault ? styles.badgeTextDefault : styles.badgeTextCustom]}>
+              {isDefault ? 'Using Default Template' : 'Custom Template'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Canvas Box */}
+        <View style={styles.canvasContainer}>
+          <Text style={styles.canvasHeader}>FORM CANVAS — {selectedForm.toUpperCase()}</Text>
+
+          {fields.map((field) => (
+            <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
+              <View style={styles.typeBadge}>
+                <Text style={styles.typeBadgeText}>{field.type}</Text>
+              </View>
+
+              <Text style={styles.fieldLabelText}>{field.label}</Text>
+
+              <View style={styles.rowRightControls}>
+                <Text style={styles.controlLabel}>Required</Text>
+                <Switch
+                  value={field.required}
+                  onValueChange={() => toggleRequired(field.id)}
+                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                  thumbColor="#FFFFFF"
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+
+                <TouchableOpacity onPress={() => toggleVisible(field.id)} style={styles.iconBtn}>
+                  <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color="#94A3B8" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => handleDeleteField(field.id)} style={styles.iconBtn}>
+                  <Feather name="trash-2" size={16} color="#F87171" />
+                </TouchableOpacity>
+              </View>
+            </View>
           ))}
-          {history.length === 0 && <Text style={typography.caption}>No changes yet.</Text>}
+
+          {/* Inline Add Field Box */}
+          {!showAddFieldBox ? (
+            <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddFieldBox(true)}>
+              <Feather name="plus" size={16} color="#0284C7" />
+              <Text style={styles.addBtnText}>Add New Field</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.inlineAddBox}>
+              <View style={styles.inlineFieldCol}>
+                <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                <TouchableOpacity
+                  style={styles.inlineTypeDropdown}
+                  onPress={() => setShowTypeModal(true)}
+                >
+                  <Text style={styles.inlineTypeDropdownText}>{newFieldType}</Text>
+                  <Feather name="chevron-down" size={14} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.inlineFieldCol, { flex: 2 }]}>
+                <Text style={styles.inlineFieldLabel}>Label</Text>
+                <TextInput
+                  style={styles.inlineTextInput}
+                  placeholder="Field label..."
+                  placeholderTextColor="#94A3B8"
+                  value={newFieldLabel}
+                  onChangeText={(val: string) => setNewFieldLabel(val)}
+                />
+              </View>
+
+              <View style={styles.inlineToggleCol}>
+                <Text style={styles.inlineFieldLabel}>Required</Text>
+                <Switch
+                  value={newFieldRequired}
+                  onValueChange={(val: boolean) => setNewFieldRequired(val)}
+                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                  thumbColor="#FFFFFF"
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
+                <Text style={styles.confirmAddBtnText}>Add Field</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.cancelAddBtn} onPress={() => setShowAddFieldBox(false)}>
+                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Action Buttons Row */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.previewBtn} onPress={() => setShowPreviewModal(true)}>
+            <Feather name="eye" size={15} color="#0F172A" />
+            <Text style={styles.previewBtnText}>Preview Form</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+            <Feather name="save" size={15} color="#0F172A" />
+            <Text style={styles.saveBtnText}>Save Configuration</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
+            <Ionicons name="refresh-outline" size={16} color="#EF4444" />
+            <Text style={styles.resetBtnText}>Reset to Default</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Modification History */}
+        <View style={styles.historyCard}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>Modification History</Text>
+            <Feather name="chevron-up" size={16} color="#64748B" />
+          </View>
+
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.tableCol, { flex: 1.2 }]}>DATE</Text>
+            <Text style={[styles.tableCol, { flex: 1 }]}>USER</Text>
+            <Text style={[styles.tableCol, { flex: 1.5 }]}>FIELD</Text>
+            <Text style={[styles.tableCol, { flex: 1 }]}>OLD VALUE</Text>
+            <Text style={[styles.tableCol, { flex: 1 }]}>NEW VALUE</Text>
+          </View>
+
+          {history.map((item, idx) => (
+            <View key={idx} style={styles.tableDataRow}>
+              <Text style={[styles.tableDataCell, { flex: 1.2 }]}>{item.date}</Text>
+              <Text style={[styles.tableDataCell, { flex: 1, fontWeight: '700' }]}>{item.user}</Text>
+              <Text style={[styles.tableDataCell, { flex: 1.5 }]}>{item.field}</Text>
+              <Text style={[styles.tableDataCell, { flex: 1, color: '#EF4444' }]}>{item.oldValue}</Text>
+              <Text style={[styles.tableDataCell, { flex: 1, color: '#22C55E' }]}>{item.newValue}</Text>
+            </View>
+          ))}
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerBtn} onPress={handleReset}><Text style={styles.footerBtnText}>Reset to Default</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.footerBtn} onPress={handlePreview}><Text style={styles.footerBtnText}>Preview Form</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.saveConfigBtn} onPress={handleSave}><Text style={styles.saveConfigBtnText}>Save Configuration</Text></TouchableOpacity>
-      </View>
+      {/* Select Form Modal */}
+      <Modal visible={showFormModal} transparent animationType="fade" onRequestClose={() => setShowFormModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowFormModal(false)}>
+          <View style={styles.dropdownModalBox}>
+            {FORMS.map((form) => (
+              <TouchableOpacity
+                key={form}
+                style={[styles.dropdownOption, selectedForm === form && styles.dropdownOptionActive]}
+                onPress={() => {
+                  setSelectedForm(form);
+                  setShowFormModal(false);
+                }}
+              >
+                <Text style={[styles.dropdownOptionText, selectedForm === form && styles.dropdownOptionTextActive]}>
+                  {form}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
-      <FieldPropertiesModal visible={!!editingField} field={editingField} onClose={() => setEditingField(null)} onSave={handleSaveField} />
+      {/* Select Field Type Modal */}
+      <Modal visible={showTypeModal} transparent animationType="fade" onRequestClose={() => setShowTypeModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTypeModal(false)}>
+          <View style={styles.dropdownModalBox}>
+            {FIELD_TYPES.map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.dropdownOption, newFieldType === type && styles.dropdownOptionActive]}
+                onPress={() => {
+                  setNewFieldType(type);
+                  setShowTypeModal(false);
+                }}
+              >
+                <Text style={[styles.dropdownOptionText, newFieldType === type && styles.dropdownOptionTextActive]}>
+                  {type}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
-      <ExportPreviewModal
-        visible={!!previewContent}
-        title="Form Preview"
-        filename={`${selectedForm.replace(/\s+/g, '_')}_Preview.txt`}
-        content={previewContent ?? ''}
-        onClose={() => setPreviewContent(null)}
-      />
+      {/* Form Preview Modal */}
+      <Modal visible={showPreviewModal} transparent animationType="fade" onRequestClose={() => setShowPreviewModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Form Preview — {selectedForm}</Text>
+              <TouchableOpacity onPress={() => setShowPreviewModal(false)}>
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {fields.filter(f => f.visible).map((f) => (
+                <View key={f.id} style={styles.previewFieldGroup}>
+                  <Text style={styles.previewLabel}>
+                    {f.label} {f.required && <Text style={{ color: '#EF4444' }}>*</Text>}
+                  </Text>
+                  <View style={styles.previewInputDummy}>
+                    <Text style={styles.previewInputDummyText}>{f.type} field</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowPreviewModal(false)}>
+                <Text style={styles.closeModalBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const DEMO_FIELDS: Record<string, FormField[]> = {
   'Enrollment Wizard': [
-    { id: 'f1', type: 'Text', label: 'Student Name', required: true, visible: true },
-    { id: 'f2', type: 'Date', label: 'Date of Birth', required: true, visible: true },
+    { id: 'def-1', type: 'Text', label: 'Full Name', required: true, visible: true },
+    { id: 'def-2', type: 'Date', label: 'Date of Birth', required: true, visible: true },
+    { id: 'def-3', type: 'Dropdown', label: 'Program Type', required: false, visible: true },
+    { id: 'def-4', type: 'Text', label: 'Parent Name', required: false, visible: true },
+    { id: 'def-5', type: 'Text', label: 'Phone', required: false, visible: true },
   ],
   'IUP Form': [
-    { id: 'f3', type: 'Text', label: 'Goal Name', required: true, visible: true },
+    { id: 'def-6', type: 'Text', label: 'Goal Name', required: true, visible: true },
   ],
   'ABLLS Assessment Form': [
-    { id: 'f4', type: 'Dropdown', label: 'Skill Score', required: true, visible: true },
+    { id: 'def-7', type: 'Dropdown', label: 'Skill Score', required: true, visible: true },
   ],
 };
+
 const DEMO_HISTORY: HistoryEntry[] = [
-  { date: 'Aug 1, 2026', user: 'Admin A', field: 'Student Name', oldValue: 'Full Name', newValue: 'Student Name' },
+  { date: '2025-07-28', user: 'Admin A', field: 'Program Type', oldValue: 'Text', newValue: 'Dropdown' },
+  { date: '2025-07-15', user: 'Admin A', field: 'Phone', oldValue: 'Hidden', newValue: 'Visible' },
+  { date: '2025-06-30', user: 'Sysadmin', field: 'Date of Birth', oldValue: 'Optional', newValue: 'Required' },
 ];
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  templateBadge: { backgroundColor: colors.statusApprovedBg, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
-  templateBadgeCustom: { backgroundColor: colors.statusPendingBg },
-  templateBadgeText: { fontSize: 11, fontWeight: '700', color: colors.navyText },
-  formSelectorRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.bgCard },
-  formChip: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.bgApp },
-  formChipActive: { backgroundColor: colors.primaryYellow },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  fieldRowHidden: { opacity: 0.4 },
-  fieldOrderCol: { alignItems: 'center' },
-  fieldTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  fieldTypeBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  fieldTypeBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  footer: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, padding: spacing.lg, backgroundColor: colors.bgCard, borderTopWidth: 1, borderTopColor: colors.border },
-  footerBtn: { flex: 1, minWidth: 100, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  footerBtnText: { fontSize: 11, fontWeight: '600', color: colors.navyText, textAlign: 'center' },
-  saveConfigBtn: { flex: 2, minWidth: 150, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  saveConfigBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
-  field: { gap: spacing.xs },
-  textInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.navyText },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  checkbox: { width: 18, height: 18, borderWidth: 1, borderColor: colors.border, borderRadius: 4 },
-  checkboxChecked: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  modalFooter: { flexDirection: 'row', gap: spacing.sm },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  cancelBtnText: { fontWeight: '600', color: colors.navyText },
-  saveBtn: { flex: 1, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  saveBtnText: { fontWeight: '700', color: colors.navyText },
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  content: { padding: spacing.lg, gap: 16 },
+  header: { marginBottom: 4 },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
+  headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
+
+  topControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectDropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 38,
+    width: 220,
+  },
+  selectDropdownText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 38,
+  },
+  uploadBtnText: { fontSize: 13, fontWeight: '600', color: '#334155' },
+
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  badgeDefault: { backgroundColor: '#DCFCE7' },
+  badgeCustom: { backgroundColor: '#FEF08A' },
+  badgeText: { fontSize: 11, fontWeight: '600' },
+  badgeTextDefault: { color: '#166534' },
+  badgeTextCustom: { color: '#854D0E' },
+
+  canvasContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    gap: 10,
+  },
+  canvasHeader: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, marginBottom: 4 },
+
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  fieldRowHidden: { opacity: 0.5 },
+  typeBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginRight: 12,
+  },
+  typeBadgeText: { fontSize: 11, fontWeight: '600', color: '#0284C7' },
+  fieldLabelText: { fontSize: 14, fontWeight: '600', color: '#1E293B', flex: 1 },
+  rowRightControls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  controlLabel: { fontSize: 12, color: '#64748B' },
+  iconBtn: { padding: 4 },
+
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  addBtnText: { fontSize: 13, fontWeight: '600', color: '#0284C7' },
+
+  inlineAddBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 6,
+  },
+  inlineFieldCol: { gap: 4 },
+  inlineFieldLabel: { fontSize: 11, fontWeight: '600', color: '#475569' },
+  inlineTypeDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    height: 32,
+    width: 110,
+  },
+  inlineTypeDropdownText: { fontSize: 12, color: '#1E293B' },
+
+  inlineTextInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    height: 32,
+    fontSize: 12,
+    color: '#1E293B',
+  },
+  inlineToggleCol: { alignItems: 'center', gap: 2 },
+  confirmAddBtn: {
+    backgroundColor: '#FACC15',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    height: 32,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  confirmAddBtnText: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
+  cancelAddBtn: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    height: 32,
+    justifyContent: 'center',
+    marginTop: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  cancelAddBtnText: { fontSize: 12, color: '#475569' },
+
+  actionRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  previewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FACC15',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  previewBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FACC15',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  saveBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  resetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#F87171',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  resetBtnText: { fontSize: 13, fontWeight: '600', color: '#EF4444' },
+
+  historyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    gap: 12,
+    marginTop: 8,
+  },
+  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  historyTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  tableCol: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  tableDataRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  tableDataCell: { fontSize: 12, color: '#334155' },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  dropdownModalBox: {
+    width: 220,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingVertical: 4,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  dropdownOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  dropdownOptionActive: {
+    backgroundColor: '#E0F2FE',
+  },
+  dropdownOptionText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  dropdownOptionTextActive: {
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    gap: 16,
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  modalBody: { gap: 12 },
+  previewFieldGroup: { gap: 4, marginBottom: 12 },
+  previewLabel: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  previewInputDummy: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  previewInputDummyText: { fontSize: 12, color: '#94A3B8' },
+  modalFooter: { alignItems: 'flex-end' },
+  closeModalBtn: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  closeModalBtnText: { fontSize: 12, fontWeight: '600', color: '#334155' },
 });

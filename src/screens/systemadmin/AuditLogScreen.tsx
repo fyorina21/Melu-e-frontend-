@@ -70,10 +70,8 @@ export default function AuditLogScreen({ navigation }: Props) {
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Feather name="list" size={18} color={colors.navyText} />
           <View>
             <Text style={typography.h1}>Audit Log</Text>
-            <Text style={typography.caption}>MR-8 — every tracked action in the system</Text>
           </View>
         </View>
       </View>

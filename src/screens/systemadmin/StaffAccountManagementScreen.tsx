@@ -582,7 +582,16 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.iconBtn} onPress={() => handleResetPassword(s)}><Feather name="key" size={14} color={colors.navyText} /></TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => handleToggleActive(s)}><Feather name={s.active ? 'user-x' : 'user-check'} size={14} color={colors.navyText} /></TouchableOpacity>
+              
+              {/* Toggle switch icon: Green (Active/On) vs Red (Inactive/Off) */}
+              <TouchableOpacity style={styles.iconBtn} onPress={() => handleToggleActive(s)}>
+                <Feather 
+                  name={s.active ? 'toggle-right' : 'toggle-left'} 
+                  size={18} 
+                  color={s.active ? '#10B981' : '#EF4444'} 
+                />
+              </TouchableOpacity>
+              
               <TouchableOpacity style={styles.iconBtn} onPress={() => handleDelete(s)}><Feather name="trash-2" size={14} color={colors.statusRevisionText} /></TouchableOpacity>
             </View>
           </View>
@@ -596,9 +605,10 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
 }
 
 const DEMO_STAFF: StaffMember[] = [
-  { id: 's1', name: 'Teacher A', email: 'teacher@melue.org', phone: '', roles: ['Teacher'], active: true },
+  { id: 's1', name: 'Teacher A', email: 'teachera@melue.org', phone: '', roles: ['Teacher'], active: true },
   { id: 's2', name: 'Coordinator A', email: 'coordinator@melue.org', phone: '', roles: ['Coordinator'], active: true },
   { id: 's3', name: 'Director A', email: 'director@melue.org', phone: '', roles: ['Director'], active: true },
+  { id: 's4', name: 'Teacher C', email: 'teacherc@melue.org', phone: '', roles: ['Teacher'], active: false },
 ];
 
 const styles = StyleSheet.create({
@@ -625,6 +635,19 @@ const styles = StyleSheet.create({
   iconBtnActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   linkingCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.primaryYellow, gap: spacing.md, marginTop: spacing.sm },
   linkingHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  field: { gap: spacing.xs },
+  textInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
+  chipText: { fontSize: 12, color: colors.bodyText },
+  chipTextSelected: { fontWeight: '700', color: colors.navyText },
+  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
+  modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.md },
+  cancelBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  cancelBtnText: { color: colors.bodyText, fontWeight: '600' },
+  saveBtn: { backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  saveBtnText: { color: colors.navyText, fontWeight: '700' },
   selectorRow: { flexDirection: 'row', gap: spacing.sm },
   selectorBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', backgroundColor: colors.bgApp },
   selectorBtnText: { fontWeight: '600', color: colors.bodyText },
@@ -661,17 +684,4 @@ const styles = StyleSheet.create({
   confirmRemoveBtnText: { fontWeight: '700', color: colors.white },
   summaryRow: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, gap: spacing.xs },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '90%' },
-  field: { gap: spacing.xs },
-  textInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.navyText },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  chipTextSelected: { color: colors.navyText },
-  modalFooter: { flexDirection: 'row', gap: spacing.sm },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  cancelBtnText: { fontWeight: '600', color: colors.navyText },
-  saveBtn: { flex: 2, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  saveBtnText: { fontWeight: '700', color: colors.navyText },
 });
