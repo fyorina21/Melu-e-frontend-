@@ -8,14 +8,26 @@ beforeEach(() => {
   mockDb.reset();
 });
 
+// Business data is no longer pre-seeded — these helpers populate through the
+// mock API exactly like the screens do.
+const STU_A = { firstName: 'Test', lastName: 'Kid', dateOfBirth: '2018-01-01', programType: 'ABA', therapyGroup: 'Sunrise' };
+const STU_B = { firstName: 'Second', lastName: 'Kid', dateOfBirth: '2019-01-01', programType: 'PECS', therapyGroup: 'Horizon' };
+
+async function seedStudentsViaApi() {
+  await mockHttp.post('/students', STU_A);
+  await mockHttp.post('/students', STU_B);
+}
+
 describe('mock http client', () => {
-  it('serves students from the seeded database', async () => {
+  it('serves created students from the database', async () => {
+    await seedStudentsViaApi();
     const { data } = await mockHttp.get<Array<{ fullName: string }>>('/students');
-    expect(data.length).toBeGreaterThan(0);
+    expect(data.length).toBeGreaterThanOrEqual(2);
     expect(data[0].fullName).toBeDefined();
   });
 
   it('filters students by query params', async () => {
+    await seedStudentsViaApi();
     const { data } = await mockHttp.get<Array<{ therapyGroup: string }>>('/students', {
       params: { therapyGroup: 'Sunrise' },
     });
@@ -24,16 +36,10 @@ describe('mock http client', () => {
   });
 
   it('creates a student and persists it', async () => {
-    const { data: created } = await mockHttp.post<{ id: string; fullName: string }>('/students', {
-      firstName: 'Test',
-      lastName: 'Kid',
-      dateOfBirth: '2018-01-01',
-      programType: 'ABA',
-      therapyGroup: 'Horizon',
-    });
+    const { data: created } = await mockHttp.post<{ id: string; fullName: string }>('/students', STU_A);
     expect(created.fullName).toBe('Test Kid');
     expect(mockDb.findById('students', created.id)).toBeDefined();
-    expect(localStorage.getItem('melue.mock.db.v1')).toContain('Test Kid');
+    expect(localStorage.getItem('melue.mock.db.v2')).toContain('Test Kid');
   });
 
   it('logs a trial into the database', async () => {
@@ -49,6 +55,7 @@ describe('mock http client', () => {
   });
 
   it('starts a session and surfaces it on the dashboard', async () => {
+    await seedStudentsViaApi();
     const { data: started } = await mockHttp.post<{ id: string; status: string }>('/therapy_sessions/start', {
       assignmentId: 'asn-1',
     });
@@ -66,7 +73,7 @@ describe('mock http client', () => {
     ).rejects.toMatchObject({ status: 401 });
   });
 
-  it('accepts a seeded demo login', async () => {
+  it('accepts a provisioned demo login', async () => {
     const { data } = await mockHttp.post<{ token: string; role: string }>('/auth/login', {
       email: 'parent@melue.org',
       password: 'demo1234',
