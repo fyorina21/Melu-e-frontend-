@@ -94,8 +94,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <View style={styles.headerLeft}>
           <Feather name="clipboard" size={18} color={colors.navyText} />
           <View>
-            <Text style={typography.h1}>6-Week Assessment Dashboard</Text>
-            <Text style={typography.caption}>SCR-010 — ABLLS + Behavior Assessment Launcher</Text>
+            <Text style={typography.h1}>6 Week Assessment Dashboard</Text>
           </View>
         </View>
         <View style={styles.periodPill}>

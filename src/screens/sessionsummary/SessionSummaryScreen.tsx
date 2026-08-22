@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -22,7 +21,13 @@ import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SessionSummary'>;
 
-const PROMPT_COLOR: Record<string, string> = { INDEPENDENT: '#22C55E', G: '#EAB308', PP: '#F97316', FP: '#EF4444' };
+const PROMPT_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
+  FP: { bg: '#FEE2E2', text: '#DC2626', label: 'FP' },
+  PP: { bg: '#FFEDD5', text: '#EA580C', label: 'PP' },
+  G: { bg: '#EFF6FF', text: '#2563EB', label: 'G' },
+  INDEPENDENT: { bg: '#DCFCE7', text: '#16A34A', label: '+' },
+  '+': { bg: '#DCFCE7', text: '#16A34A', label: '+' },
+};
 
 interface TrialLogModalProps {
   visible: boolean;
@@ -46,8 +51,21 @@ function TrialLogModal({ visible, goalName, trials, onClose }: TrialLogModalProp
             {(trials || []).map((t, i) => (
               <View key={i} style={styles.trialLogRow}>
                 <Text style={typography.body}>{t.timestamp}</Text>
-                <View style={[styles.trialLogDot, { backgroundColor: PROMPT_COLOR[t.promptLevel] }]} />
-                <Text style={typography.bodyBold}>{t.promptLevel}</Text>
+                <View
+                  style={[
+                    styles.trialBadge,
+                    { backgroundColor: PROMPT_CONFIG[t.promptLevel]?.bg || '#F3F4F6' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.trialBadgeText,
+                      { color: PROMPT_CONFIG[t.promptLevel]?.text || '#374151' },
+                    ]}
+                  >
+                    {PROMPT_CONFIG[t.promptLevel]?.label || t.promptLevel}
+                  </Text>
+                </View>
               </View>
             ))}
           </ScrollView>
@@ -64,90 +82,106 @@ interface GoalSummaryRowProps {
 
 function GoalSummaryRow({ goal, onViewTrialLog }: GoalSummaryRowProps) {
   const isTA = goal.goalType === 'task_analysis';
+  const promptCounts = goal.promptBreakdown || {};
+
   return (
-    <View style={styles.goalRow}>
-      <View style={styles.goalRowHeader}>
-        <Text style={typography.bodyBold}>{goal.name}</Text>
-        <Text style={typography.caption}>{goal.independencePercent}% independent</Text>
+    <View style={styles.goalCard}>
+      <View style={styles.goalHeaderRow}>
+        <View>
+          <Text style={styles.goalTitle}>{goal.name}</Text>
+          <Text style={styles.goalSubtitle}>{goal.totalTrials} trials</Text>
+        </View>
+        <View style={styles.independenceContainer}>
+          <View style={styles.independenceTrend}>
+            <Feather name="trending-up" size={14} color="#16A34A" />
+            <Text style={styles.independencePercent}>{goal.independencePercent}%</Text>
+          </View>
+          <Text style={styles.independenceLabel}>Independence</Text>
+        </View>
       </View>
 
       {isTA ? (
-        <View>
+        <View style={styles.taContainer}>
           {(goal.steps || []).map((step, idx) => (
             <View key={step.id} style={styles.taStepSummaryRow}>
-              <Text style={typography.body}>Step {idx + 1}: {step.description}</Text>
+              <Text style={typography.body}>
+                Step {idx + 1}: {step.description}
+              </Text>
               <Text style={typography.caption}>
                 {step.successCount}/{step.totalTrials} · {step.independencePercent}%
               </Text>
             </View>
           ))}
-          <Text style={typography.caption}>Overall mastery status: {goal.overallMasteryStatus}</Text>
+          <Text style={typography.caption}>
+            Overall mastery status: {goal.overallMasteryStatus}
+          </Text>
         </View>
       ) : (
-        <>
-          <View style={styles.promptBreakdownRow}>
-            {Object.entries(goal.promptBreakdown || {}).map(([level, count]) => (
-              <View key={level} style={styles.promptBreakdownChip}>
-                <View style={[styles.trialLogDot, { backgroundColor: PROMPT_COLOR[level] }]} />
-                <Text style={typography.caption}>{level}: {count}</Text>
+        <View style={styles.promptGrid}>
+          {[
+            { key: 'FP', label: 'FP' },
+            { key: 'PP', label: 'PP' },
+            { key: 'G', label: 'G' },
+            { key: 'INDEPENDENT', label: '+' },
+          ].map(({ key, label }) => {
+            const config = PROMPT_CONFIG[key];
+            const count = promptCounts[key] ?? promptCounts[label] ?? 0;
+            return (
+              <View key={key} style={[styles.promptBox, { backgroundColor: config.bg }]}>
+                <Text style={[styles.promptCount, { color: config.text }]}>{count}</Text>
+                <Text style={[styles.promptLabel, { color: config.text }]}>{label}</Text>
               </View>
-            ))}
-          </View>
-          <Text style={typography.caption}>{goal.totalTrials} total trials</Text>
-        </>
+            );
+          })}
+        </View>
       )}
 
-      <TouchableOpacity onPress={() => onViewTrialLog(goal)}>
+      <TouchableOpacity onPress={() => onViewTrialLog(goal)} style={styles.trialLogBtn}>
         <Text style={styles.linkText}>View Trial Log →</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-interface StudentSummaryCardProps {
+interface StudentSummarySectionProps {
   student: SessionSummaryStudent;
-  expanded: boolean;
-  onToggle: () => void;
   onViewTrialLog: (student: SessionSummaryStudent, goal: Goal) => void;
 }
 
-function StudentSummaryCard({ student, expanded, onToggle, onViewTrialLog }: StudentSummaryCardProps) {
+function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectionProps) {
   return (
-    <View style={styles.card}>
-      <TouchableOpacity style={styles.studentCardHeader} onPress={onToggle}>
-        <Text style={typography.h3}>{student.name}</Text>
-        <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.navyText} />
-      </TouchableOpacity>
-      {expanded && (
-        <View>
-          {student.goals.map((goal) => (
-            <GoalSummaryRow key={goal.id} goal={goal} onViewTrialLog={(g) => onViewTrialLog(student, g)} />
-          ))}
-        </View>
-      )}
+    <View style={styles.studentSection}>
+      <Text style={styles.studentSectionTitle}>{student.name}</Text>
+      {student.goals.map((goal) => (
+        <GoalSummaryRow
+          key={goal.id}
+          goal={goal}
+          onViewTrialLog={(g) => onViewTrialLog(student, g)}
+        />
+      ))}
     </View>
   );
 }
 
-export default function SessionSummaryScreen({ route, navigation }: Props) {
-  const sessionId = route.params.sessionId;
+export function SessionSummaryScreen({ route, navigation }: Props) {
+  const sessionId = route.params?.sessionId;
 
   const [summary, setSummary] = useState<SessionSummary | null>(null);
-  const [expandedStudentIds, setExpandedStudentIds] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState('');
   const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
-  const [incidentsExpanded, setIncidentsExpanded] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getSessionSummary(sessionId);
-      setSummary(data);
-      setExpandedStudentIds(Object.fromEntries(data.students.map((s: { id: string }) => [s.id, true])));
+      if (sessionId) {
+        const { data } = await getSessionSummary(sessionId);
+        setSummary(data);
+        return;
+      }
     } catch (err) {
-      setSummary(DEMO_SUMMARY);
-      setExpandedStudentIds(Object.fromEntries(DEMO_SUMMARY.students.map((s) => [s.id, true])));
+      // Fallback to DEMO_SUMMARY on error
     }
+    setSummary(DEMO_SUMMARY);
   }, [sessionId]);
 
   useEffect(() => {
@@ -167,7 +201,7 @@ export default function SessionSummaryScreen({ route, navigation }: Props) {
 
   const handleSaveDraft = async () => {
     try {
-      await saveSessionDraft(sessionId, { notes });
+      if (sessionId) await saveSessionDraft(sessionId, { notes });
       Alert.alert('Draft saved');
     } catch (err) {
       Alert.alert('Saved locally', 'Will sync once connected.');
@@ -180,7 +214,7 @@ export default function SessionSummaryScreen({ route, navigation }: Props) {
       return;
     }
     try {
-      await submitSessionSummary(sessionId, { notes });
+      if (sessionId) await submitSessionSummary(sessionId, { notes });
       resetSessionTimer();
       Alert.alert('Session submitted', 'Sent to your Program Coordinator.');
       navigation?.navigate?.('SessionDataCollection');
@@ -195,7 +229,7 @@ export default function SessionSummaryScreen({ route, navigation }: Props) {
       `Melu'e Foundation — Session Summary`,
       `Station: ${summary.stationName}`,
       `Teacher: ${summary.teacherName}`,
-      `Time: ${summary.startTime} – ${summary.endTime} (${summary.durationMinutes} min)`,
+      `Time: ${summary.startTime} – ${summary.endTime} (${summary.durationMinutes} minutes)`,
       '',
       'STUDENT GOAL DATA',
       ...summary.students.flatMap((s) => [
@@ -222,78 +256,104 @@ export default function SessionSummaryScreen({ route, navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleBackToSession} style={styles.headerBtn}>
-          <Feather name="arrow-left" size={18} color={colors.navyText} />
-          <Text style={styles.headerBtnText}>Back to Session</Text>
-        </TouchableOpacity>
-        <Text style={typography.h1}>Session Summary</Text>
-        <TouchableOpacity onPress={handlePreviewPdf} style={styles.headerBtn}>
-          <Feather name="file-text" size={18} color={colors.navyText} />
-          <Text style={styles.headerBtnText}>Preview PDF</Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <Text style={typography.h3}>Session Details</Text>
-          <Text style={typography.body}>{summary.stationName}</Text>
-          <Text style={typography.caption}>{summary.teacherName} · {summary.startTime} – {summary.endTime} · {summary.durationMinutes} min</Text>
+        <TouchableOpacity onPress={handleBackToSession} style={styles.topBackBtn}>
+          <Feather name="arrow-left" size={16} color="#64748B" />
+          <Text style={styles.topBackText}>Back to Session</Text>
+        </TouchableOpacity>
+
+        <View style={styles.headerCard}>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerTitle}>Session Summary</Text>
+            <TouchableOpacity onPress={handlePreviewPdf} style={styles.previewPdfBtn}>
+              <Feather name="file-text" size={16} color="#1E293B" />
+              <Text style={styles.previewPdfText}>Preview PDF</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.sessionMetaGrid}>
+            <View style={styles.metaColumn}>
+              <Text style={styles.metaLabel}>Station</Text>
+              <Text style={styles.metaValue}>{summary.stationName}</Text>
+            </View>
+            <View style={styles.metaColumn}>
+              <Text style={styles.metaLabel}>Teacher</Text>
+              <Text style={styles.metaValue}>{summary.teacherName}</Text>
+            </View>
+            <View style={styles.metaColumn}>
+              <Text style={styles.metaLabel}>Time</Text>
+              <Text style={styles.metaValue}>{summary.startTime}</Text>
+            </View>
+            <View style={styles.metaColumn}>
+              <Text style={styles.metaLabel}>Duration</Text>
+              <Text style={styles.metaValue}>{summary.durationMinutes} minutes</Text>
+            </View>
+          </View>
         </View>
 
         {summary.students.map((student) => (
-          <StudentSummaryCard
+          <StudentSummarySection
             key={student.id}
             student={student}
-            expanded={!!expandedStudentIds[student.id]}
-            onToggle={() =>
-              setExpandedStudentIds((prev) => ({ ...prev, [student.id]: !prev[student.id] }))
+            onViewTrialLog={(s, g) =>
+              setTrialLogTarget({ goalName: `${s.name} — ${g.name}`, trials: g.trialLog || [] })
             }
-            onViewTrialLog={(s, g) => setTrialLogTarget({ goalName: `${s.name} — ${g.name}`, trials: g.trialLog || [] })}
           />
         ))}
 
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.studentCardHeader} onPress={() => setIncidentsExpanded((v) => !v)}>
-            <Text style={typography.h3}>Behavior Incidents ({summary.incidents.length})</Text>
-            <Feather name={incidentsExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.navyText} />
-          </TouchableOpacity>
-          {incidentsExpanded && summary.incidents.map((inc, i) => (
-            <View key={i} style={styles.incidentRow}>
-              <Text style={typography.body}>{inc.time} — {inc.behavior}</Text>
-              <Text style={typography.caption}>{inc.studentName}</Text>
+        {summary.incidents.length > 0 && (
+          <View style={styles.incidentCard}>
+            <View style={styles.incidentHeader}>
+              <Feather name="alert-triangle" size={18} color="#EA580C" />
+              <Text style={styles.incidentTitle}>
+                Behavior Incidents ({summary.incidents.length})
+              </Text>
             </View>
-          ))}
-          {incidentsExpanded && summary.incidents.length === 0 && (
-            <Text style={[typography.body, { color: colors.mutedText }]}>No incidents recorded.</Text>
-          )}
-        </View>
+            {summary.incidents.map((inc, i) => (
+              <View key={i} style={styles.incidentBody}>
+                <View style={styles.incidentRowTop}>
+                  <Text style={styles.incidentTime}>{inc.time}</Text>
+                  <TouchableOpacity>
+                    <Text style={styles.linkText}>View Details</Text>
+                  </TouchableOpacity>
+                </View>
+               <Text style={styles.incidentABC}>
+                <Text style={styles.boldText}>A:</Text> {(inc as any).antecedent || 'Task demand'} •{' '}
+                   <Text style={styles.boldText}>B:</Text> {inc.behavior} •{' '}
+                   <Text style={styles.boldText}>C:</Text> {(inc as any).consequence || 'Offered break'}
+              </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
-        <View style={styles.card}>
-          <Text style={typography.h3}>Teacher Qualitative Notes</Text>
+        <View style={styles.notesCard}>
+          <Text style={styles.notesTitle}>
+            Teacher Notes <Text style={{ color: '#EF4444' }}>*</Text>
+          </Text>
           <TextInput
-            style={[styles.textInput, styles.textArea]}
+            style={styles.textArea}
             multiline
-            placeholder="Describe how the session went, any context for the data above..."
-            placeholderTextColor={colors.mutedText}
+            placeholder="Summarize the session, student progress, any concerns, or recommendations..."
+            placeholderTextColor="#94A3B8"
             value={notes}
             onChangeText={setNotes}
           />
         </View>
-      </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.draftBtn} onPress={handleSaveDraft}>
-          <Text style={styles.draftBtnText}>Save Draft</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.submitBtn, !notes.trim() && styles.submitBtnDisabled]}
-          disabled={!notes.trim()}
-          onPress={handleSubmit}
-        >
-          <Text style={styles.submitBtnText}>Submit & End Session</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
+            <Text style={styles.saveDraftText}>Save Draft</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.submitBtn, !notes.trim() && styles.submitBtnDisabled]}
+            disabled={!notes.trim()}
+            onPress={handleSubmit}
+          >
+            <Text style={styles.submitBtnText}>Submit & End Session</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       <TrialLogModal
         visible={!!trialLogTarget}
@@ -313,116 +373,198 @@ export default function SessionSummaryScreen({ route, navigation }: Props) {
   );
 }
 
+export default SessionSummaryScreen;
+
 const DEMO_SUMMARY: SessionSummary = {
-  stationName: 'Station 1 (Basic Skills) · Room 2',
+  stationName: 'Station A',
   teacherName: 'Teacher A',
   startTime: '9:00 AM',
-  endTime: '10:30 AM',
-  durationMinutes: 90,
+  endTime: '9:30 AM',
+  durationMinutes: 30,
   students: [
     {
-      id: 'student-a',
+      id: 's1',
       name: 'Student A',
       goals: [
         {
-          id: 'goal-1',
+          id: 'g1',
           name: 'Identify Colors',
           goalType: 'standard',
-          independencePercent: 68,
-          totalTrials: 24,
-          promptBreakdown: { INDEPENDENT: 10, G: 6, PP: 5, FP: 3 },
-          trialLog: [
-            { promptLevel: 'INDEPENDENT', timestamp: '9:04 AM' },
-            { promptLevel: 'G', timestamp: '9:06 AM' },
-          ],
+          independencePercent: 40,
+          totalTrials: 10,
+          promptBreakdown: { FP: 1, PP: 2, G: 3, INDEPENDENT: 4 },
+          trialLog: [],
+        },
+        {
+          id: 'g2',
+          name: 'Follow 2-Step Commands',
+          goalType: 'standard',
+          independencePercent: 70,
+          totalTrials: 10,
+          promptBreakdown: { FP: 0, PP: 1, G: 2, INDEPENDENT: 7 },
+          trialLog: [],
         },
       ],
     },
     {
-      id: 'student-b',
+      id: 's2',
       name: 'Student B',
       goals: [
         {
-          id: 'goal-3',
+          id: 'g5',
           name: 'Request Items',
           goalType: 'standard',
-          independencePercent: 55,
-          totalTrials: 18,
-          promptBreakdown: { INDEPENDENT: 6, G: 4, PP: 5, FP: 3 },
-          trialLog: [{ promptLevel: 'PP', timestamp: '9:12 AM' }],
+          independencePercent: 80,
+          totalTrials: 10,
+          promptBreakdown: { FP: 0, PP: 0, G: 2, INDEPENDENT: 8 },
+          trialLog: [],
+        },
+        {
+          id: 'g6',
+          name: 'Eye Contact',
+          goalType: 'standard',
+          independencePercent: 50,
+          totalTrials: 10,
+          promptBreakdown: { FP: 0, PP: 1, G: 4, INDEPENDENT: 5 },
+          trialLog: [],
         },
       ],
     },
   ],
-  incidents: [],
+  incidents: [
+  {
+    time: '9:15 AM',
+    studentName: 'Student A',
+    behavior: 'Threw materials',
+    antecedent: 'Task demand',
+    consequence: 'Offered break',
+  } as any,
+],
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: {
-    padding: spacing.lg,
-    backgroundColor: colors.bgCard,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: spacing.sm,
-  },
-  headerBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' },
-  headerBtnText: { fontWeight: '600', color: colors.navyText, fontSize: 13 },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  card: {
-    backgroundColor: colors.bgCard,
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: 40 },
+  topBackBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.xs },
+  topBackText: { fontSize: 14, color: '#64748B', fontWeight: '500' },
+  headerCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: radius.lg,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
+    gap: spacing.md,
+  },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
+  previewPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+  },
+  previewPdfText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  sessionMetaGrid: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
+  metaColumn: { gap: 2 },
+  metaLabel: { fontSize: 12, color: '#94A3B8' },
+  metaValue: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  studentSection: { gap: spacing.sm, marginTop: spacing.xs },
+  studentSectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  goalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: spacing.md,
+  },
+  goalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  goalTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  goalSubtitle: { fontSize: 13, color: '#94A3B8' },
+  independenceContainer: { alignItems: 'flex-end' },
+  independenceTrend: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  independencePercent: { fontSize: 14, fontWeight: '700', color: '#16A34A' },
+  independenceLabel: { fontSize: 11, color: '#94A3B8' },
+  promptGrid: { flexDirection: 'row', gap: 8 },
+  promptBox: {
+    flex: 1,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promptCount: { fontSize: 16, fontWeight: '700' },
+  promptLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  trialLogBtn: { marginTop: 2 },
+  linkText: { fontSize: 13, color: '#0284C7', fontWeight: '500' },
+  taContainer: { gap: 4 },
+  taStepSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  incidentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: spacing.xs,
+  },
+  incidentHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  incidentTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  incidentBody: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#EA580C',
+    paddingLeft: spacing.md,
+    marginTop: spacing.xs,
+  },
+  incidentRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  incidentTime: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  incidentABC: { fontSize: 13, color: '#475569', marginTop: 2 },
+  boldText: { fontWeight: '700' },
+  notesCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     gap: spacing.sm,
   },
-  studentCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  goalRow: { paddingTop: spacing.md, marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, gap: spacing.xs },
-  goalRowHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  promptBreakdownRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  promptBreakdownChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  trialLogDot: { width: 8, height: 8, borderRadius: 4 },
-  taStepSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 12 },
-  incidentRow: { paddingTop: spacing.sm, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  textInput: {
+  notesTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  textArea: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
     borderRadius: radius.md,
     padding: spacing.md,
-    color: colors.navyText,
+    minHeight: 110,
+    textAlignVertical: 'top',
+    fontSize: 14,
+    color: '#0F172A',
   },
-  textArea: { minHeight: 100, textAlignVertical: 'top' },
-  footer: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.lg,
-    backgroundColor: colors.bgCard,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  draftBtn: {
+  actionRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  saveDraftBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#CBD5E1',
     borderRadius: radius.md,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
-  draftBtnText: { fontWeight: '600', color: colors.navyText },
+  saveDraftText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
   submitBtn: {
     flex: 2,
-    backgroundColor: colors.primaryYellow,
+    backgroundColor: '#FACC15',
     borderRadius: radius.md,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
     alignItems: 'center',
   },
-  submitBtnDisabled: { opacity: 0.4 },
-  submitBtnText: { fontWeight: '700', color: colors.navyText },
+  submitBtnDisabled: { opacity: 0.5 },
+  submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
   trialLogSheet: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: radius.lg,
     maxHeight: '70%',
     padding: spacing.lg,
@@ -432,9 +574,11 @@ const styles = StyleSheet.create({
   trialLogRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
     paddingVertical: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#F1F5F9',
   },
+  trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
+  trialBadgeText: { fontSize: 12, fontWeight: '700' },
 });

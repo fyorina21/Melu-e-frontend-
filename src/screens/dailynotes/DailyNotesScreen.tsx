@@ -11,13 +11,11 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
-import StatusPill, { StatusType } from '../../components/StatusPill';
+import StatusPill from '../../components/StatusPill';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getDailyNotes, getWeeklySummary, resubmitSessionNote } from '../../api/sessionApi';
+import { getDailyNotes, getWeeklySummary } from '../../api/sessionApi';
 import { downloadTextFile } from '../../utils/webExport';
 import type { SessionStackParamList } from '../../types';
 
@@ -29,7 +27,7 @@ interface NoteRecord {
   students: string[];
   station: string;
   room: string;
-  status: string;
+  status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft';
 }
 
 interface DailyNotesStats {
@@ -46,66 +44,71 @@ interface WeeklySummaryData {
   avgIndependenceThisWeek: number;
 }
 
-const STATUS_KEY_MAP: Record<string, StatusType> = {
-  Approved: 'approved',
-  Pending: 'pending',
-  'Revision Required': 'revision',
-};
+const DATE_OPTIONS = ['This Week', 'Last Week', 'This Month'];
+const STATUS_OPTIONS = ['All Statuses', 'Approved', 'Pending', 'Draft', 'Revision Required'];
 
 export default function DailyNotesScreen({ navigation }: Props) {
-  const { logout, session } = useAuth();
+  const { session } = useAuth();
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<NoteRecord[]>([]);
   const [summary, setSummary] = useState<WeeklySummaryData | null>(null);
-  const [stats, setStats] = useState<DailyNotesStats>({ sessionsCompleted: 0, totalTrials: 0, avgIndependence: 0, reviewsPending: 0 });
+  const [stats, setStats] = useState<DailyNotesStats>({
+    sessionsCompleted: 0,
+    totalTrials: 0,
+    avgIndependence: 0,
+    reviewsPending: 0,
+  });
   const [feedbackTarget, setFeedbackTarget] = useState<NoteRecord | null>(null);
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [dateFilter, setDateFilter] = useState('All');
+
+  // Dropdown states
+  const [dateFilter, setDateFilter] = useState('This Month');
+  const [statusFilter, setStatusFilter] = useState('All Statuses');
+  const [openDropdown, setOpenDropdown] = useState<'date' | 'status' | null>(null);
 
   const load = useCallback(async () => {
     try {
       const [notesRes, summaryRes] = await Promise.all([
-        getDailyNotes({ search }),
+        getDailyNotes({}),
         getWeeklySummary({}),
       ]);
       setRecords(notesRes.data.records);
       setStats(notesRes.data.stats);
       setSummary(summaryRes.data);
-    } catch (err) {
+    } catch {
       setRecords(DEMO_RECORDS);
       setStats(DEMO_STATS);
       setSummary(DEMO_WEEKLY_SUMMARY);
     }
-  }, [search]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  // Real-time search and status filtering logic
   const filteredRecords = records.filter((r) => {
-    if (statusFilter !== 'All' && r.status !== statusFilter) return false;
-    if (dateFilter !== 'All') {
-      const d = new Date(r.date);
-      if (isNaN(d.getTime())) return true;
-      const now = new Date();
-      if (dateFilter === 'This Week') {
-        const day = now.getDay();
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-        weekStart.setHours(0, 0, 0, 0);
-        if (d < weekStart) return false;
-      }
-      if (dateFilter === 'This Month') {
-        if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false;
-      }
+    if (statusFilter !== 'All Statuses' && r.status !== statusFilter) {
+      return false;
     }
+
+    if (search.trim() !== '') {
+      const query = search.toLowerCase().trim();
+      const matchesStudent = r.students.some((st) =>
+        st.toLowerCase().includes(query)
+      );
+      const matchesStation = r.station.toLowerCase().includes(query);
+      const matchesRoom = r.room.toLowerCase().includes(query);
+
+      return matchesStudent || matchesStation || matchesRoom;
+    }
+
     return true;
   });
 
   const handleExportWeekly = () => {
     if (!summary) return;
     const lines = [
-      'MELU\u2019E FOUNDATION \u2014 WEEKLY SUMMARY',
+      'MELU’E FOUNDATION — WEEKLY SUMMARY',
       `Week of: ${summary.weekRange}`,
       '',
       `Sessions completed: ${summary.sessionsThisWeek}`,
@@ -114,273 +117,631 @@ export default function DailyNotesScreen({ navigation }: Props) {
       '',
       'Teacher: ' + (session?.userName ?? 'Teacher A'),
     ];
-    downloadTextFile(`WeeklySummary_${summary.weekRange.replace(/[^a-z0-9]/gi, '_')}.html`, lines.map((l) => `<p>${l}</p>`).join(''));
-  };
-
-  const handleResubmit = async (sessionId: string) => {
-    try {
-      await resubmitSessionNote(sessionId, {});
-      load();
-    } catch (err) {
-      // TODO: surface a toast/error banner
-    }
+    downloadTextFile(
+      `WeeklySummary_${summary.weekRange.replace(/[^a-z0-9]/gi, '_')}.html`,
+      lines.map((l) => `<p>${l}</p>`).join('')
+    );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Daily Notes" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={typography.h1}>Daily Notes & Summaries</Text>
 
-        {/* Stat cards */}
+      <ScrollView contentContainerStyle={styles.content} nestedScrollEnabled>
+        {/* Title Header */}
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Feather name="arrow-left" size={18} color="#475569" />
+          </TouchableOpacity>
+          <View>
+            <Text style={styles.pageTitle}>Daily Notes & Summaries</Text>
+          </View>
+          <TouchableOpacity style={styles.topExportBtn} onPress={handleExportWeekly}>
+            <Feather name="download" size={14} color="#334155" />
+            <Text style={styles.topExportText}>Export</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Stat Cards */}
         <View style={styles.statsRow}>
-          <StatCard label="Sessions Completed" value={stats.sessionsCompleted} color={colors.statusInProgressText} />
-          <StatCard label="Total Trials" value={stats.totalTrials} color="#D97706" />
-          <StatCard label="Avg Independence" value={`${stats.avgIndependence}%`} color="#059669" />
-          <StatCard label="Reviews Pending" value={stats.reviewsPending} color="#DC2626" />
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Sessions Completed</Text>
+            <Text style={[styles.statValue, { color: '#0284C7' }]}>{stats.sessionsCompleted}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Total Trials</Text>
+            <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.totalTrials}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Avg Independence</Text>
+            <Text style={[styles.statValue, { color: '#059669' }]}>{stats.avgIndependence}%</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Reviews Pending</Text>
+            <Text style={[styles.statValue, { color: '#DC2626' }]}>{stats.reviewsPending}</Text>
+          </View>
         </View>
 
-        {/* Search + filters */}
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search students, station..."
-            placeholderTextColor={colors.mutedText}
-            value={search}
-            onChangeText={setSearch}
-          />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {['All', 'Approved', 'Pending', 'Revision Required', 'Draft'].map((s) => (
-              <TouchableOpacity
-                key={`status-${s}`}
-                style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
-                onPress={() => setStatusFilter(s)}
-              >
-                <Text style={[styles.filterChipText, statusFilter === s && styles.filterChipTextActive]}>{s}</Text>
-              </TouchableOpacity>
-            ))}
-            {['All', 'This Week', 'This Month'].map((d) => (
-              <TouchableOpacity
-                key={`date-${d}`}
-                style={[styles.filterChip, dateFilter === d && styles.filterChipActive]}
-                onPress={() => setDateFilter(d)}
-              >
-                <Text style={[styles.filterChipText, dateFilter === d && styles.filterChipTextActive]}>{d}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        {/* Filter Bar with Search and Dropdowns */}
+        <View style={[styles.searchFilterCard, { zIndex: openDropdown ? 1000 : 1 }]}>
+          <View style={styles.searchInputWrapper}>
+            <Feather name="search" size={16} color="#94A3B8" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search students, station..."
+              placeholderTextColor="#94A3B8"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
 
-        {/* Session records */}
-        <View style={styles.card}>
-          <Text style={typography.h2}>Session Records</Text>
-          {filteredRecords.length === 0 && (
-            <Text style={styles.noRecordsText}>No sessions match the current filters.</Text>
-          )}
-          {filteredRecords.map((r) => (
-            <View key={r.id} style={styles.recordRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.bodyBold}>{r.date}</Text>
-                <Text style={typography.caption}>{r.students.join(', ')}</Text>
-                <Text style={typography.caption}>{r.station} · {r.room}</Text>
-              </View>
-              <StatusPill status={STATUS_KEY_MAP[r.status] || 'pending'} label={r.status} />
-              <View style={styles.recordActions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => navigation?.navigate?.('SessionNoteEditor', { sessionId: r.id, mode: 'view' })}
-                >
-                  <Text style={styles.actionBtnText}>View</Text>
-                </TouchableOpacity>
-                {(r.status === 'Draft' || r.status === 'Revision Required') && (
+          {/* Date Filter Dropdown */}
+          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'date' ? 1001 : 1 }]}>
+            <TouchableOpacity
+              style={[
+                styles.dropdownTrigger,
+                openDropdown === 'date' && styles.dropdownTriggerActive,
+              ]}
+              onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
+            >
+              <Text style={styles.dropdownTriggerText}>{dateFilter}</Text>
+              <Feather name="chevron-down" size={14} color="#64748B" />
+            </TouchableOpacity>
+
+            {openDropdown === 'date' && (
+              <View style={styles.dropdownMenu}>
+                {DATE_OPTIONS.map((opt) => (
                   <TouchableOpacity
-                    style={styles.actionBtn}
-                    onPress={() => navigation?.navigate?.('SessionNoteEditor', { sessionId: r.id, mode: 'edit' })}
+                    key={opt}
+                    style={[
+                      styles.dropdownOption,
+                      dateFilter === opt && styles.dropdownOptionSelected,
+                    ]}
+                    onPress={() => {
+                      setDateFilter(opt);
+                      setOpenDropdown(null);
+                    }}
                   >
-                    <Text style={styles.actionBtnText}>{r.status === 'Draft' ? 'Edit Draft' : 'Resubmit'}</Text>
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        dateFilter === opt && styles.dropdownOptionTextSelected,
+                      ]}
+                    >
+                      {opt}
+                    </Text>
                   </TouchableOpacity>
-                )}
-                {r.status === 'Revision Required' && (
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => setFeedbackTarget(r)}>
-                    <Text style={[styles.actionBtnText, { color: colors.statusInProgressText }]}>View Feedback</Text>
-                  </TouchableOpacity>
-                )}
+                ))}
               </View>
-            </View>
-          ))}
+            )}
+          </View>
+
+          {/* Status Filter Dropdown */}
+          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'status' ? 1001 : 1 }]}>
+            <TouchableOpacity
+              style={[
+                styles.dropdownTrigger,
+                openDropdown === 'status' && styles.dropdownTriggerActive,
+              ]}
+              onPress={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
+            >
+              <Text style={styles.dropdownTriggerText}>{statusFilter}</Text>
+              <Feather name="chevron-down" size={14} color="#64748B" />
+            </TouchableOpacity>
+
+            {openDropdown === 'status' && (
+              <View style={styles.dropdownMenu}>
+                {STATUS_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt}
+                    style={[
+                      styles.dropdownOption,
+                      statusFilter === opt && styles.dropdownOptionSelected,
+                    ]}
+                    onPress={() => {
+                      setStatusFilter(opt);
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        statusFilter === opt && styles.dropdownOptionTextSelected,
+                      ]}
+                    >
+                      {opt}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* Weekly summary */}
+        {/* Session Records Table */}
+        <View style={styles.tableCard}>
+          <View style={styles.tableCardHeader}>
+            <Text style={styles.tableCardTitle}>Session Records</Text>
+            <Text style={styles.resultsCount}>{filteredRecords.length} results</Text>
+          </View>
+
+          {/* Table Header */}
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.thText, styles.colDate]}>DATE</Text>
+            <Text style={[styles.thText, styles.colStudents]}>STUDENTS</Text>
+            <Text style={[styles.thText, styles.colStation]}>STATION</Text>
+            <Text style={[styles.thText, styles.colStatus]}>STATUS</Text>
+            <Text style={[styles.thText, styles.colActions]}>ACTIONS</Text>
+          </View>
+
+          {filteredRecords.length === 0 ? (
+            <Text style={styles.noRecordsText}>No sessions match the current filters.</Text>
+          ) : (
+            filteredRecords.map((r, i) => (
+              <View
+                key={r.id}
+                style={[styles.tableRow, i === filteredRecords.length - 1 && styles.tableRowLast]}
+              >
+                <Text style={[styles.tdText, styles.colDate]}>{r.date}</Text>
+
+                <View style={styles.colStudents}>
+                  <View style={styles.pillsRow}>
+                    {r.students.map((st) => (
+                      <View key={st} style={styles.studentPill}>
+                        <Text style={styles.studentPillText}>{st}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={styles.subDetailText}>
+                    {r.station} · {r.room}
+                  </Text>
+                </View>
+
+                <Text style={[styles.tdText, styles.colStation]}>{r.station}</Text>
+
+                <View style={styles.colStatus}>
+                  <StatusPill
+                    status={
+                      r.status === 'Approved'
+                        ? 'approved'
+                        : r.status === 'Revision Required'
+                        ? 'revision'
+                        : 'pending'
+                    }
+                    label={r.status}
+                  />
+                </View>
+
+                <View style={[styles.colActions, styles.actionsRow]}>
+                  <TouchableOpacity
+                    style={styles.viewActionBtn}
+                    onPress={() =>
+                      navigation?.navigate?.('SessionNoteEditor', {
+                        sessionId: r.id,
+                        mode: 'view',
+                      })
+                    }
+                  >
+                    <Feather name="eye" size={13} color="#0284C7" />
+                    <Text style={styles.viewActionText}>View</Text>
+                  </TouchableOpacity>
+
+                  {r.status === 'Revision Required' && (
+                    <TouchableOpacity
+                      style={styles.feedbackActionBtn}
+                      onPress={() => setFeedbackTarget(r)}
+                    >
+                      <Text style={styles.feedbackActionText}>View Feedback</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Weekly Summary Card */}
         {summary && (
-          <View style={styles.card}>
+          <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
-              <Text style={typography.h2}>Weekly Summary</Text>
-              <TouchableOpacity style={styles.exportBtn} onPress={handleExportWeekly}>
-                <Feather name="download" size={13} color={colors.navyText} />
-                <Text style={styles.exportBtnText}>Export PDF</Text>
+              <Text style={styles.summaryTitle}>Weekly Summary</Text>
+              <TouchableOpacity style={styles.exportSummaryBtn} onPress={handleExportWeekly}>
+                <Feather name="download" size={13} color="#0284C7" />
+                <Text style={styles.exportSummaryText}>Export Summary</Text>
               </TouchableOpacity>
             </View>
-            <SummaryRow label="Week of" value={summary.weekRange} />
-            <SummaryRow label="Sessions this week" value={summary.sessionsThisWeek} bold />
-            <SummaryRow label="Total trials this week" value={summary.totalTrialsThisWeek} bold />
-            <SummaryRow label="Avg independence this week" value={`${summary.avgIndependenceThisWeek}%`} bold color="#059669" />
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Week of</Text>
+              <Text style={styles.summaryValBold}>{summary.weekRange}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Sessions this week</Text>
+              <Text style={styles.summaryValBold}>{summary.sessionsThisWeek}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Total trials this week</Text>
+              <Text style={styles.summaryValBold}>{summary.totalTrialsThisWeek}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Avg independence this week</Text>
+              <Text style={[styles.summaryValBold, { color: '#059669' }]}>
+                {summary.avgIndependenceThisWeek}%
+              </Text>
+            </View>
+
+            {/* Summary Status Badges */}
+            <View style={styles.statusBadgesRow}>
+              <View style={styles.badgeApproved}>
+                <Feather name="check-circle" size={12} color="#166534" />
+                <Text style={styles.badgeApprovedText}>1 Approved</Text>
+              </View>
+              <View style={styles.badgePending}>
+                <Feather name="clock" size={12} color="#854D0E" />
+                <Text style={styles.badgePendingText}>0 Pending</Text>
+              </View>
+              <View style={styles.badgeRevision}>
+                <Feather name="alert-circle" size={12} color="#991B1B" />
+                <Text style={styles.badgeRevisionText}>0 Revision Required</Text>
+              </View>
+              <View style={styles.badgeDraft}>
+                <Feather name="file-text" size={12} color="#334155" />
+                <Text style={styles.badgeDraftText}>0 Draft</Text>
+              </View>
+            </View>
           </View>
         )}
       </ScrollView>
 
       {/* View Feedback Modal */}
-      <Modal visible={!!feedbackTarget} transparent animationType="slide" onRequestClose={() => setFeedbackTarget(null)}>
-        <View style={styles.overlay}>
-          <View style={styles.feedbackModal}>
-            <View style={styles.feedbackHeader}>
-              <Text style={typography.h2}>Coordinator Feedback</Text>
+      <Modal
+        visible={!!feedbackTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFeedbackTarget(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setFeedbackTarget(null)}
+        >
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Coordinator Feedback</Text>
               <TouchableOpacity onPress={() => setFeedbackTarget(null)}>
-                <Feather name="x" size={18} color={colors.navyText} />
+                <Feather name="x" size={18} color="#0F172A" />
               </TouchableOpacity>
             </View>
             {feedbackTarget && (
               <>
-                <Text style={typography.caption}>{feedbackTarget.date} · {feedbackTarget.students.join(', ')} · {feedbackTarget.station} {feedbackTarget.room}</Text>
-                <Text style={typography.caption}>From: Coordinator A</Text>
-                <View style={styles.feedbackBody}>
-                  <Text style={typography.body}>
-                    Please revise the session notes for this block. Missing behavior data for {feedbackTarget.students[1] || feedbackTarget.students[0]} — include the antecedent, behavior, and consequence for the observed incident, and correct the trial counts to match the data collection sheet.
+                <Text style={styles.modalSub}>
+                  {feedbackTarget.date} · {feedbackTarget.students.join(', ')} ·{' '}
+                  {feedbackTarget.station} {feedbackTarget.room}
+                </Text>
+                <Text style={styles.modalFrom}>From: Coordinator A</Text>
+                <View style={styles.feedbackBox}>
+                  <Text style={styles.feedbackBoxText}>
+                    Please revise the session notes for this block. Missing behavior data for{' '}
+                    {feedbackTarget.students[1] || feedbackTarget.students[0]} — include the
+                    antecedent, behavior, and consequence for the observed incident, and correct the
+                    trial counts to match the data collection sheet.
                   </Text>
                 </View>
               </>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number | string; color: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={typography.caption}>{label}</Text>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-    </View>
-  );
-}
+const DEMO_STATS: DailyNotesStats = {
+  sessionsCompleted: 6,
+  totalTrials: 124,
+  avgIndependence: 68,
+  reviewsPending: 1,
+};
 
-function SummaryRow({ label, value, bold, color }: { label: string; value: number | string; bold?: boolean; color?: string }) {
-  return (
-    <View style={styles.summaryRow}>
-      <Text style={typography.body}>{label}</Text>
-      <Text style={[bold ? typography.bodyBold : typography.body, color ? { color } : undefined]}>{value}</Text>
-    </View>
-  );
-}
-
-const DEMO_STATS: DailyNotesStats = { sessionsCompleted: 6, totalTrials: 124, avgIndependence: 68, reviewsPending: 1 };
 const DEMO_RECORDS: NoteRecord[] = [
-  { id: '1', date: 'Aug 4, 2026', students: ['Student A', 'Student B'], station: 'Station 1', room: 'Room 2', status: 'Approved' },
-  { id: '2', date: 'Aug 3, 2026', students: ['Student A', 'Student B'], station: 'Station 1', room: 'Room 2', status: 'Pending' },
-  { id: '3', date: 'Aug 1, 2026', students: ['Student A', 'Student B'], station: 'Station 1', room: 'Room 2', status: 'Revision Required' },
+  {
+    id: '1',
+    date: 'Aug 3, 2026',
+    students: ['Student A', 'Student B'],
+    station: 'Station 1',
+    room: 'Room 2',
+    status: 'Approved',
+  },
+  {
+    id: '2',
+    date: 'Aug 2, 2026',
+    students: ['Student A', 'Student B'],
+    station: 'Station 1',
+    room: 'Room 2',
+    status: 'Pending',
+  },
 ];
+
 const DEMO_WEEKLY_SUMMARY: WeeklySummaryData = {
   weekRange: 'Jul 28 – Aug 4, 2026',
-  sessionsThisWeek: 2,
-  totalTrialsThisWeek: 42,
-  avgIndependenceThisWeek: 69,
+  sessionsThisWeek: 1,
+  totalTrialsThisWeek: 24,
+  avgIndependenceThisWeek: 72,
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  content: { padding: 24, gap: 16 },
+
+  // Header Row
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  pageSubtitle: { fontSize: 12, color: '#94A3B8' },
+  topExportBtn: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  topExportText: { fontSize: 13, fontWeight: '600', color: '#334155' },
+
+  // Stats Row
+  statsRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   statCard: {
-    flexGrow: 1,
-    minWidth: '45%',
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.md,
-    padding: spacing.lg,
+    flex: 1,
+    minWidth: 160,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
   },
-  statValue: { fontSize: 22, fontWeight: '700', marginTop: spacing.xs },
-  searchRow: { gap: spacing.sm },
-  searchInput: {
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  filterScroll: { gap: spacing.sm },
-  filterChip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.bgCard,
-  },
-  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  filterChipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  filterChipTextActive: { fontSize: 12, fontWeight: '700', color: colors.navyText },
-  summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  exportBtn: {
+  statLabel: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  statValue: { fontSize: 24, fontWeight: '700', marginTop: 4 },
+
+  // Search & Filter Card
+  searchFilterCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.primaryYellow,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  exportBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
-  noRecordsText: { color: colors.mutedText, textAlign: 'center', paddingVertical: spacing.lg, fontSize: 13 },
-  card: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    gap: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
+    borderColor: '#E2E8F0',
+    position: 'relative',
   },
-  recordRow: {
+  searchInputWrapper: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  recordActions: { flexDirection: 'row', gap: spacing.xs },
-  actionBtn: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
   },
-  actionBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  summaryRow: {
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, paddingVertical: 8, fontSize: 13, color: '#0F172A' },
+
+  // Custom Dropdowns
+  dropdownContainer: { position: 'relative', width: 140 },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  dropdownTriggerActive: { borderWidth: 2, borderColor: '#38BDF8' },
+  dropdownTriggerText: { fontSize: 13, color: '#0F172A' },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#000000',
+    borderRadius: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 10,
+  },
+  dropdownOption: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF' },
+  dropdownOptionSelected: { backgroundColor: '#93C5FD' },
+  dropdownOptionText: { fontSize: 13, color: '#0F172A' },
+  dropdownOptionTextSelected: { fontSize: 13, color: '#0F172A' },
+
+  // Table Card
+  tableCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  tableCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  feedbackModal: {
-    maxWidth: 480,
-    width: '100%',
-    alignSelf: 'center',
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
+  tableCardTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  resultsCount: { fontSize: 12, color: '#94A3B8' },
+
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  thText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  tableRowLast: { borderBottomWidth: 0 },
+  tdText: { fontSize: 13, color: '#0F172A' },
+
+  colDate: { width: 120 },
+  colStudents: { flex: 1 },
+  colStation: { width: 140 },
+  colStatus: { width: 140 },
+  colActions: { width: 140 },
+
+  pillsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  studentPill: {
+    backgroundColor: '#F0F9FF',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#BAE6FD',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
-  feedbackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  feedbackBody: {
-    backgroundColor: colors.statusRevisionBg,
-    borderRadius: radius.md,
-    padding: spacing.md,
+  studentPillText: { fontSize: 12, color: '#0284C7', fontWeight: '500' },
+  subDetailText: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
+
+  actionsRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  viewActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  viewActionText: { fontSize: 12, color: '#0284C7', fontWeight: '600' },
+  feedbackActionBtn: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  feedbackActionText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
+  noRecordsText: { padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 13 },
+
+  // Weekly Summary
+  summaryCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+  },
+  summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  summaryTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  exportSummaryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  exportSummaryText: { fontSize: 13, fontWeight: '600', color: '#0284C7' },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  summaryLabel: { fontSize: 13, color: '#64748B' },
+  summaryValBold: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+
+  statusBadgesRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 },
+  badgeApproved: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeApprovedText: { fontSize: 12, fontWeight: '600', color: '#166534' },
+  badgePending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF9C3',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgePendingText: { fontSize: 12, fontWeight: '600', color: '#854D0E' },
+  badgeRevision: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeRevisionText: { fontSize: 12, fontWeight: '600', color: '#991B1B' },
+  badgeDraft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeDraftText: { fontSize: 12, fontWeight: '600', color: '#334155' },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  modalSub: { fontSize: 12, color: '#64748B' },
+  modalFrom: { fontSize: 12, fontWeight: '600', color: '#334155' },
+  feedbackBox: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    padding: 12,
     borderLeftWidth: 3,
-    borderLeftColor: colors.statusRevisionText,
+    borderLeftColor: '#EF4444',
   },
+  feedbackBoxText: { fontSize: 13, color: '#991B1B', lineHeight: 18 },
 });

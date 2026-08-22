@@ -7,8 +7,8 @@ const ROUTE_BY_TAB: Record<string, keyof SessionStackParamList> = {
   Assessments: 'AssessmentDashboard',
   'Daily Notes': 'DailyNotes',
   'ABC Log': 'AbcLog',
-  Scheduling: 'SchedulingCalendar',
-  Attendance: 'Attendance',
+  // Scheduling: 'SchedulingCalendar',
+  // Attendance: 'Attendance',
   Parents: 'TeacherParentCommunication',
   Notifications: 'Notifications',
 };

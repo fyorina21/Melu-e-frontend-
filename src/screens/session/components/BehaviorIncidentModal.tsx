@@ -1,97 +1,22 @@
-
 import React, { useState } from 'react';
 import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
-  ScrollView,
+  TextInput,
   StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../../theme/colors';
-import { typography } from '../../../theme/typography';
-
-const LOCATION_OPTIONS = ['Therapy Room', 'Snack Place', 'Playground', 'Sensory Room', 'Circle Time', 'Other'];
-const BEHAVIOR_OPTIONS = ['Unable to remain seated', 'Biting others', 'Flopping', 'Screaming', 'Other'];
-const FREQUENCY_OPTIONS = ['Rarely', 'Occasionally', 'Frequently', 'Very Frequently', 'Constantly'];
-const INTENSITY_OPTIONS = ['Mild', 'Moderate', 'Severe'];
-const CATEGORY_OPTIONS = [
-  'Attention-seeking', 'Safety concerns', 'Not sitting still/Hyperactivity',
-  'Making noises/interrupting conversation', 'Running away/climbing furniture/eating inedible items',
-  'Flopping', 'Elopement', 'Difficulty with transitions', 'Obsessive', 'Inappropriate',
-];
-const ANTECEDENT_OPTIONS = ['Demand placed', 'Transition', 'Item removed', 'Denied access', 'Other'];
-const CONSEQUENCE_OPTIONS = ['Redirected', 'Ignored', 'Item given', 'Removed from area', 'Other'];
-
-// Behavior definitions auto-populate when a behavior is selected - stand-in
-// text until the real config source exists.
-const BEHAVIOR_DEFINITIONS: Record<string, string> = {
-  'Unable to remain seated': 'Student leaves designated seat/area without permission during instruction.',
-  'Biting others': 'Student makes contact with teeth against another person\u2019s skin.',
-  Flopping: 'Student drops to the floor and refuses/resists standing or moving.',
-  Screaming: 'Vocalization at a volume disruptive to the session or other students.',
-};
 
 export interface IncidentPayload {
-  date: string;
-  time: string;
-  location: string | null;
-  behavior: string | null;
-  behaviorDefinition: string;
-  frequency: string | null;
-  intensity: string | null;
-  category: string | null;
-  antecedent: string | null;
-  consequence: string | null;
-  notes: string;
-  recordedBy: string;
-}
-
-interface ChipProps {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}
-
-function Chip({ label, selected, onPress }: ChipProps) {
-  return (
-    <TouchableOpacity style={[styles.chip, selected && styles.chipSelected]} onPress={onPress}>
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-interface ChipFieldProps {
-  label: string;
-  options: string[];
-  value: string | null;
-  onChange: (v: string) => void;
-  otherValue?: string;
-  onOtherChange?: (v: string) => void;
-}
-
-function ChipField({ label, options, value, onChange, otherValue, onOtherChange }: ChipFieldProps) {
-  return (
-    <View style={styles.field}>
-      <Text style={typography.label}>{label}</Text>
-      <View style={styles.chipRow}>
-        {options.map((opt) => (
-          <Chip key={opt} label={opt} selected={value === opt} onPress={() => onChange(opt)} />
-        ))}
-      </View>
-      {value === 'Other' && (
-        <TextInput
-          style={styles.textInput}
-          placeholder={`Describe ${label.toLowerCase()}...`}
-          placeholderTextColor={colors.mutedText}
-          value={otherValue}
-          onChangeText={onOtherChange}
-        />
-      )}
-    </View>
-  );
+  antecedent: string;
+  behavior: string;
+  consequence: string;
+  additionalNotes: string;
 }
 
 interface BehaviorIncidentModalProps {
@@ -99,214 +24,583 @@ interface BehaviorIncidentModalProps {
   studentName?: string;
   goalName?: string;
   recordedBy?: string;
-  onCancel?: (hadChanges: boolean) => void;
-  onSave?: (incident: IncidentPayload) => void;
+  onCancel: (hadChanges: boolean) => void;
+  onSave: (data: IncidentPayload) => void;
 }
+
+const ANTECEDENT_OPTIONS = [
+  'Task demand',
+  'Transition',
+  'Peer interaction',
+  'Denied access to preferred item',
+  'Change in routine',
+  'Loud noise',
+  'Waiting',
+  'Other',
+];
+
+const CONSEQUENCE_OPTIONS = [
+  'Redirected to task',
+  'Offered break',
+  'Ignored behavior',
+  'Provided replacement behavior',
+  'Removed from situation',
+  'Discussed with student',
+  'Other',
+];
 
 export default function BehaviorIncidentModal({
   visible,
-  studentName,
-  goalName,
-  recordedBy = 'Teacher A',
+  studentName = 'Student A',
+  goalName = 'Identify Colors',
   onCancel,
   onSave,
 }: BehaviorIncidentModalProps) {
-  const now = new Date();
-  const [date, setDate] = useState(now.toLocaleDateString());
-  const [time, setTime] = useState(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-  const [location, setLocation] = useState<string | null>(null);
-  const [behavior, setBehavior] = useState<string | null>(null);
-  const [frequency, setFrequency] = useState<string | null>(null);
-  const [intensity, setIntensity] = useState<string | null>(null);
-  const [category, setCategory] = useState<string | null>(null);
-  const [antecedent, setAntecedent] = useState<string | null>(null);
-  const [antecedentOther, setAntecedentOther] = useState('');
-  const [consequence, setConsequence] = useState<string | null>(null);
-  const [consequenceOther, setConsequenceOther] = useState('');
-  const [notes, setNotes] = useState('');
-  const [touched, setTouched] = useState(false);
+  const [antecedent, setAntecedent] = useState('');
+  const [otherAntecedent, setOtherAntecedent] = useState('');
 
-  const behaviorDefinition = behavior ? BEHAVIOR_DEFINITIONS[behavior] || '' : '';
+  const [behavior, setBehavior] = useState('');
 
-  const markTouched = (setter: (v: string) => void) => (val: string) => {
-    setTouched(true);
-    setter(val);
+  const [consequence, setConsequence] = useState('');
+  const [otherConsequence, setOtherConsequence] = useState('');
+
+  const [additionalNotes, setAdditionalNotes] = useState('');
+
+  const [showAntecedentDropdown, setShowAntecedentDropdown] = useState(false);
+  const [showConsequenceDropdown, setShowConsequenceDropdown] = useState(false);
+
+  // State to trigger "Discard Changes?" alert prompt
+  const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
+
+  const isFormDirty =
+    antecedent !== '' ||
+    otherAntecedent !== '' ||
+    behavior !== '' ||
+    consequence !== '' ||
+    otherConsequence !== '' ||
+    additionalNotes !== '';
+
+  const finalAntecedent = antecedent === 'Other' ? otherAntecedent.trim() : antecedent.trim();
+  const finalConsequence = consequence === 'Other' ? otherConsequence.trim() : consequence.trim();
+
+  const isValid =
+    finalAntecedent !== '' &&
+    behavior.trim() !== '' &&
+    finalConsequence !== '';
+
+  const resetForm = () => {
+    setAntecedent('');
+    setOtherAntecedent('');
+    setBehavior('');
+    setConsequence('');
+    setOtherConsequence('');
+    setAdditionalNotes('');
+    setShowAntecedentDropdown(false);
+    setShowConsequenceDropdown(false);
+    setShowDiscardConfirmation(false);
   };
 
-  const handleCancel = () => {
-    if (touched) {
-      // TODO: swap window.confirm-style Alert for a proper confirm dialog
-      // component once one exists in the shared UI kit.
-      onCancel?.(true);
+  const handleCloseAttempt = () => {
+    if (isFormDirty) {
+      setShowDiscardConfirmation(true);
     } else {
-      onCancel?.(false);
+      resetForm();
+      onCancel(false);
     }
   };
 
+  const handleConfirmDiscard = () => {
+    resetForm();
+    onCancel(true);
+  };
+
   const handleSave = () => {
-    onSave?.({
-      date,
-      time,
-      location,
-      behavior,
-      behaviorDefinition,
-      frequency,
-      intensity,
-      category,
-      antecedent: antecedent === 'Other' ? antecedentOther : antecedent,
-      consequence: consequence === 'Other' ? consequenceOther : consequence,
-      notes,
-      recordedBy,
+    if (!isValid) return;
+
+    onSave({
+      antecedent: finalAntecedent,
+      behavior: behavior.trim(),
+      consequence: finalConsequence,
+      additionalNotes: additionalNotes.trim(),
     });
+    resetForm();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleCancel}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={handleCloseAttempt}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.overlay}
+      >
+        <View style={styles.modalCard}>
+          {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={typography.h2}>Behavior Incident</Text>
-              <Text style={typography.caption}>{studentName} · {goalName}</Text>
+              <Text style={styles.headerTitle}>Record Behavior Incident</Text>
+              <Text style={styles.headerSubtitle}>
+                {studentName} • {goalName}
+              </Text>
             </View>
-            <TouchableOpacity onPress={handleCancel} accessibilityLabel="Close">
-              <Feather name="x" size={22} color={colors.navyText} />
+            <TouchableOpacity
+              onPress={handleCloseAttempt}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather name="x" size={20} color="#0F172A" />
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body}>
-            <View style={styles.row2}>
-              <View style={[styles.field, { flex: 1 }]}>
-                <Text style={typography.label}>Date</Text>
-                <TextInput style={styles.textInput} value={date} onChangeText={markTouched(setDate)} />
-              </View>
-              <View style={[styles.field, { flex: 1 }]}>
-                <Text style={typography.label}>Time</Text>
-                <TextInput style={styles.textInput} value={time} onChangeText={markTouched(setTime)} />
-              </View>
+          {/* Form Body */}
+          <ScrollView
+            style={styles.scrollBody}
+            contentContainerStyle={styles.bodyContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Antecedent Field */}
+            <View style={styles.field}>
+              <Text style={styles.label}>
+                Antecedent <Text style={styles.required}>*</Text>
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.selectBox,
+                  showAntecedentDropdown && styles.selectBoxActive,
+                ]}
+                onPress={() => {
+                  setShowConsequenceDropdown(false);
+                  setShowAntecedentDropdown(!showAntecedentDropdown);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.selectText,
+                    !antecedent && styles.placeholderText,
+                  ]}
+                >
+                  {antecedent || 'Select antecedent...'}
+                </Text>
+                <Feather
+                  name={showAntecedentDropdown ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color="#64748B"
+                />
+              </TouchableOpacity>
+
+              {showAntecedentDropdown && (
+                <View style={styles.inlineDropdownMenu}>
+                  {ANTECEDENT_OPTIONS.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.dropdownItem,
+                        antecedent === item && styles.dropdownItemSelected,
+                      ]}
+                      onPress={() => {
+                        setAntecedent(item);
+                        if (item !== 'Other') setOtherAntecedent('');
+                        setShowAntecedentDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownItemText}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {antecedent === 'Other' && (
+                <TextInput
+                  style={styles.specifyInput}
+                  placeholder="Please specify..."
+                  placeholderTextColor="#94A3B8"
+                  value={otherAntecedent}
+                  onChangeText={setOtherAntecedent}
+                />
+              )}
             </View>
 
-            <ChipField label="Location" options={LOCATION_OPTIONS} value={location} onChange={markTouched(setLocation)} />
-            <ChipField label="Behavior" options={BEHAVIOR_OPTIONS} value={behavior} onChange={markTouched(setBehavior)} />
-
-            {!!behaviorDefinition && (
-              <View style={styles.definitionBox}>
-                <Text style={typography.caption}>{behaviorDefinition}</Text>
-              </View>
-            )}
-
-            <ChipField label="Frequency" options={FREQUENCY_OPTIONS} value={frequency} onChange={markTouched(setFrequency)} />
-            <ChipField label="Intensity" options={INTENSITY_OPTIONS} value={intensity} onChange={markTouched(setIntensity)} />
-            <ChipField label="Category" options={CATEGORY_OPTIONS} value={category} onChange={markTouched(setCategory)} />
-            <ChipField
-              label="Antecedent"
-              options={ANTECEDENT_OPTIONS}
-              value={antecedent}
-              onChange={markTouched(setAntecedent)}
-              otherValue={antecedentOther}
-              onOtherChange={markTouched(setAntecedentOther)}
-            />
-            <ChipField
-              label="Consequence"
-              options={CONSEQUENCE_OPTIONS}
-              value={consequence}
-              onChange={markTouched(setConsequence)}
-              otherValue={consequenceOther}
-              onOtherChange={markTouched(setConsequenceOther)}
-            />
-
+            {/* Behavior Input */}
             <View style={styles.field}>
-              <Text style={typography.label}>Additional Notes (optional)</Text>
+              <Text style={styles.label}>
+                Behavior <Text style={styles.required}>*</Text>
+              </Text>
               <TextInput
-                style={[styles.textInput, styles.textArea]}
+                style={styles.textArea}
+                placeholder="Describe the behavior observed..."
+                placeholderTextColor="#94A3B8"
                 multiline
-                numberOfLines={4}
-                placeholder="Any extra observations..."
-                placeholderTextColor={colors.mutedText}
-                value={notes}
-                onChangeText={markTouched(setNotes)}
+                numberOfLines={3}
+                value={behavior}
+                onChangeText={setBehavior}
               />
             </View>
 
-            <Text style={typography.caption}>Recorded by {recordedBy}</Text>
+            {/* Consequence Field */}
+            <View style={styles.field}>
+              <Text style={styles.label}>
+                Consequence <Text style={styles.required}>*</Text>
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.selectBox,
+                  showConsequenceDropdown && styles.selectBoxActive,
+                ]}
+                onPress={() => {
+                  setShowAntecedentDropdown(false);
+                  setShowConsequenceDropdown(!showConsequenceDropdown);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.selectText,
+                    !consequence && styles.placeholderText,
+                  ]}
+                >
+                  {consequence || 'Select consequence...'}
+                </Text>
+                <Feather
+                  name={showConsequenceDropdown ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color="#64748B"
+                />
+              </TouchableOpacity>
+
+              {showConsequenceDropdown && (
+                <View style={styles.inlineDropdownMenu}>
+                  {CONSEQUENCE_OPTIONS.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.dropdownItem,
+                        consequence === item && styles.dropdownItemSelected,
+                      ]}
+                      onPress={() => {
+                        setConsequence(item);
+                        if (item !== 'Other') setOtherConsequence('');
+                        setShowConsequenceDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownItemText}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {consequence === 'Other' && (
+                <TextInput
+                  style={styles.specifyInput}
+                  placeholder="Please specify..."
+                  placeholderTextColor="#94A3B8"
+                  value={otherConsequence}
+                  onChangeText={setOtherConsequence}
+                />
+              )}
+            </View>
+
+            {/* Additional Notes Input */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Additional Notes</Text>
+              <TextInput
+                style={styles.textArea}
+                placeholder="Any additional context or observations..."
+                placeholderTextColor="#94A3B8"
+                multiline
+                numberOfLines={3}
+                value={additionalNotes}
+                onChangeText={setAdditionalNotes}
+              />
+            </View>
           </ScrollView>
 
+          {/* Footer Buttons */}
           <View style={styles.footer}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={handleCloseAttempt}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>Save Incident</Text>
+
+            <TouchableOpacity
+              style={[styles.saveBtn, isValid && styles.saveBtnActive]}
+              disabled={!isValid}
+              onPress={handleSave}
+              activeOpacity={isValid ? 0.8 : 1}
+            >
+              <Text
+                style={[
+                  styles.saveBtnText,
+                  isValid && styles.saveBtnTextActive,
+                ]}
+              >
+                Save Incident
+              </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Discard Confirmation Alert Dialog */}
+          {showDiscardConfirmation && (
+            <View style={styles.confirmationOverlay}>
+              <View style={styles.confirmCard}>
+                <Text style={styles.confirmTitle}>Discard Changes?</Text>
+                <Text style={styles.confirmMessage}>
+                  You have unsaved changes. Are you sure you want to close?
+                </Text>
+                <View style={styles.confirmActionRow}>
+                  <TouchableOpacity
+                    style={styles.keepEditingBtn}
+                    onPress={() => setShowDiscardConfirmation(false)}
+                  >
+                    <Text style={styles.keepEditingBtnText}>Keep Editing</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.discardBtn}
+                    onPress={handleConfirmDiscard}
+                  >
+                    <Text style={styles.discardBtnText}>Discard</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: colors.bgCard,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    maxHeight: '90%',
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+    position: 'relative',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    padding: spacing.lg,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#F1F5F9',
   },
-  body: { padding: spacing.lg, gap: spacing.lg },
-  row2: { flexDirection: 'row', gap: spacing.md },
-  field: { gap: spacing.xs },
-  textInput: {
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  scrollBody: {
+    flexGrow: 1,
+  },
+  bodyContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    gap: 16,
+  },
+  field: {
+    width: '100%',
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  required: {
+    color: '#EF4444',
+  },
+  selectBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    color: colors.navyText,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
   },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  chip: {
+  selectBoxActive: {
+    borderColor: '#38BDF8',
+  },
+  selectText: {
+    fontSize: 13,
+    color: '#0F172A',
+  },
+  placeholderText: {
+    color: '#94A3B8',
+  },
+  inlineDropdownMenu: {
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.bgApp,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    maxHeight: 180,
+    overflow: 'hidden',
   },
-  chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  chipTextSelected: { color: colors.navyText },
-  definitionBox: { backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.md },
+  dropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#E0F2FE',
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    color: '#0F172A',
+  },
+  specifyInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  textArea: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 13,
+    color: '#0F172A',
+    minHeight: 70,
+    textAlignVertical: 'top',
+    backgroundColor: '#FFFFFF',
+  },
   footer: {
     flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.lg,
+    justifyContent: 'flex-end',
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
   },
   cancelBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
-  cancelBtnText: { fontWeight: '600', color: colors.navyText },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
   saveBtn: {
-    flex: 2,
-    backgroundColor: colors.primaryYellow,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: 'center',
+    backgroundColor: '#FDE047',
+    opacity: 0.5,
   },
-  saveBtnText: { fontWeight: '700', color: colors.navyText },
+  saveBtnActive: {
+    backgroundColor: '#FACC15',
+    opacity: 1,
+  },
+  saveBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  saveBtnTextActive: {
+    color: '#0F172A',
+  },
+  /* Discard Confirmation Overlay Styles */
+  confirmationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    borderRadius: 12,
+    zIndex: 1000,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  confirmMessage: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  confirmActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  keepEditingBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  keepEditingBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  discardBtn: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#E11D48',
+  },
+  discardBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
 });

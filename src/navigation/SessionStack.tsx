@@ -9,12 +9,11 @@ import SessionDataCollectionScreen from '../screens/session/SessionDataCollectio
 import DailyNotesScreen from '../screens/dailynotes/DailyNotesScreen';
 import SessionNoteEditorScreen from '../screens/dailynotes/SessionNoteEditorScreen';
 import GoalProgressScreen from '../screens/goalprogress/GoalProgressScreen';
-import SchedulingCalendarScreen from '../screens/scheduling/SchedulingCalendarScreen';
-import AttendanceScreen from '../screens/attendance/AttendanceScreen';
+// import SchedulingCalendarScreen from '../screens/scheduling/SchedulingCalendarScreen';
+// import AttendanceScreen from '../screens/attendance/AttendanceScreen';
 import GoalMasteryCheckScreen from '../screens/goalmastery/GoalMasteryCheckScreen';
-import SessionSummaryScreen from '../screens/sessionsummary/SessionSummaryScreen';
+import { SessionSummaryScreen } from '../screens/sessionsummary/SessionSummaryScreen';import AbllsNeedAnalysisMapScreen from '../screens/assessments/AbllsNeedAnalysisMapScreen';
 import SkillsAssessmentScreen from '../screens/assessments/SkillsAssessmentScreen';
-import AbllsNeedAnalysisMapScreen from '../screens/assessments/AbllsNeedAnalysisMapScreen';
 import BehaviorAssessmentScreen from '../screens/assessments/BehaviorAssessmentScreen';
 import PreferenceAssessmentScreen from '../screens/assessments/PreferenceAssessmentScreen';
 import SensoryAssessmentScreen from '../screens/assessments/SensoryAssessmentScreen';
@@ -37,8 +36,8 @@ export default function SessionStack() {
       <Stack.Screen name="DailyNotes" component={DailyNotesScreen} />
       <Stack.Screen name="SessionNoteEditor" component={SessionNoteEditorScreen} />
       <Stack.Screen name="GoalProgress" component={GoalProgressScreen} />
-      <Stack.Screen name="SchedulingCalendar" component={SchedulingCalendarScreen} />
-      <Stack.Screen name="Attendance" component={AttendanceScreen} />
+      {/* <Stack.Screen name="SchedulingCalendar" component={SchedulingCalendarScreen} /> */}
+      {/* <Stack.Screen name="Attendance" component={AttendanceScreen} /> */}
       <Stack.Screen name="GoalMasteryCheck" component={GoalMasteryCheckScreen} />
       <Stack.Screen name="SessionSummary" component={SessionSummaryScreen} />
       <Stack.Screen name="SkillsAssessment" component={SkillsAssessmentScreen} />

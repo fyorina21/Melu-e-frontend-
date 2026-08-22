@@ -16,14 +16,20 @@ import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import StudentSessionCard from './components/StudentSessionCard';
-import BehaviorIncidentModal, { IncidentPayload } from './components/BehaviorIncidentModal';
+import BehaviorIncidentModal, {
+  IncidentPayload,
+} from './components/BehaviorIncidentModal';
 import {
   getSessionRoster,
   logTrial,
   recordIncident,
   swapStudents,
 } from '../../api/sessionApi';
-import type { SessionStackParamList, SessionRoster, Payload } from '../../types';
+import type {
+  SessionStackParamList,
+  SessionRoster,
+  Payload,
+} from '../../types';
 import {
   startSessionTimer,
   resumeSessionTimer,
@@ -32,7 +38,10 @@ import {
   isTimerRunning,
 } from '../../stores/sessionTimerStore';
 
-type Props = NativeStackScreenProps<SessionStackParamList, 'SessionDataCollection'>;
+type Props = NativeStackScreenProps<
+  SessionStackParamList,
+  'SessionDataCollection'
+>;
 
 interface IncidentModalState {
   studentId: string;
@@ -40,28 +49,46 @@ interface IncidentModalState {
   goalName?: string;
 }
 
-export default function SessionDataCollectionScreen({ route, navigation }: Props) {
+export default function SessionDataCollectionScreen({
+  route,
+  navigation,
+}: Props) {
   const sessionId = route.params?.sessionId ?? 'DEMO_SESSION_ID';
   const { logout } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<SessionRoster | null>(null);
-  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(
+    null
+  );
   const [isRunning, setIsRunning] = useState(isTimerRunning());
-  const [incidentModal, setIncidentModal] = useState<IncidentModalState | null>(null);
+  const [incidentModal, setIncidentModal] =
+    useState<IncidentModalState | null>(null);
 
   const loadRoster = useCallback(async () => {
     try {
       setLoading(true);
+
       const { data } = await getSessionRoster(sessionId);
+
       setSession(data);
-      startSessionTimer(sessionId, (data.blockDurationMinutes || 90) * 60);
+
+      startSessionTimer(
+        sessionId,
+        (data.blockDurationMinutes || 90) * 60
+      );
+
       setSecondsRemaining(remainingSeconds());
       setIsRunning(isTimerRunning());
     } catch (err) {
       // Fallback demo data so the screen is reviewable before backend is ready
       setSession(DEMO_SESSION);
-      startSessionTimer(sessionId, (DEMO_SESSION.blockDurationMinutes || 90) * 60);
+
+      startSessionTimer(
+        sessionId,
+        (DEMO_SESSION.blockDurationMinutes || 90) * 60
+      );
+
       setSecondsRemaining(remainingSeconds());
       setIsRunning(isTimerRunning());
     } finally {
@@ -75,9 +102,11 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
 
   useEffect(() => {
     if (!isRunning || secondsRemaining === null) return undefined;
+
     const timer = setInterval(() => {
       setSecondsRemaining(remainingSeconds());
     }, 1000);
+
     return () => clearInterval(timer);
   }, [isRunning, secondsRemaining === null]);
 
@@ -85,33 +114,72 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     if (isRunning) {
       pauseSessionTimer();
     } else {
-      resumeSessionTimer(sessionId, (session?.blockDurationMinutes || DEMO_SESSION.blockDurationMinutes || 90) * 60);
+      resumeSessionTimer(
+        sessionId,
+        (session?.blockDurationMinutes ||
+          DEMO_SESSION.blockDurationMinutes ||
+          90) * 60
+      );
     }
+
     setSecondsRemaining(remainingSeconds());
     setIsRunning(isTimerRunning());
   };
 
-  const handleSelectPromptLevel = async (studentId: string, goalId: string | undefined, level: string, stepId?: string) => {
+  const handleSelectPromptLevel = async (
+    studentId: string,
+    goalId: string | undefined,
+    level: string,
+    stepId?: string
+  ) => {
     // Optimistic UI update
-    setSession((prev) => (prev ? {
-      ...prev,
-      students: prev.students.map((s) =>
-        s.id === studentId
-          ? { ...s, trials: [{ promptLevel: level, timestamp: 'Just now' }, ...(s.trials || [])] }
-          : s
-      ),
-    } : prev));
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            students: prev.students.map((s) =>
+              s.id === studentId
+                ? {
+                    ...s,
+                    trials: [
+                      {
+                        promptLevel: level,
+                        timestamp: 'Just now',
+                      },
+                      ...(s.trials || []),
+                    ],
+                  }
+                : s
+            ),
+          }
+        : prev
+    );
+
     try {
-      await logTrial(sessionId, studentId, goalId ?? '', { promptLevel: level, stepId });
+      await logTrial(sessionId, studentId, goalId ?? '', {
+        promptLevel: level,
+        stepId,
+      });
     } catch (err) {
-      Alert.alert('Sync failed', 'Trial saved locally, will retry when online.');
-      // TODO: wire into MR-7-style offline queue once backend confirms it
+      Alert.alert(
+        'Sync failed',
+        'Trial saved locally, will retry when online.'
+      );
     }
   };
 
-  const handleOpenIncidentModal = (studentId: string, goalId: string | undefined) => {
-    const student = session?.students.find((s) => s.id === studentId);
-    const goal = student?.goals?.find((g) => g.id === goalId);
+  const handleOpenIncidentModal = (
+    studentId: string,
+    goalId: string | undefined
+  ) => {
+    const student = session?.students.find(
+      (s) => s.id === studentId
+    );
+
+    const goal = student?.goals?.find(
+      (g) => g.id === goalId
+    );
+
     setIncidentModal({
       studentId,
       studentName: student?.name,
@@ -121,138 +189,264 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
 
   const handleCancelIncident = (hadChanges: boolean) => {
     if (hadChanges) {
-      Alert.alert('Discard incident?', 'Any entered data will be lost.', [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => setIncidentModal(null) },
-      ]);
+      Alert.alert(
+        'Discard incident?',
+        'Any entered data will be lost.',
+        [
+          {
+            text: 'Keep editing',
+            style: 'cancel',
+          },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => setIncidentModal(null),
+          },
+        ]
+      );
     } else {
       setIncidentModal(null);
     }
   };
 
-  const handleSaveIncident = async (incidentData: IncidentPayload) => {
+  const handleSaveIncident = async (
+    incidentData: IncidentPayload
+  ) => {
     try {
-      await recordIncident(sessionId, incidentModal?.studentId ?? '', incidentData as unknown as Payload);
+      await recordIncident(
+        sessionId,
+        incidentModal?.studentId ?? '',
+        incidentData as unknown as Payload
+      );
     } catch (err) {
-      // Demo/offline: incident is still considered recorded locally.
+      // Demo/offline fallback: incident recorded locally
     }
+
     setIncidentModal(null);
     Alert.alert('Incident recorded');
   };
 
-  const handleMasteryCheck = (studentId: string, goalId: string | undefined) => {
-    // Real flow per SCR-004: navigate to the Goal Mastery Check screen,
-    // don't just fire an API call.
-    navigation?.navigate?.('GoalMasteryCheck', { studentId, goalId: goalId ?? '' });
+  const handleMasteryCheck = (
+    studentId: string,
+    goalId: string | undefined
+  ) => {
+    navigation?.navigate?.('GoalMasteryCheck', {
+      studentId,
+      goalId: goalId ?? '',
+    });
   };
 
   const handleSwapStudents = async () => {
     try {
       await swapStudents(sessionId, {});
-      loadRoster();
     } catch (err) {
-      // No real backend yet (demo mode) - toggle active locally so the
-      // screen is still demoable. Remove this fallback once swapStudents()
-      // hits a real endpoint.
-      setSession((prev) => (prev ? {
-        ...prev,
-        students: prev.students.map((s) => ({ ...s, active: !s.active })),
-      } : prev));
+      // Continue with local swap if backend is unavailable.
     }
+
+    setSession((prev) => {
+      if (!prev || prev.students.length < 2) {
+        return prev;
+      }
+
+      const students = [...prev.students];
+      const firstStudent = students[0];
+      const secondStudent = students[1];
+
+      students[0] = secondStudent;
+      students[1] = firstStudent;
+
+      return {
+        ...prev,
+        students,
+      };
+    });
   };
 
   const handleActivate = (studentId: string) => {
-    setSession((prev) => (prev ? {
-      ...prev,
-      students: prev.students.map((s) => ({ ...s, active: s.id === studentId })),
-    } : prev));
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            students: prev.students.map((s) => ({
+              ...s,
+              active: s.id === studentId,
+            })),
+          }
+        : prev
+    );
   };
 
-  const handleViewGoalProgress = (studentId: string, goalId: string) => {
-    navigation?.navigate?.('GoalProgress', { studentId, goalId });
+  const handleViewGoalProgress = (
+    studentId: string,
+    goalId: string
+  ) => {
+    navigation?.navigate?.('GoalProgress', {
+      studentId,
+      goalId,
+    });
   };
 
   const handleViewProfile = (studentId: string) => {
-    navigation?.navigate?.('StudentProfile', { studentId });
+    navigation?.navigate?.('StudentProfile', {
+      studentId,
+    });
   };
 
   const handleSessionSummary = () => {
-    navigation?.navigate?.('SessionSummary', { sessionId });
+    navigation?.navigate?.('SessionSummary', {
+      sessionId,
+    });
   };
 
-  if (loading || !session || secondsRemaining === null) {
+  if (
+    loading ||
+    !session ||
+    secondsRemaining === null
+  ) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <Text style={typography.body}>Loading session…</Text>
+          <Text style={typography.body}>
+            Loading session…
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const minutes = String(Math.floor(secondsRemaining / 60)).padStart(2, '0');
-  const seconds = String(secondsRemaining % 60).padStart(2, '0');
+  const minutes = String(
+    Math.floor(secondsRemaining / 60)
+  ).padStart(2, '0');
+
+  const seconds = String(
+    secondsRemaining % 60
+  ).padStart(2, '0');
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
         activeTab="Session"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+        onTabPress={(tab) =>
+          handleTeacherTabPress(navigation, tab)
+        }
       />
+
       <View style={styles.header}>
         <View>
-          <Text style={typography.h1}>Today's Session</Text>
+          <Text style={typography.h1}>
+            Today's Session
+          </Text>
+
           <Text style={typography.body}>
-            {session.teacherName} • {session.stationName} • {session.roomName}
+            {session.teacherName} • {session.stationName} •{' '}
+            {session.roomName}
           </Text>
         </View>
+
         <View style={styles.timerRow}>
           <View style={styles.timerPill}>
-            <Feather name="clock" size={14} color={colors.mutedText} style={{ marginRight: spacing.xs }} />
-            <Text style={styles.timerText}>{minutes}:{seconds}</Text>
+            <Feather
+              name="clock"
+              size={14}
+              color={colors.mutedText}
+              style={{ marginRight: spacing.xs }}
+            />
+
+            <Text style={styles.timerText}>
+              {minutes}:{seconds}
+            </Text>
           </View>
+
           <TouchableOpacity
             style={styles.playPauseBtn}
             onPress={handleToggleTimer}
-            accessibilityLabel={isRunning ? 'Pause timer' : 'Resume timer'}
+            accessibilityLabel={
+              isRunning
+                ? 'Pause timer'
+                : 'Resume timer'
+            }
           >
-            <Feather name={isRunning ? 'pause' : 'play'} size={16} color={colors.white} />
+            <Feather
+              name={isRunning ? 'pause' : 'play'}
+              size={16}
+              color={colors.white}
+            />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {session.students.map((student) => (
-          <StudentSessionCard
-            key={student.id}
-            student={student}
-            onSelectPromptLevel={handleSelectPromptLevel}
-            onRecordIncident={handleOpenIncidentModal}
-            onMasteryCheck={handleMasteryCheck}
-            onActivate={handleActivate}
-            onViewGoalProgress={handleViewGoalProgress}
-            onViewProfile={handleViewProfile}
-            onUndo={() => {
-              setSession((prev) => (prev ? {
-                ...prev,
-                students: prev.students.map((s) =>
-                  s.id === student.id ? { ...s, trials: (s.trials || []).slice(1) } : s
-                ),
-              } : prev));
-            }}
-          />
-        ))}
+        <View style={styles.studentsRow}>
+          {session.students.map((student) => (
+            <TouchableOpacity
+              key={student.id}
+              style={styles.studentCardWrapper}
+              activeOpacity={0.9}
+              onPress={() => handleActivate(student.id)}
+            >
+              <StudentSessionCard
+                student={student}
+                onSelectPromptLevel={
+                  handleSelectPromptLevel
+                }
+                onRecordIncident={
+                  handleOpenIncidentModal
+                }
+                onMasteryCheck={handleMasteryCheck}
+                onActivate={handleActivate}
+                onViewGoalProgress={
+                  handleViewGoalProgress
+                }
+                onViewProfile={
+                  handleViewProfile
+                }
+                onUndo={() => {
+                  setSession((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          students: prev.students.map(
+                            (s) =>
+                              s.id === student.id
+                                ? {
+                                    ...s,
+                                    trials: (
+                                      s.trials || []
+                                    ).slice(1),
+                                  }
+                                : s
+                          ),
+                        }
+                      : prev
+                  );
+                }}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleSwapStudents}>
-          <Text style={styles.secondaryBtnText}>⇄ Swap Students</Text>
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={handleSwapStudents}
+        >
+          <Text style={styles.secondaryBtnText}>
+            ⇄ Swap Students
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleSessionSummary}>
-          <Text style={styles.primaryBtnText}>📄 Session Summary</Text>
+
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={handleSessionSummary}
+        >
+          <Text style={styles.primaryBtnText}>
+            📄 Session Summary
+          </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Modal overlays over the session page keeping background visible */}
       <BehaviorIncidentModal
         visible={!!incidentModal}
         studentName={incidentModal?.studentName}
@@ -265,13 +459,12 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   );
 }
 
-// Demo fallback matching the Figma exactly, so the screen renders standalone
-// before the real backend endpoint exists.
 const DEMO_SESSION: SessionRoster = {
   teacherName: 'Teacher A',
   stationName: 'Station 1 (Basic Skills)',
   roomName: 'Room 2',
-  blockDurationMinutes: 90, // spec: block is 1h30m or 1h20m depending on station
+  blockDurationMinutes: 90,
+
   students: [
     {
       id: 'student-a',
@@ -279,30 +472,60 @@ const DEMO_SESSION: SessionRoster = {
       initial: 'S',
       program: 'Basic',
       active: true,
+
       goals: [
-        { id: 'goal-1', name: 'Identify Colors', category: 'Cognitive' },
-        { id: 'goal-2', name: 'Goal 2', category: '' },
+        {
+          id: 'goal-1',
+          name: 'Identify Colors',
+          category: 'Cognitive',
+        },
+        {
+          id: 'goal-2',
+          name: 'Goal 2',
+          category: '',
+        },
       ],
+
       trials: [],
     },
+
     {
       id: 'student-b',
       name: 'Student B',
       initial: 'S',
       program: 'Functional',
       active: false,
+
       goals: [
-        { id: 'goal-3', name: 'Request Items', category: 'Expressive Language' },
-        { id: 'goal-4', name: 'Goal 2', category: '' },
+        {
+          id: 'goal-3',
+          name: 'Request Items',
+          category: 'Expressive Language',
+        },
+        {
+          id: 'goal-4',
+          name: 'Goal 2',
+          category: '',
+        },
       ],
+
       trials: [],
     },
   ],
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  safe: {
+    flex: 1,
+    backgroundColor: colors.bgApp,
+  },
+
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -312,7 +535,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+
   timerPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -321,7 +550,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
   },
-  timerText: { fontWeight: '700', color: '#16A34A' },
+
+  timerText: {
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+
   playPauseBtn: {
     width: 32,
     height: 32,
@@ -330,7 +564,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrollContent: { padding: spacing.lg },
+
+  scrollContent: {
+    padding: spacing.lg,
+  },
+
+  studentsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+  },
+
+  studentCardWrapper: {
+    flex: 1,
+  },
+
   footer: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -339,6 +587,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+
   secondaryBtn: {
     flex: 1,
     borderWidth: 1,
@@ -347,7 +596,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  secondaryBtnText: { fontWeight: '600', color: colors.navyText },
+
+  secondaryBtnText: {
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+
   primaryBtn: {
     flex: 2,
     backgroundColor: colors.primaryYellow,
@@ -355,5 +609,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  primaryBtnText: { fontWeight: '700', color: colors.navyText },
+
+  primaryBtnText: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
 });

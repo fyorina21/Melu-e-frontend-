@@ -1,9 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -24,23 +31,16 @@ interface AbllsDomain {
 }
 
 const SCORE_COLOR: Record<Score, string> = {
-  0: '#EF4444', // Red - Not Demonstrated
-  1: '#F59E0B', // Yellow - Emerging
-  2: '#22C55E', // Green - Mastered
-  NA: '#9CA3AF', // Grey - N/A
+  0: '#EF4444',
+  1: '#EAB308',
+  2: '#22C55E',
+  NA: '#94A3B8',
 };
 
 const SCORE_LABEL: Record<Score, string> = {
-  0: '0',
-  1: '1',
-  2: '2',
-  NA: 'N/A',
-};
-
-const SCORE_MEANING: Record<Score, string> = {
-  0: 'Not Demonstrated',
-  1: 'Emerging',
-  2: 'Mastered',
+  0: '0 — Not Demonstrated',
+  1: '1 — Emerging',
+  2: '2 — Mastered',
   NA: 'N/A',
 };
 
@@ -48,11 +48,13 @@ const ABLLS_DOMAINS: AbllsDomain[] = [
   {
     name: 'Visual Performance',
     items: [
-      { id: 'A1', description: 'Matching identical objects' },
-      { id: 'A2', description: 'Matching pictures' },
-      { id: 'A3', description: 'Sorting by color' },
-      { id: 'A4', description: 'Puzzle completion' },
-      { id: 'A5', description: 'Receptive identification' },
+      { id: 'A1', description: 'Matches identical objects' },
+      { id: 'A2', description: 'Matches identical pictures to objects' },
+      { id: 'A3', description: 'Matches non-identical pictures' },
+      { id: 'A4', description: 'Sorts by color and shape' },
+      { id: 'A5', description: 'Completes simple puzzle (4 pieces)' },
+      { id: 'A6', description: 'Matches shapes (circle, square, triangle)' },
+      { id: 'A7', description: 'Selects named object from array of 3' },
     ],
   },
   {
@@ -118,15 +120,6 @@ const ABLLS_DOMAINS: AbllsDomain[] = [
       { id: 'H4', description: 'Writes name' },
     ],
   },
-  {
-    name: 'Dressing',
-    items: [
-      { id: 'I1', description: 'Removes shoes and socks' },
-      { id: 'I2', description: 'Puts on shirt' },
-      { id: 'I3', description: 'Fastens buttons' },
-      { id: 'I4', description: 'Ties shoelaces' },
-    ],
-  },
 ];
 
 const DEMO_STUDENT_NAME: Record<string, string> = {
@@ -138,14 +131,13 @@ const DEMO_STUDENT_NAME: Record<string, string> = {
 type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
 
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
-  const { logout } = useAuth();
   const { studentId } = route.params;
   const [activeDomain, setActiveDomain] = useState(0);
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   const domain = ABLLS_DOMAINS[activeDomain];
-  const studentName = DEMO_STUDENT_NAME[studentId] || 'Student';
+  const studentName = DEMO_STUDENT_NAME[studentId] || 'Student A';
 
   const domainTotalItems = domain.items.length;
   const domainAnswered = domain.items.filter((i) => scores[i.id] !== undefined).length;
@@ -153,9 +145,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   const totalItems = ABLLS_DOMAINS.reduce((sum, d) => sum + d.items.length, 0);
   const totalAnswered = Object.keys(scores).length;
-  const overallProgress = totalItems === 0 ? 0 : Math.round((totalAnswered / totalItems) * 100);
 
-  const setScore = (itemId: string, score: Score) => setScores((prev) => ({ ...prev, [itemId]: score }));
+  const setScore = (itemId: string, score: Score) =>
+    setScores((prev) => ({ ...prev, [itemId]: score }));
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -170,12 +162,12 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     };
   }, [scores, notes, studentId, totalAnswered]);
 
-  const handleSave = async () => {
+  const handleSaveDraft = async () => {
     try {
       await saveSkillsAssessment(studentId, { scores, notes });
     } catch (err) {}
-    Alert.alert('Assessment saved', `${studentName} ABLLS assessment saved (${overallProgress}% complete).`, [
-      { text: 'Done', onPress: () => navigation?.goBack?.() },
+    Alert.alert('Assessment Draft Saved', `${studentName} ABLLS assessment draft saved.`, [
+      { text: 'OK' },
     ]);
   };
 
@@ -185,132 +177,423 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Feather name="check-square" size={18} color={colors.navyText} />
-          <View>
-            <Text style={typography.h1}>Skills Assessment</Text>
-            <Text style={typography.caption}>SCR-TEA-002 — ABLLS · {studentName} · Age 6 · In Assessment</Text>
-          </View>
-        </View>
-        <View style={styles.progressPill}>
-          <Text style={styles.progressPillText}>{overallProgress}% scored</Text>
-        </View>
-      </View>
-
-      <View style={styles.legendRow}>
-        {SCORES.map((s) => (
-          <View key={String(s)} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: SCORE_COLOR[s] }]} />
-            <Text style={typography.caption}>{SCORE_LABEL[s]} = {SCORE_MEANING[s]}</Text>
-          </View>
-        ))}
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
-        {ABLLS_DOMAINS.map((d, idx) => (
-          <TouchableOpacity key={d.name} style={[styles.tab, activeDomain === idx && styles.tabActive]} onPress={() => setActiveDomain(idx)}>
-            <Text style={[styles.tabText, activeDomain === idx && styles.tabTextActive]}>{d.name}</Text>
+      {/* Header Bar */}
+      <View style={styles.headerContainer}>
+        <View style={styles.topNavRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+            <Feather name="arrow-left" size={16} color="#334155" />
+            <Text style={styles.backBtnText}>Back</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+          <Text style={styles.headerTitle}>ABLLS-R Assessment</Text>
+        </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.progressBlock}>
-          <View style={styles.progressHeaderRow}>
-            <Text style={typography.bodyBold}>{domain.name}</Text>
-            <Text style={typography.caption}>{domainAnswered}/{domainTotalItems} scored</Text>
+        {/* Student Profile Row */}
+        <View style={styles.studentRow}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>SA</Text>
           </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${domainProgress}%` }]} />
+          <View style={styles.studentInfo}>
+            <View style={styles.studentNameRow}>
+              <Text style={styles.studentName}>{studentName}</Text>
+              <Text style={styles.studentAge}>Age 6</Text>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusPillText}>In Assessment</Text>
+              </View>
+            </View>
+            <Text style={styles.stationText}>Station A</Text>
           </View>
         </View>
 
-        <View style={styles.card}>
-          {domain.items.map((item) => (
-            <View key={item.id} style={styles.itemBlock}>
-              <View style={styles.itemIdRow}>
-                <View style={styles.itemIdBadge}>
-                  <Text style={styles.itemIdText}>{item.id}</Text>
-                </View>
-                <Text style={[typography.body, { flex: 1 }]}>{item.description}</Text>
-              </View>
-
-              <View style={styles.scoreRow}>
-                {SCORES.map((s) => {
-                  const selected = scores[item.id] === s;
-                  return (
-                    <TouchableOpacity
-                      key={String(s)}
-                      style={[styles.scoreBtn, selected && { backgroundColor: SCORE_COLOR[s], borderColor: SCORE_COLOR[s] }]}
-                      onPress={() => setScore(item.id, s)}
-                    >
-                      <Text style={[styles.scoreBtnText, { color: SCORE_COLOR[s] }, selected && styles.scoreBtnTextActive]}>{SCORE_LABEL[s]}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TextInput
-                style={styles.notesInput}
-                placeholder="Notes for this skill..."
-                placeholderTextColor={colors.mutedText}
-                value={notes[item.id] || ''}
-                onChangeText={(t) => setNotes((prev) => ({ ...prev, [item.id]: t }))}
-              />
+        {/* Key / Legend */}
+        <View style={styles.keyRow}>
+          <Text style={styles.keyLabel}>KEY:</Text>
+          {SCORES.map((s) => (
+            <View key={String(s)} style={styles.keyItem}>
+              <View style={[styles.keyDot, { backgroundColor: SCORE_COLOR[s] }]} />
+              <Text style={styles.keyText}>{SCORE_LABEL[s]}</Text>
             </View>
           ))}
         </View>
 
-        <View style={styles.mapRow}>
-          <TouchableOpacity style={styles.mapBtn} onPress={openNeedMap}>
-            <Feather name="grid" size={14} color={colors.navyText} />
-            <Text style={styles.mapBtnText}>View Need Analysis Map</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Domain Tabs Navigation */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsRow}
+        >
+          {ABLLS_DOMAINS.map((d, idx) => (
+            <TouchableOpacity
+              key={d.name}
+              style={[styles.tab, activeDomain === idx && styles.tabActive]}
+              onPress={() => setActiveDomain(idx)}
+            >
+              <Text style={[styles.tabText, activeDomain === idx && styles.tabTextActive]}>
+                {d.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-          <Feather name="save" size={16} color={colors.navyText} />
-          <Text style={styles.saveBtnText}>Save Assessment</Text>
-        </TouchableOpacity>
+        {/* Domain Progress Bar */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${domainProgress}%` }]} />
+          </View>
+          <Text style={styles.progressPercentage}>{domainProgress}%</Text>
+        </View>
+        <Text style={styles.progressSubtext}>
+          {domainAnswered} of {domainTotalItems} items scored in {domain.name}
+        </Text>
+      </View>
+
+      {/* Card Items Content */}
+      <ScrollView contentContainerStyle={styles.content}>
+        {domain.items.map((item) => (
+          <View key={item.id} style={styles.itemCard}>
+            <View style={styles.itemTitleRow}>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{item.id}</Text>
+              </View>
+              <Text style={styles.itemDescription}>{item.description}</Text>
+            </View>
+
+            {/* Score Selector Options */}
+            <View style={styles.scoreRow}>
+              {SCORES.map((s) => {
+                const selected = scores[item.id] === s;
+                return (
+                  <TouchableOpacity
+                    key={String(s)}
+                    style={[
+                      styles.scoreBtn,
+                      { borderColor: SCORE_COLOR[s] },
+                      selected && { backgroundColor: SCORE_COLOR[s] },
+                    ]}
+                    onPress={() => setScore(item.id, s)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.scoreBtnText,
+                        { color: SCORE_COLOR[s] },
+                        selected && styles.scoreBtnTextActive,
+                      ]}
+                    >
+                      {s === 'NA' ? 'N/A' : SCORE_LABEL[s]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Notes Input */}
+            <TextInput
+              style={styles.notesInput}
+              placeholder="Add notes..."
+              placeholderTextColor="#94A3B8"
+              value={notes[item.id] || ''}
+              onChangeText={(t) => setNotes((prev) => ({ ...prev, [item.id]: t }))}
+            />
+          </View>
+        ))}
       </ScrollView>
+
+      {/* Floating Bottom Action Bar */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
+          <Feather name="file-text" size={16} color="#0F172A" />
+          <Text style={styles.saveDraftText}>Save Draft</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.needMapBtn} onPress={openNeedMap}>
+          <Feather name="bar-chart-2" size={16} color="#0F172A" />
+          <Text style={styles.needMapText}>View Need Analysis Map</Text>
+          <Feather name="chevron-right" size={16} color="#0F172A" />
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, flexWrap: 'wrap', gap: spacing.sm },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  progressPill: { backgroundColor: colors.statusInProgressBg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
-  progressPillText: { fontSize: 12, fontWeight: '700', color: colors.statusInProgressText },
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, backgroundColor: colors.bgCard, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  legendDot: { width: 12, height: 12, borderRadius: 6 },
-  tabsScroll: { flexGrow: 0, backgroundColor: colors.bgCard },
-  tabsRow: { flexDirection: 'row', padding: spacing.md, gap: spacing.sm },
-  tab: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgApp },
-  tabActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  tabText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  tabTextActive: { fontWeight: '700', color: colors.navyText },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  progressBlock: { gap: spacing.sm },
-  progressHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressTrack: { height: 8, borderRadius: radius.pill, backgroundColor: colors.bgCard, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
-  progressFill: { height: '100%', backgroundColor: colors.primaryYellow, borderRadius: radius.pill },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
-  itemBlock: { gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  itemIdRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  itemIdBadge: { backgroundColor: colors.navyText, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2, minWidth: 34, alignItems: 'center' },
-  itemIdText: { color: colors.white, fontWeight: '700', fontSize: 12 },
-  scoreRow: { flexDirection: 'row', gap: spacing.sm },
-  scoreBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.bgApp, maxWidth: 64 },
-  scoreBtnText: { fontSize: 12, fontWeight: '700' },
-  scoreBtnTextActive: { color: colors.white },
-  notesInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, color: colors.navyText, backgroundColor: colors.bgApp, fontSize: 12 },
-  mapRow: { flexDirection: 'row' },
-  mapBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', borderWidth: 1, borderColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, alignSelf: 'flex-start' },
-  mapBtnText: { fontWeight: '700', color: colors.primaryYellowDark },
-  saveBtn: { flexDirection: 'row', gap: spacing.xs, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center' },
-  saveBtnText: { fontWeight: '700', color: colors.navyText },
+  safe: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  headerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingTop: 12,
+  },
+  topNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backBtnText: {
+    fontSize: 14,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    borderLeftWidth: 1,
+    borderLeftColor: '#CBD5E1',
+    paddingLeft: 12,
+  },
+  studentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 12,
+    gap: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  studentInfo: {
+    gap: 2,
+  },
+  studentNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  studentName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  studentAge: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  statusPill: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  stationText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  keyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  keyLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  keyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  keyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+  },
+  keyText: {
+    fontSize: 11,
+    color: '#475569',
+  },
+  tabsScroll: {
+    marginTop: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 20,
+  },
+  tab: {
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#0EA5E9',
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  tabTextActive: {
+    color: '#0EA5E9',
+    fontWeight: '700',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 12,
+    gap: 12,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#0EA5E9',
+  },
+  progressPercentage: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  progressSubtext: {
+    fontSize: 12,
+    color: '#64748B',
+    paddingHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  content: {
+    padding: 16,
+    gap: 12,
+    paddingBottom: 90,
+  },
+  itemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+  },
+  itemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  badge: {
+    backgroundColor: '#38BDF8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  itemDescription: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+    flex: 1,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  scoreBtn: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  scoreBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  scoreBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    padding: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  saveDraftBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  saveDraftText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  needMapBtn: {
+    flex: 2,
+    backgroundColor: '#FACC15',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+  },
+  needMapText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
 });
