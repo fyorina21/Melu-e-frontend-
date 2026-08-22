@@ -22,6 +22,7 @@ import {
   markAppointmentStatus,
   markTeacherUnavailable,
 } from '../../api/sessionApi';
+import { getStudentOptions, getStaffOptions, getRoomOptions, type StudentOption, type StaffOption, type RoomOption } from '../../api/optionsApi';
 import {
   subscribe,
   getWeekData,
@@ -46,17 +47,17 @@ interface Metric {
   incidents: number;
 }
 
-const THERAPIST_OPTIONS: Option[] = [
+const FALLBACK_THERAPIST_OPTIONS: Option[] = [
   { id: 't-a', name: 'Teacher A' },
   { id: 't-b', name: 'Teacher B' },
   { id: 't-c', name: 'Teacher C' },
 ];
-const STUDENT_OPTIONS: Option[] = [
+const FALLBACK_STUDENT_OPTIONS: Option[] = [
   { id: 'student-a', name: 'Student A' },
   { id: 'student-b', name: 'Student B' },
   { id: 'student-c', name: 'Student C' },
 ];
-const ROOM_OPTIONS: Option[] = [
+const FALLBACK_ROOM_OPTIONS: Option[] = [
   { id: 'room-1', name: 'Room 1' },
   { id: 'room-2', name: 'Room 2' },
   { id: 'room-3', name: 'Room 3' },
@@ -131,6 +132,15 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [unavailableVisible, setUnavailableVisible] = useState(false);
   const [reassignVisible, setReassignVisible] = useState(false);
   const [analyticsVisible, setAnalyticsVisible] = useState(false);
+  const [studentOpts, setStudentOpts] = useState<StudentOption[]>([]);
+  const [staffOpts, setStaffOpts] = useState<StaffOption[]>([]);
+  const [roomOpts, setRoomOpts] = useState<RoomOption[]>([]);
+
+  useEffect(() => {
+    Promise.all([getStudentOptions(), getStaffOptions(), getRoomOptions()])
+      .then(([s, st, r]) => { setStudentOpts(s.data); setStaffOpts(st.data); setRoomOpts(r.data); })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -156,7 +166,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const dayAppointments = (weekData?.[selectedDay] || []).filter(
     (a) => teacherFilter === 'all' || a.therapistId === teacherFilter
   );
-  const unassignedStudents = STUDENT_OPTIONS.filter(
+  const effectiveStudentOpts = studentOpts.length > 0 ? studentOpts : FALLBACK_STUDENT_OPTIONS;
+  const effectiveStaffOpts = staffOpts.length > 0 ? staffOpts : FALLBACK_THERAPIST_OPTIONS;
+  const effectiveRoomOpts = roomOpts.length > 0 ? roomOpts : FALLBACK_ROOM_OPTIONS;
+
+  const unassignedStudents = effectiveStudentOpts.filter(
     (s) => !dayAppointments.some((a) => a.studentIds?.includes(s.id))
   );
 
@@ -225,7 +239,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     setUnavailableVisible(false);
     Alert.alert(
       'Marked Unavailable',
-      `${THERAPIST_OPTIONS.find((t) => t.id === therapistId)?.name ?? therapistId} is unavailable on ${payload.date} (${payload.reason}).`,
+      `${effectiveStaffOpts.find((t) => t.id === therapistId)?.name ?? therapistId} is unavailable on ${payload.date} (${payload.reason}).`,
       [{ text: 'OK' }]
     );
   };
@@ -234,7 +248,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     reassignStudentsInStore(selectedDay, payload.fromTherapistId, payload.toTherapistId, payload.studentIds);
     setWeekData(getWeekData());
     setReassignVisible(false);
-    const targetName = THERAPIST_OPTIONS.find((t) => t.id === payload.toTherapistId)?.name ?? payload.toTherapistId;
+    const targetName = effectiveStaffOpts.find((t) => t.id === payload.toTherapistId)?.name ?? payload.toTherapistId;
     Alert.alert('Students Reassigned', `Moved ${payload.studentIds.length} student(s) to ${targetName}.`, [{ text: 'OK' }]);
   };
 
@@ -242,7 +256,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     const lines = [
       `Melu'e Foundation — Staff Schedule`,
       `Day: ${DAYS[selectedDay]}`,
-      `Teacher filter: ${teacherFilter === 'all' ? 'All' : THERAPIST_OPTIONS.find((t) => t.id === teacherFilter)?.name}`,
+      `Teacher filter: ${teacherFilter === 'all' ? 'All' : effectiveStaffOpts.find((t) => t.id === teacherFilter)?.name}`,
       '',
       'APPOINTMENTS',
       ...dayAppointments.map((a) => `• ${a.startTime} – ${a.endTime} | ${a.therapistName} | ${a.roomName} | ${a.studentNames.join(', ')}`),
@@ -287,7 +301,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
           <TouchableOpacity style={[styles.filterChip, teacherFilter === 'all' && styles.filterChipActive]} onPress={() => setTeacherFilter('all')}>
             <Text style={typography.body}>All Teachers</Text>
           </TouchableOpacity>
-          {THERAPIST_OPTIONS.map((t) => (
+          {effectiveStaffOpts.map((t) => (
             <TouchableOpacity key={t.id} style={[styles.filterChip, teacherFilter === t.id && styles.filterChipActive]} onPress={() => setTeacherFilter(t.id)}>
               <Text style={typography.body}>{t.name}</Text>
             </TouchableOpacity>
@@ -349,9 +363,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         visible={formVisible}
         appointment={editingAppt}
         defaultDate={`2026-08-${10 + selectedDay}`}
-        therapistOptions={THERAPIST_OPTIONS}
-        studentOptions={STUDENT_OPTIONS}
-        roomOptions={ROOM_OPTIONS}
+        therapistOptions={effectiveStaffOpts}
+        studentOptions={effectiveStudentOpts}
+        roomOptions={effectiveRoomOpts}
         onClose={() => setFormVisible(false)}
         onSave={handleSave}
         onCancelAppointment={handleCancelAppointment}
@@ -368,7 +382,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
       <MarkUnavailableModal
         visible={unavailableVisible}
-        therapistOptions={THERAPIST_OPTIONS}
+        therapistOptions={effectiveStaffOpts}
         defaultDate={`2026-08-${10 + selectedDay}`}
         onClose={() => setUnavailableVisible(false)}
         onSubmit={handleUnavailableSubmit}
@@ -376,7 +390,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
       <ReassignStudentsModal
         visible={reassignVisible}
-        therapistOptions={THERAPIST_OPTIONS}
+        therapistOptions={effectiveStaffOpts}
         appointments={weekData?.[selectedDay] ?? []}
         onClose={() => setReassignVisible(false)}
         onSubmit={handleReassignSubmit}
