@@ -7,6 +7,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,6 +15,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import StudentSessionCard from './components/StudentSessionCard';
 import BehaviorIncidentModal, {
@@ -55,6 +57,7 @@ export default function SessionDataCollectionScreen({
 }: Props) {
   const sessionId = route.params?.sessionId ?? 'DEMO_SESSION_ID';
   const { logout } = useAuth();
+  const { showToast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<SessionRoster | null>(null);
@@ -160,6 +163,7 @@ export default function SessionDataCollectionScreen({
         promptLevel: level,
         stepId,
       });
+      showToast('Trial logged successfully', 'success');
     } catch (err) {
       Alert.alert(
         'Sync failed',
@@ -223,7 +227,7 @@ export default function SessionDataCollectionScreen({
     }
 
     setIncidentModal(null);
-    Alert.alert('Incident recorded');
+    showToast('Behavior incident logged successfully', 'success');
   };
 
   const handleMasteryCheck = (
@@ -242,6 +246,7 @@ export default function SessionDataCollectionScreen({
     } catch (err) {
       // Continue with local swap if backend is unavailable.
     }
+    showToast('Students swapped successfully', 'success');
 
     setSession((prev) => {
       if (!prev || prev.students.length < 2) {
@@ -306,6 +311,7 @@ export default function SessionDataCollectionScreen({
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#0F172A" style={{ marginBottom: 12 }} />
           <Text style={typography.body}>
             Loading session…
           </Text>
