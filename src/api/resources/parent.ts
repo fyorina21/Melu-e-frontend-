@@ -10,16 +10,19 @@ import { http } from '../http/client';
 import type { UUID } from './types';
 
 export interface ParentDashboard {
+  parentName: string;
   childSummary: {
     id: UUID;
     fullName: string;
     age: number;
     programType: string;
     therapyGroup: string;
+    goals: Array<{ id: string; name: string; status: string; progressPercent: number }>;
   } | null;
   sessionsThisWeek: number;
   sessionsTotal: number;
   independencePercent: number;
+  unreadCount: number;
   latestMessage: {
     from: string;
     preview: string;
