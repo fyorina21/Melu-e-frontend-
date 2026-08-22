@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -22,7 +23,7 @@ interface GoalProgressData {
   trend: number[];
 }
 
-export default function GoalProgressScreen({ route }: Props) {
+export default function GoalProgressScreen({ navigation, route }: Props) {
   const { studentId = 'DEMO_STUDENT', goalId = 'DEMO_GOAL' } = route.params;
   const [goal, setGoal] = useState<GoalProgressData | null>(null);
 
@@ -52,6 +53,14 @@ export default function GoalProgressScreen({ route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+          <Feather name="arrow-left" size={16} color="#334155" />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Goal Progress</Text>
+        <View style={{ width: 80 }} />
+      </View>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.h1}>{goal.name}</Text>
         <Text style={typography.body}>{goal.studentName} · {goal.category}</Text>
@@ -107,6 +116,10 @@ const DEMO_GOAL: GoalProgressData = {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  backText: { color: '#334155', fontSize: 14, fontWeight: '500' },
+  headerTitle: { ...typography.h2, textAlign: 'center' },
   content: { padding: spacing.lg, gap: spacing.lg },
   card: {
     backgroundColor: colors.bgCard,
