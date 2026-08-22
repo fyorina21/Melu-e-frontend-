@@ -9,6 +9,33 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'GoalMasteryCheck'>;
 type OutcomeOption = 'novel_person' | 'novel_environment' | 'both' | 'failed';
 type PromptType = '' | 'Full Physical (FP)' | 'Partial Physical (PP)' | 'Gestural (G)';
 
+interface PrimaryTeacherData {
+  name: string;
+  criteriaMet: string;
+  dateAchieved: string;
+  totalTrials: number;
+  independenceRate: string;
+  notes?: string;
+}
+
+interface VerificationTeacher {
+  name: string;
+  date: string;
+}
+
+interface MasteryCheckData {
+  studentName: string;
+  goalName: string;
+  station: string;
+  dateInitiated: string;
+  initiatedBy: string;
+  initiatedByRole: string;
+  statusLabel: string;
+  primaryTeacher: PrimaryTeacherData;
+  teacherB: VerificationTeacher;
+  teacherC: VerificationTeacher;
+}
+
 const OUTCOME_OPTIONS: { id: OutcomeOption; label: string }[] = [
   { id: 'novel_person', label: 'Independent with Novel Person' },
   { id: 'novel_environment', label: 'Independent in Novel Environment' },
@@ -22,10 +49,31 @@ const PROMPT_OPTIONS: PromptType[] = [
   'Gestural (G)',
 ];
 
+const DEMO_DATA: MasteryCheckData = {
+  studentName: 'Student A',
+  goalName: 'Identify Colors',
+  station: 'Station 1 - Basic Skills',
+  dateInitiated: 'May 24, 2025',
+  initiatedBy: 'Maria Reyes',
+  initiatedByRole: 'Teacher A',
+  statusLabel: 'Draft',
+  primaryTeacher: {
+    name: 'Maria Reyes',
+    criteriaMet: '5 consecutive sessions at 100% independent.',
+    dateAchieved: 'May 24, 2025',
+    totalTrials: 50,
+    independenceRate: '100% (+)',
+    notes: '',
+  },
+  teacherB: { name: 'Jared Cruz', date: '2025-05-24' },
+  teacherC: { name: 'Jeah Torres', date: '2025-05-24' },
+};
+
 export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
-  const { studentId = 'DEMO_STUDENT', goalId = 'DEMO_GOAL' } = route.params;
+  const { studentId = 'DEMO_STUDENT', goalId = 'DEMO_GOAL' } = route.params ?? {};
 
   const [data, setData] = useState<MasteryCheckData | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   // Teacher B Form State
   const [teacherBOutcome, setTeacherBOutcome] = useState<OutcomeOption | null>(null);
@@ -52,20 +100,19 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Validation Logic: Check if Teacher B is valid
+  // Validation Logic
   const isTeacherBValid = teacherBOutcome && (
     teacherBOutcome !== 'failed' || (teacherBOutcome === 'failed' && teacherBPrompt !== '')
   );
 
-  // Validation Logic: Check if Teacher C is valid
   const isTeacherCValid = teacherCOutcome && (
     teacherCOutcome !== 'failed' || (teacherCOutcome === 'failed' && teacherCPrompt !== '')
   );
 
-  const canSubmit = isTeacherBValid && isTeacherCValid;
+  const canSubmit = isTeacherBValid && isTeacherCValid && !isSubmitted;
 
   const handleCancel = () => {
-    if (touched) {
+    if (touched && !isSubmitted) {
       Alert.alert('Discard changes?', 'Any entered data will be lost.', [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => navigation?.goBack?.() },
@@ -85,10 +132,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
     try {
       await submitGoalMasteryCheck(studentId, goalId, payload);
+      setIsSubmitted(true);
       Alert.alert('Success', 'Verification submitted and notification sent to Director.', [
         { text: 'OK', onPress: () => navigation?.goBack?.() }
       ]);
     } catch (err) {
+      setIsSubmitted(true);
       Alert.alert('Submitted (offline)', 'Notification sent and will sync once online.', [
         { text: 'OK', onPress: () => navigation?.goBack?.() }
       ]);
@@ -96,6 +145,8 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   };
 
   if (!data) return null;
+
+  const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -135,8 +186,8 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 <Text style={styles.metaSubText}>({data.initiatedByRole})</Text>
               </View>
             </View>
-            <View style={styles.statusPill}>
-              <Text style={styles.statusPillText}>{data.statusLabel}</Text>
+            <View style={[styles.statusPill, isSubmitted && styles.pendingPill]}>
+              <Text style={styles.statusPillText}>{currentStatus}</Text>
             </View>
           </View>
         </View>
@@ -190,6 +241,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 {OUTCOME_OPTIONS.map((opt) => (
                   <TouchableOpacity
                     key={opt.id}
+                    disabled={isSubmitted}
                     style={styles.radioOption}
                     onPress={() => {
                       setTouched(true);
@@ -206,11 +258,11 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 ))}
               </View>
 
-              {/* Conditional Prompt Used Dropdown for Teacher B */}
               {teacherBOutcome === 'failed' && (
                 <View style={styles.dropdownContainer}>
                   <Text style={styles.fieldLabel}>Prompt Used <Text style={styles.required}>*</Text></Text>
                   <TouchableOpacity
+                    disabled={isSubmitted}
                     style={styles.selectBox}
                     onPress={() => setShowTeacherBPromptDropdown(!showTeacherBPromptDropdown)}
                   >
@@ -220,7 +272,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                     <Feather name="chevron-down" size={16} color="#64748B" />
                   </TouchableOpacity>
 
-                  {showTeacherBPromptDropdown && (
+                  {showTeacherBPromptDropdown && !isSubmitted && (
                     <View style={styles.dropdownMenu}>
                       <TouchableOpacity
                         style={styles.dropdownItem}
@@ -249,6 +301,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
               <TextInput
                 style={styles.textInput}
                 multiline
+                editable={!isSubmitted}
                 value={teacherBNotes}
                 onChangeText={(v) => { setTouched(true); setTeacherBNotes(v); }}
               />
@@ -273,6 +326,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 {OUTCOME_OPTIONS.map((opt) => (
                   <TouchableOpacity
                     key={opt.id}
+                    disabled={isSubmitted}
                     style={styles.radioOption}
                     onPress={() => {
                       setTouched(true);
@@ -289,11 +343,11 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 ))}
               </View>
 
-              {/* Conditional Prompt Used Dropdown for Teacher C */}
               {teacherCOutcome === 'failed' && (
                 <View style={styles.dropdownContainer}>
                   <Text style={styles.fieldLabel}>Prompt Used <Text style={styles.required}>*</Text></Text>
                   <TouchableOpacity
+                    disabled={isSubmitted}
                     style={styles.selectBox}
                     onPress={() => setShowTeacherCPromptDropdown(!showTeacherCPromptDropdown)}
                   >
@@ -303,7 +357,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                     <Feather name="chevron-down" size={16} color="#64748B" />
                   </TouchableOpacity>
 
-                  {showTeacherCPromptDropdown && (
+                  {showTeacherCPromptDropdown && !isSubmitted && (
                     <View style={styles.dropdownMenu}>
                       <TouchableOpacity
                         style={styles.dropdownItem}
@@ -332,6 +386,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
               <TextInput
                 style={styles.textInput}
                 multiline
+                editable={!isSubmitted}
                 value={teacherCNotes}
                 onChangeText={(v) => { setTouched(true); setTeacherCNotes(v); }}
               />
@@ -344,15 +399,15 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         {/* Footer Actions */}
         <View style={styles.footerActions}>
           <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
+            <Text style={styles.cancelBtnText}>{isSubmitted ? 'Close' : 'Cancel'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.submitBtn, canSubmit && styles.submitBtnActive]}
+            style={[styles.submitBtn, canSubmit && styles.submitBtnActive, isSubmitted && styles.submitBtnDisabled]}
             disabled={!canSubmit}
             onPress={handleSubmit}
           >
             <Text style={[styles.submitBtnText, canSubmit && styles.submitBtnTextActive]}>
-              Submit for Review
+              {isSubmitted ? 'Submitted for Review' : 'Submit for Review'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -360,53 +415,6 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-interface PrimaryTeacherData {
-  name: string;
-  criteriaMet: string;
-  dateAchieved: string;
-  totalTrials: number;
-  independenceRate: string;
-  notes?: string;
-}
-
-interface VerificationTeacher {
-  name: string;
-  date: string;
-}
-
-interface MasteryCheckData {
-  studentName: string;
-  goalName: string;
-  station: string;
-  dateInitiated: string;
-  initiatedBy: string;
-  initiatedByRole: string;
-  statusLabel: string;
-  primaryTeacher: PrimaryTeacherData;
-  teacherB: VerificationTeacher;
-  teacherC: VerificationTeacher;
-}
-
-const DEMO_DATA: MasteryCheckData = {
-  studentName: 'Student A',
-  goalName: 'Identify Colors',
-  station: 'Station 1 - Basic Skills',
-  dateInitiated: 'May 24, 2025',
-  initiatedBy: 'Maria Reyes',
-  initiatedByRole: 'Teacher A',
-  statusLabel: 'Pending Director Review',
-  primaryTeacher: {
-    name: 'Maria Reyes',
-    criteriaMet: '5 consecutive sessions at 100% independent.',
-    dateAchieved: 'May 24, 2025',
-    totalTrials: 50,
-    independenceRate: '100% (+)',
-    notes: '',
-  },
-  teacherB: { name: 'Jared Cruz', date: '2025-05-24' },
-  teacherC: { name: 'Jeah Torres', date: '2025-05-24' },
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
@@ -447,7 +455,8 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 11, color: '#64748B', marginBottom: 2 },
   metaValueText: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
   metaSubText: { fontSize: 11, color: '#64748B' },
-  statusPill: { backgroundColor: '#FDE047', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  statusPill: { backgroundColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  pendingPill: { backgroundColor: '#FDE047' },
   statusPillText: { fontSize: 12, fontWeight: '700', color: '#1E293B' },
 
   columnsRow: { flexDirection: 'row', gap: 16 },
@@ -485,7 +494,6 @@ const styles = StyleSheet.create({
   radioInnerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#0284C7' },
   radioLabel: { fontSize: 13, color: '#1E293B', fontWeight: '500' },
 
-  /* Dropdown Styles */
   dropdownContainer: { position: 'relative', zIndex: 10 },
   selectBox: {
     flexDirection: 'row',
@@ -525,6 +533,7 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
   submitBtn: { backgroundColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' },
   submitBtnActive: { backgroundColor: '#FACC15' },
+  submitBtnDisabled: { opacity: 0.6 },
   submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
   submitBtnTextActive: { color: '#1E293B' },
 });

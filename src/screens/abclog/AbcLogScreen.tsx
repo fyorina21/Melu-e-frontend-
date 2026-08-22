@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -32,23 +32,59 @@ interface AbcLogData {
 const STUDENT_OPTIONS = [
   { id: 'student-a', name: 'Student A', age: 7 },
   { id: 'student-b', name: 'Student B', age: 6 },
+  { id: 'student-c', name: 'Student C', age: 8 },
+  { id: 'student-d', name: 'Student D', age: 7 },
 ];
+
 const COLUMNS = ['Date', 'Time', 'Location', 'Behavior', 'Frequency', 'Intensity', 'Category', 'Antecedent', 'Consequence', 'Teacher'];
-const BEHAVIOR_OPTIONS = ['Aggression', 'Tantrum', 'Elopement', 'Non-compliance', 'Self-injury'];
-const CATEGORY_OPTIONS = ['Physical', 'Verbal', 'Disruptive'];
+const OUTCOME_OPTIONS = [
+  'Independent with Novel Person',
+  'Independent in Novel Environment',
+  'Both',
+  'Failed - Required Prompt',
+];
+
+const DEMO_INCIDENTS_BY_STUDENT: Record<string, AbcIncidentRow[]> = {
+  'student-a': [
+    { date: '08/01/2026', time: '9:12 AM', location: 'Room 2', behavior: 'Tantrum', frequency: '2 times', intensity: 'High', category: 'Disruptive', antecedent: 'Transitions', consequence: 'Verbal redirection', teacher: 'Teacher A' },
+    { date: '08/01/2026', time: '10:40 AM', location: 'Playground', behavior: 'Aggression', frequency: '1 time', intensity: 'High', category: 'Physical', antecedent: 'Peer proximity', consequence: 'Time-out', teacher: 'Teacher A' },
+  ],
+  'student-b': [
+    { date: '08/02/2026', time: '10:15 AM', location: 'Library', behavior: 'Non-compliance', frequency: '2 times', intensity: 'Low', category: 'Verbal', antecedent: 'Quiet time prompt', consequence: 'Guided choices', teacher: 'Teacher B' },
+  ],
+  'student-c': [],
+  'student-d': [],
+};
 
 export default function AbcLogScreen({ navigation }: Props) {
   const { logout } = useAuth();
   const [studentId, setStudentId] = useState('student-a');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [from, setFrom] = useState('07/07/2026');
-  const [to, setTo] = useState('08/06/2026');
+  const [to, setTo] = useState('08/22/2026');
   const [behaviorFilter, setBehaviorFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [data, setData] = useState<AbcLogData | null>(null);
   const [exportContent, setExportContent] = useState<string | null>(null);
 
-  const buildData = useCallback((behavior: string, category: string): AbcLogData => {
-    const filtered = DEMO_INCIDENTS.filter(
+  // Workflow & Verification Form State
+  const [status, setStatus] = useState<'draft' | 'pending_director_review'>('draft');
+  const [teacherBOutcome, setTeacherBOutcome] = useState('');
+  const [teacherBNotes, setTeacherBNotes] = useState('');
+  const [teacherCOutcome, setTeacherCOutcome] = useState('');
+  const [teacherCNotes, setTeacherCNotes] = useState('');
+
+  const isSubmitted = status === 'pending_director_review';
+  const canSubmit = teacherBOutcome !== '' && teacherCOutcome !== '' && !isSubmitted;
+
+  const handleSubmitForReview = () => {
+    if (!canSubmit) return;
+    setStatus('pending_director_review');
+  };
+
+  const buildData = useCallback((activeStudentId: string, behavior: string, category: string): AbcLogData => {
+    const studentIncidents = DEMO_INCIDENTS_BY_STUDENT[activeStudentId] ?? [];
+    const filtered = studentIncidents.filter(
       (r) =>
         (behavior === 'All' || r.behavior === behavior) &&
         (category === 'All' || r.category === category)
@@ -80,41 +116,11 @@ export default function AbcLogScreen({ navigation }: Props) {
       const { data: res } = await getAbcLog({ studentId, from, to, behavior: behaviorFilter, category: categoryFilter });
       setData(res);
     } catch (err) {
-      setData(buildData(behaviorFilter, categoryFilter));
+      setData(buildData(studentId, behaviorFilter, categoryFilter));
     }
   }, [studentId, from, to, behaviorFilter, categoryFilter, buildData]);
 
   useEffect(() => { load(); }, [load]);
-
-  const cycleFilter = (current: string, options: string[]) => {
-    const idx = options.indexOf(current);
-    return options[(idx + 1) % options.length];
-  };
-
-  const handleExport = async () => {
-    try {
-      await exportAbcLog({ studentId, from, to });
-    } catch (err) {}
-    const rows = data?.incidents ?? [];
-    const header = COLUMNS.join(',');
-    const lines = rows.map((r) => COLUMNS.map((c) => `"${(r[c.toLowerCase()] || '').replace(/"/g, '""')}"`).join(','));
-    const stats = data?.stats;
-    const content = [
-      `Melu'e Foundation — ABC Data Sheet`,
-      `Student: ${currentStudent?.name}`,
-      `Range: ${from} to ${to}`,
-      `Filters: Behavior ${behaviorFilter} · Category ${categoryFilter}`,
-      '',
-      `TOTAL INCIDENTS: ${stats?.totalIncidents ?? 0}`,
-      `MOST COMMON BEHAVIOR: ${stats?.mostCommonBehavior ?? 'N/A'}`,
-      `MOST COMMON ANTECEDENT: ${stats?.mostCommonAntecedent ?? 'N/A'}`,
-      `THIS WEEK: ${stats?.thisWeek ?? 0}`,
-      '',
-      header,
-      ...lines,
-    ].join('\n');
-    setExportContent(content);
-  };
 
   const currentStudent = STUDENT_OPTIONS.find((s) => s.id === studentId);
 
@@ -124,95 +130,135 @@ export default function AbcLogScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="ABC Log" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
+      {/* Header with Student Info and Status Badge */}
       <View style={styles.header}>
         <View style={styles.studentSelectorRow}>
-          <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{currentStudent?.name?.[0]}</Text></View>
+          <View style={styles.studentAvatar}>
+            <Text style={styles.studentAvatarText}>{currentStudent?.name?.[0]}</Text>
+          </View>
           <TouchableOpacity
             style={styles.studentDropdown}
-            onPress={() => setStudentId((prev) => (prev === 'student-a' ? 'student-b' : 'student-a'))}
+            onPress={() => setIsDropdownOpen((prev) => !prev)}
           >
             <Text style={typography.h3}>{currentStudent?.name}</Text>
             <Feather name="chevron-down" size={16} color={colors.navyText} />
           </TouchableOpacity>
           <Text style={typography.caption}>Age {currentStudent?.age}</Text>
-        </View>
-        <Text style={typography.caption}>ABC Data Sheet</Text>
-      </View>
 
-      <View style={styles.filtersCard}>
-        <View style={styles.filtersRow}>
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={typography.label}>From</Text>
-            <TextInput style={styles.textInput} value={from} onChangeText={setFrom} />
-          </View>
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={typography.label}>To</Text>
-            <TextInput style={styles.textInput} value={to} onChangeText={setTo} />
-          </View>
-        </View>
-        <View style={styles.filtersRow}>
-          <TouchableOpacity
-            style={[styles.filterChip, styles.filterChipFlex]}
-            onPress={() => setBehaviorFilter((prev) => cycleFilter(prev, ['All', ...BEHAVIOR_OPTIONS]))}
-          >
-            <Text style={typography.body}>Behavior: {behaviorFilter}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, styles.filterChipFlex]}
-            onPress={() => setCategoryFilter((prev) => cycleFilter(prev, ['All', ...CATEGORY_OPTIONS]))}
-          >
-            <Text style={typography.body}>Category: {categoryFilter}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
-            <Text style={styles.exportBtnText}>Export</Text>
-            <Feather name="chevron-down" size={14} color={colors.navyText} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>TOTAL INCIDENTS</Text>
-            <Text style={styles.statValue}>{data.stats.totalIncidents}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>MOST COMMON BEHAVIOR</Text>
-            <Text style={styles.statValueSmall}>{data.stats.mostCommonBehavior}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>MOST COMMON ANTECEDENT</Text>
-            <Text style={styles.statValueSmall}>{data.stats.mostCommonAntecedent}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>THIS WEEK</Text>
-            <Text style={styles.statValue}>{data.stats.thisWeek}</Text>
-          </View>
-        </View>
-
-        <ScrollView horizontal>
-          <View style={styles.table}>
-            <View style={styles.tableHeaderRow}>
-              {COLUMNS.map((c) => (
-                <Text key={c} style={styles.tableHeaderCell}>{c}</Text>
-              ))}
+          {/* Pending Director Review badge appears ONLY after pressing submit */}
+          {isSubmitted ? (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>Pending Director Review</Text>
             </View>
-            {data.incidents.length === 0 ? (
-              <View style={styles.emptyRow}>
-                <Text style={[typography.body, { color: colors.mutedText }]}>No incidents found for the selected filters.</Text>
-              </View>
-            ) : (
-              data.incidents.map((inc, i) => (
-                <View key={i} style={styles.tableRow}>
-                  {COLUMNS.map((c) => (
-                    <Text key={c} style={styles.tableCell}>{inc[c.toLowerCase()] || '—'}</Text>
-                  ))}
-                </View>
-              ))
-            )}
+          ) : (
+            <View style={styles.draftBadge}>
+              <Text style={styles.draftBadgeText}>Draft</Text>
+            </View>
+          )}
+        </View>
+
+        {isDropdownOpen && (
+          <View style={styles.dropdownMenu}>
+            {STUDENT_OPTIONS.map((student) => (
+              <TouchableOpacity
+                key={student.id}
+                style={[
+                  styles.dropdownItem,
+                  student.id === studentId && styles.dropdownItemSelected,
+                ]}
+                onPress={() => {
+                  setStudentId(student.id);
+                  setIsDropdownOpen(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.dropdownItemText,
+                    student.id === studentId && styles.dropdownItemTextSelected,
+                  ]}
+                >
+                  {student.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        </ScrollView>
-        <Text style={typography.caption}>Showing {data.incidents.length === 0 ? '0-0' : `1-${data.incidents.length}`} of {data.incidents.length} incidents</Text>
+        )}
+      </View>
+
+      {/* Verification Columns Form */}
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.verificationGrid}>
+          {/* Teacher B Column */}
+          <View style={[styles.verificationCard, isSubmitted && styles.disabledCard]}>
+            <Text style={typography.h3}>Teacher B Verification</Text>
+            <Text style={styles.teacherSubtext}>Jared Cruz</Text>
+
+            <Text style={styles.sectionLabel}>Outcome *</Text>
+            {OUTCOME_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                disabled={isSubmitted}
+                style={styles.radioRow}
+                onPress={() => setTeacherBOutcome(opt)}
+              >
+                <View style={[styles.radioCircle, teacherBOutcome === opt && styles.radioSelected]} />
+                <Text style={styles.radioText}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <Text style={styles.sectionLabel}>Notes</Text>
+            <TextInput
+              style={styles.textArea}
+              multiline
+              editable={!isSubmitted}
+              value={teacherBNotes}
+              onChangeText={setTeacherBNotes}
+              placeholder="Enter notes..."
+            />
+          </View>
+
+          {/* Teacher C Column */}
+          <View style={[styles.verificationCard, isSubmitted && styles.disabledCard]}>
+            <Text style={typography.h3}>Teacher C Verification</Text>
+            <Text style={styles.teacherSubtext}>Jeah Torres</Text>
+
+            <Text style={styles.sectionLabel}>Outcome *</Text>
+            {OUTCOME_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                disabled={isSubmitted}
+                style={styles.radioRow}
+                onPress={() => setTeacherCOutcome(opt)}
+              >
+                <View style={[styles.radioCircle, teacherCOutcome === opt && styles.radioSelected]} />
+                <Text style={styles.radioText}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <Text style={styles.sectionLabel}>Notes</Text>
+            <TextInput
+              style={styles.textArea}
+              multiline
+              editable={!isSubmitted}
+              value={teacherCNotes}
+              onChangeText={setTeacherCNotes}
+              placeholder="Enter notes..."
+            />
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.submitBtn, (!canSubmit || isSubmitted) && styles.submitBtnDisabled]}
+            disabled={!canSubmit || isSubmitted}
+            onPress={handleSubmitForReview}
+          >
+            <Text style={styles.submitBtnText}>
+              {isSubmitted ? 'Submitted for Review' : 'Submit for Review'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <ExportPreviewModal
@@ -226,40 +272,46 @@ export default function AbcLogScreen({ navigation }: Props) {
   );
 }
 
-const DEMO_INCIDENTS: AbcIncidentRow[] = [
-  { date: '08/01/2026', time: '9:12 AM', location: 'Room 2', behavior: 'Tantrum', frequency: '2 times', intensity: 'High', category: 'Disruptive', antecedent: 'Transitions', consequence: 'Verbal redirection', teacher: 'Teacher A' },
-  { date: '08/01/2026', time: '10:40 AM', location: 'Playground', behavior: 'Aggression', frequency: '1 time', intensity: 'High', category: 'Physical', antecedent: 'Peer proximity', consequence: 'Time-out', teacher: 'Teacher A' },
-  { date: '08/04/2026', time: '9:05 AM', location: 'Room 2', behavior: 'Elopement', frequency: '1 time', intensity: 'Medium', category: 'Physical', antecedent: 'Non-preferred task', consequence: 'Blocking + redirect', teacher: 'Teacher B' },
-  { date: '08/05/2026', time: '1:22 PM', location: 'Room 1', behavior: 'Non-compliance', frequency: '4 times', intensity: 'Low', category: 'Verbal', antecedent: 'Instructions', consequence: 'Prompt hierarchy', teacher: 'Teacher A' },
-  { date: '07/29/2026', time: '11:00 AM', location: 'Room 2', behavior: 'Self-injury', frequency: '3 times', intensity: 'High', category: 'Physical', antecedent: 'Demand removal', consequence: 'Sensory break', teacher: 'Teacher B' },
-  { date: '07/25/2026', time: '8:55 AM', location: 'Cafeteria', behavior: 'Tantrum', frequency: '2 times', intensity: 'Medium', category: 'Disruptive', antecedent: 'Waiting', consequence: 'Attention', teacher: 'Teacher A' },
-];
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.xs },
+  header: { padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, position: 'relative', zIndex: 100 },
   studentSelectorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   studentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgApp, alignItems: 'center', justifyContent: 'center' },
   studentAvatarText: { fontWeight: '700', color: colors.navyText },
   studentDropdown: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  filtersCard: { padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.md },
-  filtersRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-end' },
-  field: { gap: spacing.xs },
-  textInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm },
-  filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  filterChipFlex: { flex: 1 },
-  exportBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  exportBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
+  draftBadge: { marginLeft: 'auto', backgroundColor: '#E2E8F0', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.md },
+  draftBadgeText: { fontSize: 11, color: '#475569', fontWeight: '600' },
+  pendingBadge: { marginLeft: 'auto', backgroundColor: '#FACC15', paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.md },
+  pendingBadgeText: { fontSize: 11, color: '#1E293B', fontWeight: '700' },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 50,
+    left: 56,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    width: 140,
+    zIndex: 1000,
+    elevation: 5,
+  },
+  dropdownItem: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  dropdownItemSelected: { backgroundColor: '#93C5FD' },
+  dropdownItemText: { fontSize: 14, color: colors.navyText },
+  dropdownItemTextSelected: { fontWeight: '600', color: colors.navyText },
   content: { padding: spacing.lg, gap: spacing.lg },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statCard: { flexGrow: 1, minWidth: '22%', backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
-  statLabel: { fontSize: 10, fontWeight: '700', color: colors.mutedText, letterSpacing: 0.5 },
-  statValue: { fontSize: 24, fontWeight: '700', color: colors.statusInProgressText },
-  statValueSmall: { fontSize: 16, fontWeight: '700', color: colors.navyText },
-  table: { minWidth: 900, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
-  tableHeaderRow: { flexDirection: 'row', backgroundColor: '#0EA5E9' },
-  tableHeaderCell: { width: 90, padding: spacing.sm, fontSize: 11, fontWeight: '700', color: colors.white },
-  tableRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bgCard },
-  tableCell: { width: 90, padding: spacing.sm, fontSize: 12, color: colors.navyText },
-  emptyRow: { padding: spacing.xl, alignItems: 'center', backgroundColor: colors.bgCard, width: 900 },
+  verificationGrid: { flexDirection: 'row', gap: spacing.md },
+  verificationCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
+  disabledCard: { backgroundColor: '#F8FAFC', opacity: 0.8 },
+  teacherSubtext: { fontSize: 12, color: colors.mutedText, marginBottom: spacing.md },
+  sectionLabel: { fontSize: 12, fontWeight: '700', color: colors.navyText, marginTop: spacing.md, marginBottom: spacing.xs },
+  radioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginVertical: 4 },
+  radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: '#94A3B8' },
+  radioSelected: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  radioText: { fontSize: 12, color: colors.navyText },
+  textArea: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, height: 80, padding: spacing.sm, textAlignVertical: 'top', backgroundColor: colors.white },
+  actionRow: { alignItems: 'flex-end', marginTop: spacing.md },
+  submitBtn: { backgroundColor: '#2563EB', paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.md },
+  submitBtnDisabled: { backgroundColor: '#94A3B8' },
+  submitBtnText: { color: colors.white, fontWeight: '700' },
 });
