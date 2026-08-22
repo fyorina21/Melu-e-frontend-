@@ -11,16 +11,12 @@ import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getChartData, exportChart } from '../../api/programDirectorApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
-interface StudentOption {
-  id: string;
-  name: string;
-}
-
-const STUDENT_OPTIONS: StudentOption[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
+const FALLBACK_STUDENTS: StudentOption[] = [
+  { id: 'student-a', name: 'Aiden Rivera', age: 8 },
+  { id: 'student-b', name: 'Maya Chen', age: 7 },
 ];
 const CHART_TYPES = ['Line (trend)', 'Bar (comparison)', 'Cumulative'];
 
@@ -59,6 +55,18 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
   const [chartType, setChartType] = useState<string>(CHART_TYPES[0]);
   const [data, setData] = useState<ChartData | null>(null);
   const [exportContent, setExportContent] = useState<string | null>(null);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+
+  useEffect(() => {
+    getStudentOptions()
+      .then(({ data: opts }) => {
+        setStudentOptions(opts);
+        if (opts.length > 0 && !opts.some((o) => o.id === studentId)) {
+          setStudentId(opts[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -74,7 +82,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
   const handleExport = async () => {
     try { await exportChart({ studentId, chartType }); } catch (err) {}
     if (!data) return;
-    const studentName = STUDENT_OPTIONS.find((s) => s.id === studentId)?.name ?? studentId;
+    const studentName = (studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).find((s) => s.id === studentId)?.name ?? studentId;
     const lines: string[] = [];
     lines.push('GRAPH & CHART VIEW EXPORT');
     lines.push(`Student: ${studentName} · Chart type: ${chartType} · Generated: ${new Date().toLocaleDateString()}`);
@@ -105,7 +113,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
 
       <View style={styles.controlsRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {STUDENT_OPTIONS.map((s) => (
+          {(studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).map((s) => (
             <TouchableOpacity key={s.id} style={[styles.chip, studentId === s.id && styles.chipSelected]} onPress={() => setStudentId(s.id)}>
               <Text style={[styles.chipText, studentId === s.id && styles.chipTextSelected]}>{s.name}</Text>
             </TouchableOpacity>
