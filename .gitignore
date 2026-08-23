@@ -4,3 +4,6 @@ dist/
 web-build/
 *.log
 .DS_Store
+# local docs
+SCREENS_WORKFLOW.md
+*.docx
