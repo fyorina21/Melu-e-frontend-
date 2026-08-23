@@ -1,5 +1,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -21,6 +23,16 @@ interface ProfileGoal {
   status: StatusType;
 }
 
+interface StudentProfileResponse {
+  id: string;
+  fullName: string;
+  age: number;
+  programType: string;
+  therapyGroup: string;
+  status: string;
+  goals?: Array<{ id: string; name: string; status: string; progressPercent: number }>;
+}
+
 export interface TeacherStudentProfile {
   id: string;
   name: string;
@@ -38,6 +50,36 @@ export interface TeacherStudentProfile {
   notes: string;
 }
 
+const STATUS_FOR_GOAL: Record<string, StatusType> = {
+  active: 'inProgress',
+  mastered: 'completed',
+  paused: 'notStarted',
+};
+
+function toProfile(row: StudentProfileResponse): TeacherStudentProfile {
+  return {
+    id: row.id,
+    name: row.fullName,
+    initial: row.fullName.charAt(0).toUpperCase(),
+    age: row.age,
+    gender: '',
+    program: row.programType,
+    diagnosis: '',
+    parentName: '',
+    parentPhone: '',
+    parentEmail: '',
+    goals: (row.goals ?? []).map((g) => ({
+      id: g.id,
+      name: g.name,
+      category: '',
+      status: STATUS_FOR_GOAL[g.status] ?? 'inProgress',
+    })),
+    trialsThisBlock: 0,
+    independencePercent: 0,
+    notes: '',
+  };
+}
+
 const SECTION_ICON: Record<string, React.ComponentProps<typeof Feather>['name']> = {
   'Personal Info': 'user',
   'Program & Clinical': 'activity',
@@ -51,13 +93,15 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
   const { logout } = useAuth();
   const [profile, setProfile] = useState<TeacherStudentProfile | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getTeacherStudentProfile(studentId);
-      setProfile(data);
+      const { data: res } = await getTeacherStudentProfile(studentId);
+      setProfile(res ? toProfile(res as StudentProfileResponse) : null);
+      setLoadError(false);
     } catch (err) {
-      setProfile(DEMO_PROFILE(studentId));
+      setLoadError(true);
     }
   }, [studentId]);
 
@@ -65,7 +109,8 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     load();
   }, [load]);
 
-  if (!profile) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!profile) return <ScreenLoader />;
 
   const renderSection = (title: string) => (
     <View style={styles.sectionHeader}>
@@ -153,31 +198,6 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-function DEMO_PROFILE(studentId: string): TeacherStudentProfile {
-  const seeded = studentId.endsWith('-b');
-  return {
-    id: studentId,
-    name: seeded ? 'Student B' : 'Student A',
-    initial: 'S',
-    age: seeded ? 7 : 6,
-    gender: 'Female',
-    program: seeded ? 'Functional' : 'Basic',
-    diagnosis: 'Autism Spectrum Disorder',
-    parentName: 'Parent of Student',
-    parentPhone: '+1 (555) 010-0199',
-    parentEmail: 'parent@example.com',
-    goals: seeded
-      ? [{ id: 'goal-3', name: 'Request Items', category: 'Expressive Language', status: 'inProgress' }]
-      : [
-          { id: 'goal-1', name: 'Identify Colors', category: 'Cognitive', status: 'inProgress' },
-          { id: 'goal-2', name: 'Goal 2', category: '', status: 'inProgress' },
-        ],
-    trialsThisBlock: 18,
-    independencePercent: 67,
-    notes: 'Consistent attendance. Making steady progress toward current goals.',
-  };
 }
 
 const styles = StyleSheet.create({

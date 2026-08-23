@@ -6,8 +6,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
+import { PARENT_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useAuth } from '../../context/AuthContext';
 import { parentApi } from '../../api';
 import {
@@ -99,7 +100,10 @@ function avatarColor(role: string) {
 // =========================================================================
 
 function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
+  const { session } = useAuth();
+  const isProgramDirector = session?.role === 'program_director';
   const [conversations, setConversations] = useState<TeacherConversation[]>([]);
+  const [listLoading, setListLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [thread, setThread] = useState<TeacherThreadMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -114,6 +118,8 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
       if (!activeId && data.length) setActiveId(data[0].id);
     } catch (err) {
       setConversations([]);
+    } finally {
+      setListLoading(false);
     }
   }, [activeId]);
 
@@ -127,6 +133,8 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
       .then(({ data }) => setThread(data.messages ?? []))
       .catch(() => setThread([]));
   }, [activeId]);
+
+  if (listLoading) return <ScreenLoader />;
 
   const activeConversation = conversations.find((c) => c.id === activeId);
   const uniqueStudents = Array.from(new Set(conversations.map((c) => c.studentName)));
@@ -231,7 +239,14 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Parents" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Parents"
+        onTabPress={(tab) =>
+          isProgramDirector
+            ? navigation?.navigate?.(PD_ROUTE_BY_TAB[tab] as never)
+            : handleTeacherTabPress(navigation, tab)
+        }
+      />
       <View style={styles.body}>
         <View style={styles.sidebar}>
           <View style={styles.searchArea}>
@@ -344,6 +359,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
 
 function ParentCommunicationPanel({ navigation }: { navigation: any }) {
   const [conversations, setConversations] = useState<ParentConversation[]>([]);
+  const [listLoading, setListLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -371,6 +387,8 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
       if (mapped.length) setSelectedId(mapped[0].id);
     } catch (err) {
       setConversations([]);
+    } finally {
+      setListLoading(false);
     }
   }, []);
 
@@ -398,6 +416,8 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
   useEffect(() => {
     messagesEndRef.current?.scrollToEnd({ animated: true });
   }, [selectedId, conversations, activeTab]);
+
+  if (listLoading) return <ScreenLoader />;
 
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
@@ -592,7 +612,7 @@ export default function ParentCommunicationScreen(props: any) {
   const { session } = useAuth();
   const role = session?.role;
 
-  if (role === 'teacher') {
+  if (role === 'teacher' || role === 'program_director') {
     return <TeacherCommunicationPanel {...props} />;
   }
   return <ParentCommunicationPanel {...props} />;

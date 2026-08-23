@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { saveSkillsAssessment } from '../../api/teacherExtrasApi';
+import { getSkillsAssessment, saveSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
 
 type Score = 0 | 1 | 2 | 'NA';
@@ -123,23 +124,49 @@ const ABLLS_DOMAINS: AbllsDomain[] = [
   },
 ];
 
-const DEMO_STUDENT_NAME: Record<string, string> = {
-  'student-a': 'Student A',
-  'student-b': 'Student B',
-  'student-c': 'Student C',
-};
-
 type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
+
+interface StudentProfile {
+  id: string;
+  fullName: string;
+  age: number;
+}
 
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
   const { showToast } = useToast();
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeDomain, setActiveDomain] = useState(0);
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
 
+  const load = useCallback(async () => {
+    try {
+      const { data: res } = await getTeacherStudentProfile(studentId);
+      setProfile(res);
+    } catch (err) {
+      setProfile(null);
+    }
+    try {
+      const { data: saved } = await getSkillsAssessment(studentId);
+      const savedData = (saved?.data ?? {}) as { scores?: Record<string, Score>; notes?: Record<string, string> };
+      if (savedData.scores) setScores(savedData.scores);
+      if (savedData.notes) setNotes(savedData.notes);
+    } catch (err) {
+      setScores({});
+      setNotes({});
+    }
+    setLoading(false);
+  }, [studentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <ScreenLoader />;
+
   const domain = ABLLS_DOMAINS[activeDomain];
-  const studentName = DEMO_STUDENT_NAME[studentId] || 'Student A';
+  const studentName = profile?.fullName || 'Student A';
+  const studentInitials = studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase();
 
   const domainTotalItems = domain.items.length;
   const domainAnswered = domain.items.filter((i) => scores[i.id] !== undefined).length;
@@ -192,12 +219,12 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         {/* Student Profile Row */}
         <View style={styles.studentRow}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>SA</Text>
+            <Text style={styles.avatarText}>{studentInitials}</Text>
           </View>
           <View style={styles.studentInfo}>
             <View style={styles.studentNameRow}>
               <Text style={styles.studentName}>{studentName}</Text>
-              <Text style={styles.studentAge}>Age 6</Text>
+              <Text style={styles.studentAge}>Age {profile?.age ?? '—'}</Text>
               <View style={styles.statusPill}>
                 <Text style={styles.statusPillText}>In Assessment</Text>
               </View>

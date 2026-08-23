@@ -17,6 +17,8 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../../types';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getScheduleCapacityConfig,
   saveScheduleCapacityConfig,
@@ -229,6 +231,7 @@ export default function ScheduleCapacityConfigScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
+      <AppNavbar activeTab="Schedule" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Top Header & Breadcrumb */}
         <View style={styles.topHeader}>

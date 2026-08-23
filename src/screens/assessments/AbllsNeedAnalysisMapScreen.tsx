@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,22 +10,13 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { openPrintWindow } from '../../utils/webExport';
+import { getSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
 
 type Score = 0 | 1 | 2 | 'NA';
-
-interface AbllsItem {
-  id: string;
-  score: Score;
-}
-
-interface AbllsDomain {
-  name: string;
-  items: AbllsItem[];
-  isPriority?: boolean;
-}
 
 const SCORE_COLOR: Record<Score, string> = {
   0: '#FF5252', // Red
@@ -41,135 +32,62 @@ const SCORE_LABEL: Record<Score, string> = {
   NA: 'N/A',
 };
 
-const DEMO_STUDENT_NAME: Record<string, string> = {
-  'student-a': 'Student A',
-  'student-b': 'Student B',
-  'student-c': 'Student C',
-};
-
-const DEMO_DOMAINS: AbllsDomain[] = [
-  {
-    name: 'Visual Performance',
-    items: [
-      { id: 'A1', score: 2 },
-      { id: 'A2', score: 2 },
-      { id: 'A3', score: 1 },
-      { id: 'A4', score: 1 },
-      { id: 'A5', score: 0 },
-      { id: 'A6', score: 2 },
-      { id: 'A7', score: 1 },
-    ],
-  },
-  {
-    name: 'Motor Imitation',
-    items: [
-      { id: 'B1', score: 2 },
-      { id: 'B2', score: 1 },
-      { id: 'B3', score: 1 },
-      { id: 'B4', score: 0 },
-      { id: 'B5', score: 0 },
-      { id: 'B6', score: 'NA' },
-    ],
-  },
-  {
-    name: 'Vocal Imitation',
-    isPriority: true,
-    items: [
-      { id: 'C1', score: 2 },
-      { id: 'C2', score: 2 },
-      { id: 'C3', score: 1 },
-      { id: 'C4', score: 1 },
-      { id: 'C5', score: 0 },
-      { id: 'C6', score: 0 },
-      { id: 'C7', score: 0 },
-    ],
-  },
-  {
-    name: 'Receptive Language',
-    items: [
-      { id: 'D1', score: 2 },
-      { id: 'D2', score: 2 },
-      { id: 'D3', score: 1 },
-      { id: 'D4', score: 2 },
-      { id: 'D5', score: 1 },
-      { id: 'D6', score: 2 },
-      { id: 'D7', score: 1 },
-      { id: 'D8', score: 0 },
-    ],
-  },
-  {
-    name: 'Requesting',
-    isPriority: true,
-    items: [
-      { id: 'E1', score: 2 },
-      { id: 'E2', score: 1 },
-      { id: 'E3', score: 1 },
-      { id: 'E4', score: 0 },
-      { id: 'E5', score: 0 },
-      { id: 'E6', score: 0 },
-    ],
-  },
-  {
-    name: 'Play and Leisure',
-    items: [
-      { id: 'F1', score: 2 },
-      { id: 'F2', score: 2 },
-      { id: 'F3', score: 1 },
-      { id: 'F4', score: 0 },
-      { id: 'F5', score: 0 },
-      { id: 'F6', score: 1 },
-    ],
-  },
-  {
-    name: 'Social Interaction',
-    isPriority: true,
-    items: [
-      { id: 'G1', score: 2 },
-      { id: 'G2', score: 1 },
-      { id: 'G3', score: 1 },
-      { id: 'G4', score: 0 },
-      { id: 'G5', score: 0 },
-      { id: 'G6', score: 0 },
-      { id: 'G7', score: 0 },
-    ],
-  },
-  {
-    name: 'Writing',
-    items: [
-      { id: 'H1', score: 1 },
-      { id: 'H2', score: 1 },
-      { id: 'H3', score: 0 },
-      { id: 'H4', score: 0 },
-      { id: 'H5', score: 0 },
-      { id: 'H6', score: 'NA' },
-    ],
-  },
-  {
-    name: 'Dressing',
-    items: [
-      { id: 'I1', score: 2 },
-      { id: 'I2', score: 1 },
-      { id: 'I3', score: 1 },
-      { id: 'I4', score: 0 },
-      { id: 'I5', score: 0 },
-      { id: 'I6', score: 'NA' },
-      { id: 'I7', score: 1 },
-    ],
-  },
+const ABLLS_MAP_TEMPLATE: Array<{ name: string; items: string[] }> = [
+  { name: 'Visual Performance', items: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7'] },
+  { name: 'Motor Imitation', items: ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'] },
+  { name: 'Vocal Imitation', items: ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7'] },
+  { name: 'Receptive Language', items: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8'] },
+  { name: 'Requesting', items: ['E1', 'E2', 'E3', 'E4', 'E5', 'E6'] },
+  { name: 'Play and Leisure', items: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'] },
+  { name: 'Social Interaction', items: ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'] },
+  { name: 'Writing', items: ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'] },
+  { name: 'Dressing', items: ['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7'] },
 ];
+
+interface StudentProfile {
+  id: string;
+  fullName: string;
+  age: number;
+}
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AbllsNeedMap'>;
 
 export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
-  const studentName = DEMO_STUDENT_NAME[studentId] || 'Student A';
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [scores, setScores] = useState<Record<string, Score>>({});
 
-  const summaryData = DEMO_DOMAINS.map((d) => {
-    const c0 = d.items.filter((i) => i.score === 0).length;
-    const c1 = d.items.filter((i) => i.score === 1).length;
-    const c2 = d.items.filter((i) => i.score === 2).length;
-    const cNA = d.items.filter((i) => i.score === 'NA').length;
-    const validTotal = d.items.length - cNA;
+  const load = useCallback(async () => {
+    try {
+      const { data: res } = await getTeacherStudentProfile(studentId);
+      setProfile(res);
+    } catch (err) {
+      setProfile(null);
+    }
+    try {
+      const { data: saved } = await getSkillsAssessment(studentId);
+      const savedData = (saved?.data ?? {}) as { scores?: Record<string, Score> };
+      setScores(savedData.scores ?? {});
+    } catch (err) {
+      setScores({});
+    }
+    setLoading(false);
+  }, [studentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <ScreenLoader />;
+
+  const studentName = profile?.fullName || 'Student A';
+
+  const summaryData = ABLLS_MAP_TEMPLATE.map((d) => {
+    const items = d.items.map((id) => ({ id, score: scores[id] ?? ('NA' as Score) }));
+    const c0 = items.filter((i) => i.score === 0).length;
+    const c1 = items.filter((i) => i.score === 1).length;
+    const c2 = items.filter((i) => i.score === 2).length;
+    const cNA = items.filter((i) => i.score === 'NA').length;
+    const validTotal = items.length - cNA;
     const masteredPct = validTotal > 0 ? Math.round((c2 / validTotal) * 100) : 0;
 
     return {
@@ -179,16 +97,18 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
       c2,
       cNA,
       masteredPct,
-      isPriority: !!d.isPriority,
-      items: d.items,
+      items,
     };
   });
 
-  const priorityAreas = [
-    { rank: 1, name: 'Social Interaction', c0: 4, c1: 2 },
-    { rank: 2, name: 'Vocal Imitation', c0: 3, c1: 2 },
-    { rank: 3, name: 'Requesting', c0: 3, c1: 2 },
-  ];
+  const priorityAreas = [...summaryData]
+    .sort((a, b) => b.c0 - a.c0 || b.c1 - a.c1)
+    .slice(0, 3)
+    .map((d, idx) => ({ rank: idx + 1, name: d.name, c0: d.c0, c1: d.c1 }));
+
+  const priorityNames = new Set(priorityAreas.map((p) => p.name));
+
+  const rows = summaryData.map((d) => ({ ...d, isPriority: priorityNames.has(d.name) }));
 
   const handleExport = () => {
     const title = 'ABLLS Need Analysis Map';
@@ -250,7 +170,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
               </tr>
             </thead>
             <tbody>
-              ${summaryData.map((d) => `
+              ${rows.map((d) => `
                 <tr>
                   <td><strong>${d.name}</strong></td>
                   <td>${d.c0} items</td>
@@ -284,12 +204,12 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
 
         <View style={styles.studentRow}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>SA</Text>
+            <Text style={styles.avatarText}>{studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase()}</Text>
           </View>
           <View style={styles.studentInfo}>
             <View style={styles.studentNameRow}>
               <Text style={styles.studentName}>{studentName}</Text>
-              <Text style={styles.studentAge}>Age 6</Text>
+              <Text style={styles.studentAge}>Age {profile?.age ?? '—'}</Text>
             </View>
             <Text style={styles.stationText}>Station A</Text>
           </View>
@@ -324,7 +244,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             <View style={styles.domainHeader}>
               <View style={styles.domainTitleRow}>
                 <Text style={styles.domainTitle}>{domain.name}</Text>
-                {domain.isPriority && (
+                {priorityNames.has(domain.name) && (
                   <View style={styles.priorityPill}>
                     <Text style={styles.priorityPillText}>Priority</Text>
                   </View>
@@ -358,7 +278,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             <Text style={[styles.th, styles.colPriority]}>Priority</Text>
           </View>
 
-          {summaryData.map((row, idx) => (
+          {rows.map((row, idx) => (
             <View key={row.name} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
               <Text style={[styles.tdDomain, styles.colDomain]}>{row.name}</Text>
 

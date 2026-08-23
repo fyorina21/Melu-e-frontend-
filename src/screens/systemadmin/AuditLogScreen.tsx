@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAuditLogs } from '../../api/SystemAdminApi';
 import type { SystemAdminStackParamList } from '../../types';
@@ -35,7 +36,7 @@ const ACTIONS = ['created', 'updated', 'deleted', 'changed'];
 type Props = NativeStackScreenProps<SystemAdminStackParamList, 'AuditLog'>;
 
 export default function AuditLogScreen({ navigation }: Props) {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [userFilter, setUserFilter] = useState('All');
   const [actionFilter, setActionFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -45,11 +46,13 @@ export default function AuditLogScreen({ navigation }: Props) {
       const { data } = await getAuditLogs({ user: userFilter, action: actionFilter, search });
       setEntries(data);
     } catch (err) {
-      setEntries(DEMO_ENTRIES);
+      setEntries([]);
     }
   }, [userFilter, actionFilter, search]);
 
   useEffect(() => { load(); }, [load]);
+
+  if (entries === null) return <ScreenLoader />;
 
   const filtered = entries.filter(
     (e) =>
@@ -111,14 +114,6 @@ export default function AuditLogScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_ENTRIES: AuditEntry[] = [
-  { id: 'l1', user: 'Sysadmin A', action: 'created', date: 'Aug 12, 2026', time: '09:14', resource: 'Staff Account #102 (Teacher C)', oldValue: undefined, newValue: 'teacher_c@melue.org' },
-  { id: 'l2', user: 'Teacher A', action: 'updated', date: 'Aug 12, 2026', time: '11:40', resource: 'Goal #45 (Eye Contact)', oldValue: 'Progress 55%', newValue: 'Progress 72%' },
-  { id: 'l3', user: 'Coordinator A', action: 'deleted', date: 'Aug 11, 2026', time: '15:22', resource: 'Assessment #13 (Old Skills Form)', oldValue: 'status: active', newValue: 'status: archived' },
-  { id: 'l4', user: 'Institutional Admin', action: 'changed', date: 'Aug 11, 2026', time: '16:05', resource: 'Clinic Settings', oldValue: 'session length: 30 min', newValue: 'session length: 45 min' },
-  { id: 'l5', user: 'Director A', action: 'updated', date: 'Aug 10, 2026', time: '10:31', resource: 'Schedule Block #7', oldValue: 'Room 1', newValue: 'Room 2' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

@@ -15,12 +15,15 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../../types';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { Payload } from '../../types';
 import {
   getTaskAnalysisTemplates,
   saveTaskAnalysisTemplate,
   deleteTaskAnalysisTemplate,
 } from '../../api/institutionalAdminApi';
+import ScreenLoader from '../../components/ScreenLoader';
 
 interface TaskAnalysisStep {
   id: string;
@@ -37,49 +40,11 @@ interface TaskAnalysisTemplate {
   active?: boolean;
 }
 
-const DEMO_TEMPLATES: TaskAnalysisTemplate[] = [
-  {
-    id: 't1',
-    name: 'Hand Washing',
-    description: '8-step handwashing task analysis.',
-    active: true,
-    perStepMastery: 80,
-    overallMastery: 80,
-    steps: [
-      { id: 's1', description: 'Turn on water' },
-      { id: 's2', description: 'Wet hands' },
-      { id: 's3', description: 'Apply soap' },
-      { id: 's4', description: 'Rub hands together 20 sec' },
-      { id: 's5', description: 'Rinse hands' },
-      { id: 's6', description: 'Turn off water' },
-      { id: 's7', description: 'Take paper towel' },
-      { id: 's8', description: 'Dry hands' },
-    ],
-  },
-  {
-    id: 't2',
-    name: 'Tooth Brushing',
-    description: '6-step toothbrushing task analysis.',
-    active: true,
-    perStepMastery: 80,
-    overallMastery: 80,
-    steps: Array(6).fill(null).map((_, i) => ({ id: `tb-${i}`, description: `Step ${i + 1}...` })),
-  },
-  {
-    id: 't3',
-    name: 'Getting Dressed',
-    description: '10-step morning dressing sequence.',
-    active: true,
-    perStepMastery: 80,
-    overallMastery: 80,
-    steps: Array(10).fill(null).map((_, i) => ({ id: `gd-${i}`, description: `Step ${i + 1}...` })),
-  },
-];
-
 export default function TaskAnalysisTemplatesScreen({
   navigation,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'TaskAnalysisTemplates'>) {
   const [templates, setTemplates] = useState<TaskAnalysisTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // Form Panel State
@@ -93,15 +58,19 @@ export default function TaskAnalysisTemplatesScreen({
   const load = useCallback(async () => {
     try {
       const { data } = await getTaskAnalysisTemplates();
-      setTemplates(data && data.length > 0 ? data : DEMO_TEMPLATES);
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
-      setTemplates(DEMO_TEMPLATES);
+      setTemplates([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  if (loading) return <ScreenLoader />;
 
   // Open Editor (For Create or Edit)
   const openEditor = (template?: TaskAnalysisTemplate) => {
@@ -178,18 +147,8 @@ export default function TaskAnalysisTemplatesScreen({
 
     try {
       await saveTaskAnalysisTemplate(editingTemplateId, payload as unknown as Payload);
-      setTemplates((prev) =>
-        editingTemplateId
-          ? prev.map((t) => (t.id === editingTemplateId ? payload : t))
-          : [...prev, payload]
-      );
-    } catch (err) {
-      setTemplates((prev) =>
-        editingTemplateId
-          ? prev.map((t) => (t.id === editingTemplateId ? payload : t))
-          : [...prev, payload]
-      );
-    }
+      await load();
+    } catch (err) {}
     closeEditor();
   };
 
@@ -206,10 +165,8 @@ export default function TaskAnalysisTemplatesScreen({
           onPress: async () => {
             try {
               await deleteTaskAnalysisTemplate(template.id);
-            } catch (err) {
-              // Fallback local state delete
-            }
-            setTemplates((prev) => prev.filter((t) => t.id !== template.id));
+              await load();
+            } catch (err) {}
           },
         },
       ]
@@ -218,6 +175,7 @@ export default function TaskAnalysisTemplatesScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
+      <AppNavbar activeTab="Task Analysis" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Top Header & Breadcrumb */}
         <View style={styles.topHeader}>

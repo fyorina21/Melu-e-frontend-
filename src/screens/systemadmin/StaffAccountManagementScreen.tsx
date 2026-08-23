@@ -5,9 +5,11 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStaffAccounts, createStaffAccount, updateStaffAccount, deleteStaffAccount, resetStaffPassword, toggleStaffActive, bulkStaffAction } from '../../api/SystemAdminApi';
 import { getDirectorSchedule, saveAssignment } from '../../api/directorApi';
+import { studentsApi } from '../../api/resources/students';
 import { useToast } from '../../context/ToastContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../../types';
@@ -23,14 +25,10 @@ interface StaffMember {
   active: boolean;
 }
 
-// SCR-008: Teacher-Student Linking demo data
+// SCR-008: Teacher-Student Linking
 type LinkStation = '1' | '2';
 type LinkRoom = 1 | 2 | 3 | 4;
 
-const STATION_GROUPS: Record<LinkStation, string> = {
-  '1': 'Basic Therapy',
-  '2': 'Functional Living',
-};
 const LINK_ROOMS = [1, 2, 3, 4] as const;
 const TEACHER_CAPACITY = 2;
 
@@ -41,15 +39,6 @@ interface LinkStudent {
   program: 'regular' | 'pooled-out';
 }
 
-const LINK_STUDENTS: LinkStudent[] = [
-  { id: 'student-a', name: 'Student A', group: 'Basic Therapy', program: 'regular' },
-  { id: 'student-b', name: 'Student B', group: 'Basic Therapy', program: 'regular' },
-  { id: 'student-c', name: 'Student C', group: 'Basic Therapy', program: 'pooled-out' },
-  { id: 'student-d', name: 'Student D', group: 'Basic Therapy', program: 'regular' },
-  { id: 'student-e', name: 'Student E', group: 'Functional Living', program: 'regular' },
-  { id: 'student-f', name: 'Student F', group: 'Functional Living', program: 'pooled-out' },
-];
-
 interface TeacherLinkAssignment {
   teacherId: string;
   teacherName: string;
@@ -57,10 +46,6 @@ interface TeacherLinkAssignment {
   room: LinkRoom;
   students: string[];
 }
-
-const DEMO_LINK_ASSIGNMENTS: TeacherLinkAssignment[] = [
-  { teacherId: 's1', teacherName: 'Teacher A', station: '1', room: 1, students: ['student-a', 'student-b'] },
-];
 
 type StaffPayload = {
   id?: string;
@@ -136,11 +121,32 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
   const [station, setStation] = useState<LinkStation>('1');
   const [room, setRoom] = useState<LinkRoom>(1);
   const [assignments, setAssignments] = useState<TeacherLinkAssignment[]>([]);
+  const [students, setStudents] = useState<LinkStudent[] | null>(null);
   const [selectedForAssign, setSelectedForAssign] = useState<string[]>([]);
   const [selectedForRemove, setSelectedForRemove] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [programFilter, setProgramFilter] = useState<string>('all');
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  const loadStudents = useCallback(async () => {
+    try {
+      const res = await studentsApi.list();
+      setStudents(
+        res.map((s) => ({
+          id: s.id,
+          name: s.fullName,
+          group: s.therapyGroup,
+          program: (s.programType === 'ABA' ? 'regular' : 'pooled-out') as LinkStudent['program'],
+        }))
+      );
+    } catch (err) {
+      setStudents([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
 
   const loadAssignments = useCallback(async () => {
     try {
@@ -170,9 +176,9 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
   );
   const assignedStudentIds = currentAssignment?.students ?? [];
 
-  const stationGroup = STATION_GROUPS[station];
-  let availableStudents = LINK_STUDENTS.filter(
-    (s) => s.group === stationGroup && !assignedStudentIds.includes(s.id)
+  const groups = Array.from(new Set((students ?? []).map((s) => s.group)));
+  let availableStudents = (students ?? []).filter(
+    (s) => !assignedStudentIds.includes(s.id)
   );
   if (groupFilter !== 'all') availableStudents = availableStudents.filter((s) => s.group === groupFilter);
   if (programFilter !== 'all') availableStudents = availableStudents.filter((s) => s.program === programFilter);
@@ -249,6 +255,8 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
 
   const teacherAssignments = assignments.filter((a) => a.teacherId === teacher.id);
 
+  if (students === null) return <ScreenLoader />;
+
   return (
     <View style={styles.linkingCard}>
       <View style={styles.linkingHeader}>
@@ -302,7 +310,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-            {['all', ...Object.values(STATION_GROUPS)].map((g) => (
+            {['all', ...groups].map((g) => (
               <TouchableOpacity key={g} style={[styles.filterChip, groupFilter === g && styles.filterChipActive]} onPress={() => setGroupFilter(g)}>
                 <Text style={[styles.filterChipText, groupFilter === g && styles.filterChipTextActive]}>{g === 'all' ? 'All Groups' : g}</Text>
               </TouchableOpacity>
@@ -366,7 +374,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
               </View>
             ) : (
               assignedStudentIds.map((id) => {
-                const s = LINK_STUDENTS.find((x) => x.id === id);
+                const s = (students ?? []).find((x) => x.id === id);
                 if (!s) return null;
                 const selected = selectedForRemove.includes(s.id);
                 return (
@@ -403,7 +411,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
           <Text style={typography.caption}>No assignments yet for {teacher.name}.</Text>
         ) : (
           teacherAssignments.map((a) => {
-            const names = a.students.map((id) => LINK_STUDENTS.find((x) => x.id === id)?.name).filter(Boolean);
+            const names = a.students.map((id) => (students ?? []).find((x) => x.id === id)?.name).filter(Boolean);
             return (
               <View key={`${a.station}|${a.room}`} style={styles.summaryRow}>
                 <Text style={typography.bodyBold}>Station {a.station} · Room {a.room}</Text>
@@ -420,7 +428,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
           <View style={[styles.modalSheet, styles.confirmModal]}>
             <Text style={typography.h2}>Remove Students?</Text>
             <Text style={typography.body}>
-              Remove {selectedForRemove.map((id) => LINK_STUDENTS.find((s) => s.id === id)?.name).filter(Boolean).join(', ')} from this assignment?
+              Remove {selectedForRemove.map((id) => (students ?? []).find((s) => s.id === id)?.name).filter(Boolean).join(', ')} from this assignment?
             </Text>
             <Text style={typography.caption}>Historical session data will be kept.</Text>
             <View style={styles.modalFooter}>
@@ -436,7 +444,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
 
 export default function StaffAccountManagementScreen({ navigation }: NativeStackScreenProps<SystemAdminStackParamList, 'StaffAccountManagement'>) {
   const { showToast } = useToast();
-  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [staff, setStaff] = useState<StaffMember[] | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -449,13 +457,13 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       const { data } = await getStaffAccounts({ search, role: roleFilter, status: statusFilter });
       setStaff(data);
     } catch (err) {
-      setStaff(DEMO_STAFF);
+      setStaff([]);
     }
   }, [search, roleFilter, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = staff.filter(
+  const filtered = (staff ?? []).filter(
     (s) =>
       (roleFilter === 'All' || s.roles.includes(roleFilter)) &&
       (statusFilter === 'All' || (statusFilter === 'Active') === s.active) &&
@@ -468,17 +476,14 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
     try {
       if (payload.id) {
         await updateStaffAccount(payload.id, payload);
-        setStaff((prev) => prev.map((s) => (s.id === payload.id ? { ...s, ...payload, id: s.id } : s)));
         showToast('Staff account updated successfully', 'success');
       } else {
-        const { data } = await createStaffAccount(payload);
-        setStaff((prev) => [...prev, data]);
+        await createStaffAccount(payload);
         showToast('Staff account created successfully', 'success');
       }
+      await load();
     } catch (err) {
-      if (payload.id) setStaff((prev) => prev.map((s) => (s.id === payload.id ? { ...s, ...payload, id: s.id } : s)));
-      else setStaff((prev) => [...prev, { ...payload, id: `local-${Date.now()}` }]);
-      showToast('Staff account saved (local fallback)', 'info');
+      showToast('Failed to save staff account', 'error');
     }
     setFormTarget(undefined);
   };
@@ -492,11 +497,11 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
 
   const handleToggleActive = async (s: StaffMember) => {
     const next = !s.active;
-    setStaff((prev) => prev.map((x) => (x.id === s.id ? { ...x, active: next } : x)));
     try {
       await toggleStaffActive(s.id, next);
       showToast(`Account ${next ? 'activated' : 'deactivated'} successfully`, 'success');
     } catch (err) {}
+    load();
   };
 
   const handleDelete = (s: StaffMember) => {
@@ -506,9 +511,8 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          try { await deleteStaffAccount(s.id); } catch (err) {}
-          setStaff((prev) => prev.filter((x) => x.id !== s.id));
-          showToast('Staff account deleted successfully', 'success');
+          try { await deleteStaffAccount(s.id); showToast('Staff account deleted successfully', 'success'); } catch (err) { showToast('Failed to delete staff account', 'error'); }
+          load();
         },
       },
     ]);
@@ -520,14 +524,15 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       {
         text: 'Confirm',
         onPress: async () => {
-          try { await bulkStaffAction(selectedIds, action); } catch (err) {}
-          if (action === 'Deactivate') setStaff((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, active: false } : s)));
+          try { await bulkStaffAction(selectedIds, action); showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success'); } catch (err) { showToast(`Bulk ${action.toLowerCase()} failed`, 'error'); }
           setSelectedIds([]);
-          showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
+          load();
         },
       },
     ]);
   };
+
+  if (staff === null) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -603,13 +608,6 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
     </SafeAreaView>
   );
 }
-
-const DEMO_STAFF: StaffMember[] = [
-  { id: 's1', name: 'Teacher A', email: 'teachera@melue.org', phone: '', roles: ['Teacher'], active: true },
-  { id: 's2', name: 'Coordinator A', email: 'coordinator@melue.org', phone: '', roles: ['Coordinator'], active: true },
-  { id: 's3', name: 'Director A', email: 'director@melue.org', phone: '', roles: ['Director'], active: true },
-  { id: 's4', name: 'Teacher C', email: 'teacherc@melue.org', phone: '', roles: ['Teacher'], active: false },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

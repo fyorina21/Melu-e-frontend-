@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Modal,
 } from 'react-native';
+import ScreenLoader from '../../components/ScreenLoader';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import StatusPill from '../../components/StatusPill';
@@ -51,6 +52,7 @@ export default function DailyNotesScreen({ navigation }: Props) {
   const { session } = useAuth();
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<NoteRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<WeeklySummaryData | null>(null);
   const [stats, setStats] = useState<DailyNotesStats>({
     sessionsCompleted: 0,
@@ -79,12 +81,16 @@ export default function DailyNotesScreen({ navigation }: Props) {
       setRecords([]);
       setStats({ sessionsCompleted: 0, totalTrials: 0, avgIndependence: 0, reviewsPending: 0 });
       setSummary(null);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  if (loading) return <ScreenLoader />;
 
   // Real-time search and status filtering logic
   const filteredRecords = records.filter((r) => {

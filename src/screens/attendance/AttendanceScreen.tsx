@@ -5,6 +5,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { markAttendance, markBulkAttendance, getAttendanceHistory, getAttendanceReport } from '../../api/sessionApi';
@@ -56,7 +57,8 @@ const STATUS_OPTIONS: Record<PersonType, StatusOption[]> = {
 
 export default function AttendanceScreen({ route, navigation }: Props) {
   const { logout } = useAuth();
-  const sessionId = route?.params?.sessionId ?? 'DEMO_SESSION_ID';
+  const sessionId = route?.params?.sessionId ?? '';
+  const [loading, setLoading] = useState(true);
   const [activeType, setActiveType] = useState<PersonType>('student');
   const [roster, setRoster] = useState<Record<PersonType, Person[]>>({ student: [], therapist: [], support_staff: [] });
   const [reportContent, setReportContent] = useState<string | null>(null);
@@ -66,37 +68,30 @@ export default function AttendanceScreen({ route, navigation }: Props) {
       const { data } = await getAttendanceHistory({ sessionId });
       setRoster(data);
     } catch (err) {
-      setRoster(DEMO_ROSTER);
+      setRoster({ student: [], therapist: [], support_staff: [] });
     }
+    setLoading(false);
   }, [sessionId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  if (loading) return <ScreenLoader />;
+
   const handleMark = async (personType: PersonType, personId: string, status: string) => {
-    setRoster((prev): Record<PersonType, Person[]> => ({
-      ...prev,
-      [personType]: prev[personType].map((p) => (p.id === personId ? { ...p, status } : p)),
-    }));
     try {
       await markAttendance(sessionId, { personId, personType, status });
-    } catch (err) {
-      // Demo/offline: local update above already applied.
-    }
+    } catch (err) {}
+    await load();
   };
 
   const handleBulkPresent = async () => {
     const entries = roster[activeType].map((p) => ({ personId: p.id, personType: activeType, status: 'present' }));
-    setRoster((prev): Record<PersonType, Person[]> => ({
-      ...prev,
-      [activeType]: prev[activeType].map((p) => ({ ...p, status: 'present' })),
-    }));
     try {
       await markBulkAttendance(sessionId, { entries });
-    } catch (err) {
-      // Demo/offline: local update above already applied.
-    }
+    } catch (err) {}
+    await load();
   };
 
   const buildReportText = (scope: 'daily' | 'monthly'): string => {
@@ -202,20 +197,6 @@ export default function AttendanceScreen({ route, navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_ROSTER: Record<PersonType, Person[]> = {
-  student: [
-    { id: 'student-a', name: 'Student A', status: 'present' },
-    { id: 'student-b', name: 'Student B', status: null },
-  ],
-  therapist: [
-    { id: 't-a', name: 'Teacher A', status: 'present' },
-    { id: 't-b', name: 'Teacher B', status: null },
-  ],
-  support_staff: [
-    { id: 'ss-a', name: 'Aide A', status: null },
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

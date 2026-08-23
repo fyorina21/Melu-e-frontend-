@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { saveBehaviorAssessment } from '../../api/teacherExtrasApi';
+import { getBehaviorAssessment, saveBehaviorAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
 
 type AssessmentTab = 'MASS' | 'FAST' | 'ABC';
@@ -75,15 +76,23 @@ interface BehaviorRecord {
 const BEHAVIOR_PRESETS = ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'];
 const INTENSITIES = ['Low', 'Medium', 'High'] as const;
 
+interface StudentProfile {
+  id: string;
+  fullName: string;
+  age: number;
+}
+
 type Props = NativeStackScreenProps<SessionStackParamList, 'BehaviorAssessment'>;
 
 export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
   const { logout } = useAuth();
   const { studentId } = route.params;
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [tab, setTab] = useState<AssessmentTab>('MASS');
   const [massAnswers, setMassAnswers] = useState<Record<string, string>>({});
   const [fastAnswers, setFastAnswers] = useState<Record<string, boolean>>({});
-  const [records, setRecords] = useState<BehaviorRecord[]>(DEMO_RECORDS);
+  const [records, setRecords] = useState<BehaviorRecord[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<BehaviorRecord>({
     id: '',
@@ -94,6 +103,35 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
     trigger: '',
     consequence: '',
   });
+
+  const load = useCallback(async () => {
+    try {
+      const { data: res } = await getTeacherStudentProfile(studentId);
+      setProfile(res);
+    } catch (err) {
+      setProfile(null);
+    }
+    try {
+      const { data: saved } = await getBehaviorAssessment(studentId);
+      const savedData = (saved?.data ?? {}) as {
+        massAnswers?: Record<string, string>;
+        fastAnswers?: Record<string, boolean>;
+        records?: BehaviorRecord[];
+      };
+      setMassAnswers(savedData.massAnswers ?? {});
+      setFastAnswers(savedData.fastAnswers ?? {});
+      setRecords(savedData.records ?? []);
+    } catch (err) {
+      setMassAnswers({});
+      setFastAnswers({});
+      setRecords([]);
+    }
+    setLoading(false);
+  }, [studentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <ScreenLoader />;
 
   const setMassAnswer = (id: string, value: string) => setMassAnswers((prev) => ({ ...prev, [id]: value }));
   const setFastAnswer = (id: string, value: boolean) => setFastAnswers((prev) => ({ ...prev, [id]: value }));
@@ -155,6 +193,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
   const persist = async (payload: Record<string, unknown>, message: string, goBack: boolean) => {
     try {
       await saveBehaviorAssessment(studentId, payload);
+      await load();
     } catch (err) {}
     Alert.alert('Assessment saved', message, goBack ? [{ text: 'Done', onPress: () => navigation?.goBack?.() }] : undefined);
   };
@@ -189,7 +228,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
           <Feather name="alert-triangle" size={18} color={colors.navyText} />
           <View>
             <Text style={typography.h1}>Behavior Assessment</Text>
-            <Text style={typography.caption}>SCR-TEA-003 — MASS / FAST / ABC · Student A</Text>
+            <Text style={typography.caption}>SCR-TEA-003 — MASS / FAST / ABC · {profile?.fullName || 'Student'}</Text>
           </View>
         </View>
       </View>
@@ -353,10 +392,6 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_RECORDS: BehaviorRecord[] = [
-  { id: 'b1', behavior: 'Tantrum', frequency: '3 times', duration: '5 minutes', intensity: 'High', trigger: 'Asked to clean toys', consequence: 'Calmed after verbal prompting' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

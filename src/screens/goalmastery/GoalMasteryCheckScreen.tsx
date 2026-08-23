@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -49,30 +51,11 @@ const PROMPT_OPTIONS: PromptType[] = [
   'Gestural (G)',
 ];
 
-const DEMO_DATA: MasteryCheckData = {
-  studentName: 'Student A',
-  goalName: 'Identify Colors',
-  station: 'Station 1 - Basic Skills',
-  dateInitiated: 'May 24, 2025',
-  initiatedBy: 'Maria Reyes',
-  initiatedByRole: 'Teacher A',
-  statusLabel: 'Draft',
-  primaryTeacher: {
-    name: 'Maria Reyes',
-    criteriaMet: '5 consecutive sessions at 100% independent.',
-    dateAchieved: 'May 24, 2025',
-    totalTrials: 50,
-    independenceRate: '100% (+)',
-    notes: '',
-  },
-  teacherB: { name: 'Jared Cruz', date: '2025-05-24' },
-  teacherC: { name: 'Jeah Torres', date: '2025-05-24' },
-};
-
 export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
-  const { studentId = 'DEMO_STUDENT', goalId = 'DEMO_GOAL' } = route.params ?? {};
+  const { studentId, goalId } = route.params;
 
   const [data, setData] = useState<MasteryCheckData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   // Teacher B Form State
@@ -93,8 +76,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     try {
       const { data: res } = await getGoalMasteryCheck(studentId, goalId);
       setData(res);
+      setLoadError(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setLoadError(true);
     }
   }, [studentId, goalId]);
 
@@ -132,6 +116,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
     try {
       await submitGoalMasteryCheck(studentId, goalId, payload);
+      await load();
       setIsSubmitted(true);
       Alert.alert('Success', 'Verification submitted and notification sent to Director.', [
         { text: 'OK', onPress: () => navigation?.goBack?.() }
@@ -144,7 +129,8 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     }
   };
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
 
