@@ -128,7 +128,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
       const { data } = await getPendingSummaries({ search });
       setPending(data);
     } catch (err) {
-      setPending(DEMO_PENDING);
+      setPending([]);
     }
   }, [search]);
 
@@ -148,7 +148,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     try {
       await approveSummary(id, { notes });
     } catch (err) {}
-    setPending((prev) => prev.filter((s) => s.id !== id));
+    await load();
     setReviewTarget(null);
     Alert.alert('Approved', "Moved to student's permanent record.");
   };
@@ -157,7 +157,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     try {
       await requestSummaryChanges(id, { reason, sections, notes });
     } catch (err) {}
-    setPending((prev) => prev.filter((s) => s.id !== id));
+    await load();
     setReviewTarget(null);
     Alert.alert('Sent back for revision', `Teacher will be notified. Sections: ${sections.join(', ')}`);
   };
@@ -192,7 +192,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
           try {
             await bulkApproveSummaries(selectedIds);
           } catch (err) {}
-          setPending((prev) => prev.filter((s) => !selectedIds.includes(s.id)));
+          await load();
           setSelectedIds([]);
         },
       },
@@ -280,11 +280,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Rooms: 'RoomResourceScheduling',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-
-const DEMO_PENDING: PendingSummary[] = [
-  { id: '1', teacherName: 'Teacher A', studentNames: ['Student A', 'Student B'], stationName: 'Station 1', date: 'Aug 11, 2026', bodyPreview: 'Student A independently requested toys five times. Eye contact improved. One tantrum occurred during cleanup.' },
-  { id: '2', teacherName: 'Teacher B', studentNames: ['Student C'], stationName: 'Station 2', date: 'Aug 11, 2026', bodyPreview: 'Good session overall, minor prompting needed on 2 of 3 goals.' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

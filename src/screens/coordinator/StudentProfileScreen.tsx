@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -9,49 +10,77 @@ import StatusPill from '../../components/StatusPill';
 import { getStudentProfile } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
-interface TimelineEvent {
-  date: string;
-  title: string;
-  detail: string;
+interface StudentGoal {
+  id: string;
+  name: string;
+  status: string;
+  progressPercent: number;
 }
 
 export interface StudentProfileData {
   id: string;
-  name: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
   age: number;
-  gender: string;
-  studentId: string;
-  diagnosis: string;
-  therapist: string;
-  teacher: string;
-  program: string;
-  status: 'Active' | 'Inactive';
-  parentName: string;
-  parentPhone: string;
-  parentEmail: string;
-  documents: string[];
-  progress: { completedSessions: number; activeGoals: number; assessmentScore: number; behaviorIncidents: number };
-  timeline: TimelineEvent[];
+  programType: string;
+  therapyGroup: string;
+  status: string;
+  headshotUrl: string | null;
+  currentFocusStudentGoalId: string | null;
+  goals: StudentGoal[];
 }
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentProfile'>;
 
 export default function StudentProfileScreen({ navigation, route }: Props) {
-  const { studentId } = route.params;
+  const studentId = route.params?.studentId;
   const [profile, setProfile] = useState<StudentProfileData | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
+    if (!studentId) return;
     try {
       const { data } = await getStudentProfile(studentId);
       setProfile(data);
+      setLoadFailed(false);
     } catch (err) {
-      setProfile(DEMO_PROFILE);
+      setProfile(null);
+      setLoadFailed(true);
     }
   }, [studentId]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (!profile) return null;
+  if (!studentId) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar activeTab="Student Profile" onTabPress={(t) => t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+        <View style={styles.emptyState}>
+          <Feather name="user" size={40} color={colors.mutedText} />
+          <Text style={typography.body}>No student selected.</Text>
+          <TouchableOpacity onPress={() => navigation?.navigate?.('StudentEnrollment')}>
+            <Text style={styles.linkText}>Pick a student from Student Registration →</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile && loadFailed) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar activeTab="Student Profile" onTabPress={(t) => t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+        <View style={styles.emptyState}>
+          <Feather name="inbox" size={40} color={colors.mutedText} />
+          <Text style={typography.body}>Profile not found.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile) return <ScreenLoader />;
 
   const Section = ({ icon, title, children }: { icon: React.ComponentProps<typeof Feather>['name']; title: string; children: React.ReactNode }) => (
     <View style={styles.card}>
@@ -82,63 +111,37 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.header}>
-        <View style={styles.avatar}><Text style={styles.avatarText}>{profile.name.charAt(0)}</Text></View>
+        <View style={styles.avatar}><Text style={styles.avatarText}>{profile.fullName.charAt(0)}</Text></View>
         <View style={{ flex: 1 }}>
-          <Text style={typography.h1}>{profile.name}</Text>
-          <Text style={typography.caption}>{profile.studentId} · Age {profile.age} · {profile.gender}</Text>
+          <Text style={typography.h1}>{profile.fullName}</Text>
+          <Text style={typography.caption}>{profile.id} · Age {profile.age} · {profile.programType}</Text>
         </View>
-        <StatusPill status={profile.status === 'Active' ? 'approved' : 'revision'} label={profile.status} />
+        <StatusPill status={profile.status === 'active' ? 'approved' : 'revision'} label={profile.status === 'active' ? 'Active' : profile.status} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <Section icon="user" title="Personal Information">
-          <InfoRow label="Name" value={profile.name} />
+          <InfoRow label="Name" value={profile.fullName} />
           <InfoRow label="Age" value={`${profile.age}`} />
-          <InfoRow label="Gender" value={profile.gender} />
-          <InfoRow label="Student ID" value={profile.studentId} />
-        </Section>
-
-        <Section icon="users" title="Parent Information">
-          <InfoRow label="Parent" value={profile.parentName} />
-          <InfoRow label="Phone" value={profile.parentPhone} />
-          <InfoRow label="Email" value={profile.parentEmail} />
+          <InfoRow label="Date of Birth" value={profile.dateOfBirth} />
+          <InfoRow label="Student ID" value={profile.id} />
         </Section>
 
         <Section icon="activity" title="Clinical Information">
-          <InfoRow label="Diagnosis" value={profile.diagnosis} />
-          <InfoRow label="Assigned Therapist" value={profile.therapist} />
-          <InfoRow label="Assigned Teacher" value={profile.teacher} />
-          <InfoRow label="Program" value={profile.program} />
+          <InfoRow label="Program Type" value={profile.programType} />
+          <InfoRow label="Therapy Group" value={profile.therapyGroup} />
+          <InfoRow label="Status" value={profile.status === 'active' ? 'Active' : profile.status} />
         </Section>
 
-        <Section icon="folder" title="Documents">
-          {profile.documents.length === 0 && <Text style={typography.caption}>No documents uploaded.</Text>}
-          {profile.documents.map((d) => (
-            <View key={d} style={styles.docRow}>
-              <Feather name="file-text" size={14} color={colors.mutedText} />
-              <Text style={typography.body}>{d}</Text>
-            </View>
-          ))}
-        </Section>
-
-        <Section icon="bar-chart-2" title="Progress Summary">
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}><Text style={styles.statValue}>{profile.progress.completedSessions}</Text><Text style={typography.caption}>Completed Sessions</Text></View>
-            <View style={styles.statCard}><Text style={styles.statValue}>{profile.progress.activeGoals}</Text><Text style={typography.caption}>Active Goals</Text></View>
-            <View style={styles.statCard}><Text style={styles.statValue}>{profile.progress.assessmentScore}%</Text><Text style={typography.caption}>Assessment Score</Text></View>
-            <View style={styles.statCard}><Text style={styles.statValue}>{profile.progress.behaviorIncidents}</Text><Text style={typography.caption}>Behavior Incidents</Text></View>
-          </View>
-        </Section>
-
-        <Section icon="clock" title="Timeline">
-          {profile.timeline.map((e) => (
-            <View key={e.title} style={styles.timelineRow}>
-              <View style={styles.timelineDot} />
+        <Section icon="bar-chart-2" title="Goals">
+          {profile.goals.length === 0 && <Text style={typography.caption}>No goals defined yet.</Text>}
+          {profile.goals.map((g) => (
+            <View key={g.id} style={styles.goalRow}>
               <View style={{ flex: 1 }}>
-                <Text style={typography.bodyBold}>{e.title}</Text>
-                <Text style={typography.caption}>{e.detail}</Text>
+                <Text style={typography.bodyBold}>{g.name}</Text>
+                <Text style={typography.caption}>{g.progressPercent}% progress</Text>
               </View>
-              <Text style={typography.caption}>{e.date}</Text>
+              <StatusPill status={g.status === 'mastered' ? 'approved' : g.status === 'paused' ? 'revision' : 'inProgress'} label={g.status} />
             </View>
           ))}
         </Section>
@@ -162,31 +165,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
 
-const DEMO_PROFILE: StudentProfileData = {
-  id: 'stu-1',
-  name: 'Emily Johnson',
-  age: 6,
-  gender: 'Female',
-  studentId: 'MLU-0012',
-  diagnosis: 'Autism Spectrum',
-  therapist: 'Teacher A',
-  teacher: 'Teacher A',
-  program: 'ABA',
-  status: 'Active',
-  parentName: 'Sarah Johnson',
-  parentPhone: '(555) 010-2040',
-  parentEmail: 'sarah.johnson@example.com',
-  documents: ['Birth Certificate.pdf', 'Assessment Report — Skills.pdf'],
-  progress: { completedSessions: 42, activeGoals: 8, assessmentScore: 72, behaviorIncidents: 3 },
-  timeline: [
-    { date: 'Jan 5', title: 'Student Registered', detail: 'Enrolled via Enrollment Wizard.' },
-    { date: 'Jan 10', title: 'Assessment Completed', detail: '6-week assessment finished with 72% average.' },
-    { date: 'Jan 14', title: 'Therapy Started', detail: 'ABA program began with Teacher A.' },
-    { date: 'Jan 28', title: 'Behavior Incident', detail: 'Tantrum during cleanup — ABC logged.' },
-    { date: 'Feb 2', title: 'Goal Updated', detail: 'Eye contact goal progressed to 72%.' },
-  ],
-};
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
@@ -198,10 +176,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  docRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statCard: { flexGrow: 1, minWidth: '45%', backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs },
-  statValue: { fontSize: 20, fontWeight: '700', color: colors.navyText },
-  timelineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primaryYellow },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 13 },
 });

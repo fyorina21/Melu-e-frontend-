@@ -43,11 +43,11 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
       const { data } = await getRoomsResources({});
       setRooms(data.rooms);
       setResources(data.resources);
-      setMaintenance(data.maintenance || DEMO_MAINTENANCE);
+      setMaintenance(data.maintenance ?? []);
     } catch (err) {
-      setRooms(DEMO_ROOMS);
-      setResources(DEMO_RESOURCES);
-      setMaintenance(DEMO_MAINTENANCE);
+      setRooms([]);
+      setResources([]);
+      setMaintenance([]);
     }
   }, []);
 
@@ -55,17 +55,17 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
 
   const cycleRoomStatus = async (room: Room) => {
     const next: RoomStatus = room.status === 'Available' ? 'In Session' : room.status === 'In Session' ? 'Maintenance' : 'Available';
-    setRooms((prev) => prev.map((r) => (r.id === room.id ? { ...r, status: next } : r)));
     try {
       await updateRoomStatus(room.id, { status: next });
+      await load();
     } catch (err) {}
   };
 
   const toggleResource = async (resource: Resource) => {
     const next = resource.inUse >= resource.total ? resource.inUse - 1 : resource.inUse + 1;
-    setResources((prev) => prev.map((r) => (r.id === resource.id ? { ...r, inUse: next } : r)));
     try {
       await updateResourceStatus(resource.id, { inUse: next });
+      await load();
     } catch (err) {}
   };
 
@@ -155,28 +155,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Notifications: 'Notifications',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-
-const DEMO_ROOMS: Room[] = [
-  { id: 'r1', name: 'Therapy Room 1', capacity: 4, status: 'In Session' },
-  { id: 'r2', name: 'Therapy Room 2', capacity: 4, status: 'Available' },
-  { id: 'r3', name: 'Therapy Room 3', capacity: 2, status: 'Available' },
-  { id: 'r4', name: 'Speech Room', capacity: 3, status: 'In Session' },
-  { id: 'r5', name: 'Sensory Room', capacity: 2, status: 'Maintenance' },
-  { id: 'r6', name: 'Assessment Room', capacity: 1, status: 'Available' },
-];
-
-const DEMO_RESOURCES: Resource[] = [
-  { id: 'res1', name: 'Tablets', total: 8, inUse: 5 },
-  { id: 'res2', name: 'Projectors', total: 3, inUse: 1 },
-  { id: 'res3', name: 'Sensory Toys', total: 12, inUse: 6 },
-  { id: 'res4', name: 'Therapy Kits', total: 10, inUse: 4 },
-  { id: 'res5', name: 'Reinforcer Packs', total: 20, inUse: 8 },
-];
-
-const DEMO_MAINTENANCE = [
-  { id: 'm1', room: 'Sensory Room', detail: 'Swing replacement', date: 'Aug 15, 2026' },
-  { id: 'm2', room: 'Therapy Room 2', detail: 'Lighting repair', date: 'Aug 20, 2026' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

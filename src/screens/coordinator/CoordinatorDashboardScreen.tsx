@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -48,14 +49,17 @@ type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorDashb
 
 export default function CoordinatorDashboardScreen({ navigation }: Props) {
   const [data, setData] = useState<CoordinatorDashboardData | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [now, setNow] = useState(new Date());
 
   const load = useCallback(async () => {
     try {
       const { data: res } = await getCoordinatorDashboard();
       setData(res);
+      setLoadFailed(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setData(null);
+      setLoadFailed(true);
     }
   }, []);
 
@@ -84,7 +88,19 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
     navigation?.navigate?.(routeByTab[tab] as never);
   };
 
-  if (!data) return null;
+  if (!data && loadFailed) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar activeTab="Dashboard" onTabPress={handleTabPress} />
+        <View style={styles.emptyState}>
+          <Feather name="inbox" size={40} color={colors.mutedText} />
+          <Text style={typography.body}>No dashboard data available.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!data) return <ScreenLoader />;
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -167,22 +183,6 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
   );
 }
 
-const DEMO_DATA: CoordinatorDashboardData = {
-  unreadCount: 3,
-  activeSessionsCount: 4,
-  pendingReviewCount: 2,
-  studentsInTherapyCount: 12,
-  teachersOnDutyCount: 5,
-  liveSessions: [
-    { id: '1', teacherName: 'Teacher A', stationName: 'Station 1', status: 'green', studentCount: 2 },
-    { id: '2', teacherName: 'Teacher B', stationName: 'Station 2', status: 'yellow', studentCount: 1 },
-  ],
-  pendingReviews: [
-    { id: '1', teacherName: 'Teacher A', studentNames: ['Student A', 'Student B'] },
-  ],
-  summary: { sessionsCompleted: 6, trialsLogged: 124, incidents: 1, goalsMastered: 2 },
-};
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   content: { padding: spacing.lg, gap: spacing.lg },
@@ -201,4 +201,5 @@ const styles = StyleSheet.create({
   quickAction: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   quickActionText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
   summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
 });

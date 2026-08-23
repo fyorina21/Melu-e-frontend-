@@ -124,7 +124,7 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
       const { data } = await getActiveSessions({ status: statusFilter, station: stationFilter });
       setSessions(data);
     } catch (err) {
-      setSessions(DEMO_SESSIONS);
+      setSessions([]);
     }
     setLastUpdated(new Date());
     setRefreshing(false);
@@ -150,24 +150,23 @@ export default function LiveSessionMonitoringScreen({ navigation }: NativeStackS
     if (!alertTarget) return;
     try {
       await sendAlertToTeacher(alertTarget.id, { alertType, message });
-    } catch (err) {
-      // Demo/offline: still show confirmation.
-    }
+      await load();
+    } catch (err) {}
     Alert.alert('Alert sent', `Sent to ${alertTarget.teacherName}`);
     setAlertTarget(null);
   };
 
   const handleExport = async () => {
+    let csv = '';
     try {
-      await exportSessionLog({ status: statusFilter, station: stationFilter });
-    } catch (err) {
-      // fall through to local export
-    }
+      const { data } = await exportSessionLog({ status: statusFilter, station: stationFilter });
+      csv = data.csv;
+    } catch (err) {}
     const header = 'Teacher,Station,Status,Timer (mm:ss),Trials,Students';
     const rows = filtered.map((s) => [s.teacherName, s.stationName, s.status, s.timer, String(s.trialCount), s.studentNames.join('; ')].join(','));
     downloadTextFile(
       `LiveSessionLog_${statusFilter.replace(/\s+/g, '_')}.csv`,
-      `${header}\n${rows.join('\n')}`
+      csv || `${header}\n${rows.join('\n')}`
     );
     setExportContent(
       [
@@ -296,11 +295,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Rooms: 'RoomResourceScheduling',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-
-const DEMO_SESSIONS: LiveSession[] = [
-  { id: '1', teacherName: 'Teacher A', stationName: 'Station 1', status: 'On Track', timer: '42:10', trialCount: 18, studentNames: ['Student A', 'Student B'], students: [{ name: 'Student A', trials: 12, independencePercent: 70 }, { name: 'Student B', trials: 6, independencePercent: 55 }], incidents: [] },
-  { id: '2', teacherName: 'Teacher B', stationName: 'Station 2', status: 'Needs Attention', timer: '05:22', trialCount: 4, studentNames: ['Student C'], students: [{ name: 'Student C', trials: 4, independencePercent: 40 }], incidents: [{ time: '02:15', type: 'Behavior', note: 'Transition difficulty during snack' }] },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

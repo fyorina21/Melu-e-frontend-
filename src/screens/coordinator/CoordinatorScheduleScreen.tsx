@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -33,11 +34,6 @@ import {
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-interface Option {
-  id: string;
-  name: string;
-}
-
 interface Metric {
   teacherId: string;
   teacherName: string;
@@ -46,22 +42,6 @@ interface Metric {
   independencePercent: number;
   incidents: number;
 }
-
-const FALLBACK_THERAPIST_OPTIONS: Option[] = [
-  { id: 't-a', name: 'Teacher A' },
-  { id: 't-b', name: 'Teacher B' },
-  { id: 't-c', name: 'Teacher C' },
-];
-const FALLBACK_STUDENT_OPTIONS: Option[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
-  { id: 'student-c', name: 'Student C' },
-];
-const FALLBACK_ROOM_OPTIONS: Option[] = [
-  { id: 'room-1', name: 'Room 1' },
-  { id: 'room-2', name: 'Room 2' },
-  { id: 'room-3', name: 'Room 3' },
-];
 
 function TeacherAnalyticsModal({ visible, metrics, onClose }: {
   visible: boolean;
@@ -147,13 +127,13 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       const { data } = await getOperationalSchedule({});
       setWeekData(data);
     } catch (err) {
-      setWeekData(getWeekData());
+      setWeekData({} as WeekData);
     }
     try {
       const { data } = await getTeacherPerformanceMetrics({});
       setMetrics(data);
     } catch (err) {
-      setMetrics(DEMO_METRICS);
+      setMetrics([]);
     }
   }, []);
 
@@ -166,11 +146,8 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const dayAppointments = (weekData?.[selectedDay] || []).filter(
     (a) => teacherFilter === 'all' || a.therapistId === teacherFilter
   );
-  const effectiveStudentOpts = studentOpts.length > 0 ? studentOpts : FALLBACK_STUDENT_OPTIONS;
-  const effectiveStaffOpts = staffOpts.length > 0 ? staffOpts : FALLBACK_THERAPIST_OPTIONS;
-  const effectiveRoomOpts = roomOpts.length > 0 ? roomOpts : FALLBACK_ROOM_OPTIONS;
 
-  const unassignedStudents = effectiveStudentOpts.filter(
+  const unassignedStudents = studentOpts.filter(
     (s) => !dayAppointments.some((a) => a.studentIds?.includes(s.id))
   );
 
@@ -239,7 +216,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     setUnavailableVisible(false);
     Alert.alert(
       'Marked Unavailable',
-      `${effectiveStaffOpts.find((t) => t.id === therapistId)?.name ?? therapistId} is unavailable on ${payload.date} (${payload.reason}).`,
+      `${staffOpts.find((t) => t.id === therapistId)?.name ?? therapistId} is unavailable on ${payload.date} (${payload.reason}).`,
       [{ text: 'OK' }]
     );
   };
@@ -248,7 +225,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     reassignStudentsInStore(selectedDay, payload.fromTherapistId, payload.toTherapistId, payload.studentIds);
     setWeekData(getWeekData());
     setReassignVisible(false);
-    const targetName = effectiveStaffOpts.find((t) => t.id === payload.toTherapistId)?.name ?? payload.toTherapistId;
+    const targetName = staffOpts.find((t) => t.id === payload.toTherapistId)?.name ?? payload.toTherapistId;
     Alert.alert('Students Reassigned', `Moved ${payload.studentIds.length} student(s) to ${targetName}.`, [{ text: 'OK' }]);
   };
 
@@ -256,7 +233,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     const lines = [
       `Melu'e Foundation — Staff Schedule`,
       `Day: ${DAYS[selectedDay]}`,
-      `Teacher filter: ${teacherFilter === 'all' ? 'All' : effectiveStaffOpts.find((t) => t.id === teacherFilter)?.name}`,
+      `Teacher filter: ${teacherFilter === 'all' ? 'All' : staffOpts.find((t) => t.id === teacherFilter)?.name}`,
       '',
       'APPOINTMENTS',
       ...dayAppointments.map((a) => `• ${a.startTime} – ${a.endTime} | ${a.therapistName} | ${a.roomName} | ${a.studentNames.join(', ')}`),
@@ -274,7 +251,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     setExportContent(lines.join('\n'));
   };
 
-  if (!weekData) return null;
+  if (!weekData) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -301,7 +278,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
           <TouchableOpacity style={[styles.filterChip, teacherFilter === 'all' && styles.filterChipActive]} onPress={() => setTeacherFilter('all')}>
             <Text style={typography.body}>All Teachers</Text>
           </TouchableOpacity>
-          {effectiveStaffOpts.map((t) => (
+          {staffOpts.map((t) => (
             <TouchableOpacity key={t.id} style={[styles.filterChip, teacherFilter === t.id && styles.filterChipActive]} onPress={() => setTeacherFilter(t.id)}>
               <Text style={typography.body}>{t.name}</Text>
             </TouchableOpacity>
@@ -363,9 +340,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         visible={formVisible}
         appointment={editingAppt}
         defaultDate={`2026-08-${10 + selectedDay}`}
-        therapistOptions={effectiveStaffOpts}
-        studentOptions={effectiveStudentOpts}
-        roomOptions={effectiveRoomOpts}
+        therapistOptions={staffOpts}
+        studentOptions={studentOpts}
+        roomOptions={roomOpts}
         onClose={() => setFormVisible(false)}
         onSave={handleSave}
         onCancelAppointment={handleCancelAppointment}
@@ -382,7 +359,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
       <MarkUnavailableModal
         visible={unavailableVisible}
-        therapistOptions={effectiveStaffOpts}
+        therapistOptions={staffOpts}
         defaultDate={`2026-08-${10 + selectedDay}`}
         onClose={() => setUnavailableVisible(false)}
         onSubmit={handleUnavailableSubmit}
@@ -390,7 +367,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
       <ReassignStudentsModal
         visible={reassignVisible}
-        therapistOptions={effectiveStaffOpts}
+        therapistOptions={staffOpts}
         appointments={weekData?.[selectedDay] ?? []}
         onClose={() => setReassignVisible(false)}
         onSubmit={handleReassignSubmit}
@@ -414,11 +391,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Rooms: 'RoomResourceScheduling',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-
-const DEMO_METRICS: Metric[] = [
-  { teacherId: 't-a', teacherName: 'Teacher A', sessions: 6, trials: 124, independencePercent: 68, incidents: 1 },
-  { teacherId: 't-b', teacherName: 'Teacher B', sessions: 4, trials: 80, independencePercent: 55, incidents: 0 },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

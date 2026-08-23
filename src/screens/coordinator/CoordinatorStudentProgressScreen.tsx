@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -8,18 +10,13 @@ import AppNavbar from '../../components/AppNavbar';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { downloadTextFile } from '../../utils/webExport';
 import { getStudentProgressOverview, flagStudent } from '../../api/coordinatorApi';
+import { getStudentOptions } from '../../api/optionsApi';
 import type { CoordinatorStackParamList } from '../../types';
 
 interface StudentOption {
   id: string;
   name: string;
 }
-
-const STUDENT_OPTIONS: StudentOption[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
-  { id: 'student-c', name: 'Student C' },
-];
 
 interface ProgressGoal {
   id: string;
@@ -39,10 +36,11 @@ interface SessionHistoryEntry {
   id: string;
   date: string;
   teacherName: string;
-  summary: string;
+  bodyPreview: string;
 }
 
 interface StudentProgressData {
+  studentId: string;
   name: string;
   age: number;
   program: string;
@@ -86,7 +84,7 @@ function SessionDetailModal({ visible, entry, onClose }: {
           <Text style={typography.caption}>Teacher: {entry.teacherName}</Text>
           <View style={styles.field}>
             <Text style={typography.label}>Session Summary</Text>
-            <Text style={typography.body}>{entry.summary}</Text>
+            <Text style={typography.body}>{entry.bodyPreview}</Text>
           </View>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <Text style={styles.closeBtnText}>Close</Text>
@@ -98,21 +96,35 @@ function SessionDetailModal({ visible, entry, onClose }: {
 }
 
 export default function CoordinatorStudentProgressScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorStudentProgress'>) {
-  const [selectedStudentId, setSelectedStudentId] = useState('student-a');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
   const [data, setData] = useState<StudentProgressData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [flagged, setFlagged] = useState(false);
   const [notes, setNotes] = useState('');
   const [exportContent, setExportContent] = useState<string | null>(null);
   const [sessionTarget, setSessionTarget] = useState<SessionHistoryEntry | null>(null);
 
+  useEffect(() => {
+    getStudentOptions()
+      .then(({ data: res }) => {
+        setStudentOptions(res);
+        setSelectedStudentId((prev) => prev ?? res[0]?.id ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
   const load = useCallback(async () => {
+    if (!selectedStudentId) return;
     try {
       const { data: res } = await getStudentProgressOverview(selectedStudentId);
       setData(res);
       setFlagged(res.flagged);
+      setLoadError(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setData(null);
       setFlagged(false);
+      setLoadError(true);
     }
   }, [selectedStudentId]);
 
@@ -121,6 +133,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: NativeS
   }, [load]);
 
   const handleToggleFlag = async () => {
+    if (!selectedStudentId) return;
     const next = !flagged;
     setFlagged(next);
     try {
@@ -179,7 +192,8 @@ export default function CoordinatorStudentProgressScreen({ navigation }: NativeS
     );
   };
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -194,7 +208,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: NativeS
       </View>
 
       <View style={styles.selectorRow}>
-        {STUDENT_OPTIONS.map((s) => (
+        {studentOptions.map((s) => (
           <TouchableOpacity
             key={s.id}
             style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]}
@@ -210,7 +224,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: NativeS
           <View style={styles.cardHeaderRow}>
             <Text style={typography.h3}>{data.name}</Text>
             <View style={styles.cardHeaderRight}>
-              <TouchableOpacity style={styles.profileLink} onPress={() => navigation?.navigate?.('StudentProfile', { studentId: selectedStudentId })}>
+              <TouchableOpacity style={styles.profileLink} onPress={() => navigation?.navigate?.('StudentProfile', { studentId: data.studentId })}>
                 <Text style={styles.profileLinkText}>View Profile →</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.flagBtn, flagged && styles.flagBtnActive]} onPress={handleToggleFlag}>
@@ -320,27 +334,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Rooms: 'RoomResourceScheduling',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-
-const DEMO_DATA: StudentProgressData = {
-  name: 'Student A',
-  age: 6,
-  program: 'Regular Program',
-  flagged: false,
-  assessmentSummary: { skills: '45% (ABLLS, in progress)', behavior: 'Completed', preferences: 'Completed' },
-  goals: [
-    { id: 'g1', name: 'Identify Colors', percent: 45, status: 'In Progress', trend: [20, 25, 30, 28, 35, 40, 38, 42, 45, 45] },
-    { id: 'g2', name: 'Request Items', percent: 68, status: 'In Progress', trend: [30, 35, 40, 45, 50, 55, 60, 62, 65, 68] },
-  ],
-  incidentSummary: '2 incidents in the last 30 days, both during transitions. No escalation required.',
-  incidents: [
-    { date: 'Aug 4, 2026', type: 'Transition', detail: 'Refused to leave the play area at the end of the session.' },
-    { date: 'Jul 28, 2026', type: 'Transition', detail: 'Crying during move from Station 1 to Station 2.' },
-  ],
-  sessionHistory: [
-    { id: '1', date: 'Aug 11, 2026', teacherName: 'Teacher A', summary: 'Great session! Requested items independently 5 times and stayed calm during cleanup.' },
-    { id: '2', date: 'Aug 8, 2026', teacherName: 'Teacher A', summary: 'Steady progress on naming colors; needed light prompting on 2 of 3 goals.' },
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
