@@ -2,6 +2,7 @@
 // SCR-PD-006: Clinical Quality Monitoring (Goal Bank management)
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -109,20 +110,22 @@ function GoalFormModal({ visible, goal, onClose, onSave }: {
 }
 
 export default function GoalBankManagementScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'GoalBankManagement'>) {
-  const [goals, setGoals] = useState<GoalBankItem[]>([]);
+  const [goals, setGoals] = useState<GoalBankItem[] | null>(null);
   const [domainFilter, setDomainFilter] = useState('All');
   const [formTarget, setFormTarget] = useState<GoalBankItem | null | undefined>(undefined); // undefined = closed, null = new, object = editing
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getGoalBank({});
-      setGoals(data);
+      const { data: res } = await getGoalBank({});
+      setGoals(res);
     } catch (err) {
-      setGoals(DEMO_GOALS);
+      setGoals([]);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  if (!goals) return <ScreenLoader />;
 
   const filtered = goals.filter((g) => domainFilter === 'All' || g.domain === domainFilter);
 
@@ -130,25 +133,19 @@ export default function GoalBankManagementScreen({ navigation }: NativeStackScre
     try {
       if (formTarget && formTarget.id) {
         await updateGoal(formTarget.id, payload);
-        setGoals((prev) => prev.map((g) => (g.id === formTarget.id ? { ...g, ...payload } : g)));
       } else {
-        const { data } = await createGoal(payload);
-        setGoals((prev) => [...prev, data]);
+        await createGoal(payload);
       }
-    } catch (err) {
-      // Demo/offline fallback
-      if (formTarget && formTarget.id) {
-        setGoals((prev) => prev.map((g) => (g.id === formTarget.id ? { ...g, ...payload } : g)));
-      } else {
-        setGoals((prev) => [...prev, { id: `local-${Date.now()}`, active: true, ...payload }]);
-      }
-    }
+      await load();
+    } catch (err) {}
     setFormTarget(undefined);
   };
 
   const handleDeactivate = async (goal: GoalBankItem) => {
-    try { await deactivateGoal(goal.id); } catch (err) {}
-    setGoals((prev) => prev.map((g) => (g.id === goal.id ? { ...g, active: false } : g)));
+    try {
+      await deactivateGoal(goal.id);
+      await load();
+    } catch (err) {}
   };
 
   const handleDelete = (goal: GoalBankItem) => {
@@ -158,8 +155,10 @@ export default function GoalBankManagementScreen({ navigation }: NativeStackScre
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          try { await deleteGoal(goal.id); } catch (err) {}
-          setGoals((prev) => prev.filter((g) => g.id !== goal.id));
+          try {
+            await deleteGoal(goal.id);
+            await load();
+          } catch (err) {}
         },
       },
     ]);
@@ -167,7 +166,7 @@ export default function GoalBankManagementScreen({ navigation }: NativeStackScre
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Goal Bank" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Clinical Quality" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Goal Bank Management</Text>
@@ -217,12 +216,6 @@ export default function GoalBankManagementScreen({ navigation }: NativeStackScre
     </SafeAreaView>
   );
 }
-
-const DEMO_GOALS: GoalBankItem[] = [
-  { id: 'g1', name: 'Identify Colors', domain: 'Cognition', description: 'Student identifies 6 target colors upon request.', goalType: 'standard', masteryCriteria: '80% independent across 3 sessions', active: true },
-  { id: 'g2', name: 'Request Items', domain: 'Communication', description: 'Student requests preferred items using words/PECS.', goalType: 'standard', masteryCriteria: '90% independent across 3 sessions', active: true },
-  { id: 'g3', name: 'Handwashing Sequence', domain: 'Self-Help', description: '8-step handwashing task analysis.', goalType: 'task_analysis', masteryCriteria: '100% steps independent across 3 sessions', active: true },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

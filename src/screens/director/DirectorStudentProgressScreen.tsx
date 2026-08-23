@@ -2,6 +2,8 @@
 // SCR-DIR-006: Student Progress Monitoring (Director View)
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,12 +15,6 @@ import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getDirectorStudentProgress } from '../../api/directorApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
-
-const FALLBACK_STUDENTS: StudentOption[] = [
-  { id: 'student-a', name: 'Aiden Rivera', age: 8 },
-  { id: 'student-b', name: 'Maya Chen', age: 7 },
-  { id: 'student-c', name: 'Liam Okafor', age: 8 },
-];
 
 interface DirectorGoal {
   id: string;
@@ -46,6 +42,7 @@ interface DirectorStudentData {
 export default function DirectorStudentProgressScreen({ navigation }: NativeStackScreenProps<DirectorStackParamList, 'DirectorStudentProgress'>) {
   const [selectedStudentId, setSelectedStudentId] = useState('student-a');
   const [data, setData] = useState<DirectorStudentData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
   const [exportContent, setExportContent] = useState<string | null>(null);
   const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
@@ -65,8 +62,9 @@ export default function DirectorStudentProgressScreen({ navigation }: NativeStac
     try {
       const { data: res } = await getDirectorStudentProgress(selectedStudentId);
       setData(res);
+      setLoadError(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setLoadError(true);
     }
   }, [selectedStudentId]);
 
@@ -99,7 +97,8 @@ export default function DirectorStudentProgressScreen({ navigation }: NativeStac
     );
   };
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -113,7 +112,7 @@ export default function DirectorStudentProgressScreen({ navigation }: NativeStac
       </View>
 
       <View style={styles.selectorRow}>
-        {(studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).map((s) => (
+        {studentOptions.map((s) => (
           <TouchableOpacity key={s.id} style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]} onPress={() => setSelectedStudentId(s.id)}>
             <Text style={[typography.bodyBold, selectedStudentId === s.id && { color: colors.navyText }]}>{s.name}</Text>
           </TouchableOpacity>
@@ -194,18 +193,6 @@ export default function DirectorStudentProgressScreen({ navigation }: NativeStac
     </SafeAreaView>
   );
 }
-
-const DEMO_DATA: DirectorStudentData = {
-  name: 'Student A',
-  age: 6,
-  program: 'Regular Program',
-  assessmentSummary: { skills: '45% (ABLLS, in progress)', behavior: 'Completed', preferences: 'Completed' },
-  goals: [
-    { id: 'g1', name: 'Identify Colors', percent: 45, trend: [20, 25, 30, 28, 35, 40, 38, 42, 45, 45] },
-  ],
-  sessionHistory: [{ id: '1', date: 'Aug 11, 2026', teacherName: 'Teacher A' }],
-  incidentSummary: '2 incidents in the last 30 days, both during transitions.',
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

@@ -2,6 +2,7 @@
 // SCR-PD-008: Graph & Chart View
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,10 +15,6 @@ import { getChartData, exportChart } from '../../api/programDirectorApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
-const FALLBACK_STUDENTS: StudentOption[] = [
-  { id: 'student-a', name: 'Aiden Rivera', age: 8 },
-  { id: 'student-b', name: 'Maya Chen', age: 7 },
-];
 const CHART_TYPES = ['Line (trend)', 'Bar (comparison)', 'Cumulative'];
 
 interface ChartPoint {
@@ -73,7 +70,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
       const { data: res } = await getChartData({ studentId, chartType });
       setData(res);
     } catch (err) {
-      setData(DEMO_DATA);
+      setData({ goalCharts: [] });
     }
   }, [studentId, chartType]);
 
@@ -82,7 +79,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
   const handleExport = async () => {
     try { await exportChart({ studentId, chartType }); } catch (err) {}
     if (!data) return;
-    const studentName = (studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).find((s) => s.id === studentId)?.name ?? studentId;
+    const studentName = studentOptions.find((s) => s.id === studentId)?.name ?? studentId;
     const lines: string[] = [];
     lines.push('GRAPH & CHART VIEW EXPORT');
     lines.push(`Student: ${studentName} · Chart type: ${chartType} · Generated: ${new Date().toLocaleDateString()}`);
@@ -98,11 +95,11 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
     setExportContent(lines.join('\n'));
   };
 
-  if (!data) return null;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Charts" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Reports" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>Graph & Chart View</Text>
         <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
@@ -113,7 +110,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
 
       <View style={styles.controlsRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {(studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).map((s) => (
+          {studentOptions.map((s) => (
             <TouchableOpacity key={s.id} style={[styles.chip, studentId === s.id && styles.chipSelected]} onPress={() => setStudentId(s.id)}>
               <Text style={[styles.chipText, studentId === s.id && styles.chipTextSelected]}>{s.name}</Text>
             </TouchableOpacity>
@@ -148,20 +145,6 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
     </SafeAreaView>
   );
 }
-
-const DEMO_DATA: ChartData = {
-  goalCharts: [
-    {
-      goalId: 'g1', goalName: 'Identify Colors',
-      series: [
-        { label: 'S1', value: 20 }, { label: 'S2', value: 25 }, { label: 'S3', value: 30 },
-        { label: 'S4', value: 28 }, { label: 'S5', value: 35 }, { label: 'S6', value: 40 },
-        { label: 'S7', value: 38 }, { label: 'S8', value: 42 }, { label: 'S9', value: 45 }, { label: 'S10', value: 45 },
-      ],
-      summary: 'Steady upward trend, currently at 45% independence.',
-    },
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

@@ -33,6 +33,23 @@ interface ThreadMessage {
   attachments?: { id: string; name: string }[];
 }
 
+interface ConversationRow {
+  id: string;
+  studentName?: string;
+  parentName?: string;
+  recipient?: string;
+  unread?: number;
+  lastMessage?: string;
+}
+
+interface RawThreadMessage {
+  id: string;
+  from: string;
+  senderName?: string;
+  text?: string;
+  sentAt: string;
+}
+
 export default function DirectorParentCommunicationScreen({ navigation }: NativeStackScreenProps<DirectorStackParamList, 'DirectorParentCommunication'>) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -45,20 +62,45 @@ export default function DirectorParentCommunicationScreen({ navigation }: Native
   const loadList = useCallback(async () => {
     try {
       const { data } = await getDirectorConversations({});
-      setConversations(data);
-      if (!activeId && data.length) setActiveId(data[0].id);
+      const rows = (Array.isArray(data) ? data : []) as ConversationRow[];
+      setConversations(
+        rows.map((c) => ({
+          id: c.id,
+          studentName: c.studentName ?? c.recipient ?? 'Student',
+          parentName: c.parentName ?? 'Parent/Guardian',
+          lastMessagePreview: c.lastMessage ?? '',
+          unreadCount: c.unread ?? 0,
+          escalated: false,
+        }))
+      );
+      if (!activeId && rows.length) setActiveId(rows[0].id);
     } catch (err) {
-      setConversations(DEMO_CONVERSATIONS);
-      if (!activeId) setActiveId(DEMO_CONVERSATIONS[0].id);
+      setConversations([]);
     }
   }, [activeId]);
 
   useEffect(() => { loadList(); }, [loadList]);
 
-  useEffect(() => {
+  const loadThread = useCallback(async () => {
     if (!activeId) return;
-    getDirectorConversationThread(activeId).then(({ data }) => setThread(data.messages)).catch(() => setThread(DEMO_THREAD));
+    try {
+      const { data } = await getDirectorConversationThread(activeId);
+      const convo = (data ?? {}) as { messages?: RawThreadMessage[] };
+      setThread(
+        (convo.messages ?? []).map((m) => ({
+          id: m.id,
+          sender: m.from,
+          senderLabel: m.senderName ?? m.from,
+          text: m.text ?? '',
+          timestamp: new Date(m.sentAt).toLocaleString([], { hour: 'numeric', minute: '2-digit' }),
+        }))
+      );
+    } catch (err) {
+      setThread([]);
+    }
   }, [activeId]);
+
+  useEffect(() => { loadThread(); }, [loadThread]);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
 
@@ -74,18 +116,21 @@ export default function DirectorParentCommunicationScreen({ navigation }: Native
   const handleSend = async () => {
     if (!activeId) return;
     if (!draft.trim() && pendingAttachments.length === 0) return;
-    const newMsg: ThreadMessage = { id: `local-${Date.now()}`, sender: 'director', senderLabel: 'Director', text: draft, timestamp: 'Just now', attachments: pendingAttachments };
-    setThread((prev) => [...prev, newMsg]);
-    setDraft('');
-    setPendingAttachments([]);
-    try { await sendDirectorMessage(activeId, { text: newMsg.text, attachments: newMsg.attachments }); } catch (err) {}
+    try {
+      await sendDirectorMessage(activeId, { text: draft, attachments: pendingAttachments });
+      setDraft('');
+      setPendingAttachments([]);
+      await loadThread();
+    } catch (err) {}
   };
 
   const handleToggleRead = async () => {
     if (!activeId) return;
     const nextUnread = !((activeConversation?.unreadCount ?? 0) > 0);
-    try { await toggleConversationRead(activeId, { unread: nextUnread }); } catch (err) {}
-    setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, unreadCount: nextUnread ? 1 : 0 } : c)));
+    try {
+      await toggleConversationRead(activeId, { unread: nextUnread });
+      await loadList();
+    } catch (err) {}
   };
 
   const handlePrintLog = () => {
@@ -145,7 +190,7 @@ export default function DirectorParentCommunicationScreen({ navigation }: Native
               </View>
               <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesContent}>
                 {thread.map((m) => (
-                  <View key={m.id} style={[styles.messageBubble, m.sender === 'director' && styles.messageBubbleMine]}>
+                  <View key={m.id} style={[styles.messageBubble, m.sender === 'team' && styles.messageBubbleMine]}>
                     <Text style={typography.caption}>{m.senderLabel}</Text>
                     {m.text ? <Text style={typography.body}>{m.text}</Text> : null}
                     {m.attachments?.map((a) => (
@@ -199,14 +244,6 @@ export default function DirectorParentCommunicationScreen({ navigation }: Native
     </SafeAreaView>
   );
 }
-
-const DEMO_CONVERSATIONS: Conversation[] = [
-  { id: '1', studentName: 'Student A', parentName: 'Parent A', lastMessagePreview: 'Escalated: needs urgent response', unreadCount: 1, escalated: true },
-  { id: '2', studentName: 'Student B', parentName: 'Parent B', lastMessagePreview: 'Can we schedule a meeting?', unreadCount: 0, escalated: false },
-];
-const DEMO_THREAD: ThreadMessage[] = [
-  { id: '1', sender: 'parent', senderLabel: 'Parent A', text: 'I need to speak with someone urgently about my child.', timestamp: '8:00 AM', attachments: [{ id: 'att-1', name: 'medical_report.pdf' }] },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

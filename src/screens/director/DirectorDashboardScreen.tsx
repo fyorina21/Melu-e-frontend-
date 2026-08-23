@@ -2,6 +2,7 @@
 // SCR-DIR-001: Director Dashboard
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -39,7 +40,7 @@ export default function DirectorDashboardScreen({ navigation }: NativeStackScree
       const { data: res } = await getDirectorDashboard();
       setData(res);
     } catch (err) {
-      setData(DEMO_DATA);
+      setData({ unreadCount: 0, totalStudents: 0, activeTeachers: 0, pendingApprovals: 0, unreadParentMessages: 0, pendingReports: 0, recentActivity: [] });
     }
   }, []);
 
@@ -47,7 +48,7 @@ export default function DirectorDashboardScreen({ navigation }: NativeStackScree
 
   const goto = (tab: string) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[tab]);
 
-  if (!data) return null;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -94,20 +95,6 @@ export default function DirectorDashboardScreen({ navigation }: NativeStackScree
     </SafeAreaView>
   );
 }
-
-const DEMO_DATA: DirectorDashboardData = {
-  unreadCount: 4,
-  totalStudents: 24,
-  activeTeachers: 5,
-  pendingApprovals: 2,
-  unreadParentMessages: 6,
-  pendingReports: 3,
-  recentActivity: [
-    'Goal mastery submitted for approval - Student A, Identify Colors',
-    'Session report flagged for review - Teacher B',
-    'Parent message escalated - Student C',
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

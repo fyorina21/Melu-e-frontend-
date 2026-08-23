@@ -13,6 +13,7 @@ import { getPendingMasteryApprovals, getMasteryApprovalDetail, approveMastery, r
 import type { DirectorStackParamList, ProgramDirectorStackParamList } from '../../types';
 
 interface MasteryListItem {
+  checkId: string;
   goalId: string;
   studentName: string;
   goalName: string;
@@ -22,6 +23,14 @@ interface MasteryListItem {
   dateSubmitted: string;
 }
 
+interface RawMasteryCheck {
+  id: string;
+  studentGoalId: string;
+  status: string;
+  requestedByName: string | null;
+  requestedAt: string;
+}
+
 interface TeacherVerification {
   outcome: string;
   promptUsed: string | null;
@@ -29,12 +38,19 @@ interface TeacherVerification {
 }
 
 interface MasteryDetail {
+  checkId: string;
   goalId: string;
   studentName: string;
   goalName: string;
   teacherA: { summary: string };
   teacherB: TeacherVerification;
   teacherC: TeacherVerification;
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function ApprovalDetailModal({ visible, detail, onClose, onApprove, onReject }: {
@@ -51,8 +67,7 @@ function ApprovalDetailModal({ visible, detail, onClose, onApprove, onReject }: 
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{detail.studentName} — {detail.goalName}</Text>
-          <ScrollView style={{ maxHeight: 300 }}>
+          <Text style={typography.h2}>{detail.studentName} — {detail.goalName}</Text>          <ScrollView style={{ maxHeight: 300 }}>
             <Text style={typography.h3}>Teacher A — Mastery Data</Text>
             <Text style={typography.body}>{detail.teacherA.summary}</Text>
             <Text style={[typography.h3, { marginTop: spacing.md }]}>Teacher B — Verification</Text>
@@ -75,12 +90,12 @@ function ApprovalDetailModal({ visible, detail, onClose, onApprove, onReject }: 
               style={styles.rejectBtn}
               onPress={() => {
                 if (!rejectReason.trim()) { Alert.alert('Feedback required'); return; }
-                onReject(detail.goalId, rejectReason, notes);
+                onReject(detail.checkId, rejectReason, notes);
               }}
             >
               <Text style={styles.rejectBtnText}>Reject</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.approveBtn} onPress={() => onApprove(detail.goalId, notes)}>
+            <TouchableOpacity style={styles.approveBtn} onPress={() => onApprove(detail.checkId, notes)}>
               <Text style={styles.approveBtnText}>Approve Mastery</Text>
             </TouchableOpacity>
           </View>
@@ -101,41 +116,69 @@ export default function GoalMasteryApprovalScreen({ navigation }: NativeStackScr
   const load = useCallback(async () => {
     try {
       const { data } = await getPendingMasteryApprovals({ search });
-      setList(data);
+      const rows = (Array.isArray(data) ? data : []) as RawMasteryCheck[];
+      setList(
+        rows
+          .filter((m) => m.status === 'pending')
+          .map((m) => ({
+            checkId: m.id,
+            goalId: m.studentGoalId,
+            studentName: m.requestedByName ? `Submitted by ${m.requestedByName}` : 'Unknown Student',
+            goalName: m.studentGoalId,
+            teacherA: m.requestedByName ?? '—',
+            teacherB: '—',
+            teacherC: '—',
+            dateSubmitted: formatDate(m.requestedAt),
+          }))
+      );
     } catch (err) {
-      setList(DEMO_LIST);
+      setList([]);
     }
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleViewDetail = async (goalId: string) => {
+  const handleViewDetail = async (checkId: string) => {
     try {
-      const { data } = await getMasteryApprovalDetail(goalId);
-      setDetail(data);
+      const { data } = await getMasteryApprovalDetail(checkId);
+      const row = (data ?? {}) as Partial<RawMasteryCheck>;
+      setDetail({
+        checkId,
+        goalId: row.studentGoalId ?? checkId,
+        studentName: row.requestedByName ? `Submitted by ${row.requestedByName}` : 'Unknown Student',
+        goalName: row.studentGoalId ?? checkId,
+        teacherA: { summary: `Status: ${row.status ?? 'pending'} · Submitted ${formatDate(row.requestedAt)}` },
+        teacherB: { outcome: row.status ?? 'pending', promptUsed: null, notes: '' },
+        teacherC: { outcome: row.status ?? 'pending', promptUsed: null, notes: '' },
+      });
     } catch (err) {
-      setDetail(DEMO_DETAIL);
+      setDetail(null);
+      Alert.alert('Error', 'Could not load the approval details. Please try again.');
     }
   };
 
-  const handleApprove = async (goalId: string, notes: string) => {
+  const handleApprove = async (checkId: string, notes: string) => {
     Alert.alert('Approve this goal as Mastered?', undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Approve',
         onPress: async () => {
-          try { await approveMastery(goalId, { notes }); } catch (err) {}
-          setList((prev) => prev.filter((g) => g.goalId !== goalId));
-          setDetail(null);
+          try {
+            await approveMastery(checkId, { notes });
+            setDetail(null);
+            await load();
+          } catch (err) {}
         },
       },
     ]);
   };
 
-  const handleReject = async (goalId: string, reason: string, notes: string) => {
-    try { await rejectMastery(goalId, { reason, notes }); } catch (err) {}
-    setList((prev) => prev.filter((g) => g.goalId !== goalId));
-    setDetail(null);
+  const handleReject = async (checkId: string, reason: string, notes: string) => {
+    try {
+      await rejectMastery(checkId, { reason, notes });
+      setDetail(null);
+      await load();
+    } catch (err) {}
     Alert.alert('Rejected', 'Sent back to Teacher A with feedback.');
   };
 
@@ -172,12 +215,12 @@ export default function GoalMasteryApprovalScreen({ navigation }: NativeStackScr
 
       <ScrollView contentContainerStyle={styles.content}>
         {list.map((g) => (
-          <View key={g.goalId} style={styles.row}>
+          <View key={g.checkId} style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={typography.bodyBold}>{g.studentName} — {g.goalName}</Text>
               <Text style={typography.caption}>Teacher A: {g.teacherA} · B: {g.teacherB} · C: {g.teacherC} · Submitted {g.dateSubmitted}</Text>
             </View>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => handleViewDetail(g.goalId)}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => handleViewDetail(g.checkId)}>
               <Text style={styles.actionBtnText}>Review</Text>
             </TouchableOpacity>
           </View>
@@ -197,16 +240,6 @@ export default function GoalMasteryApprovalScreen({ navigation }: NativeStackScr
     </SafeAreaView>
   );
 }
-
-const DEMO_LIST: MasteryListItem[] = [
-  { goalId: 'g1', studentName: 'Student A', goalName: 'Identify Colors', teacherA: 'Teacher A', teacherB: 'Teacher B', teacherC: 'Teacher C', dateSubmitted: 'Aug 10, 2026' },
-];
-const DEMO_DETAIL: MasteryDetail = {
-  goalId: 'g1', studentName: 'Student A', goalName: 'Identify Colors',
-  teacherA: { summary: '5/5 consecutive independent trials achieved on Aug 4, 2026.' },
-  teacherB: { outcome: 'success', promptUsed: null, notes: 'Confirmed independent across all 6 colors.' },
-  teacherC: { outcome: 'success', promptUsed: null, notes: 'Confirmed, no issues.' },
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

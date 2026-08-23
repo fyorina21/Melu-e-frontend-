@@ -41,13 +41,13 @@ export default function ReportsOversightScreen({ navigation }: NativeStackScreen
       const { data } = await getSessionReports({});
       setSessionReports(data);
     } catch (err) {
-      setSessionReports(DEMO_SESSION_REPORTS);
+      setSessionReports([]);
     }
     try {
       const { data } = await getFoundationOverview();
       setOverview(data);
     } catch (err) {
-      setOverview(DEMO_OVERVIEW);
+      setOverview(null);
     }
   }, []);
 
@@ -178,12 +178,6 @@ export default function ReportsOversightScreen({ navigation }: NativeStackScreen
     </SafeAreaView>
   );
 }
-
-const DEMO_SESSION_REPORTS: SessionReport[] = [
-  { id: '1', date: 'Aug 11, 2026', teacherName: 'Teacher A', studentNames: ['Student A', 'Student B'] },
-  { id: '2', date: 'Aug 10, 2026', teacherName: 'Teacher B', studentNames: ['Student C'] },
-];
-const DEMO_OVERVIEW: FoundationOverview = { totalStudents: 24, totalTeachers: 5, sessionsThisMonth: 96, avgGoalProgress: 61 };
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

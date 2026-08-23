@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -6,6 +7,7 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
+import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
 interface Option {
@@ -22,22 +24,12 @@ interface ScheduleBlock {
   studentIds: string[];
 }
 
-const TEACHERS: Option[] = [
-  { id: 't-a', name: 'Teacher A' },
-  { id: 't-b', name: 'Teacher B' },
-  { id: 't-c', name: 'Teacher C' },
-];
-const ALL_STUDENTS: Option[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
-  { id: 'student-c', name: 'Student C' },
-  { id: 'student-d', name: 'Student D' },
-];
 const CAPACITY = 6;
 
-function AssignmentEditorModal({ visible, block, assignedIds, onClose, onSave }: {
+function AssignmentEditorModal({ visible, block, students, assignedIds, onClose, onSave }: {
   visible: boolean;
   block: ScheduleBlock | null;
+  students: Option[];
   assignedIds?: string[];
   onClose: () => void;
   onSave: (blockId: string, studentIds: string[]) => void;
@@ -58,7 +50,7 @@ function AssignmentEditorModal({ visible, block, assignedIds, onClose, onSave }:
             <Text style={[styles.capacityText, overCapacity && { color: colors.white }]}>{selected.length}/{CAPACITY} students</Text>
           </View>
           <ScrollView style={{ maxHeight: 300 }}>
-            {ALL_STUDENTS.map((s) => (
+            {students.map((s) => (
               <TouchableOpacity key={s.id} style={styles.studentRow} onPress={() => toggle(s.id)}>
                 <View style={[styles.checkbox, selected.includes(s.id) && styles.checkboxChecked]} />
                 <Text style={typography.body}>{s.name}</Text>
@@ -84,8 +76,10 @@ function AssignmentEditorModal({ visible, block, assignedIds, onClose, onSave }:
 }
 
 export default function DirectorSchedulingScreen({ navigation }: NativeStackScreenProps<DirectorStackParamList, 'DirectorScheduling'>) {
-  const [teacherId, setTeacherId] = useState('t-a');
-  const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
+  const [teachers, setTeachers] = useState<Option[]>([]);
+  const [students, setStudents] = useState<Option[]>([]);
+  const [teacherId, setTeacherId] = useState('');
+  const [blocks, setBlocks] = useState<ScheduleBlock[] | null>(null);
   const [editorTarget, setEditorTarget] = useState<ScheduleBlock | null>(null);
 
   const load = useCallback(async () => {
@@ -93,17 +87,30 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
       const { data } = await getDirectorSchedule({ teacherId });
       setBlocks(data);
     } catch (err) {
-      setBlocks(DEMO_BLOCKS[teacherId] || []);
+      setBlocks([]);
     }
   }, [teacherId]);
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    getStaffOptions()
+      .then(({ data: opts }) => {
+        const teacherRows = opts.filter((t) => t.role === 'teacher');
+        setTeachers(teacherRows);
+        setTeacherId((prev) => prev || teacherRows[0]?.id || '');
+      })
+      .catch(() => setTeachers([]));
+    getStudentOptions()
+      .then(({ data: opts }) => setStudents(opts))
+      .catch(() => setStudents([]));
+  }, []);
+
   const handleSaveAssignment = async (blockId: string, studentIds: string[]) => {
     try {
       await saveAssignment({ blockId, studentIds });
+      await load();
     } catch (err) {}
-    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, studentIds } : b)));
     setEditorTarget(null);
   };
 
@@ -114,12 +121,16 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
         text: 'Remove All',
         style: 'destructive',
         onPress: async () => {
-          try { await removeAllAssignments(block.id); } catch (err) {}
-          setBlocks((prev) => prev.map((b) => (b.id === block.id ? { ...b, studentIds: [] } : b)));
+          try {
+            await removeAllAssignments(block.id);
+            await load();
+          } catch (err) {}
         },
       },
     ]);
   };
+
+  if (!blocks) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -129,7 +140,7 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
       </View>
 
       <View style={styles.selectorRow}>
-        {TEACHERS.map((t) => (
+        {teachers.map((t) => (
           <TouchableOpacity key={t.id} style={[styles.teacherChip, teacherId === t.id && styles.teacherChipActive]} onPress={() => setTeacherId(t.id)}>
             <Text style={[typography.bodyBold, teacherId === t.id && { color: colors.navyText }]}>{t.name}</Text>
           </TouchableOpacity>
@@ -150,7 +161,7 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
               </View>
               <Text style={typography.caption}>{block.startTime} – {block.endTime}</Text>
               <Text style={typography.body}>
-                {ALL_STUDENTS.filter((s) => block.studentIds.includes(s.id)).map((s) => s.name).join(', ') || 'No students assigned'}
+                {block.studentIds.map((id) => students.find((s) => s.id === id)?.name ?? id).join(', ') || 'No students assigned'}
               </Text>
               <View style={styles.blockActionsRow}>
                 <TouchableOpacity style={styles.actionBtn} onPress={() => setEditorTarget(block)}>
@@ -170,6 +181,7 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
       <AssignmentEditorModal
         visible={!!editorTarget}
         block={editorTarget}
+        students={students}
         assignedIds={editorTarget?.studentIds}
         onClose={() => setEditorTarget(null)}
         onSave={handleSaveAssignment}
@@ -177,17 +189,6 @@ export default function DirectorSchedulingScreen({ navigation }: NativeStackScre
     </SafeAreaView>
   );
 }
-
-const DEMO_BLOCKS: Record<string, ScheduleBlock[]> = {
-  't-a': [
-    { id: 'b1', teacherName: 'Teacher A', stationName: 'Station 1 (Basic Skills)', startTime: '9:00 AM', endTime: '10:30 AM', studentIds: ['student-a', 'student-b'] },
-    { id: 'b2', teacherName: 'Teacher A', stationName: 'Station 2 (Advanced Skills)', startTime: '11:00 AM', endTime: '12:30 PM', studentIds: [] },
-  ],
-  't-b': [
-    { id: 'b3', teacherName: 'Teacher B', stationName: 'Station 1 (Basic Skills)', startTime: '9:00 AM', endTime: '10:30 AM', studentIds: ['student-c'] },
-  ],
-  't-c': [],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

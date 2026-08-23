@@ -2,6 +2,7 @@
 // SCR-PD-002: Assessment Review & Approval
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -81,29 +82,29 @@ function ReportModal({ visible, report, onClose, onMarkReviewed, onExport }: {
 }
 
 export default function AssessmentReviewScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'AssessmentReview'>) {
-  const [list, setList] = useState<AssessmentListItem[]>([]);
+  const [list, setList] = useState<AssessmentListItem[] | null>(null);
   const [search, setSearch] = useState('');
   const [reportTarget, setReportTarget] = useState<AssessmentReport | null>(null);
   const [exportContent, setExportContent] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getAssessmentsForReview({ search });
-      setList(data);
+      const { data: res } = await getAssessmentsForReview({ search });
+      setList(res);
     } catch (err) {
-      setList(DEMO_LIST);
+      setList([]);
     }
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
 
+  if (!list) return <ScreenLoader />;
+
   const handleViewReport = async (studentId: string) => {
     try {
-      const { data } = await getAssessmentReport(studentId);
-      setReportTarget(data);
-    } catch (err) {
-      setReportTarget(DEMO_REPORT);
-    }
+      const { data: res } = await getAssessmentReport(studentId);
+      setReportTarget(res);
+    } catch (err) {}
   };
 
   const handleMarkReviewed = async (studentId: string, notes: string) => {
@@ -115,8 +116,8 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
           try {
             await markAssessmentReviewed(studentId, {});
             if (notes) await addAssessmentNote(studentId, { note: notes });
+            await load();
           } catch (err) {}
-          setList((prev) => prev.map((s) => (s.studentId === studentId ? { ...s, status: 'Reviewed' } : s)));
           setReportTarget(null);
         },
       },
@@ -148,7 +149,7 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="Assessment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Assessment Review & Approval</Text>
@@ -193,19 +194,6 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
     </SafeAreaView>
   );
 }
-
-const DEMO_LIST: AssessmentListItem[] = [
-  { studentId: 'student-c', studentName: 'Student C', age: 5, program: 'Pooled-Out', status: 'Complete', dateCompleted: 'Aug 8, 2026' },
-  { studentId: 'student-d', studentName: 'Student D', age: 6, program: 'Regular Program', status: 'In Progress', dateCompleted: '—' },
-];
-const DEMO_REPORT: AssessmentReport = {
-  studentId: 'student-c',
-  studentName: 'Student C',
-  skillsSummary: 'Strong in receptive language and gross motor. Needs support in expressive language and self-help.',
-  behaviorSummary: 'Primary function identified: escape/avoidance during transitions. Secondary: attention-seeking.',
-  preferences: ['Bubbles', 'Tablet time', 'Music', 'Blocks', 'Swing'],
-  iupStatus: 'No IUP created yet.',
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
