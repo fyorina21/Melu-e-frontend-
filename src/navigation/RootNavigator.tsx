@@ -71,6 +71,34 @@ function AppNavigator() {
 export default function RootNavigator() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const navRef = React.useRef<NavigationContainerRef<any>>(null);
+  const { session } = useAuth();
+  const deepLinkRestored = React.useRef(false);
+
+  // On web, restore the screen from the URL after login/session restore so a
+  // refresh keeps the user where they were instead of bouncing to the
+  // role's initial (dashboard) route.
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || !session || !navRef.current) return;
+    if (deepLinkRestored.current) {
+      // Session changed later (role switch/logout) — just re-sync the URL.
+      syncUrlToScreen(navRef.current.getState() as NavigationState);
+      return;
+    }
+    deepLinkRestored.current = true;
+
+    const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
+    if (!target) return;
+
+    const nav = navRef.current;
+    try {
+      nav.navigate(target);
+    } catch {
+      // Unknown route name — fall through and reset the URL below.
+    }
+    if (nav.getCurrentRoute()?.name !== target) {
+      window.history.replaceState(null, '', '/');
+    }
+  }, [session]);
 
   return (
     <NavigationIndependentTree>

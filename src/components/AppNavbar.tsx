@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE } from './appNavConfig';
+import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
 import { useBreakpoint } from '../utils/useBreakpoint';
 import type { Role } from '../types';
 
@@ -30,12 +30,62 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
 
+  // Keep the active tab visible in the horizontally scrolling tab strip:
+  // measure each tab's position and scroll the strip so the active one is
+  // centered whenever it changes or the layout is (re)measured.
+  const tabsScrollRef = React.useRef<ScrollView>(null);
+  const tabLayouts = React.useRef<Record<string, { x: number; width: number }>>({});
+  const stripWidth = React.useRef(0);
+  const [layoutTick, setLayoutTick] = useState(0);
+
+  const scrollActiveTabIntoView = () => {
+    const layout = tabLayouts.current[activeTabNormalized ?? ''];
+    if (!layout || !tabsScrollRef.current || stripWidth.current <= 0) return;
+    const target = layout.x + layout.width / 2 - stripWidth.current / 2;
+    tabsScrollRef.current.scrollTo({ x: Math.max(0, target), animated: true });
+  };
+
   const role = (session?.role ?? 'teacher') as Role;
   const tabs = ROLE_TABS[role] ?? [];
   const roleLabel = ROLE_LABELS[role] ?? '';
   const userName = session?.userName ?? 'User';
   const initial = userName.charAt(0).toUpperCase() || 'U';
   const notificationRoute = ROLE_NOTIFICATION_ROUTE[role];
+
+  // Central tab → route map for the current role. Screens may still pass an
+  // onTabPress fallback, but known tabs are always handled here so every
+  // screen gets consistent navigation without wiring it up individually.
+  const routeByTab = ((): Record<string, string> | undefined => {
+    switch (role) {
+      case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
+      case 'program_director': return PD_ROUTE_BY_TAB;
+      case 'director': return DIRECTOR_ROUTE_BY_TAB;
+      case 'institutional_admin': return IA_ROUTE_BY_TAB;
+      case 'system_admin': return SYS_ROUTE_BY_TAB;
+      case 'parent': return PARENT_ROUTE_BY_TAB;
+      default: return undefined;
+    }
+  })();
+
+  // Screens pass legacy `activeTab` labels; resolve them to the canonical tab
+  // via the role's route map so the correct navbar item is highlighted.
+  const activeTabNormalized = (() => {
+    if (tabs.includes(activeTab)) return activeTab;
+    const route = routeByTab?.[activeTab];
+    if (route) {
+      const canonical = tabs.find((tab) => routeByTab?.[tab] === route);
+      if (canonical) return canonical;
+    }
+    return activeTab;
+  })();
+
+  React.useEffect(() => {
+    // onLayout fires asynchronously after mount, so retry once layouts land.
+    scrollActiveTabIntoView();
+    const t = setTimeout(scrollActiveTabIntoView, 80);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabNormalized, layoutTick]);
 
   const openNotifications = () => {
     if (!notificationRoute) return;
@@ -50,18 +100,33 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
 
   const handleTabPress = (tab: string) => {
     setDrawerOpen(false);
-    onTabPress?.(tab);
+    setMenuOpen(false);
+    if (!routeByTab || tab === activeTabNormalized) {
+      onTabPress?.(tab);
+      return;
+    }
+    const route = routeByTab[tab];
+    if (route) {
+      navigation?.navigate?.(route as never);
+    } else {
+      onTabPress?.(tab);
+    }
   };
 
   const renderTabs = () => (
     <View style={styles.tabs}>
       {tabs.map((tab) => {
-        const active = tab === activeTab;
+        const active = tab === activeTabNormalized;
         return (
           <TouchableOpacity
             key={tab}
             style={[styles.tab, active && styles.tabActive]}
             onPress={() => handleTabPress(tab)}
+            onLayout={(e) => {
+              const { x, width } = e.nativeEvent.layout;
+              tabLayouts.current[tab] = { x, width };
+              setLayoutTick((n) => n + 1);
+            }}
           >
             <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
           </TouchableOpacity>
@@ -83,7 +148,15 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
       </View>
 
       {!isCompact && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
+        <ScrollView
+          ref={tabsScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScroll}
+          onLayout={(e) => {
+            stripWidth.current = e.nativeEvent.layout.width;
+          }}
+        >
           {renderTabs()}
         </ScrollView>
       )}
@@ -144,7 +217,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             </View>
             <ScrollView contentContainerStyle={styles.drawerList}>
               {tabs.map((tab) => {
-                const active = tab === activeTab;
+                const active = tab === activeTabNormalized;
                 return (
                   <TouchableOpacity
                     key={tab}
