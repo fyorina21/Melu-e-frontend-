@@ -868,13 +868,23 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'GET',
     pattern: '/director/dashboard',
-    handler: () => ({
-      totalStudents: mockDb.all('students').filter((s) => s.status !== 'paused').length,
-      activeTeachers: mockDb.all('users').filter((u) => u.role === 'teacher').length,
-      pendingApprovals: mockDb.all('masteryChecks').filter((m) => m.status === 'pending').length,
-      unreadParentMessages: mockDb.all('conversations').reduce((sum, c) => sum + c.unread, 0),
-      sessionReportsPending: mockDb.all('sessionSummaries').filter((s) => s.status === 'pending_review').length,
-    }),
+    handler: () => {
+      const pendingMastery = mockDb.all('masteryChecks').filter((m) => m.status === 'pending');
+      const pendingReportsList = mockDb.all('sessionSummaries').filter((s) => s.status === 'pending_review');
+      const recentActivity = [
+        ...pendingMastery.slice(0, 3).map((m) => `Goal mastery submitted for approval - ${m.requestedByName ?? 'Teacher'}`),
+        ...pendingReportsList.slice(0, 3).map((s) => `Session report flagged for review - ${s.teacher}`),
+      ].slice(0, 5);
+      return {
+        unreadCount: mockDb.all('notifications').filter((n) => !n.read).length,
+        totalStudents: mockDb.all('students').filter((s) => s.status !== 'paused').length,
+        activeTeachers: mockDb.all('users').filter((u) => u.role === 'teacher').length,
+        pendingApprovals: pendingMastery.length,
+        unreadParentMessages: mockDb.all('conversations').reduce((sum, c) => sum + c.unread, 0),
+        pendingReports: pendingReportsList.length,
+        recentActivity,
+      };
+    },
   },
   // ---- Director/TC Schedule ----
   {
@@ -1663,21 +1673,8 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: (ctx) => {
       const id = requiredParam(ctx, 'id');
       const { text } = bodyAs<{ text: string }>(ctx);
-      if (!text) throw new ApiError('Message text is required', 422);
       const user = currentUserFromToken();
-      const msg = {
-        id: `msg-${Date.now()}`,
-        from: 'team' as const,
-        senderName: user?.name ?? 'Teacher',
-        text,
-        sentAt: new Date().toISOString(),
-      };
-      const convo = mockDb.findById('conversations', id);
-      if (convo) {
-        const messages = [...((convo as any).messages ?? []), msg];
-        mockDb.updateById('conversations', id, { messages, lastMessage: text, time: 'Just now' });
-      }
-      return msg;
+      return appendTeamMessage(id, user?.name ?? 'Teacher', text);
     },
   },
   {
@@ -1774,15 +1771,45 @@ export const MOCK_ROUTES: MockRoute[] = [
       let rows = mockDb.all('students');
       const { search, status, program, therapyGroup } = ctx.query;
       if (search) rows = rows.filter((s) => s.fullName.toLowerCase().includes(search!.toLowerCase()));
-      return rows.map((s) => ({ id: s.id, fullName: s.fullName, age: s.age, programType: s.programType, therapyGroup: s.therapyGroup, status: s.status }));
+      return rows.map((s) => ({ id: s.id, fullName: s.fullName, age: ageOf(s), programType: s.programType, therapyGroup: s.therapyGroup, status: s.status }));
     },
   },
   {
     method: 'POST',
     pattern: '/coordinator/students',
     handler: (ctx) => {
-      const p = bodyAs<{ firstName: string; lastName: string; dateOfBirth: string; programType: string; therapyGroup: string }>(ctx);
-      const student = { id: newId('stu'), fullName: `${p.firstName} ${p.lastName}`, ...p };
+      const p = bodyAs<{
+        firstName: string;
+        lastName: string;
+        dateOfBirth: string;
+        programType: string;
+        therapyGroup: string;
+        gender?: string;
+        parentName?: string;
+        parentPhone?: string;
+        parentEmail?: string;
+        diagnosis?: string;
+        medicalNotes?: string;
+        documents?: string[];
+      }>(ctx);
+      const student = {
+        id: newId('stu'),
+        fullName: `${p.firstName} ${p.lastName}`.trim(),
+        firstName: p.firstName,
+        lastName: p.lastName,
+        dateOfBirth: p.dateOfBirth,
+        programType: p.programType,
+        therapyGroup: p.therapyGroup,
+        status: 'active',
+        gender: p.gender ?? '',
+        parentName: p.parentName ?? '',
+        parentPhone: p.parentPhone ?? '',
+        parentEmail: p.parentEmail ?? '',
+        diagnosis: p.diagnosis ?? '',
+        medicalNotes: p.medicalNotes ?? '',
+        documents: p.documents ?? [],
+        goals: [],
+      };
       mockDb.insert('students', student as any);
       return student;
     },
@@ -1900,14 +1927,31 @@ export const MOCK_ROUTES: MockRoute[] = [
       const activeIups = iups.filter((i) => i.status === 'active').length;
       const readyForIup = students.filter((s) => !iups.some((i) => i.studentId === s.id)).length;
       const goalsAssigned = students.reduce((sum, s) => sum + (s.goals?.length ?? 0), 0);
+      const recentActivity = [
+        ...students
+          .filter((s) => assessments.some((a) => a.studentId === s.id && a.status === 'in_progress'))
+          .slice(0, 3)
+          .map((s) => `Assessment in progress - ${s.fullName}`),
+        ...iups
+          .filter((i) => i.status === 'active')
+          .slice(0, 3)
+          .map((i) => {
+            const student = students.find((s) => s.id === i.studentId);
+            return `IUP active - ${student?.fullName ?? 'Student'}`;
+          }),
+      ].slice(0, 5);
       return {
-        counts: {
-          inAssessment: Math.max(inAssessment, 1),
-          readyForIup: Math.max(readyForIup, 1),
-          activeIups: Math.max(activeIups, 1),
-          goalsAssigned: Math.max(goalsAssigned, 1),
-        },
-        pipeline: [],
+        unreadCount: mockDb.all('notifications').filter((n) => !n.read).length,
+        studentsInAssessment: Math.max(inAssessment, 1),
+        readyForIup: Math.max(readyForIup, 1),
+        activeIupPlans: Math.max(activeIups, 1),
+        goalsAssignedThisMonth: Math.max(goalsAssigned, 1),
+        pipeline: [
+          { name: 'In Assessment', count: inAssessment },
+          { name: 'Ready for IUP', count: readyForIup },
+          { name: 'Active IUP', count: activeIups },
+        ],
+        recentActivity,
       };
     },
   },
@@ -1983,10 +2027,33 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'GET',
     pattern: '/program-director/caseload/:studentId',
-    handler: (ctx) => ({
-      studentId: requiredParam(ctx, 'studentId'),
-      goals: mockDb.findById('students', requiredParam(ctx, 'studentId'))?.goals ?? [],
-    }),
+    handler: (ctx) => {
+      const sid = requiredParam(ctx, 'studentId');
+      const student = mockDb.findById('students', sid);
+      const assignments = mockDb.all('assignments');
+      const assignment = assignments.find((a) => a.studentIds.includes(sid));
+      const teacher = assignment ? mockDb.findById('users', assignment.teacherId) : null;
+      const teachers = mockDb.all('users').filter((u) => u.role === 'teacher');
+      return {
+        name: student?.fullName ?? 'Student',
+        primaryTeacher: teacher?.name ?? 'Unassigned',
+        program: `${student?.programType ?? 'ABA'} Program`,
+        goals: (student?.goals ?? []).map((g) => ({
+          id: g.id,
+          name: g.name,
+          station: assignment?.stationId ? `Station ${assignment.stationId}` : 'Station 1',
+          percent: g.progressPercent,
+          assignedBy: 'Program Director',
+        })),
+        caseloadBalance: teachers.map((t) => ({
+          teacherName: t.name,
+          studentCount: new Set(
+            assignments.filter((a) => a.teacherId === t.id).flatMap((a) => a.studentIds)
+          ).size,
+          capacity: 6,
+        })),
+      };
+    },
   },
   {
     method: 'GET',
@@ -2158,7 +2225,9 @@ export const MOCK_ROUTES: MockRoute[] = [
         const needle = search.toLowerCase();
         filtered = filtered.filter((r) => r.name.toLowerCase().includes(needle) || r.email.toLowerCase().includes(needle));
       }
-      if (status) filtered = filtered.filter((r) => (r.status === 'active') === (status === 'active'));
+      if (status && status.toLowerCase() !== 'all') {
+        filtered = filtered.filter((r) => (r.status === 'active') === (status.toLowerCase() === 'active'));
+      }
       return filtered.map(staffDisplayRow);
     },
   },
@@ -2166,23 +2235,36 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/sysadmin/staff',
     handler: (ctx) => {
+      const body = bodyAs<Partial<MockStaffMember> & { roles?: string[]; active?: boolean }>(ctx);
       const staff: MockStaffMember = {
         id: newId('stf'),
         name: '',
         email: '',
-        role: 'teacher',
-        status: 'active',
+        role: body.role ?? roleKeyFromLabel(body.roles?.[0]),
+        status: body.status ?? (body.active === false ? 'inactive' : 'active'),
         assignedStudents: [],
-        ...bodyAs<Partial<MockStaffMember>>(ctx),
       };
+      if (body.name !== undefined) staff.name = body.name;
+      if (body.email !== undefined) staff.email = body.email;
       mockDb.insert('staffMembers', staff);
-      return staff;
+      return staffDisplayRow(staff);
     },
   },
   {
     method: 'PATCH',
     pattern: '/sysadmin/staff/:id',
-    handler: (ctx) => mockDb.updateById('staffMembers', requiredParam(ctx, 'id'), bodyAs<Partial<MockStaffMember>>(ctx)),
+    handler: (ctx) => {
+      const id = requiredParam(ctx, 'id');
+      const body = bodyAs<Partial<MockStaffMember> & { roles?: string[]; active?: boolean }>(ctx);
+      const patch: Partial<MockStaffMember> = {
+        name: body.name,
+        email: body.email,
+        role: body.role ?? (body.roles ? roleKeyFromLabel(body.roles[0]) : undefined),
+        status: body.active !== undefined ? (body.active ? 'active' : 'inactive') : body.status,
+      };
+      const updated = mockDb.updateById('staffMembers', id, patch);
+      return updated ? staffDisplayRow(updated) : null;
+    },
   },
   {
     method: 'DELETE',
@@ -2317,12 +2399,29 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'GET',
     pattern: '/admin/trial-logging-config',
-    handler: () => ({ promptLevels: mockDb.all('promptLevels') }),
+    handler: () => {
+      const saved = mockDb.all('adminConfigs').find((c) => c.id === 'trialLogging');
+      if (saved) return saved.value;
+      return {
+        promptLevels: mockDb.all('promptLevels'),
+        trialStreamLayout: 'grid',
+        masteryCriteria: { percentage: 80, consecutiveSessions: 3 },
+      };
+    },
   },
   {
     method: 'POST',
     pattern: '/admin/trial-logging-config',
-    handler: (ctx) => ({ saved: bodyAs<any>(ctx) }),
+    handler: (ctx) => {
+      const value = bodyAs<Record<string, unknown>>(ctx);
+      const saved = mockDb.all('adminConfigs').find((c) => c.id === 'trialLogging');
+      if (saved) {
+        mockDb.updateById('adminConfigs', 'trialLogging', { value });
+      } else {
+        mockDb.insert('adminConfigs', { id: 'trialLogging', value });
+      }
+      return value;
+    },
   },
   {
     method: 'GET',
@@ -2417,7 +2516,16 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'POST',
     pattern: '/admin/goal-domains',
-    handler: (ctx) => { mockDb.insert('adminConfigs', { id: 'goalDomains', value: Array.isArray(bodyAs<any>(ctx)) ? bodyAs<any>(ctx) : [] }); return { saved: true }; },
+    handler: (ctx) => {
+      const value = Array.isArray(bodyAs<any>(ctx)) ? bodyAs<any>(ctx) : [];
+      const saved = mockDb.all('adminConfigs').find((c) => c.id === 'goalDomains');
+      if (saved) {
+        mockDb.updateById('adminConfigs', 'goalDomains', { value });
+      } else {
+        mockDb.insert('adminConfigs', { id: 'goalDomains', value });
+      }
+      return { saved: true };
+    },
   },
   {
     method: 'GET',
@@ -2627,7 +2735,7 @@ export const MOCK_ROUTES: MockRoute[] = [
       mockDb
         .all('students')
         .filter((s) => s.status !== 'paused')
-        .map((s) => ({ id: s.id, name: s.fullName, age: s.age })),
+        .map((s) => ({ id: s.id, name: s.fullName, age: ageOf(s) })),
   },
   {
     method: 'GET',
@@ -2804,6 +2912,12 @@ const ROLE_LABELS: Record<string, string> = {
   system_admin: 'System Admin',
 };
 
+function roleKeyFromLabel(label?: string): string {
+  if (!label) return 'teacher';
+  const key = Object.keys(ROLE_LABELS).find((k) => ROLE_LABELS[k] === label);
+  return key ?? 'teacher';
+}
+
 /** Upserts a named admin configuration blob and echoes it back. */
 function saveAdminConfig(id: string, ctx: MockHandlerContext) {
   const value = bodyAs<Record<string, unknown>>(ctx);
@@ -2869,8 +2983,16 @@ function updateClinicalCategory(category: string, transform: (list: ClinicalCate
   return next;
 }
 
-function staffDisplayRow(s: MockStaffMember) {
-  return {
+/** Age derived from dateOfBirth when the stored row has no numeric age. */
+function ageOf(s: { age?: number; dateOfBirth?: string }): number {
+  if (typeof s.age === 'number') return s.age;
+  if (!s.dateOfBirth) return 0;
+  const dob = new Date(s.dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return 0;
+  return Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000)));
+}
+
+function staffDisplayRow(s: MockStaffMember) {  return {
     id: s.id,
     name: s.name,
     email: s.email,
