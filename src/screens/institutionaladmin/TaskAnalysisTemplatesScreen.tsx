@@ -20,6 +20,7 @@ import {
   saveTaskAnalysisTemplate,
   deleteTaskAnalysisTemplate,
 } from '../../api/institutionalAdminApi';
+import { Payload } from '../../types';
 
 interface TaskAnalysisStep {
   id: string;

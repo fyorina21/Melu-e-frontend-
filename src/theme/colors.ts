@@ -1,7 +1,10 @@
 export const colors = {
   // Brand
   primaryYellow: '#F6C445', // main CTA buttons (Start Session, Sign In, active tab)
-  primaryYellowDark: '#E0AE2E', // pressed state
+  primaryYellowDark: '#E0AE2E', 
+  primaryBlue: '#2563EB',
+  purple: '#8B5CF6',
+  successGreen: '#22C55E',
   navyText: '#1A2233', // headings, nav text
   bodyText: '#4B5563', // secondary/body text
   mutedText: '#9CA3AF', // placeholders, timestamps
