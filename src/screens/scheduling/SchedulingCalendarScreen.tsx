@@ -19,6 +19,7 @@ import {
   markAppointmentStatus,
   markTeacherUnavailable,
 } from '../../api/sessionApi';
+import { getStudentOptions, getStaffOptions, getRoomOptions, type StudentOption, type StaffOption, type RoomOption } from '../../api/optionsApi';
 import {
   subscribe,
   getWeekData,
@@ -33,9 +34,12 @@ interface Option {
 }
 
 const THERAPIST_COLOR: Record<string, string> = {
-  't-a': '#93C5FD', // matches promptG blue used elsewhere for consistency
+  't-a': '#93C5FD',
   't-b': '#FCD34D',
   't-c': '#86EFAC',
+  'staff-1': '#93C5FD',
+  'staff-3': '#FCD34D',
+  'staff-4': '#86EFAC',
 };
 
 function AppointmentChip({ appt, onPress }: { appt: Appointment; onPress: (appt: Appointment) => void }) {
@@ -59,11 +63,20 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'SchedulingCalendar'>
 export default function SchedulingCalendarScreen({ navigation }: Props) {
   const { logout } = useAuth();
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [weekData, setWeekData] = useState<Record<number, Appointment[]> | null>(null); // { [dayIndex]: appt[] }
+  const [weekData, setWeekData] = useState<Record<number, Appointment[]> | null>(null);
   const [therapistFilter, setTherapistFilter] = useState('all');
   const [formVisible, setFormVisible] = useState(false);
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
   const [unavailableVisible, setUnavailableVisible] = useState(false);
+  const [studentOpts, setStudentOpts] = useState<StudentOption[]>([]);
+  const [staffOpts, setStaffOpts] = useState<StaffOption[]>([]);
+  const [roomOpts, setRoomOpts] = useState<RoomOption[]>([]);
+
+  useEffect(() => {
+    Promise.all([getStudentOptions(), getStaffOptions(), getRoomOptions()])
+      .then(([s, st, r]) => { setStudentOpts(s.data); setStaffOpts(st.data); setRoomOpts(r.data); })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -187,7 +200,7 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
     setUnavailableVisible(false);
     Alert.alert(
       'Marked Unavailable',
-      `${THERAPIST_OPTIONS.find((t) => t.id === therapistId)?.name ?? therapistId} is unavailable on ${payload.date}.`,
+      `${staffOpts.find((t) => t.id === therapistId)?.name ?? therapistId} is unavailable on ${payload.date}.`,
       [{ text: 'OK' }]
     );
   };
@@ -224,7 +237,7 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
           >
             <Text style={typography.body}>All Therapists</Text>
           </TouchableOpacity>
-          {THERAPIST_OPTIONS.map((t) => (
+          {staffOpts.map((t) => (
             <TouchableOpacity
               key={t.id}
               style={[styles.filterChip, therapistFilter === t.id && styles.filterChipActive]}
@@ -262,9 +275,9 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
         visible={formVisible}
         appointment={editingAppt}
         defaultDate={`2026-08-${10 + selectedDayIndex}`}
-        therapistOptions={THERAPIST_OPTIONS}
-        studentOptions={STUDENT_OPTIONS}
-        roomOptions={ROOM_OPTIONS}
+        therapistOptions={staffOpts.length > 0 ? staffOpts : [{ id: 't-a', name: 'Teacher A' }, { id: 't-b', name: 'Teacher B' }, { id: 't-c', name: 'Teacher C' }]}
+        studentOptions={studentOpts.length > 0 ? studentOpts : [{ id: 'student-a', name: 'Student A' }, { id: 'student-b', name: 'Student B' }, { id: 'student-c', name: 'Student C' }]}
+        roomOptions={roomOpts.length > 0 ? roomOpts : [{ id: 'room-1', name: 'Room 1' }, { id: 'room-2', name: 'Room 2' }, { id: 'room-3', name: 'Room 3' }]}
         onClose={() => setFormVisible(false)}
         onSave={handleSave}
         onCancelAppointment={handleCancelAppointment}
@@ -273,7 +286,7 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
 
       <MarkUnavailableModal
         visible={unavailableVisible}
-        therapistOptions={THERAPIST_OPTIONS}
+        therapistOptions={staffOpts.length > 0 ? staffOpts : [{ id: 't-a', name: 'Teacher A' }, { id: 't-b', name: 'Teacher B' }, { id: 't-c', name: 'Teacher C' }]}
         defaultDate={`2026-08-${10 + selectedDayIndex}`}
         onClose={() => setUnavailableVisible(false)}
         onSubmit={handleUnavailableSubmit}
@@ -281,22 +294,6 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const THERAPIST_OPTIONS: Option[] = [
-  { id: 't-a', name: 'Teacher A' },
-  { id: 't-b', name: 'Teacher B' },
-  { id: 't-c', name: 'Teacher C' },
-];
-const STUDENT_OPTIONS: Option[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
-  { id: 'student-c', name: 'Student C' },
-];
-const ROOM_OPTIONS: Option[] = [
-  { id: 'room-1', name: 'Room 1' },
-  { id: 'room-2', name: 'Room 2' },
-  { id: 'room-3', name: 'Room 3' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

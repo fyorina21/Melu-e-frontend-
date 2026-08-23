@@ -9,17 +9,13 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStudentCaseload } from '../../api/programDirectorApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
-interface StudentOption {
-  id: string;
-  name: string;
-}
-
-const STUDENT_OPTIONS: StudentOption[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
-  { id: 'student-c', name: 'Student C' },
+const FALLBACK_STUDENTS: StudentOption[] = [
+  { id: 'student-a', name: 'Aiden Rivera', age: 8 },
+  { id: 'student-b', name: 'Maya Chen', age: 7 },
+  { id: 'student-c', name: 'Liam Okafor', age: 8 },
 ];
 
 interface CaseloadGoal {
@@ -47,6 +43,18 @@ interface StudentCaseloadData {
 export default function StudentCaseloadScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentCaseload'>) {
   const [selectedStudentId, setSelectedStudentId] = useState('student-a');
   const [data, setData] = useState<StudentCaseloadData | null>(null);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+
+  useEffect(() => {
+    getStudentOptions()
+      .then(({ data: opts }) => {
+        setStudentOptions(opts);
+        if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
+          setSelectedStudentId(opts[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -69,7 +77,7 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
       </View>
 
       <View style={styles.selectorRow}>
-        {STUDENT_OPTIONS.map((s) => (
+        {(studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).map((s) => (
           <TouchableOpacity key={s.id} style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]} onPress={() => setSelectedStudentId(s.id)}>
             <Text style={[typography.bodyBold, selectedStudentId === s.id && { color: colors.navyText }]}>{s.name}</Text>
           </TouchableOpacity>

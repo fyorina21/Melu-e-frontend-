@@ -74,6 +74,13 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Enrollment" onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)} />
 
+      <View style={styles.backRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+          <Feather name="arrow-left" size={16} color="#334155" />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.header}>
         <View style={styles.avatar}><Text style={styles.avatarText}>{profile.name.charAt(0)}</Text></View>
         <View style={{ flex: 1 }}>
@@ -182,6 +189,8 @@ const DEMO_PROFILE: StudentProfileData = {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
+  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.promptG, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.white, fontWeight: '700', fontSize: 20 },

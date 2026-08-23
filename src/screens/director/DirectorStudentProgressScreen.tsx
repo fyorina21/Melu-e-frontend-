@@ -20,19 +20,13 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { getDirectorStudentProgress } from '../../api/directorApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
-interface StudentOption {
-  id: string;
-  name: string;
-  initial: string;
-}
-
-const STUDENT_OPTIONS: StudentOption[] = [
-  { id: 's1', name: 'Student A', initial: 'A' },
-  { id: 's2', name: 'Student B', initial: 'B' },
-  { id: 's3', name: 'Student C', initial: 'C' },
-  { id: 's4', name: 'Student D', initial: 'D' },
+const FALLBACK_STUDENTS: StudentOption[] = [
+  { id: 'student-a', name: 'Aiden Rivera', age: 8 },
+  { id: 'student-b', name: 'Maya Chen', age: 7 },
+  { id: 'student-c', name: 'Liam Okafor', age: 8 },
 ];
 
 interface DirectorGoal {
@@ -126,6 +120,18 @@ export default function DirectorStudentProgressScreen({
   const [noteText, setNoteText] = useState('');
   const [modalSession, setModalSession] = useState<SessionHistoryEntry | null>(null);
   const [exportContent, setExportContent] = useState<string | null>(null);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+
+  useEffect(() => {
+    getStudentOptions()
+      .then(({ data: opts }) => {
+        setStudentOptions(opts);
+        if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
+          setSelectedStudentId(opts[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -189,15 +195,9 @@ export default function DirectorStudentProgressScreen({
       </View>
 
       <View style={styles.selectorRow}>
-        {STUDENT_OPTIONS.map((s) => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]}
-            onPress={() => setSelectedStudentId(s.id)}
-          >
-            <Text style={[typography.bodyBold, selectedStudentId === s.id && { color: colors.navyText }]}>
-              {s.name}
-            </Text>
+        {(studentOptions.length > 0 ? studentOptions : FALLBACK_STUDENTS).map((s) => (
+          <TouchableOpacity key={s.id} style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]} onPress={() => setSelectedStudentId(s.id)}>
+            <Text style={[typography.bodyBold, selectedStudentId === s.id && { color: colors.navyText }]}>{s.name}</Text>
           </TouchableOpacity>
         ))}
       </View>

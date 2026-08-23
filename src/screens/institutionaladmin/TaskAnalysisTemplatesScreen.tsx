@@ -15,6 +15,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../../types';
+import type { Payload } from '../../types';
 import {
   getTaskAnalysisTemplates,
   saveTaskAnalysisTemplate,
@@ -177,7 +178,7 @@ export default function TaskAnalysisTemplatesScreen({
     };
 
     try {
-      await updateTemplate(payload.id, payload as unknown as Payload);
+      await saveTaskAnalysisTemplate(editingTemplateId, payload as unknown as Payload);
       setTemplates((prev) =>
         editingTemplateId
           ? prev.map((t) => (t.id === editingTemplateId ? payload : t))

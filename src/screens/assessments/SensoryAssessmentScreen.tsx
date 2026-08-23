@@ -122,6 +122,13 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
+      <View style={styles.backRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+          <Feather name="arrow-left" size={16} color="#334155" />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView contentContainerStyle={styles.content} nestedScrollEnabled>
         {/* Top Header Card */}
         <View style={styles.topCard}>
@@ -406,6 +413,8 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 8 },
+  backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
   content: { padding: 24, gap: 16 },
 
   // Top Card

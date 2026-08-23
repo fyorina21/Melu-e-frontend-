@@ -15,6 +15,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { savePreferenceAssessment } from '../../api/teacherExtrasApi';
+import { openPrintWindow } from '../../utils/webExport';
+import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
 
 interface StimulusItem {
@@ -49,6 +51,7 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'PreferenceAssessment
 
 export default function PreferenceAssessmentScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'Sensory Time' | 'Circle Time' | 'Play Time'>('Sensory Time');
   const [items, setItems] = useState<StimulusItem[]>(INITIAL_ITEMS);
 
@@ -97,6 +100,59 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i)));
   };
 
+  const handleExport = () => {
+    const title = 'Preference Assessment Report';
+    const formattedHtml = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: sans-serif; padding: 30px; color: #1e293b; line-height: 1.6; }
+            h1 { font-size: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; }
+            .meta { margin-bottom: 30px; font-size: 14px; color: #64748b; }
+            .section-title { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #facc15; padding-left: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 13px; }
+            th { background-color: #f8fafc; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <h1>Preference Assessment Report</h1>
+          <div class="meta">
+            <strong>Student ID:</strong> ${studentId} &middot; 
+            <strong>Assessment Window:</strong> ${activeTab} &middot; 
+            <strong>Date:</strong> ${new Date().toLocaleDateString()}
+          </div>
+
+          <div class="section-title">Tested Stimulus Items</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th>Frequency of Choice</th>
+                <th>Total Interaction Duration</th>
+                <th>Observations / Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((i) => `
+                <tr>
+                  <td><strong>${i.name}</strong></td>
+                  <td>${i.category}</td>
+                  <td>${i.frequency} times</td>
+                  <td>${formatMMSS(i.durationSeconds)}</td>
+                  <td>${i.notes || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    openPrintWindow(formattedHtml, title);
+  };
+
   const handleOpenModal = () => {
     setNewItemName('');
     setNewItemCategory('Visual');
@@ -128,15 +184,22 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   const handleSave = async (status: 'draft' | 'submitted') => {
     try {
       await savePreferenceAssessment(studentId, { items, sessionTab: activeTab, status });
-      Alert.alert(status === 'submitted' ? 'Submitted' : 'Saved', 'Assessment updated.');
+      showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
     } catch {
-      Alert.alert('Error', 'Failed to save assessment data.');
+      showToast('Failed to save assessment data', 'error');
     }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+
+      <View style={styles.backRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+          <Feather name="arrow-left" size={16} color="#334155" />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.topHeader}>
         <View>
@@ -232,19 +295,20 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
           <Feather name="plus" size={16} color="#64748B" />
           <Text style={styles.addCustomText}>Add Custom Item</Text>
         </TouchableOpacity>
-
-        <View style={styles.footerRow}>
-          <TouchableOpacity style={styles.draftBtn} onPress={() => handleSave('draft')}>
-            <Text style={styles.draftBtnText}>Save Draft</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.submitBtn} onPress={() => handleSave('submitted')}>
-            <Text style={styles.submitBtnText}>Submit Assessment</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.printBtn}>
-            <Text style={styles.printBtnText}>Print / Export</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      {/* Footer action bar — outside ScrollView so always tappable */}
+      <View style={styles.footerRow}>
+        <TouchableOpacity style={styles.draftBtn} onPress={() => handleSave('draft')}>
+          <Text style={styles.draftBtnText}>Save Draft</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.submitBtn} onPress={() => handleSave('submitted')}>
+          <Text style={styles.submitBtnText}>Submit Assessment</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.printBtn} onPress={handleExport}>
+          <Text style={styles.printBtnText}>Print / Export</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Modal Popup */}
       <Modal visible={isModalVisible} transparent animationType="fade">
@@ -333,6 +397,8 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 8 },
+  backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
   topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
   headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },

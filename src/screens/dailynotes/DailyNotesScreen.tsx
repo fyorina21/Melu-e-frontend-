@@ -75,9 +75,10 @@ export default function DailyNotesScreen({ navigation }: Props) {
       setStats(notesRes.data.stats);
       setSummary(summaryRes.data);
     } catch {
-      setRecords(DEMO_RECORDS);
-      setStats(DEMO_STATS);
-      setSummary(DEMO_WEEKLY_SUMMARY);
+      // API error — show empty state
+      setRecords([]);
+      setStats({ sessionsCompleted: 0, totalTrials: 0, avgIndependence: 0, reviewsPending: 0 });
+      setSummary(null);
     }
   }, []);
 
@@ -371,24 +372,40 @@ export default function DailyNotesScreen({ navigation }: Props) {
             </View>
 
             {/* Summary Status Badges */}
-            <View style={styles.statusBadgesRow}>
-              <View style={styles.badgeApproved}>
-                <Feather name="check-circle" size={12} color="#166534" />
-                <Text style={styles.badgeApprovedText}>1 Approved</Text>
-              </View>
-              <View style={styles.badgePending}>
-                <Feather name="clock" size={12} color="#854D0E" />
-                <Text style={styles.badgePendingText}>0 Pending</Text>
-              </View>
-              <View style={styles.badgeRevision}>
-                <Feather name="alert-circle" size={12} color="#991B1B" />
-                <Text style={styles.badgeRevisionText}>0 Revision Required</Text>
-              </View>
-              <View style={styles.badgeDraft}>
-                <Feather name="file-text" size={12} color="#334155" />
-                <Text style={styles.badgeDraftText}>0 Draft</Text>
-              </View>
-            </View>
+            {(() => {
+              const approved = records.filter((r) => r.status === 'Approved').length;
+              const pending = records.filter((r) => r.status === 'Pending').length;
+              const revision = records.filter((r) => r.status === 'Revision Required').length;
+              const draft = records.filter((r) => r.status === 'Draft').length;
+              return (
+                <View style={styles.statusBadgesRow}>
+                  {approved > 0 && (
+                    <View style={styles.badgeApproved}>
+                      <Feather name="check-circle" size={12} color="#166534" />
+                      <Text style={styles.badgeApprovedText}>{approved} Approved</Text>
+                    </View>
+                  )}
+                  {pending > 0 && (
+                    <View style={styles.badgePending}>
+                      <Feather name="clock" size={12} color="#854D0E" />
+                      <Text style={styles.badgePendingText}>{pending} Pending</Text>
+                    </View>
+                  )}
+                  {revision > 0 && (
+                    <View style={styles.badgeRevision}>
+                      <Feather name="alert-circle" size={12} color="#991B1B" />
+                      <Text style={styles.badgeRevisionText}>{revision} Revision Required</Text>
+                    </View>
+                  )}
+                  {draft > 0 && (
+                    <View style={styles.badgeDraft}>
+                      <Feather name="file-text" size={12} color="#334155" />
+                      <Text style={styles.badgeDraftText}>{draft} Draft</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
           </View>
         )}
       </ScrollView>
@@ -435,39 +452,6 @@ export default function DailyNotesScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_STATS: DailyNotesStats = {
-  sessionsCompleted: 6,
-  totalTrials: 124,
-  avgIndependence: 68,
-  reviewsPending: 1,
-};
-
-const DEMO_RECORDS: NoteRecord[] = [
-  {
-    id: '1',
-    date: 'Aug 3, 2026',
-    students: ['Student A', 'Student B'],
-    station: 'Station 1',
-    room: 'Room 2',
-    status: 'Approved',
-  },
-  {
-    id: '2',
-    date: 'Aug 2, 2026',
-    students: ['Student A', 'Student B'],
-    station: 'Station 1',
-    room: 'Room 2',
-    status: 'Pending',
-  },
-];
-
-const DEMO_WEEKLY_SUMMARY: WeeklySummaryData = {
-  weekRange: 'Jul 28 – Aug 4, 2026',
-  sessionsThisWeek: 1,
-  totalTrialsThisWeek: 24,
-  avgIndependenceThisWeek: 72,
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },

@@ -19,7 +19,22 @@ export function downloadBlob(filename: string, content: string | Blob, mime = 't
 }
 
 export function downloadTextFile(filename: string, text: string): boolean {
-  const ok = downloadBlob(filename, text, 'text/html;charset=utf-8');
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.html')) {
+    // Instead of downloading HTML files, trigger print-to-PDF immediately
+    const title = filename.replace('.html', '').replace(/_/g, ' ');
+    return openPrintWindow(text, title);
+  }
+  
+  let mime = 'text/plain;charset=utf-8';
+  if (lower.endsWith('.csv')) {
+    mime = 'text/csv;charset=utf-8';
+  } else if (lower.endsWith('.json')) {
+    mime = 'application/json;charset=utf-8';
+  } else if (lower.endsWith('.pdf')) {
+    mime = 'application/pdf';
+  }
+  const ok = downloadBlob(filename, text, mime);
   return ok;
 }
 

@@ -75,4 +75,9 @@ export const authApi = {
   async restore(): Promise<string | null> {
     return loadToken();
   },
+
+  async me(): Promise<{ id: string; name: string; email: string; role: string }> {
+    const { data } = await http.get('/auth/me');
+    return data;
+  },
 };
