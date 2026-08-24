@@ -1,321 +1,608 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Modal,
+  FlatList,
+} from 'react-native';
+import {
+  X,
+  Search,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  FileText,
+  Users,
+} from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
+import { useToast } from '../../context/ToastContext';
 import AppNavbar from '../../components/AppNavbar';
-import { downloadTextFile } from '../../utils/webExport';
-import { getPendingSummaries, approveSummary, requestSummaryChanges, bulkApproveSummaries } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
-interface PendingSummary {
+type SummaryStatus = 'pending' | 'revision-required' | 'approved';
+
+interface Summary {
   id: string;
-  teacherName: string;
-  studentNames: string[];
-  stationName: string;
+  teacher: string;
+  station: string;
+  room: string;
   date: string;
-  bodyPreview: string;
+  students: string[];
+  trials: number;
+  independence: number;
+  incidents: number;
+  status: SummaryStatus;
+  notes: string;
 }
 
-const SECTION_OPTIONS = ['Session Notes', 'Trial Data', 'Behavior', 'Attendance'];
-const STATION_FILTERS = ['All', 'Station 1', 'Station 2'];
-const DATE_FILTERS = ['All', 'This Week', 'This Month'];
+const INITIAL_SUMMARIES: Summary[] = [
+  { id: '1', teacher: 'Teacher A', station: 'Station 1', room: 'Room 2', date: '2026-08-04', students: ['Student A', 'Student B'], trials: 24, independence: 72, incidents: 0, status: 'pending', notes: 'Good session today. Student A showed improvement on color identification.' },
+  { id: '2', teacher: 'Teacher B', station: 'Station 1', room: 'Room 1', date: '2026-08-04', students: ['Student C', 'Student D'], trials: 18, independence: 65, incidents: 1, status: 'pending', notes: 'Student C had a behavior incident during transition. Managed with redirection.' },
+  { id: '3', teacher: 'Teacher C', station: 'Station 2', room: 'Room 2', date: '2026-08-03', students: ['Student A', 'Student C'], trials: 20, independence: 68, incidents: 0, status: 'revision-required', notes: 'Session went smoothly.' },
+  { id: '4', teacher: 'Teacher A', station: 'Station 2', room: 'Room 1', date: '2026-08-03', students: ['Student B', 'Student D'], trials: 22, independence: 70, incidents: 0, status: 'pending', notes: 'Both students engaged well throughout.' },
+  { id: '5', teacher: 'Teacher B', station: 'Station 1', room: 'Room 3', date: '2026-08-02', students: ['Student A', 'Student B'], trials: 16, independence: 58, incidents: 2, status: 'pending', notes: 'Challenging session. Two incidents recorded.' },
+];
 
-const filterByDate = (dateStr: string, filter: string) => {
-  if (filter === 'All') return true;
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return true;
-  const now = new Date();
-  if (filter === 'This Week') {
-    const day = now.getDay();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-    weekStart.setHours(0, 0, 0, 0);
-    return d >= weekStart;
-  }
-  if (filter === 'This Month') {
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }
-  return true;
+const STATUS_CONFIG: Record<SummaryStatus, { label: string; bg: string; text: string; border: string; icon: typeof Clock }> = {
+  pending: { label: 'Pending', bg: 'rgba(252,211,77,0.12)', text: '#FCD34D', border: 'rgba(252,211,77,0.35)', icon: Clock },
+  'revision-required': { label: 'Revision Required', bg: 'rgba(248,113,113,0.12)', text: '#F87171', border: 'rgba(248,113,113,0.35)', icon: AlertCircle },
+  approved: { label: 'Approved', bg: 'rgba(74,222,128,0.12)', text: '#4ADE80', border: 'rgba(74,222,128,0.35)', icon: CheckCircle },
 };
 
-function ReviewModal({ visible, summary, onClose, onApprove, onRequestChanges, onExportPdf, onViewProgress }: {
-  visible: boolean;
-  summary: PendingSummary | null;
-  onClose: () => void;
-  onApprove: (id: string, notes: string) => void;
-  onRequestChanges: (id: string, reason: string, sections: string[], notes: string) => void;
-  onExportPdf: (summary: PendingSummary, notes: string) => void;
-  onViewProgress: (summary: PendingSummary) => void;
-}) {
-  const [notes, setNotes] = useState('');
-  const [changeReason, setChangeReason] = useState('');
-  const [sections, setSections] = useState<string[]>([]);
-  if (!summary) return null;
+const SECTIONS = ['Notes', 'Trial Data', 'Incident Report', 'General'];
 
-  const toggleSection = (s: string) =>
-    setSections((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+const DARK = '#1F2937';
+const PANEL = '#111827';
+const ROW_BG = '#1a2332';
+const SKY = '#38BDF8';
+const AMBER = '#FCD34D';
 
+function StatusBadge({ status }: { status: SummaryStatus }) {
+  const sc = STATUS_CONFIG[status];
+  const Icon = sc.icon;
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{summary.studentNames.join(', ')}</Text>
-          <Text style={typography.caption}>{summary.teacherName} · {summary.stationName} · {summary.date}</Text>
-          <ScrollView style={{ maxHeight: 200 }}>
-            <Text style={typography.body}>{summary.bodyPreview}</Text>
-          </ScrollView>
-          <View style={styles.field}>
-            <Text style={typography.label}>Coordinator Notes (internal only)</Text>
-            <TextInput style={styles.textArea} multiline value={notes} onChangeText={setNotes} placeholderTextColor={colors.mutedText} placeholder="Internal notes..." />
-          </View>
-          <View style={styles.field}>
-            <Text style={typography.label}>Sections to revise (required if requesting changes)</Text>
-            <View style={styles.chipRow}>
-              {SECTION_OPTIONS.map((s) => (
-                <TouchableOpacity key={s} style={[styles.chip, sections.includes(s) && styles.chipActive]} onPress={() => toggleSection(s)}>
-                  <Text style={[styles.chipText, sections.includes(s) && styles.chipTextActive]}>{s}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <View style={styles.field}>
-            <Text style={typography.label}>Reason (required if requesting changes)</Text>
-            <TextInput style={styles.textInput} value={changeReason} onChangeText={setChangeReason} placeholderTextColor={colors.mutedText} placeholder="What needs to change..." />
-          </View>
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={styles.requestChangesBtn}
-              onPress={() => {
-                if (!changeReason.trim()) { Alert.alert('Reason required'); return; }
-                if (sections.length === 0) { Alert.alert('Select sections'); return; }
-                onRequestChanges(summary.id, changeReason, sections, notes);
-              }}
-            >
-              <Text style={styles.requestChangesBtnText}>Request Changes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.approveBtn} onPress={() => onApprove(summary.id, notes)}>
-              <Text style={styles.approveBtnText}>Approve</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => onExportPdf(summary, notes)}>
-              <Feather name="download" size={13} color={colors.navyText} />
-              <Text style={styles.secondaryBtnText}>Export PDF</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => onViewProgress(summary)}>
-              <Feather name="trending-up" size={13} color={colors.navyText} />
-              <Text style={styles.secondaryBtnText}>View Student Progress</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <View style={[styles.statusBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
+      <Icon size={12} color={sc.text} />
+      <Text style={[styles.statusBadgeText, { color: sc.text }]}>{sc.label}</Text>
+    </View>
+  );
+}
+
+function FilterSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <View style={styles.filterRow}>
+      {options.map((opt) => (
+        <TouchableOpacity
+          key={opt}
+          style={[styles.filterChip, value === opt && styles.filterChipActive]}
+          onPress={() => onChange(opt)}
+        >
+          <Text style={[styles.filterChipText, value === opt && styles.filterChipTextActive]}>{opt}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
   );
 }
 
 export default function SessionSummaryReviewScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'SessionSummaryReview'>) {
-  const [pending, setPending] = useState<PendingSummary[]>([]);
+  const { showToast } = useToast();
+  const [summaries, setSummaries] = useState<Summary[]>(INITIAL_SUMMARIES);
   const [search, setSearch] = useState('');
-  const [stationFilter, setStationFilter] = useState('All');
-  const [dateFilter, setDateFilter] = useState('All');
+  const [teacherFilter, setTeacherFilter] = useState('all');
+  const [studentFilter, setStudentFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [reviewTarget, setReviewTarget] = useState<PendingSummary | null>(null);
+  const [selectedSummary, setSelectedSummary] = useState<Summary | null>(null);
+  const [coordinatorNotes, setCoordinatorNotes] = useState('');
+  const [requestReason, setRequestReason] = useState('');
+  const [requestSection, setRequestSection] = useState('Notes');
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const { data } = await getPendingSummaries({ search });
-      setPending(data);
-    } catch (err) {
-      setPending(DEMO_PENDING);
+  const allStudents = Array.from(new Set(summaries.flatMap((s) => s.students))).sort();
+  const allTeachers = Array.from(new Set(summaries.map((s) => s.teacher))).sort();
+
+  const filtered = summaries.filter((s) => {
+    const matchSearch =
+      search === '' ||
+      s.teacher.toLowerCase().includes(search.toLowerCase()) ||
+      s.students.some((st) => st.toLowerCase().includes(search.toLowerCase()));
+    const matchTeacher = teacherFilter === 'all' || s.teacher === teacherFilter;
+    const matchStudent = studentFilter === 'all' || s.students.includes(studentFilter);
+    const matchStatus = statusFilter === 'all' || s.status === statusFilter;
+    return matchSearch && matchTeacher && matchStudent && matchStatus;
+  });
+
+  const pendingCount = summaries.filter((s) => s.status === 'pending' || s.status === 'revision-required').length;
+
+  const toggleSelectAll = () => {
+    const filteredIds = filtered.map((s) => s.id);
+    if (selectedIds.length === filteredIds.length && filteredIds.every((id) => selectedIds.includes(id))) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredIds);
     }
-  }, [search]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const visiblePending = pending.filter(
-    (s) => (stationFilter === 'All' || s.stationName === stationFilter) && filterByDate(s.date, dateFilter)
-  );
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const handleApprove = async (id: string, notes: string) => {
-    try {
-      await approveSummary(id, { notes });
-    } catch (err) {}
-    setPending((prev) => prev.filter((s) => s.id !== id));
-    setReviewTarget(null);
-    Alert.alert('Approved', "Moved to student's permanent record.");
+  const approveSelected = () => {
+    setSummaries((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'approved' } : s)));
+    showToast(`${selectedIds.length} session${selectedIds.length > 1 ? 's' : ''} approved`);
+    setSelectedIds([]);
+    setShowBulkConfirm(false);
   };
 
-  const handleRequestChanges = async (id: string, reason: string, sections: string[], notes: string) => {
-    try {
-      await requestSummaryChanges(id, { reason, sections, notes });
-    } catch (err) {}
-    setPending((prev) => prev.filter((s) => s.id !== id));
-    setReviewTarget(null);
-    Alert.alert('Sent back for revision', `Teacher will be notified. Sections: ${sections.join(', ')}`);
+  const approveSingle = (summary: Summary) => {
+    setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'approved' } : s)));
+    showToast(`Session by ${summary.teacher} approved`);
+    setSelectedSummary(null);
+    setCoordinatorNotes('');
+    setShowRequestForm(false);
   };
 
-  const handleExportPdf = (summary: PendingSummary, notes: string) => {
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = [
-      '<h1>Melu\'e Foundation</h1>',
-      '<h2>Session Summary Review</h2>',
-      `<p><strong>Students:</strong> ${esc(summary.studentNames.join(', '))}</p>`,
-      `<p><strong>Teacher:</strong> ${esc(summary.teacherName)} · <strong>Station:</strong> ${esc(summary.stationName)} · <strong>Date:</strong> ${esc(summary.date)}</p>`,
-      '<h3>Summary</h3>',
-      `<p>${esc(summary.bodyPreview)}</p>`,
-      '<h3>Coordinator Notes (internal)</h3>',
-      `<p>${esc(notes || '(none)')}</p>`,
-    ].join('');
-    downloadTextFile(`SessionReview_${summary.id}.html`, html);
+  const handleRequestChanges = (summary: Summary) => {
+    if (!requestReason.trim()) {
+      showToast('Please provide a reason for requesting changes', 'error');
+      return;
+    }
+    setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'revision-required' } : s)));
+    showToast(`Changes requested for ${summary.teacher}'s session`, 'info');
+    setSelectedSummary(null);
+    setRequestReason('');
+    setRequestSection('Notes');
+    setShowRequestForm(false);
+    setCoordinatorNotes('');
   };
 
-  const handleViewProgress = (summary: PendingSummary) => {
-    setReviewTarget(null);
-    navigation?.navigate?.('CoordinatorStudentProgress');
+  const openReview = (summary: Summary) => {
+    setSelectedSummary(summary);
+    setShowRequestForm(false);
+    setCoordinatorNotes('');
+    setRequestReason('');
   };
 
-  const handleBulkApprove = async () => {
-    if (selectedIds.length === 0) return;
-    Alert.alert('Bulk Approve', `Approve ${selectedIds.length} summaries?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Approve All',
-        onPress: async () => {
-          try {
-            await bulkApproveSummaries(selectedIds);
-          } catch (err) {}
-          setPending((prev) => prev.filter((s) => !selectedIds.includes(s.id)));
-          setSelectedIds([]);
-        },
-      },
-    ]);
+  const closeModal = () => {
+    setSelectedSummary(null);
+    setShowRequestForm(false);
+    setCoordinatorNotes('');
+    setRequestReason('');
+  };
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selectedIds.includes(s.id));
+
+  const independenceColor = (v: number) => (v >= 70 ? '#4ADE80' : v >= 60 ? AMBER : '#F87171');
+
+  const handleTabPress = (tab: string) => {
+    const routeByTab: Record<string, keyof CoordinatorStackParamList> = {
+      Dashboard: 'CoordinatorDashboard',
+      Review: 'SessionSummaryReview',
+      Schedule: 'CoordinatorSchedule',
+      Parents: 'CoordinatorParentCommunication',
+    };
+    const route = routeByTab[tab];
+    if (route) navigation?.navigate?.(route as never);
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Review" onTabPress={(t) => t !== 'Review' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Review" onTabPress={handleTabPress} />
 
       <View style={styles.header}>
-        <Text style={typography.h1}>Session Summary Review</Text>
-        {selectedIds.length > 0 && (
-          <TouchableOpacity style={styles.bulkBtn} onPress={handleBulkApprove}>
-            <Text style={styles.bulkBtnText}>Approve {selectedIds.length} Selected</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.searchRow}>
-        <TextInput style={styles.searchInput} placeholder="Search student, teacher, station..." placeholderTextColor={colors.mutedText} value={search} onChangeText={setSearch} />
-      </View>
-      <View style={styles.filterRow}>
-        <View style={styles.chipRow}>
-          <Text style={[typography.label, styles.filterLabel]}>Station</Text>
-          {STATION_FILTERS.map((f) => (
-            <TouchableOpacity key={f} style={[styles.chip, stationFilter === f && styles.chipActive]} onPress={() => setStationFilter(f)}>
-              <Text style={[styles.chipText, stationFilter === f && styles.chipTextActive]}>{f}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={styles.headerIconWrap}>
+          <FileText size={20} color={AMBER} />
         </View>
-        <View style={styles.chipRow}>
-          <Text style={[typography.label, styles.filterLabel]}>Date</Text>
-          {DATE_FILTERS.map((f) => (
-            <TouchableOpacity key={f} style={[styles.chip, dateFilter === f && styles.chipActive]} onPress={() => setDateFilter(f)}>
-              <Text style={[styles.chipText, dateFilter === f && styles.chipTextActive]}>{f}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Session Summary Review</Text>
+          <Text style={styles.headerSubtitle}>Therapy Coordinator · Review submitted summaries</Text>
         </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {visiblePending.map((s) => (
-          <View key={s.id} style={styles.row}>
-            <TouchableOpacity onPress={() => toggleSelect(s.id)} style={styles.checkbox}>
-              <View style={[styles.checkboxInner, selectedIds.includes(s.id) && styles.checkboxChecked]} />
-            </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 1 }} onPress={() => setReviewTarget(s)}>
-              <Text style={typography.bodyBold}>{s.studentNames.join(', ')}</Text>
-              <Text style={typography.caption}>{s.teacherName} · {s.stationName} · {s.date}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setReviewTarget(s)}>
-              <Text style={styles.linkText}>Review →</Text>
-            </TouchableOpacity>
+        {pendingCount > 0 && (
+          <View style={styles.pendingPill}>
+            <Clock size={14} color={AMBER} />
+            <Text style={styles.pendingPillText}>{pendingCount}</Text>
           </View>
-        ))}
-        {visiblePending.length === 0 && (
-          <Text style={[typography.body, { textAlign: 'center', color: colors.mutedText }]}>Nothing pending review.</Text>
         )}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.searchWrap}>
+          <Search size={16} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search teacher or student..."
+            placeholderTextColor="#6B7280"
+          />
+        </View>
+
+        <Text style={styles.filterLabel}>Student</Text>
+        <FilterSelect value={studentFilter} options={['all', ...allStudents]} onChange={setStudentFilter} />
+        <Text style={styles.filterLabel}>Teacher</Text>
+        <FilterSelect value={teacherFilter} options={['all', ...allTeachers]} onChange={setTeacherFilter} />
+        <Text style={styles.filterLabel}>Status</Text>
+        <FilterSelect
+          value={statusFilter}
+          options={['all', 'pending', 'revision-required', 'approved']}
+          onChange={setStatusFilter}
+        />
+
+        <View style={styles.bulkRow}>
+          <TouchableOpacity style={styles.checkbox} onPress={toggleSelectAll}>
+            <View style={[styles.checkboxBox, allFilteredSelected && styles.checkboxChecked]}>
+              {allFilteredSelected && <CheckCircle size={14} color={DARK} />}
+            </View>
+            <Text style={styles.bulkLabel}>
+              {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select all'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bulkApproveBtn, selectedIds.length === 0 && { opacity: 0.3 }]}
+            disabled={selectedIds.length === 0}
+            onPress={() => setShowBulkConfirm(true)}
+          >
+            <Text style={styles.bulkApproveText}>Bulk Approve ({selectedIds.length})</Text>
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>No summaries match the current filters.</Text>}
+          renderItem={({ item }) => {
+            const selected = selectedIds.includes(item.id);
+            return (
+              <View style={[styles.summaryCard, selected && styles.summaryCardSelected]}>
+                <View style={styles.cardTopRow}>
+                  <TouchableOpacity style={styles.checkbox} onPress={() => toggleSelect(item.id)}>
+                    <View style={[styles.checkboxBox, selected && styles.checkboxChecked]}>
+                      {selected && <CheckCircle size={14} color={DARK} />}
+                    </View>
+                  </TouchableOpacity>
+                  <Text style={styles.cardDate}>{item.date}</Text>
+                  <StatusBadge status={item.status} />
+                </View>
+                <Text style={styles.cardTeacher}>{item.teacher}</Text>
+                <Text style={styles.cardMeta}>{item.station} · {item.room}</Text>
+                <View style={styles.tagRow}>
+                  {item.students.map((st) => (
+                    <View key={st} style={styles.studentTag}>
+                      <Text style={styles.studentTagText}>{st}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.metricRow}>
+                  <View style={styles.metric}>
+                    <Text style={styles.metricValue}>{item.trials}</Text>
+                    <Text style={styles.metricLabel}>Trials</Text>
+                  </View>
+                  <View style={styles.metric}>
+                    <Text style={[styles.metricValue, { color: independenceColor(item.independence) }]}>{item.independence}%</Text>
+                    <Text style={styles.metricLabel}>Independence</Text>
+                  </View>
+                  <View style={styles.metric}>
+                    <Text style={[styles.metricValue, { color: item.incidents > 0 ? '#FB923C' : '#6B7280' }]}>{item.incidents}</Text>
+                    <Text style={styles.metricLabel}>Incidents</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.reviewBtn} onPress={() => openReview(item)}>
+                  <Text style={styles.reviewBtnText}>Review</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }}
+        />
       </ScrollView>
 
-      <ReviewModal
-        visible={!!reviewTarget}
-        summary={reviewTarget}
-        onClose={() => setReviewTarget(null)}
-        onApprove={handleApprove}
-        onRequestChanges={handleRequestChanges}
-        onExportPdf={handleExportPdf}
-        onViewProgress={handleViewProgress}
-      />
+      {/* Bulk Approve Confirmation */}
+      <Modal visible={showBulkConfirm} transparent animationType="fade" onRequestClose={() => setShowBulkConfirm(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modalPanel, styles.confirmPanel]}>
+            <Text style={styles.modalTitle}>Confirm Bulk Approve</Text>
+            <Text style={styles.modalBody}>
+              You are about to approve <Text style={styles.modalBodyStrong}>{selectedIds.length}</Text> session summar{selectedIds.length > 1 ? 'ies' : 'y'}. This action cannot be undone.
+            </Text>
+            <View style={[styles.modalFooter, { paddingHorizontal: 0, paddingBottom: 0, marginTop: 24 }]}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowBulkConfirm(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.approveAllBtn} onPress={approveSelected}>
+                <Text style={styles.approveAllBtnText}>Approve All</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Session Detail Modal */}
+      <Modal visible={selectedSummary !== null} transparent animationType="slide" onRequestClose={closeModal}>
+        <View style={styles.overlay}>
+          <View style={[styles.modalPanel, styles.detailPanel]}>
+            <View style={styles.detailHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Session Review</Text>
+                {selectedSummary && (
+                  <Text style={styles.headerSubtitle}>
+                    {selectedSummary.teacher} · {selectedSummary.date} · {selectedSummary.station} · {selectedSummary.room}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={closeModal} hitSlop={8}>
+                <X size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.detailBody} keyboardShouldPersistTaps="handled">
+              {selectedSummary && (
+                <>
+                  <StatusBadge status={selectedSummary.status} />
+
+                  <Text style={styles.sectionLabel}>Students</Text>
+                  <View style={styles.tagRow}>
+                    {selectedSummary.students.map((st) => (
+                      <View key={st} style={styles.studentTagLg}>
+                        <Users size={14} color={SKY} />
+                        <Text style={styles.studentTagLgText}>{st}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={styles.statsGrid}>
+                    <View style={styles.statBox}>
+                      <Text style={[styles.statValue, { color: SKY }]}>{selectedSummary.trials}</Text>
+                      <Text style={styles.statLabel}>Trials</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={[styles.statValue, { color: independenceColor(selectedSummary.independence) }]}>
+                        {selectedSummary.independence}%
+                      </Text>
+                      <Text style={styles.statLabel}>Independence</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={[styles.statValue, { color: selectedSummary.incidents > 0 ? '#FB923C' : '#4ADE80' }]}>
+                        {selectedSummary.incidents}
+                      </Text>
+                      <Text style={styles.statLabel}>Incidents</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.sectionLabel}>Teacher Notes</Text>
+                  <View style={styles.notesBox}>
+                    <Text style={styles.notesText}>{selectedSummary.notes}</Text>
+                  </View>
+
+                  <View style={styles.sectionLabelRow}>
+                    <Text style={styles.sectionLabel}>Coordinator Notes</Text>
+                    <View style={styles.internalTag}>
+                      <Text style={styles.internalTagText}>Internal only</Text>
+                    </View>
+                  </View>
+                  <TextInput
+                    style={styles.textArea}
+                    value={coordinatorNotes}
+                    onChangeText={setCoordinatorNotes}
+                    multiline
+                    placeholder="Add internal notes (not visible to teacher)..."
+                    placeholderTextColor="#6B7280"
+                  />
+
+                  {showRequestForm && (
+                    <View style={styles.requestForm}>
+                      <Text style={[styles.sectionLabel, { color: '#F87171' }]}>Request Changes</Text>
+                      <Text style={styles.fieldLabel}>Section</Text>
+                      <FilterSelect value={requestSection} options={SECTIONS} onChange={setRequestSection} />
+                      <Text style={styles.fieldLabel}>Reason</Text>
+                      <TextInput
+                        style={styles.textArea}
+                        value={requestReason}
+                        onChangeText={setRequestReason}
+                        multiline
+                        placeholder="Describe what needs to be corrected or added..."
+                        placeholderTextColor="#6B7280"
+                      />
+                      <TouchableOpacity style={styles.submitRequestBtn} onPress={() => handleRequestChanges(selectedSummary)}>
+                        <Text style={styles.submitRequestText}>Submit Change Request</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { paddingHorizontal: 20, paddingBottom: 16, marginTop: 0, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }]}>
+              <TouchableOpacity
+                style={styles.requestChangesFooterBtn}
+                onPress={() => setShowRequestForm((v) => !v)}
+              >
+                <Text style={styles.requestChangesFooterText}>
+                  {showRequestForm ? 'Cancel Request' : 'Request Changes'}
+                </Text>
+              </TouchableOpacity>
+              {!showRequestForm && selectedSummary && (
+                <TouchableOpacity style={styles.approveSingleBtn} onPress={() => approveSingle(selectedSummary)}>
+                  <Text style={styles.approveSingleBtnText}>Approve</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return ({
-    Dashboard: 'CoordinatorDashboard',
-    'Live Sessions': 'LiveSessionMonitoring',
-    Progress: 'CoordinatorStudentProgress',
-    Schedule: 'CoordinatorSchedule',
-    Parents: 'CoordinatorParentCommunication',
-    Enrollment: 'StudentEnrollment',
-    Workload: 'WorkloadDashboard',
-    Notifications: 'Notifications',
-    Rooms: 'RoomResourceScheduling',
-  } as Record<string, keyof CoordinatorStackParamList>)[tab];
-}
-
-const DEMO_PENDING: PendingSummary[] = [
-  { id: '1', teacherName: 'Teacher A', studentNames: ['Student A', 'Student B'], stationName: 'Station 1', date: 'Aug 11, 2026', bodyPreview: 'Student A independently requested toys five times. Eye contact improved. One tantrum occurred during cleanup.' },
-  { id: '2', teacherName: 'Teacher B', studentNames: ['Student C'], stationName: 'Station 2', date: 'Aug 11, 2026', bodyPreview: 'Good session overall, minor prompting needed on 2 of 3 goals.' },
-];
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  bulkBtn: { backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  bulkBtnText: { fontWeight: '700', fontSize: 12, color: colors.navyText },
-  searchRow: { padding: spacing.md, backgroundColor: colors.bgCard },
-  searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },
-  content: { padding: spacing.lg, gap: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  checkbox: { padding: spacing.xs },
-  checkboxInner: { width: 18, height: 18, borderWidth: 1, borderColor: colors.border, borderRadius: 4 },
-  checkboxChecked: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 12 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '85%' },
-  field: { gap: spacing.xs },
-  textInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.navyText },
-  textArea: { minHeight: 70, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, textAlignVertical: 'top', color: colors.navyText },
-  modalFooter: { flexDirection: 'row', gap: spacing.sm },
-  requestChangesBtn: { flex: 1, borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  requestChangesBtnText: { fontWeight: '600', color: '#EF4444', fontSize: 12 },
-  approveBtn: { flex: 1, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  approveBtnText: { fontWeight: '700', color: colors.navyText },
-  secondaryBtn: { flex: 1, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md },
-  secondaryBtnText: { fontWeight: '600', fontSize: 12, color: colors.navyText },
-  filterRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard, borderTopWidth: 1, borderTopColor: colors.border },
-  filterLabel: { paddingVertical: spacing.xs },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  chipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  chipTextActive: { color: colors.navyText },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  safe: { flex: 1, backgroundColor: DARK },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: DARK,
+  },
+  headerIconWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(252,211,77,0.2)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
+  headerSubtitle: { color: '#9CA3AF', fontSize: 11, marginTop: 2 },
+  pendingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(252,211,77,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(252,211,77,0.3)',
+  },
+  pendingPillText: { color: AMBER, fontSize: 11, fontWeight: '700' },
+
+  content: { padding: 16, gap: 10 },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: PANEL,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: { flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 },
+  filterLabel: { fontSize: 10, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: PANEL },
+  filterChipActive: { borderColor: SKY, backgroundColor: 'rgba(56,189,248,0.15)' },
+  filterChipText: { color: '#9CA3AF', fontSize: 12 },
+  filterChipTextActive: { color: SKY, fontWeight: '600' },
+
+  bulkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  checkbox: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  checkboxBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: PANEL, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: AMBER, borderColor: AMBER },
+  bulkLabel: { color: '#9CA3AF', fontSize: 13 },
+  bulkApproveBtn: { backgroundColor: AMBER, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  bulkApproveText: { color: DARK, fontSize: 13, fontWeight: '700' },
+
+  summaryCard: { backgroundColor: ROW_BG, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 14, gap: 8 },
+  summaryCardSelected: { backgroundColor: '#1e2a3a', borderColor: SKY },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardDate: { color: '#D1D5DB', fontSize: 12, flex: 1 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusBadgeText: { fontSize: 11, fontWeight: '500' },
+  cardTeacher: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  cardMeta: { color: '#9CA3AF', fontSize: 12 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  studentTag: { backgroundColor: 'rgba(56,189,248,0.1)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  studentTagText: { color: SKY, fontSize: 11 },
+  metricRow: { flexDirection: 'row', gap: 8 },
+  metric: { flex: 1, alignItems: 'center', backgroundColor: DARK, borderRadius: 8, paddingVertical: 8 },
+  metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  metricLabel: { color: '#9CA3AF', fontSize: 10, marginTop: 2 },
+  reviewBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(56,189,248,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.25)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  reviewBtnText: { color: SKY, fontSize: 12, fontWeight: '600' },
+
+  emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 40 },
+
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modalPanel: { backgroundColor: PANEL, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', width: '100%', maxWidth: 560, maxHeight: '92%', overflow: 'hidden' },
+  confirmPanel: { maxWidth: 400, padding: 24 },
+  detailPanel: { maxHeight: '92%' },
+  modalTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  modalBody: { color: '#9CA3AF', fontSize: 13, lineHeight: 19, marginTop: 8 },
+  modalBodyStrong: { color: '#FFFFFF', fontWeight: '600' },
+  modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
+  cancelBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '500' },
+  approveAllBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: AMBER, alignItems: 'center' },
+  approveAllBtnText: { color: DARK, fontSize: 13, fontWeight: '700' },
+
+  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  detailBody: { padding: 20, gap: 14 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase' },
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  internalTag: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  internalTagText: { color: '#6B7280', fontSize: 10 },
+  studentTagLg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(56,189,248,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  studentTagLgText: { color: SKY, fontSize: 13, fontWeight: '500' },
+  statsGrid: { flexDirection: 'row', gap: 10 },
+  statBox: { flex: 1, alignItems: 'center', backgroundColor: DARK, borderRadius: 12, padding: 12 },
+  statValue: { fontSize: 22, fontWeight: '700' },
+  statLabel: { color: '#9CA3AF', fontSize: 11, marginTop: 2 },
+  notesBox: { backgroundColor: DARK, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  notesText: { color: '#D1D5DB', fontSize: 13, lineHeight: 20 },
+  textArea: {
+    backgroundColor: DARK,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    color: '#FFFFFF',
+    fontSize: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 70,
+    textAlignVertical: 'top',
+  },
+  requestForm: {
+    backgroundColor: 'rgba(248,113,113,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.2)',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  fieldLabel: { fontSize: 12, color: '#9CA3AF' },
+  submitRequestBtn: { backgroundColor: '#EF4444', borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  submitRequestText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+
+  requestChangesFooterBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.4)',
+    alignItems: 'center',
+  },
+  requestChangesFooterText: { color: '#F87171', fontSize: 13, fontWeight: '500' },
+  approveSingleBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#22C55E', alignItems: 'center' },
+  approveSingleBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 });

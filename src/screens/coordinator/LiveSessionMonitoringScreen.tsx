@@ -1,345 +1,771 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert, ActivityIndicator, RefreshControl } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Modal,
+  Alert,
+} from 'react-native';
+import {
+  Download,
+  RefreshCw,
+  Bell,
+  Eye,
+  AlertTriangle,
+  Clock,
+  Users,
+  CheckCircle,
+  Activity,
+  X,
+} from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
-import AppNavbar from '../../components/AppNavbar';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
-import { downloadTextFile } from '../../utils/webExport';
-import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
+import AppNavbar from '../../components/AppNavbar';
+import { colors, radius, spacing } from '../../theme/colors';
 
-const STATUS_FILTERS: string[] = ['All', 'On Track', 'Needs Attention', 'Overdue'];
-const STATUS_COLOR: Record<string, string> = { 'On Track': '#22C55E', 'Needs Attention': '#EAB308', Overdue: '#EF4444' };
+type Props = NativeStackScreenProps<CoordinatorStackParamList, 'LiveSessionMonitoring'>;
 
-interface LiveSession {
+type SessionStatus = 'on-track' | 'needs-attention' | 'overdue';
+
+interface Session {
   id: string;
-  teacherName: string;
-  stationName: string;
-  status: string;
-  timer: string;
-  trialCount: number;
-  studentNames: string[];
-  students: { name: string; trials: number; independencePercent: number }[];
-  incidents: { time: string; type: string; note: string }[];
+  teacher: string;
+  station: string;
+  room: string;
+  students: string[];
+  timer: number;
+  trials: number;
+  status: SessionStatus;
+  incidents: number;
 }
 
-function SessionDetailModal({ visible, session, onClose }: {
-  visible: boolean;
-  session: LiveSession | null;
-  onClose: () => void;
-}) {
-  if (!session) return null;
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{session.teacherName}</Text>
-          <Text style={typography.caption}>{session.stationName} · {session.timer} remaining · {session.status}</Text>
-          <ScrollView style={{ maxHeight: 320 }}>
-            <Text style={styles.detailLabel}>Students</Text>
-            {session.students.map((s) => (
-              <View key={s.name} style={styles.detailRow}>
-                <Text style={typography.bodyBold}>{s.name}</Text>
-                <Text style={typography.caption}>{s.trials} trials · {s.independencePercent}% independence</Text>
-              </View>
-            ))}
-            <Text style={styles.detailLabel}>Incidents</Text>
-            {session.incidents.length === 0 && <Text style={[typography.body, { color: colors.mutedText }]}>No incidents logged.</Text>}
-            {session.incidents.map((inc, i) => (
-              <View key={i} style={styles.detailRow}>
-                <Text style={typography.caption}>{inc.time} · {inc.type}</Text>
-                <Text style={typography.body}>{inc.note}</Text>
-              </View>
-            ))}
-          </ScrollView>
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-            <Text style={styles.cancelBtnText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
+const INITIAL_SESSIONS: Session[] = [
+  { id: 's1', teacher: 'Teacher A', station: 'Station 1', room: 'Room 1', students: ['Student A', 'Student B'], timer: 2340, trials: 18, status: 'on-track', incidents: 0 },
+  { id: 's2', teacher: 'Teacher B', station: 'Station 1', room: 'Room 2', students: ['Student C', 'Student D'], timer: 1800, trials: 12, status: 'needs-attention', incidents: 1 },
+  { id: 's3', teacher: 'Teacher C', station: 'Station 2', room: 'Room 1', students: ['Student A', 'Student C'], timer: 900, trials: 6, status: 'on-track', incidents: 0 },
+  { id: 's4', teacher: 'Teacher B', station: 'Station 2', room: 'Room 2', students: ['Student B', 'Student D'], timer: 3600, trials: 24, status: 'overdue', incidents: 2 },
+  { id: 's5', teacher: 'Teacher A', station: 'Station 1', room: 'Room 3', students: ['Student C', 'Student A'], timer: 1200, trials: 9, status: 'on-track', incidents: 0 },
+  { id: 's6', teacher: 'Teacher C', station: 'Station 2', room: 'Room 3', students: ['Student D', 'Student B'], timer: 600, trials: 4, status: 'needs-attention', incidents: 1 },
+];
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 }
 
-function AlertModal({ visible, session, onClose, onSend }: {
-  visible: boolean;
-  session: LiveSession | null;
-  onClose: () => void;
-  onSend: (alertType: string, message: string) => void;
-}) {
-  const [message, setMessage] = useState('');
-  const [alertType, setAlertType] = useState('info');
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h3}>Send Alert to {session?.teacherName}</Text>
-          <View style={styles.chipRow}>
-            {['info', 'warning', 'urgent'].map((t) => (
-              <TouchableOpacity key={t} style={[styles.chip, alertType === t && styles.chipSelected]} onPress={() => setAlertType(t)}>
-                <Text style={[styles.chipText, alertType === t && styles.chipTextSelected]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <TextInput
-            style={styles.textArea}
-            multiline
-            placeholder="Message..."
-            placeholderTextColor={colors.mutedText}
-            value={message}
-            onChangeText={setMessage}
-          />
-          <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.sendBtn}
-              onPress={() => { onSend(alertType, message); setMessage(''); }}
-            >
-              <Text style={styles.sendBtnText}>Send Alert</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
+const STATUS_CONFIG: Record<
+  SessionStatus,
+  { border: string; dot: string; label: string; text: string }
+> = {
+  'on-track': { border: '#4ADE80', dot: '#4ADE80', label: 'On Track', text: '#4ADE80' },
+  'needs-attention': { border: '#FCD34D', dot: '#FCD34D', label: 'Needs Attention', text: '#FCD34D' },
+  overdue: { border: '#F87171', dot: '#F87171', label: 'Overdue', text: '#F87171' },
+};
 
-export default function LiveSessionMonitoringScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'LiveSessionMonitoring'>) {
-  const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [stationFilter, setStationFilter] = useState('All');
-  const [alertTarget, setAlertTarget] = useState<LiveSession | null>(null);
-  const [detailTarget, setDetailTarget] = useState<LiveSession | null>(null);
-  const [exportContent, setExportContent] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+const STATUS_OPTIONS: { label: string; value: string }[] = [
+  { label: 'All Statuses', value: 'all' },
+  { label: 'On Track', value: 'on-track' },
+  { label: 'Needs Attention', value: 'needs-attention' },
+  { label: 'Overdue', value: 'overdue' },
+];
 
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const { data } = await getActiveSessions({ status: statusFilter, station: stationFilter });
-      setSessions(data);
-    } catch (err) {
-      setSessions(DEMO_SESSIONS);
-    }
-    setLastUpdated(new Date());
-    setRefreshing(false);
-  }, [statusFilter, stationFilter]);
+const STATION_OPTIONS: { label: string; value: string }[] = [
+  { label: 'All Stations', value: 'all' },
+  { label: 'Station 1', value: 'Station 1' },
+  { label: 'Station 2', value: 'Station 2' },
+];
+
+const ALERT_TYPES = ['Urgent', 'FYI', 'Check-in'];
+
+const MOCK_GOALS = ['Identify Colors', 'Request Items', 'Follow 2-Step Instructions', 'Match Objects'];
+const MOCK_TRIAL_BREAKDOWN: Record<string, number> = { FP: 5, PP: 4, G: 3, '+': 6 };
+const TRIAL_COLORS: Record<string, string> = {
+  FP: '#60A5FA',
+  PP: '#C084FC',
+  G: '#FCD34D',
+  '+': '#4ADE80',
+};
+const STUDENT_ID_MAP: Record<string, string> = {
+  'Student A': 's1',
+  'Student B': 's2',
+  'Student C': 's3',
+  'Student D': 's4',
+};
+
+export default function LiveSessionMonitoringScreen({ navigation }: Props) {
+  const [sessions, setSessions] = useState<Session[]>(INITIAL_SESSIONS.map((s) => ({ ...s })));
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [stationFilter, setStationFilter] = useState<string>('all');
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [alertSession, setAlertSession] = useState<Session | null>(null);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState('FYI');
+  const [refreshCountdown, setRefreshCountdown] = useState(30);
 
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 30000); // auto-refresh every 30s per spec
+    const interval = setInterval(() => {
+      setSessions((prev) => prev.map((s) => ({ ...s, timer: s.timer + 1 })));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, []);
 
-  const lastUpdatedStr = lastUpdated
-    ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    : '—';
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshCountdown((prev) => {
+        if (prev <= 1) return 30;
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const filtered = sessions.filter(
-    (s) => (statusFilter === 'All' || s.status === statusFilter) && (stationFilter === 'All' || s.stationName === stationFilter)
-  );
+  const handleManualRefresh = useCallback(() => {
+    setRefreshCountdown(30);
+    Alert.alert('Refreshed', 'Sessions refreshed');
+  }, []);
 
-  const stationOptions = ['All', ...Array.from(new Set(sessions.map((s) => s.stationName)))];
+  const handleExport = useCallback(() => {
+    Alert.alert('Export', 'Session log exported');
+  }, []);
 
-  const handleSendAlert = async (alertType: string, message: string) => {
-    if (!alertTarget) return;
-    try {
-      await sendAlertToTeacher(alertTarget.id, { alertType, message });
-    } catch (err) {
-      // Demo/offline: still show confirmation.
-    }
-    Alert.alert('Alert sent', `Sent to ${alertTarget.teacherName}`);
-    setAlertTarget(null);
+  const filtered = sessions.filter((s) => {
+    const matchStatus = statusFilter === 'all' || s.status === statusFilter;
+    const matchStation = stationFilter === 'all' || s.station === stationFilter;
+    return matchStatus && matchStation;
+  });
+
+  const counts = {
+    total: sessions.length,
+    onTrack: sessions.filter((s) => s.status === 'on-track').length,
+    needsAttention: sessions.filter((s) => s.status === 'needs-attention').length,
+    overdue: sessions.filter((s) => s.status === 'overdue').length,
   };
 
-  const handleExport = async () => {
-    try {
-      await exportSessionLog({ status: statusFilter, station: stationFilter });
-    } catch (err) {
-      // fall through to local export
-    }
-    const header = 'Teacher,Station,Status,Timer (mm:ss),Trials,Students';
-    const rows = filtered.map((s) => [s.teacherName, s.stationName, s.status, s.timer, String(s.trialCount), s.studentNames.join('; ')].join(','));
-    downloadTextFile(
-      `LiveSessionLog_${statusFilter.replace(/\s+/g, '_')}.csv`,
-      `${header}\n${rows.join('\n')}`
-    );
-    setExportContent(
-      [
-        `Melu'e Foundation — Live Session Log`,
-        `Status: ${statusFilter} · Station: ${stationFilter}`,
-        `Generated ${new Date().toLocaleString()}`,
-        '',
-        ...filtered.map((s) => [
-          `${s.teacherName} — ${s.status}`,
-          `  ${s.stationName} · ${s.timer} remaining · ${s.trialCount} trials · Students: ${s.studentNames.join(', ')}`,
-        ]).flat(),
-        filtered.length === 0 ? '(no sessions)' : '',
-      ].join('\n')
-    );
+  const closeAlertModal = () => {
+    setAlertSession(null);
+    setAlertMessage('');
+    setAlertType('FYI');
   };
+
+  const handleSendAlert = () => {
+    if (!alertMessage.trim()) {
+      Alert.alert('Error', 'Please enter an alert message');
+      return;
+    }
+    Alert.alert('Sent', `Alert sent to ${alertSession?.teacher}`);
+    closeAlertModal();
+  };
+
+  const openStudent = (studentName: string) => {
+    setSelectedSession(null);
+    navigation?.navigate?.('StudentProfile', { studentId: STUDENT_ID_MAP[studentName] ?? 's1' });
+  };
+
+  const handleTabPress = (tab: string) => {
+    const routeByTab: Record<string, keyof CoordinatorStackParamList> = {
+      Dashboard: 'CoordinatorDashboard',
+      'Live Sessions': 'LiveSessionMonitoring',
+      Review: 'SessionSummaryReview',
+      Progress: 'CoordinatorStudentProgress',
+      Schedule: 'CoordinatorSchedule',
+      Parents: 'CoordinatorParentCommunication',
+      Notifications: 'Notifications',
+    };
+    const route = routeByTab[tab];
+    if (route) navigation?.navigate?.(route as never);
+  };
+
+  const summaryTiles = [
+    { label: 'Active Sessions', value: counts.total, icon: Activity, color: SKY },
+    { label: 'On Track', value: counts.onTrack, icon: CheckCircle, color: '#4ADE80' },
+    { label: 'Needs Attention', value: counts.needsAttention, icon: AlertTriangle, color: '#FCD34D' },
+    { label: 'Overdue', value: counts.overdue, icon: Clock, color: '#F87171' },
+  ];
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Live Sessions" onTabPress={(t) => t !== 'Live Sessions' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar activeTab="Live Sessions" onTabPress={handleTabPress} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Filter Row */}
+        <View style={styles.filterRow}>
+          <View style={[styles.pillWrap, { flex: 1, minWidth: 150 }]}>
+            <Text style={styles.pillLabel}>{STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label}</Text>
+            <View style={styles.optionRow}>
+              {STATUS_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => setStatusFilter(opt.value)}
+                  style={[styles.optionChip, statusFilter === opt.value && styles.optionChipActive]}
+                >
+                  <Text
+                    style={[
+                      styles.optionChipText,
+                      statusFilter === opt.value && { color: SKY, fontWeight: '700' as const },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={[styles.pillWrap, { flex: 1, minWidth: 140 }]}>
+            <Text style={styles.pillLabel}>{STATION_OPTIONS.find((o) => o.value === stationFilter)?.label}</Text>
+            <View style={styles.optionRow}>
+              {STATION_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => setStationFilter(opt.value)}
+                  style={[styles.optionChip, stationFilter === opt.value && styles.optionChipActive]}
+                >
+                  <Text
+                    style={[
+                      styles.optionChipText,
+                      stationFilter === opt.value && { color: SKY, fontWeight: '700' as const },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
 
-      <View style={styles.header}>
-        <Text style={typography.h1}>Live Session Monitoring</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.refreshBtn} onPress={load} disabled={refreshing}>
-            {refreshing ? (
-              <ActivityIndicator size="small" color={colors.navyText} />
-            ) : (
-              <Feather name="refresh-cw" size={14} color={colors.navyText} />
-            )}
-            <Text style={styles.refreshBtnText}>{refreshing ? 'Refreshing' : 'Refresh'}</Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.skyButton} onPress={handleManualRefresh} activeOpacity={0.8}>
+            <RefreshCw size={16} color={SKY} />
+            <Text style={styles.skyButtonText}>Refresh</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
-            <Text style={styles.exportBtnText}>Export Log</Text>
+          <TouchableOpacity style={styles.skyButton} onPress={handleExport} activeOpacity={0.8}>
+            <Download size={16} color={SKY} />
+            <Text style={styles.skyButtonText}>Export Session Log</Text>
           </TouchableOpacity>
+          <View style={styles.autoRefreshBadge}>
+            <View style={styles.autoRefreshDot} />
+            <Text style={styles.autoRefreshText}>Auto-refresh: {refreshCountdown}s</Text>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.infoRow}>
-        <View style={styles.infoPill}>
-          <Feather name="activity" size={12} color={colors.statusInProgressText} />
-          <Text style={styles.infoText}>Auto-refresh every 30s</Text>
-        </View>
-        <View style={styles.infoPill}>
-          <Feather name="clock" size={12} color={colors.mutedText} />
-          <Text style={styles.infoText}>Last updated {lastUpdatedStr}</Text>
-        </View>
-      </View>
-
-      <View style={styles.filterRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {STATUS_FILTERS.map((f) => (
-            <TouchableOpacity key={f} style={[styles.filterChip, statusFilter === f && styles.filterChipActive]} onPress={() => setStatusFilter(f)}>
-              <Text style={typography.body}>{f}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={[styles.filterRow, styles.filterRowSpaced]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {stationOptions.map((f) => (
-            <TouchableOpacity key={f} style={[styles.filterChip, stationFilter === f && styles.filterChipActive]} onPress={() => setStationFilter(f)}>
-              <Text style={typography.body}>{f}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
-      >
-        {filtered.map((s) => (
-          <View key={s.id} style={styles.sessionCard}>
-            <View style={styles.sessionCardHeader}>
-              <Text style={typography.h3}>{s.teacherName}</Text>
-              <View style={[styles.statusPill, { backgroundColor: STATUS_COLOR[s.status] }]}>
-                <Text style={styles.statusPillText}>{s.status}</Text>
+        {/* Summary Stat Row */}
+        <View style={styles.statsGrid}>
+          {summaryTiles.map((tile) => (
+            <View key={tile.label} style={[styles.statTile, { borderColor: `${tile.color}33` }]}>
+              <View style={[styles.statIconWrap, { backgroundColor: `${tile.color}1A` }]}>
+                <tile.icon size={20} color={tile.color} />
+              </View>
+              <View>
+                <Text style={[styles.statValue, { color: tile.color }]}>{tile.value}</Text>
+                <Text style={styles.statLabel}>{tile.label}</Text>
               </View>
             </View>
-            <Text style={typography.caption}>{s.stationName} · {s.timer} remaining · {s.trialCount} trials logged</Text>
-            <Text style={typography.body}>Students: {s.studentNames.join(', ')}</Text>
-            <View style={styles.sessionActionsRow}>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => setAlertTarget(s)}>
-                <Text style={styles.actionBtnText}>Send Alert</Text>
+          ))}
+        </View>
+
+        {/* Session Cards Grid */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+          {filtered.map((session) => {
+            const sc = STATUS_CONFIG[session.status];
+            return (
+              <View key={session.id} style={[styles.sessionCard, { borderColor: sc.border }]}>
+                <View style={styles.sessionHeaderRow}>
+                  <View style={styles.sessionHeaderLeft}>
+                    <View style={[styles.statusDot, { backgroundColor: sc.dot }]} />
+                    <View style={{ flexShrink: 1 }}>
+                      <Text style={styles.teacherName} numberOfLines={1}>
+                        {session.teacher}
+                      </Text>
+                      <Text style={styles.stationRoom}>
+                        {session.station} · {session.room}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[styles.statusBadge, { borderColor: sc.border }]}>
+                    <Text style={[styles.statusBadgeText, { color: sc.text }]}>{sc.label}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.chipRow}>
+                  {session.students.map((st) => (
+                    <TouchableOpacity
+                      key={st}
+                      style={styles.studentChip}
+                      onPress={() => openStudent(st)}
+                      activeOpacity={0.7}
+                    >
+                      <Users size={12} color={SKY} />
+                      <Text style={styles.studentChipText}>{st}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.metricsRow}>
+                  <View style={[styles.metricBox, { flex: 1 }]}>
+                    <Clock size={14} color="#9CA3AF" />
+                    <Text style={styles.timerText}>{formatTime(session.timer)}</Text>
+                  </View>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricLabel}>Trials</Text>
+                    <Text style={styles.trialsValue}>{session.trials}</Text>
+                  </View>
+                  {session.incidents > 0 && (
+                    <View style={styles.incidentChip}>
+                      <AlertTriangle size={12} color="#FB923C" />
+                      <Text style={styles.incidentChipText}>{session.incidents}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={styles.detailButton}
+                    onPress={() => setSelectedSession(session)}
+                    activeOpacity={0.8}
+                  >
+                    <Eye size={14} color={SKY} />
+                    <Text style={styles.detailButtonText}>View Details</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.alertButton}
+                    onPress={() => setAlertSession(session)}
+                    activeOpacity={0.8}
+                  >
+                    <Bell size={14} color="#FCD34D" />
+                    <Text style={styles.alertButtonText}>Send Alert</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+          {filtered.length === 0 && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No sessions match the selected filters.</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Session Detail Modal */}
+      <Modal visible={selectedSession !== null} animationType="slide" transparent onRequestClose={() => setSelectedSession(null)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modalSheet, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Session Details</Text>
+                {selectedSession && (
+                  <Text style={styles.modalSubtitle}>
+                    {selectedSession.teacher} · {selectedSession.station} · {selectedSession.room}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setSelectedSession(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => setDetailTarget(s)}>
-                <Text style={styles.actionBtnText}>View Details</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDisabled]} disabled>
-                <Text style={styles.actionBtnTextDisabled}>View Teacher Screen (Post-MVP)</Text>
+            </View>
+            {selectedSession && (
+              <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.statusInlineRow}>
+                  <View style={[styles.statusDot, { backgroundColor: STATUS_CONFIG[selectedSession.status].dot }]} />
+                  <Text style={[styles.statusText, { color: STATUS_CONFIG[selectedSession.status].text }]}>
+                    {STATUS_CONFIG[selectedSession.status].label}
+                  </Text>
+                </View>
+
+                <Text style={styles.sectionLabel}>STUDENTS</Text>
+                <View style={styles.chipRow}>
+                  {selectedSession.students.map((st) => (
+                    <View key={st} style={styles.studentChip}>
+                      <Text style={styles.studentChipText}>{st}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={styles.sectionLabel}>GOALS BEING WORKED ON</Text>
+                {MOCK_GOALS.slice(0, 2).map((g) => (
+                  <View key={g} style={styles.goalRow}>
+                    <CheckCircle size={14} color="#4ADE80" />
+                    <Text style={styles.goalText}>{g}</Text>
+                  </View>
+                ))}
+
+                <View style={styles.metricsGrid3}>
+                  <View style={styles.metricTile}>
+                    <Text style={styles.metricTileValue}>{formatTime(selectedSession.timer)}</Text>
+                    <Text style={styles.metricTileLabel}>Duration</Text>
+                  </View>
+                  <View style={styles.metricTile}>
+                    <Text style={[styles.metricTileValue, { color: SKY }]}>{selectedSession.trials}</Text>
+                    <Text style={styles.metricTileLabel}>Trials</Text>
+                  </View>
+                  <View style={styles.metricTile}>
+                    <Text
+                      style={[
+                        styles.metricTileValue,
+                        { color: selectedSession.incidents > 0 ? '#FB923C' : '#4ADE80' },
+                      ]}
+                    >
+                      {selectedSession.incidents}
+                    </Text>
+                    <Text style={styles.metricTileLabel}>Incidents</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.sectionLabel}>TRIAL BREAKDOWN</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {Object.entries(MOCK_TRIAL_BREAKDOWN).map(([key, val]) => (
+                    <View key={key} style={styles.breakdownTile}>
+                      <Text style={styles.breakdownValue}>{val}</Text>
+                      <Text style={[styles.breakdownKey, { color: TRIAL_COLORS[key] ?? '#4ADE80' }]}>{key}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {selectedSession.incidents > 0 && (
+                  <>
+                    <Text style={styles.sectionLabel}>INCIDENT LOG</Text>
+                    {Array.from({ length: selectedSession.incidents }).map((_, i) => (
+                      <View key={i} style={styles.incidentLogRow}>
+                        <AlertTriangle size={14} color="#FDBA74" />
+                        <Text style={styles.incidentLogText}>
+                          Incident {i + 1}: Behavior during activity transition — managed with redirection.
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </ScrollView>
+            )}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedSession(null)} activeOpacity={0.8}>
+                <Text style={styles.closeButtonText}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
-        ))}
-        {filtered.length === 0 && (
-          <Text style={[typography.body, { textAlign: 'center', color: colors.mutedText }]}>No active sessions match these filters.</Text>
-        )}
-      </ScrollView>
+        </View>
+      </Modal>
 
-      <AlertModal visible={!!alertTarget} session={alertTarget} onClose={() => setAlertTarget(null)} onSend={handleSendAlert} />
-
-      <SessionDetailModal visible={!!detailTarget} session={detailTarget} onClose={() => setDetailTarget(null)} />
-
-      <ExportPreviewModal
-        visible={!!exportContent}
-        title="Live Session Log Export"
-        filename={`LiveSessionLog_${statusFilter.replace(/\s+/g, '_')}.txt`}
-        content={exportContent ?? ''}
-        onClose={() => setExportContent(null)}
-      />
+      {/* Send Alert Modal */}
+      <Modal visible={alertSession !== null} animationType="slide" transparent onRequestClose={closeAlertModal}>
+        <View style={styles.overlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Send Alert</Text>
+                {alertSession && <Text style={styles.modalSubtitle}>To: {alertSession.teacher}</Text>}
+              </View>
+              <TouchableOpacity onPress={closeAlertModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.alertFormBody}>
+              <Text style={styles.sectionLabel}>ALERT TYPE</Text>
+              <View style={styles.optionRow}>
+                {ALERT_TYPES.map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => setAlertType(t)}
+                    style={[styles.optionChip, alertType === t && styles.optionChipActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.optionChipText,
+                        alertType === t && { color: '#FCD34D', fontWeight: '700' as const },
+                      ]}
+                    >
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.sectionLabel}>MESSAGE</Text>
+              <TextInput
+                value={alertMessage}
+                onChangeText={setAlertMessage}
+                multiline
+                numberOfLines={4}
+                placeholder="Type your message to the teacher..."
+                placeholderTextColor="#4B5563"
+                style={styles.messageInput}
+                textAlignVertical="top"
+              />
+            </View>
+            <View style={styles.modalFooterRow}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={closeAlertModal} activeOpacity={0.8}>
+                <Text style={styles.closeButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.sendBtn} onPress={handleSendAlert} activeOpacity={0.8}>
+                <Text style={styles.sendBtnText}>Send Alert</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return ({
-    Dashboard: 'CoordinatorDashboard',
-    Review: 'SessionSummaryReview',
-    Progress: 'CoordinatorStudentProgress',
-    Schedule: 'CoordinatorSchedule',
-    Parents: 'CoordinatorParentCommunication',
-    Enrollment: 'StudentEnrollment',
-    Workload: 'WorkloadDashboard',
-    Notifications: 'Notifications',
-    Rooms: 'RoomResourceScheduling',
-  } as Record<string, keyof CoordinatorStackParamList>)[tab];
-}
-
-const DEMO_SESSIONS: LiveSession[] = [
-  { id: '1', teacherName: 'Teacher A', stationName: 'Station 1', status: 'On Track', timer: '42:10', trialCount: 18, studentNames: ['Student A', 'Student B'], students: [{ name: 'Student A', trials: 12, independencePercent: 70 }, { name: 'Student B', trials: 6, independencePercent: 55 }], incidents: [] },
-  { id: '2', teacherName: 'Teacher B', stationName: 'Station 2', status: 'Needs Attention', timer: '05:22', trialCount: 4, studentNames: ['Student C'], students: [{ name: 'Student C', trials: 4, independencePercent: 40 }], incidents: [{ time: '02:15', type: 'Behavior', note: 'Transition difficulty during snack' }] },
-];
+const SKY = '#38BDF8';
+const DARK = '#FFFFFF';
+const DARK_TEXT = '#1F2937';
+const PANEL = '#F3F4F6';
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  headerActions: { flexDirection: 'row', gap: spacing.sm },
-  refreshBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  refreshBtnText: { fontWeight: '600', fontSize: 12, color: colors.navyText },
-  infoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  infoPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.bgApp, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  infoText: { fontSize: 11, fontWeight: '600', color: colors.mutedText },
-  exportBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  exportBtnText: { fontWeight: '600', fontSize: 12, color: colors.navyText },
-  filterRow: { padding: spacing.md, backgroundColor: colors.bgCard },
-  filterRowSpaced: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
-  filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginRight: spacing.xs },
-  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  content: { padding: spacing.lg, gap: spacing.md },
-  sessionCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
-  sessionCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
-  statusPillText: { color: colors.white, fontSize: 10, fontWeight: '700' },
-  sessionActionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  actionBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  actionBtnDisabled: { opacity: 0.5 },
-  actionBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  actionBtnTextDisabled: { fontSize: 11, fontWeight: '600', color: colors.mutedText },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
-  chipRow: { flexDirection: 'row', gap: spacing.xs },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  chipTextSelected: { color: colors.navyText },
-  textArea: { minHeight: 80, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, textAlignVertical: 'top', color: colors.navyText },
-  detailLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: colors.mutedText, marginTop: spacing.sm },
-  detailRow: { paddingVertical: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border },
-  modalFooter: { flexDirection: 'row', gap: spacing.sm },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  cancelBtnText: { fontWeight: '600', color: colors.navyText },
-  sendBtn: { flex: 2, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  sendBtnText: { fontWeight: '700', color: colors.navyText },
+  safe: { flex: 1, backgroundColor: colors.bgCard },
+  content: { padding: spacing.lg, gap: spacing.lg },
+
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  pillWrap: { gap: spacing.xs },
+  pillLabel: { color: '#9CA3AF', fontSize: 11, fontWeight: '600' },
+  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  optionChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  optionChipActive: { borderColor: SKY, backgroundColor: `${SKY}1A` },
+  optionChipText: { fontSize: 12, color: '#4B5563' },
+
+  buttonRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md },
+  skyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${SKY}4D`,
+    backgroundColor: `${SKY}1A`,
+  },
+  skyButtonText: { color: SKY, fontSize: 13, fontWeight: '600' },
+  autoRefreshBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: `${SKY}4D`,
+    backgroundColor: `${SKY}1A`,
+  },
+  autoRefreshDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: SKY },
+  autoRefreshText: { color: SKY, fontSize: 11, fontWeight: '600' },
+
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  statTile: {
+    flexGrow: 1,
+    minWidth: '46%',
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: `${PANEL}`,
+  },
+  statIconWrap: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 11, color: '#6B7280', marginTop: 2 },
+
+  sessionCard: {
+    flexGrow: 1,
+    minWidth: 300,
+    flexBasis: '31%',
+    borderWidth: 2,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    backgroundColor: DARK,
+  },
+  sessionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  sessionHeaderLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, flexShrink: 1 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  teacherName: { color: DARK_TEXT, fontSize: 14, fontWeight: '600' },
+  stationRoom: { color: '#9CA3AF', fontSize: 12, marginTop: 2 },
+  statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
+  statusBadgeText: { fontSize: 11, fontWeight: '600' },
+
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  studentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: `${SKY}1A`,
+    borderWidth: 1,
+    borderColor: `${SKY}40`,
+  },
+  studentChipText: { color: SKY, fontSize: 12, fontWeight: '500' },
+
+  metricsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  metricBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: PANEL,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  metricLabel: { color: '#9CA3AF', fontSize: 12 },
+  timerText: { color: DARK_TEXT, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  trialsValue: { color: SKY, fontSize: 13, fontWeight: '700' },
+  incidentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(249,115,22,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.25)',
+  },
+  incidentChipText: { color: '#FB923C', fontSize: 12, fontWeight: '700' },
+
+  actionRow: { flexDirection: 'row', gap: spacing.sm },
+  detailButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${SKY}40`,
+    backgroundColor: `${SKY}1A`,
+  },
+  detailButtonText: { color: SKY, fontSize: 12, fontWeight: '600' },
+  alertButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${'#FCD34D'}40`,
+    backgroundColor: `${'#FCD34D'}1A`,
+  },
+  alertButtonText: { color: '#FCD34D', fontSize: 12, fontWeight: '600' },
+
+  emptyState: { flexBasis: '100%', alignItems: 'center', paddingVertical: 64 },
+  emptyText: { color: '#6B7280', fontSize: 14 },
+
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  modalSheet: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: DARK,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: { color: DARK_TEXT, fontSize: 18, fontWeight: '700' },
+  modalSubtitle: { color: '#9CA3AF', fontSize: 12, marginTop: 2 },
+  modalBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
+  modalFooter: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  modalFooterRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+
+  statusInlineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  statusText: { fontSize: 14, fontWeight: '600' },
+  sectionLabel: { color: '#9CA3AF', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: -spacing.xs },
+  goalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: PANEL,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  goalText: { color: DARK_TEXT, fontSize: 13 },
+
+  metricsGrid3: { flexDirection: 'row', gap: spacing.md },
+  metricTile: { flex: 1, backgroundColor: PANEL, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center' },
+  metricTileValue: { color: DARK_TEXT, fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  metricTileLabel: { color: '#9CA3AF', fontSize: 11, marginTop: 2 },
+
+  breakdownTile: { flex: 1, backgroundColor: PANEL, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  breakdownValue: { color: DARK_TEXT, fontSize: 17, fontWeight: '700' },
+  breakdownKey: { fontSize: 12, fontWeight: '700', fontFamily: undefined },
+
+  incidentLogRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(249,115,22,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.2)',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  incidentLogText: { color: '#FDBA74', fontSize: 13, flex: 1 },
+
+  closeButton: {
+    width: '100%',
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgApp,
+    alignItems: 'center',
+  },
+  closeButtonText: { color: DARK_TEXT, fontSize: 14, fontWeight: '600' },
+
+  alertFormBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
+  messageInput: {
+    width: '100%',
+    minHeight: 100,
+    backgroundColor: PANEL,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    color: DARK_TEXT,
+    fontSize: 13,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgApp,
+    alignItems: 'center',
+  },
+  sendBtn: { flex: 1, paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: '#FCD34D', alignItems: 'center' },
+  sendBtnText: { color: DARK, fontSize: 14, fontWeight: '700' },
 });

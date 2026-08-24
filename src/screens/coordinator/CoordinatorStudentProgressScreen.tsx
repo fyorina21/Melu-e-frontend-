@@ -1,383 +1,810 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Modal,
+} from 'react-native';
+import {
+  Search,
+  Flag,
+  Printer,
+  ChevronDown,
+  X,
+  Eye,
+  AlertTriangle,
+  CheckCircle,
+  Target,
+  Activity,
+  FileText,
+  Save,
+} from 'lucide-react-native';
+import { mockStudents, mockGoals } from '../../api/data/mockData';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
-import AppNavbar from '../../components/AppNavbar';
-import ExportPreviewModal from '../../components/ExportPreviewModal';
-import { downloadTextFile } from '../../utils/webExport';
-import { getStudentProgressOverview, flagStudent } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
+import AppNavbar from '../../components/AppNavbar';
+import { colors, radius, spacing } from '../../theme/colors';
 
-interface StudentOption {
-  id: string;
-  name: string;
-}
+type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorStudentProgress'>;
 
-const STUDENT_OPTIONS: StudentOption[] = [
-  { id: 'student-a', name: 'Student A' },
-  { id: 'student-b', name: 'Student B' },
-  { id: 'student-c', name: 'Student C' },
+const SKY = '#38BDF8';
+const AMBER = '#FCD34D';
+const DARK_TEXT = '#1F2937';
+
+const goalProgressData = [
+  { week: 'Wk 1', goal1: 45, goal2: 30 },
+  { week: 'Wk 2', goal1: 52, goal2: 38 },
+  { week: 'Wk 3', goal1: 58, goal2: 44 },
+  { week: 'Wk 4', goal1: 63, goal2: 50 },
+  { week: 'Wk 5', goal1: 67, goal2: 55 },
+  { week: 'Wk 6', goal1: 70, goal2: 60 },
+  { week: 'Wk 7', goal1: 74, goal2: 65 },
+  { week: 'Wk 8', goal1: 78, goal2: 70 },
 ];
 
-interface ProgressGoal {
-  id: string;
-  name: string;
-  percent: number;
-  status: string;
-  trend: number[];
-}
+const mockSessions = [
+  { id: 'sess1', date: 'Aug 4, 2026', duration: '45 min', trials: 42, independence: 74, incidents: 0, notes: 'Student demonstrated strong performance on color identification. Prompted once on 2-step commands. Good attention throughout session.' },
+  { id: 'sess2', date: 'Aug 2, 2026', duration: '45 min', trials: 38, independence: 70, incidents: 1, notes: 'Minor behavioral incident during transition — redirected with verbal cue. Recovered quickly. Made progress on matching goals.' },
+  { id: 'sess3', date: 'Jul 31, 2026', duration: '40 min', trials: 35, independence: 66, incidents: 0, notes: 'Solid session. Student requested items verbally without prompting on 3 occasions. Continued work on eye contact goal.' },
+  { id: 'sess4', date: 'Jul 29, 2026', duration: '45 min', trials: 40, independence: 63, incidents: 2, notes: 'Two incidents logged — both during peer interaction. Strategies reviewed with supervising coordinator post-session.' },
+  { id: 'sess5', date: 'Jul 27, 2026', duration: '35 min', trials: 30, independence: 58, incidents: 0, notes: 'Short session due to student arrival time. Good engagement on cognitive tasks. Will increase trials next session.' },
+];
 
-interface BehaviorIncident {
-  date: string;
-  type: string;
-  detail: string;
-}
+const incidentData = [
+  { week: 'Week 1', count: 3 },
+  { week: 'Week 2', count: 2 },
+  { week: 'Week 3', count: 1 },
+  { week: 'Week 4', count: 0 },
+];
 
-interface SessionHistoryEntry {
-  id: string;
-  date: string;
-  teacherName: string;
-  summary: string;
-}
+const goalStatuses = ['Active', 'Active', 'Mastered', 'On Hold', 'Active', 'Active'];
+const goalProgress = [74, 70, 100, 45, 62, 55];
 
-interface StudentProgressData {
-  name: string;
-  age: number;
-  program: string;
-  flagged: boolean;
-  assessmentSummary: { skills: string; behavior: string; preferences: string };
-  goals: ProgressGoal[];
-  incidents: BehaviorIncident[];
-  incidentSummary: string;
-  sessionHistory: SessionHistoryEntry[];
-}
-
-const GOAL_COLORS = ['#059669', '#D97706', '#2563EB', '#9333EA'];
-
-function GoalMiniChart({ goal, color }: { goal: ProgressGoal; color: string }) {
-  const max = Math.max(100, ...goal.trend);
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; text: string }> = {
+    Active: { bg: '#E0F2FE', text: '#075985' },
+    Mastered: { bg: '#DCFCE7', text: '#166534' },
+    'On Hold': { bg: '#F3F4F6', text: '#4B5563' },
+    'In Progress': { bg: '#FEF9C3', text: '#854D0E' },
+    'Not Started': { bg: '#F3F4F6', text: '#6B7280' },
+    Completed: { bg: '#DCFCE7', text: '#166534' },
+  };
+  const c = map[status] ?? { bg: '#F3F4F6', text: '#4B5563' };
   return (
-    <View style={styles.miniChartRow}>
-      <View style={styles.miniChartBars}>
-        {goal.trend.map((v, i) => (
-          <View key={i} style={styles.miniChartCol}>
-            <View style={[styles.miniChartBar, { backgroundColor: color, height: `${Math.max(6, Math.round((v / max) * 100))}%` }]} />
-          </View>
-        ))}
-      </View>
-      <Text style={styles.chartLegend}>{goal.name} — {goal.percent}%</Text>
+    <View style={[styles.badge, { backgroundColor: c.bg }]}>
+      <Text style={[styles.badgeText, { color: c.text }]}>{status}</Text>
     </View>
   );
 }
 
-function SessionDetailModal({ visible, entry, onClose }: {
-  visible: boolean;
-  entry: SessionHistoryEntry | null;
-  onClose: () => void;
-}) {
-  if (!entry) return null;
+function MiniProgressBar({ value, color = SKY }: { value: number; color?: string }) {
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{entry.date}</Text>
-          <Text style={typography.caption}>Teacher: {entry.teacherName}</Text>
-          <View style={styles.field}>
-            <Text style={typography.label}>Session Summary</Text>
-            <Text style={typography.body}>{entry.summary}</Text>
-          </View>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>Close</Text>
-          </TouchableOpacity>
-        </View>
+    <View style={styles.miniBarRow}>
+      <View style={styles.miniBarTrack}>
+        <View style={[styles.miniBarFill, { width: `${value}%`, backgroundColor: color }]} />
       </View>
-    </Modal>
+      <Text style={styles.miniBarText}>{value}%</Text>
+    </View>
   );
 }
 
-export default function CoordinatorStudentProgressScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorStudentProgress'>) {
-  const [selectedStudentId, setSelectedStudentId] = useState('student-a');
-  const [data, setData] = useState<StudentProgressData | null>(null);
+export default function CoordinatorStudentProgressScreen({ navigation }: Props) {
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
   const [flagged, setFlagged] = useState(false);
+  const [showFlagModal, setShowFlagModal] = useState(false);
+  const [flagReason, setFlagReason] = useState('');
   const [notes, setNotes] = useState('');
-  const [exportContent, setExportContent] = useState<string | null>(null);
-  const [sessionTarget, setSessionTarget] = useState<SessionHistoryEntry | null>(null);
+  const [notesSaved, setNotesSaved] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<(typeof mockSessions)[0] | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const { data: res } = await getStudentProgressOverview(selectedStudentId);
-      setData(res);
-      setFlagged(res.flagged);
-    } catch (err) {
-      setData(DEMO_DATA);
-      setFlagged(false);
-    }
-  }, [selectedStudentId]);
+  const selectedStudent = mockStudents.find((s) => s.id === selectedStudentId) ?? null;
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const filteredStudents = mockStudents.filter((s) =>
+    s.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const handleToggleFlag = async () => {
-    const next = !flagged;
-    setFlagged(next);
-    try {
-      await flagStudent(selectedStudentId, { flagged: next });
-    } catch (err) {}
-    if (next) Alert.alert('Student flagged', 'A notification has been created.');
+  const studentGoalIds = selectedStudent
+    ? [...selectedStudent.goals.station1, ...selectedStudent.goals.station2].slice(0, 6)
+    : [];
+  const studentGoals = mockGoals.filter((g) => studentGoalIds.includes(g.id)).slice(0, 6);
+
+  const handleFlagConfirm = () => {
+    setFlagged(true);
+    setShowFlagModal(false);
+    setFlagReason('');
   };
 
-  const handlePrint = () => {
-    if (!data) return;
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = [
-      '<h1>Melu\'e Foundation</h1>',
-      '<h2>Student Progress Report</h2>',
-      `<p><strong>Student:</strong> ${esc(data.name)} · Age ${data.age} · ${esc(data.program)}</p>`,
-      '<h3>Assessment Summary</h3>',
-      `<ul><li>Skills: ${esc(data.assessmentSummary.skills)}</li><li>Behavior: ${esc(data.assessmentSummary.behavior)}</li><li>Preferences: ${esc(data.assessmentSummary.preferences)}</li></ul>`,
-      '<h3>Current Goals</h3>',
-      `<ul>${data.goals.map((g) => `<li>${esc(g.name)}: ${g.percent}% — ${esc(g.status)}</li>`).join('')}</ul>`,
-      '<h3>Behavior Incident Trends</h3>',
-      `<p>${esc(data.incidentSummary)}</p>`,
-      data.incidents.length
-        ? `<ul>${data.incidents.map((i) => `<li>${esc(i.date)} — ${esc(i.type)}: ${esc(i.detail)}</li>`).join('')}</ul>`
-        : '',
-      '<h3>Session History</h3>',
-      `<ul>${data.sessionHistory.map((s) => `<li>${esc(s.date)} — ${esc(s.teacherName)}</li>`).join('')}</ul>`,
-      '<h3>Coordinator Notes</h3>',
-      `<p>${esc(notes || '(none)')}</p>`,
-      `<p>Flagged: ${flagged ? 'Yes' : 'No'}</p>`,
-    ].join('');
-    downloadTextFile(`${data.name.replace(/\s+/g, '_')}_ProgressReport.html`, html);
-    setExportContent(
-      [
-        `Melu'e Foundation — Student Progress Report`,
-        `Student: ${data.name} · Age ${data.age} · ${data.program}`,
-        `Flagged: ${flagged ? 'Yes' : 'No'}`,
-        '',
-        'ASSESSMENT SUMMARY',
-        `Skills: ${data.assessmentSummary.skills}`,
-        `Behavior: ${data.assessmentSummary.behavior}`,
-        `Preferences: ${data.assessmentSummary.preferences}`,
-        '',
-        'CURRENT GOALS',
-        ...data.goals.map((g) => `• ${g.name}: ${g.percent}% — ${g.status}`),
-        '',
-        'BEHAVIOR INCIDENT TRENDS',
-        data.incidentSummary,
-        ...data.incidents.map((i) => `• ${i.date} — ${i.type}: ${i.detail}`),
-        '',
-        'SESSION HISTORY',
-        ...data.sessionHistory.map((s) => `• ${s.date} — ${s.teacherName}`),
-        '',
-        'COORDINATOR NOTES',
-        notes || '(none)',
-      ].join('\n')
-    );
+  const handleSaveNotes = () => {
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2000);
   };
 
-  if (!data) return null;
+  const handleTabPress = (tab: string) => {
+    const routeByTab: Record<string, keyof CoordinatorStackParamList> = {
+      Dashboard: 'CoordinatorDashboard',
+      'Live Sessions': 'LiveSessionMonitoring',
+      Review: 'SessionSummaryReview',
+      Progress: 'CoordinatorStudentProgress',
+      Schedule: 'CoordinatorSchedule',
+      Parents: 'CoordinatorParentCommunication',
+      Notifications: 'Notifications',
+    };
+    const route = routeByTab[tab];
+    if (route) navigation?.navigate?.(route as never);
+  };
+
+  const incidentBarColors = ['#EF4444', '#F97316', '#EAB308', '#22C55E'];
+  const maxChartValue = Math.max(...goalProgressData.map((d) => Math.max(d.goal1, d.goal2)));
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Progress" onTabPress={(t) => t !== 'Progress' && navigation?.navigate?.(navRouteForTab(t) as never)} />
-
-      <View style={styles.header}>
-        <Text style={typography.h1}>Student Progress Monitoring</Text>
-        <TouchableOpacity style={styles.printBtn} onPress={handlePrint}>
-          <Feather name="printer" size={14} color={colors.navyText} />
-          <Text style={styles.printBtnText}>Print Report</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.selectorRow}>
-        {STUDENT_OPTIONS.map((s) => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]}
-            onPress={() => setSelectedStudentId(s.id)}
-          >
-            <Text style={[typography.bodyBold, selectedStudentId === s.id && { color: colors.navyText }]}>{s.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
+      <AppNavbar activeTab="Progress" onTabPress={handleTabPress} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Student Selector */}
         <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={typography.h3}>{data.name}</Text>
-            <View style={styles.cardHeaderRight}>
-              <TouchableOpacity style={styles.profileLink} onPress={() => navigation?.navigate?.('StudentProfile', { studentId: selectedStudentId })}>
-                <Text style={styles.profileLinkText}>View Profile →</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.flagBtn, flagged && styles.flagBtnActive]} onPress={handleToggleFlag}>
-                <Feather name="flag" size={14} color={flagged ? colors.white : colors.navyText} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <Text style={typography.caption}>Age {data.age} · {data.program}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Assessment Summary</Text>
-          <Text style={typography.body}>Skills: {data.assessmentSummary.skills}</Text>
-          <Text style={typography.body}>Behavior: {data.assessmentSummary.behavior}</Text>
-          <Text style={typography.body}>Preferences: {data.assessmentSummary.preferences}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Current Goals</Text>
-          {data.goals.map((g) => (
-            <View key={g.id} style={styles.goalRow}>
-              <Text style={typography.bodyBold}>{g.name}</Text>
-              <Text style={typography.caption}>{g.percent}% · {g.status}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Goal Progress Chart</Text>
-          <Text style={styles.sectionHint}>Multi-goal trend, last 10 sessions</Text>
-          {data.goals.map((g, idx) => (
-            <GoalMiniChart key={g.id} goal={g} color={GOAL_COLORS[idx % GOAL_COLORS.length]} />
-          ))}
-          <View style={styles.legendRow}>
-            {data.goals.map((g, idx) => (
-              <View key={g.id} style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: GOAL_COLORS[idx % GOAL_COLORS.length] }]} />
-                <Text style={styles.legendText}>{g.name}</Text>
+          <Text style={styles.sectionLabel}>SELECT STUDENT</Text>
+          <View style={styles.searchRow}>
+            <Search size={16} color="#9CA3AF" />
+            <TextInput
+              placeholder="Search students..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={(t) => {
+                setSearchQuery(t);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              style={styles.searchInput}
+            />
+            {selectedStudent && (
+              <View style={styles.selectedChip}>
+                <Text style={styles.selectedChipText}>{selectedStudent.fullName}</Text>
               </View>
-            ))}
+            )}
+            <TouchableOpacity onPress={() => setShowDropdown((d) => !d)} hitSlop={{ top: 8, bottom: 8 }}>
+              <ChevronDown size={16} color="#9CA3AF" />
+            </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={typography.h3}>Behavior Incident Trends</Text>
-          <Text style={typography.body}>{data.incidentSummary}</Text>
-          {data.incidents.length > 0 && (
-            <View style={styles.incidentList}>
-              {data.incidents.map((inc, i) => (
-                <View key={i} style={styles.incidentRow}>
-                  <Text style={styles.incidentType}>{inc.type} · {inc.date}</Text>
-                  <Text style={typography.body}>{inc.detail}</Text>
-                </View>
-              ))}
+          {showDropdown && (
+            <View style={styles.dropdown}>
+              <ScrollView style={{ maxHeight: 190 }} nestedScrollEnabled>
+                {filteredStudents.length === 0 ? (
+                  <Text style={styles.emptyDropdownText}>No students found</Text>
+                ) : (
+                  filteredStudents.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[styles.dropdownItem, selectedStudentId === s.id && styles.dropdownItemActive]}
+                      onPress={() => {
+                        setSelectedStudentId(s.id);
+                        setSearchQuery('');
+                        setShowDropdown(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownItemName, selectedStudentId === s.id && { color: '#0369A1' }]}>
+                        {s.fullName}
+                      </Text>
+                      <Text style={styles.dropdownItemStation}>{s.station}</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
             </View>
           )}
         </View>
 
-        <View style={styles.card}>
-          <Text style={typography.h3}>Session History</Text>
-          {data.sessionHistory.map((s) => (
-            <TouchableOpacity key={s.id} style={styles.sessionHistoryRow} onPress={() => setSessionTarget(s)}>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.body}>{s.date} — {s.teacherName}</Text>
-              </View>
-              <Text style={styles.linkText}>View →</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Empty State */}
+        {!selectedStudent && (
+          <View style={[styles.card, styles.emptyState]}>
+            <View style={styles.emptyIconWrap}>
+              <Search size={24} color="#9CA3AF" />
+            </View>
+            <Text style={styles.emptyTitle}>Select a student to view progress</Text>
+            <Text style={styles.emptySubtitle}>Choose from the dropdown above to load full progress data.</Text>
+          </View>
+        )}
 
-        <View style={styles.card}>
-          <Text style={typography.h3}>Coordinator Notes</Text>
-          <TextInput
-            style={styles.textArea}
-            multiline
-            placeholder="Internal notes (not visible to teacher/parent)..."
-            placeholderTextColor={colors.mutedText}
-            value={notes}
-            onChangeText={setNotes}
-          />
-        </View>
+        {selectedStudent && (
+          <>
+            {/* Student Profile Card */}
+            <View style={styles.card}>
+              <View style={styles.profileRow}>
+                <View style={styles.profileLeft}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{selectedStudent.fullName.charAt(0)}</Text>
+                  </View>
+                  <View style={{ flexShrink: 1 }}>
+                    <Text style={styles.studentName}>{selectedStudent.fullName}</Text>
+                    <View style={styles.chipRow}>
+                      <View style={styles.grayChip}>
+                        <Text style={styles.grayChipText}>Age {selectedStudent.age}</Text>
+                      </View>
+                      <View style={styles.skyChip}>
+                        <Text style={styles.skyChipText}>{selectedStudent.programType}</Text>
+                      </View>
+                      <View style={styles.amberChip}>
+                        <Text style={styles.amberChipText}>{selectedStudent.therapyGroup} group</Text>
+                      </View>
+                      <View style={styles.grayChip}>
+                        <Text style={styles.grayChipText}>{selectedStudent.station}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+              <View style={styles.profileActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, flagged ? styles.flaggedButton : styles.outlineButton]}
+                  onPress={() => (flagged ? setFlagged(false) : setShowFlagModal(true))}
+                  activeOpacity={0.8}
+                >
+                  <Flag size={16} color={flagged ? '#DC2626' : '#4B5563'} fill={flagged ? '#DC2626' : 'none'} />
+                  <Text style={[styles.actionButtonText, { color: flagged ? '#DC2626' : '#4B5563' }]}>
+                    {flagged ? 'Flagged' : 'Flag Student'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionButton, styles.outlineButton]} activeOpacity={0.8}>
+                  <Printer size={16} color="#4B5563" />
+                  <Text style={[styles.actionButtonText, { color: '#4B5563' }]}>Print Report</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Assessment Summary */}
+            <Text style={styles.sectionHeading}>ASSESSMENT SUMMARY</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+              {[
+                { label: 'ABLLS Status', status: 'In Progress', progress: 45, color: SKY },
+                { label: 'Behavior Assessment', status: 'Not Started', progress: 0, color: '#9CA3AF' },
+                { label: 'Preferences Assessment', status: 'Completed', progress: 100, color: '#22C55E' },
+              ].map((item) => (
+                <View key={item.label} style={[styles.card, { flexGrow: 1, minWidth: 250 }]}>
+                  <View style={styles.assessmentHeader}>
+                    <Text style={styles.assessmentLabel}>{item.label}</Text>
+                    <StatusBadge status={item.status} />
+                  </View>
+                  <View style={styles.barTrackTall}>
+                    <View style={[styles.barFillTall, { width: `${item.progress}%`, backgroundColor: item.color }]} />
+                  </View>
+                  <Text style={styles.assessmentPct}>{item.progress}% complete</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Current Goals */}
+            <View style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <Target size={16} color={SKY} />
+                <Text style={styles.cardTitle}>Current Goals</Text>
+              </View>
+              {studentGoals.map((goal, i) => (
+                <View key={goal.id} style={[styles.tableRow, i < studentGoals.length - 1 && styles.tableRowBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.goalCellName}>{goal.name}</Text>
+                    <Text style={styles.goalCellDomain}>{goal.domain}</Text>
+                  </View>
+                  <View style={styles.goalRightCol}>
+                    <StatusBadge status={goalStatuses[i] ?? 'Active'} />
+                    <MiniProgressBar
+                      value={goalProgress[i] ?? 50}
+                      color={goalStatuses[i] === 'Mastered' ? '#22C55E' : SKY}
+                    />
+                    <Text style={styles.lastSessionText}>Aug 4, 2026</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Session History */}
+            <View style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <Activity size={16} color={SKY} />
+                <Text style={styles.cardTitle}>Session History</Text>
+              </View>
+              {mockSessions.map((session, i) => (
+                <View key={session.id} style={[styles.tableRow, i < mockSessions.length - 1 && styles.tableRowBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.goalCellName}>{session.date}</Text>
+                    <Text style={styles.goalCellDomain}>
+                      {session.duration} · {session.trials} trials
+                    </Text>
+                  </View>
+                  <View style={styles.sessionRightCol}>
+                    <MiniProgressBar value={session.independence} />
+                    <View style={styles.incidentInline}>
+                      {session.incidents > 0 ? (
+                        <>
+                          <AlertTriangle size={14} color="#DC2626" />
+                          <Text style={[styles.incidentCountText, { color: '#DC2626' }]}>{session.incidents}</Text>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle size={14} color="#16A34A" />
+                          <Text style={[styles.incidentCountText, { color: '#16A34A' }]}>0</Text>
+                        </>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => setSelectedSession(session)}
+                      activeOpacity={0.8}
+                    >
+                      <Eye size={14} color={SKY} />
+                      <Text style={styles.viewButtonText}>View</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Goal Progress Chart */}
+            <View style={styles.card}>
+              <View style={styles.chartHeaderRow}>
+                <Activity size={16} color={SKY} />
+                <Text style={styles.cardTitle}>Goal Progress Chart — 8-Week Trend</Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: SKY }]} />
+                  <Text style={styles.legendText}>{studentGoals[0]?.name ?? 'Goal 1'}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: AMBER }]} />
+                  <Text style={styles.legendText}>{studentGoals[1]?.name ?? 'Goal 2'}</Text>
+                </View>
+              </View>
+              <View style={styles.chartArea}>
+                {goalProgressData.map((d) => (
+                  <View key={d.week} style={styles.chartCol}>
+                    <View style={styles.barsRow}>
+                      <View style={[styles.chartBar, { height: `${(d.goal1 / maxChartValue) * 100}%`, backgroundColor: SKY }]}>
+                        <Text style={styles.chartBarValue}>{d.goal1}%</Text>
+                      </View>
+                      <View style={[styles.chartBar, { height: `${(d.goal2 / maxChartValue) * 100}%`, backgroundColor: AMBER }]}>
+                        <Text style={styles.chartBarValueDark}>{d.goal2}%</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.chartWeekLabel}>{d.week}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Behavior Incident Trends */}
+            <View style={styles.card}>
+              <View style={styles.chartHeaderRow}>
+                <AlertTriangle size={16} color={AMBER} />
+                <Text style={styles.cardTitle}>Behavior Incident Trends</Text>
+              </View>
+              {incidentData.map((item, i) => (
+                <View key={item.week} style={styles.incidentTrendRow}>
+                  <Text style={styles.incidentWeekLabel}>{item.week}</Text>
+                  <View style={styles.incidentBarTrack}>
+                    <View
+                      style={[
+                        styles.incidentBarFill,
+                        {
+                          width: item.count === 0 ? '8%' : `${(item.count / 3) * 100}%`,
+                          backgroundColor: incidentBarColors[i],
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.incidentCount, { color: incidentBarColors[i] }]}>{item.count}</Text>
+                  <Text style={styles.incidentWord}>{item.count === 1 ? 'incident' : 'incidents'}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Internal Notes */}
+            <View style={styles.card}>
+              <View style={styles.notesHeaderRow}>
+                <FileText size={16} color={SKY} />
+                <Text style={styles.cardTitle}>Internal Notes</Text>
+                <View style={styles.grayChip}>
+                  <Text style={styles.grayChipText}>Coordinator only</Text>
+                </View>
+              </View>
+              <TextInput
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Add internal coordinator notes here (not visible to teachers)..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={4}
+                style={styles.notesInput}
+                textAlignVertical="top"
+              />
+              <View style={styles.notesFooterRow}>
+                {notesSaved && (
+                  <View style={styles.savedRow}>
+                    <CheckCircle size={14} color="#16A34A" />
+                    <Text style={styles.savedText}>Notes saved</Text>
+                  </View>
+                )}
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveNotes} activeOpacity={0.8}>
+                  <Save size={16} color={DARK_TEXT} />
+                  <Text style={styles.saveButtonText}>Save Notes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
 
-      <ExportPreviewModal
-        visible={!!exportContent}
-        title="Student Progress Report"
-        filename={`${data.name.replace(/\s+/g, '_')}_ProgressReport.txt`}
-        content={exportContent ?? ''}
-        onClose={() => setExportContent(null)}
-      />
+      {/* Session Modal */}
+      <Modal visible={selectedSession !== null} animationType="fade" transparent onRequestClose={() => setSelectedSession(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Session Notes</Text>
+                {selectedSession && (
+                  <Text style={styles.modalSubtitle}>
+                    {selectedSession.date} · {selectedSession.duration}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setSelectedSession(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+            {selectedSession && (
+              <>
+                <View style={styles.modalBody}>
+                  <View style={styles.sessionStatsGrid}>
+                    <View style={styles.sessionStatTile}>
+                      <Text style={styles.statTileLabel}>Trials</Text>
+                      <Text style={styles.statTileValue}>{selectedSession.trials}</Text>
+                    </View>
+                    <View style={[styles.sessionStatTile, { backgroundColor: '#F0F9FF' }]}>
+                      <Text style={styles.statTileLabel}>Independence</Text>
+                      <Text style={[styles.statTileValue, { color: '#0284C7' }]}>{selectedSession.independence}%</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.sessionStatTile,
+                        { backgroundColor: selectedSession.incidents > 0 ? '#FEF2F2' : '#F0FDF4' },
+                      ]}
+                    >
+                      <Text style={styles.statTileLabel}>Incidents</Text>
+                      <Text
+                        style={[
+                          styles.statTileValue,
+                          { color: selectedSession.incidents > 0 ? '#DC2626' : '#16A34A' },
+                        ]}
+                      >
+                        {selectedSession.incidents}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.notesSectionLabel}>SESSION NOTES</Text>
+                  <Text style={styles.sessionNotesText}>{selectedSession.notes}</Text>
+                </View>
+                <View style={styles.modalFooterSingle}>
+                  <TouchableOpacity
+                    style={styles.closeDarkButton}
+                    onPress={() => setSelectedSession(null)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.closeDarkButtonText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
-      <SessionDetailModal visible={!!sessionTarget} entry={sessionTarget} onClose={() => setSessionTarget(null)} />
+      {/* Flag Modal */}
+      <Modal visible={showFlagModal} animationType="fade" transparent onRequestClose={() => setShowFlagModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.flagHeaderLeft}>
+                <Flag size={16} color="#EF4444" />
+                <Text style={styles.modalTitle}>Flag Student</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowFlagModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.flagDescription}>
+                This will create a priority alert for{' '}
+                <Text style={{ fontWeight: '700' }}>{selectedStudent?.fullName}</Text>. All supervisors will be notified.
+              </Text>
+              <Text style={styles.notesSectionLabel}>
+                REASON FOR FLAG <Text style={{ color: '#F87171' }}>*</Text>
+              </Text>
+              <TextInput
+                value={flagReason}
+                onChangeText={setFlagReason}
+                placeholder="Describe the concern requiring immediate attention..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={3}
+                style={[styles.notesInput, styles.flagInput]}
+                textAlignVertical="top"
+              />
+            </View>
+            <View style={styles.modalFooterRow}>
+              <TouchableOpacity
+                style={styles.cancelOutlineButton}
+                onPress={() => setShowFlagModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cancelOutlineText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmFlagButton, !flagReason.trim() && { opacity: 0.4 }]}
+                onPress={handleFlagConfirm}
+                disabled={!flagReason.trim()}
+                activeOpacity={0.8}
+              >
+                <Flag size={16} color={colors.white} />
+                <Text style={styles.confirmFlagText}>Confirm Flag</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return ({
-    Dashboard: 'CoordinatorDashboard',
-    'Live Sessions': 'LiveSessionMonitoring',
-    Review: 'SessionSummaryReview',
-    Schedule: 'CoordinatorSchedule',
-    Parents: 'CoordinatorParentCommunication',
-    Enrollment: 'StudentEnrollment',
-    Workload: 'WorkloadDashboard',
-    Notifications: 'Notifications',
-    Rooms: 'RoomResourceScheduling',
-  } as Record<string, keyof CoordinatorStackParamList>)[tab];
-}
-
-const DEMO_DATA: StudentProgressData = {
-  name: 'Student A',
-  age: 6,
-  program: 'Regular Program',
-  flagged: false,
-  assessmentSummary: { skills: '45% (ABLLS, in progress)', behavior: 'Completed', preferences: 'Completed' },
-  goals: [
-    { id: 'g1', name: 'Identify Colors', percent: 45, status: 'In Progress', trend: [20, 25, 30, 28, 35, 40, 38, 42, 45, 45] },
-    { id: 'g2', name: 'Request Items', percent: 68, status: 'In Progress', trend: [30, 35, 40, 45, 50, 55, 60, 62, 65, 68] },
-  ],
-  incidentSummary: '2 incidents in the last 30 days, both during transitions. No escalation required.',
-  incidents: [
-    { date: 'Aug 4, 2026', type: 'Transition', detail: 'Refused to leave the play area at the end of the session.' },
-    { date: 'Jul 28, 2026', type: 'Transition', detail: 'Crying during move from Station 1 to Station 2.' },
-  ],
-  sessionHistory: [
-    { id: '1', date: 'Aug 11, 2026', teacherName: 'Teacher A', summary: 'Great session! Requested items independently 5 times and stayed calm during cleanup.' },
-    { id: '2', date: 'Aug 8, 2026', teacherName: 'Teacher A', summary: 'Steady progress on naming colors; needed light prompting on 2 of 3 goals.' },
-  ],
-};
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  printBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  printBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  selectorRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.bgCard },
-  studentChip: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.bgApp },
-  studentChipActive: { backgroundColor: colors.primaryYellow },
   content: { padding: spacing.lg, gap: spacing.lg },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  profileLink: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  profileLinkText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
-  flagBtn: { width: 32, height: 32, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  flagBtnActive: { backgroundColor: '#EF4444', borderColor: '#EF4444' },
-  goalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
-  sectionHint: { fontSize: 11, color: colors.mutedText },
-  miniChartRow: { gap: spacing.xs, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  miniChartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 56 },
-  miniChartCol: { flex: 1, height: '100%', justifyContent: 'flex-end' },
-  miniChartBar: { borderRadius: 2 },
-  chartLegend: { fontSize: 10, fontWeight: '600', color: colors.navyText, marginTop: spacing.xs },
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.xs },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 10, color: colors.mutedText },
-  incidentList: { gap: spacing.xs, marginTop: spacing.xs },
-  incidentRow: { backgroundColor: colors.bgApp, borderRadius: radius.md, padding: spacing.sm, gap: 2 },
-  incidentType: { fontSize: 10, fontWeight: '700', color: '#EF4444' },
-  textArea: { minHeight: 70, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, textAlignVertical: 'top', color: colors.navyText },
-  sessionHistoryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
-  linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 12 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
-  field: { gap: spacing.xs },
-  closeBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  closeBtnText: { fontWeight: '600', color: colors.navyText },
+
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: DARK_TEXT },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1 },
+  sectionHeading: { fontSize: 12, fontWeight: '700', color: '#6B7280', letterSpacing: 1, marginBottom: -spacing.xs },
+
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+  },
+  searchInput: { flex: 1, paddingVertical: spacing.sm + 2, fontSize: 14, color: DARK_TEXT },
+  selectedChip: { backgroundColor: '#E0F2FE', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: 999 },
+  selectedChipText: { fontSize: 12, fontWeight: '600', color: '#075985' },
+  dropdown: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+  },
+  dropdownItemActive: { backgroundColor: '#F0F9FF' },
+  dropdownItemName: { fontSize: 14, color: DARK_TEXT },
+  dropdownItemStation: { fontSize: 12, color: '#9CA3AF' },
+  emptyDropdownText: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontSize: 13, color: '#9CA3AF' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 64 },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.bgApp,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  emptyTitle: { fontSize: 15, fontWeight: '600', color: '#6B7280' },
+  emptySubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: spacing.xs },
+
+  profileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  profileLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, minWidth: 260 },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: SKY, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: colors.white, fontSize: 22, fontWeight: '700' },
+  studentName: { fontSize: 18, fontWeight: '600', color: DARK_TEXT },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  grayChip: { backgroundColor: '#F3F4F6', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, alignSelf: 'flex-start' },
+  grayChipText: { fontSize: 12, color: '#4B5563' },
+  skyChip: { backgroundColor: '#E0F2FE', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
+  skyChipText: { fontSize: 12, color: '#0369A1' },
+  amberChip: { backgroundColor: '#FEF9C3', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
+  amberChipText: { fontSize: 12, color: '#A16207' },
+  profileActions: { flexDirection: 'row', gap: spacing.sm },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  outlineButton: { borderColor: colors.border, backgroundColor: colors.bgCard },
+  flaggedButton: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
+  actionButtonText: { fontSize: 13, fontWeight: '600' },
+
+  assessmentHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  assessmentLabel: { fontSize: 14, fontWeight: '500', color: '#374151', flexShrink: 1 },
+  barTrackTall: { height: 8, borderRadius: 999, backgroundColor: '#F3F4F6', overflow: 'hidden' },
+  barFillTall: { height: '100%', borderRadius: 999 },
+  assessmentPct: { fontSize: 12, color: '#9CA3AF', marginTop: 6 },
+
+  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, alignSelf: 'flex-start' },
+  badgeText: { fontSize: 12, fontWeight: '500' },
+
+  miniBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  miniBarTrack: { width: 80, height: 6, borderRadius: 999, backgroundColor: '#E5E7EB', overflow: 'hidden' },
+  miniBarFill: { height: '100%', borderRadius: 999 },
+  miniBarText: { fontSize: 12, color: '#4B5563', fontVariant: ['tabular-nums'] },
+
+  tableRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+  tableRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  goalCellName: { fontSize: 14, fontWeight: '600', color: DARK_TEXT },
+  goalCellDomain: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  goalRightCol: { alignItems: 'flex-end', gap: spacing.xs },
+  lastSessionText: { fontSize: 11, color: '#9CA3AF' },
+
+  sessionRightCol: { alignItems: 'flex-end', gap: spacing.xs },
+  incidentInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  incidentCountText: { fontSize: 13, fontWeight: '600' },
+  viewButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewButtonText: { fontSize: 12, fontWeight: '600', color: SKY },
+
+  chartHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: 12, color: '#4B5563' },
+  chartArea: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 220,
+    paddingTop: spacing.sm,
+  },
+  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: spacing.xs },
+  barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, flex: 1 },
+  chartBar: { width: 12, borderRadius: 3, justifyContent: 'flex-start', alignItems: 'center', minHeight: 18 },
+  chartBarValue: { fontSize: 8, fontWeight: '700', color: colors.white, marginTop: 2 },
+  chartBarValueDark: { fontSize: 8, fontWeight: '700', color: DARK_TEXT, marginTop: 2 },
+  chartWeekLabel: { fontSize: 10, color: '#6B7280' },
+
+  incidentTrendRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  incidentWeekLabel: { fontSize: 13, color: '#6B7280', width: 60 },
+  incidentBarTrack: { flex: 1, height: 24, borderRadius: radius.md, backgroundColor: '#F3F4F6', overflow: 'hidden' },
+  incidentBarFill: { height: '100%', borderRadius: radius.md },
+  incidentCount: { fontSize: 13, fontWeight: '700', width: 16, textAlign: 'right' },
+  incidentWord: { fontSize: 11, color: '#9CA3AF', width: 58 },
+
+  notesHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    minHeight: 90,
+    fontSize: 14,
+    color: '#374151',
+    backgroundColor: colors.bgCard,
+  },
+  notesFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36 },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  savedText: { fontSize: 12, color: '#16A34A' },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: AMBER,
+    marginLeft: 'auto',
+  },
+  saveButtonText: { fontSize: 13, fontWeight: '700', color: DARK_TEXT },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  flagHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: DARK_TEXT },
+  modalSubtitle: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
+  modalBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
+  modalFooterSingle: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingBottom: spacing.lg },
+  modalFooterRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+
+  sessionStatsGrid: { flexDirection: 'row', gap: spacing.md },
+  sessionStatTile: { flex: 1, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', backgroundColor: '#F9FAFB' },
+  statTileLabel: { fontSize: 11, color: '#9CA3AF' },
+  statTileValue: { fontSize: 17, fontWeight: '700', color: DARK_TEXT, fontVariant: ['tabular-nums'], marginTop: 2 },
+  notesSectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1 },
+  sessionNotesText: {
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 19,
+    backgroundColor: '#F9FAFB',
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  closeDarkButton: {
+    width: '100%',
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: DARK_TEXT,
+    alignItems: 'center',
+  },
+  closeDarkButtonText: { color: colors.white, fontSize: 14, fontWeight: '600' },
+
+  flagDescription: { fontSize: 13, color: '#4B5563', lineHeight: 19 },
+  flagInput: { minHeight: 70 },
+  cancelOutlineButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelOutlineText: { fontSize: 13, fontWeight: '600', color: '#4B5563' },
+  confirmFlagButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#EF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  confirmFlagText: { color: colors.white, fontSize: 13, fontWeight: '700' },
 });

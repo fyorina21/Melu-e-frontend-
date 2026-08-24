@@ -39,7 +39,12 @@ export default function ProgramDirectorDashboardScreen({ navigation }: NativeSta
   const load = useCallback(async () => {
     try {
       const { data: res } = await getProgramDirectorDashboard();
-      setData(res);
+      setData({
+        ...DEMO_DATA,
+        ...res,
+        pipeline: Array.isArray(res?.pipeline) ? res.pipeline : [],
+        recentActivity: Array.isArray(res?.recentActivity) ? res.recentActivity : [],
+      });
     } catch (err) {
       setData(DEMO_DATA);
     }

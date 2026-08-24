@@ -45,7 +45,12 @@ export default function DirectorDashboardScreen({ navigation }: NativeStackScree
   const load = useCallback(async () => {
     try {
       const { data: res } = await getDirectorDashboard();
-      setData(res);
+      setData({
+        ...DEMO_DATA,
+        ...res,
+        recentActivity: Array.isArray(res?.recentActivity) ? res.recentActivity : [],
+        notifications: Array.isArray(res?.notifications) ? res.notifications : [],
+      });
     } catch (err) {
       setData(DEMO_DATA);
     }
