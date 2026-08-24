@@ -56,7 +56,7 @@ export default function SessionDataCollectionScreen({
   route,
   navigation,
 }: Props) {
-  const sessionId = route.params?.sessionId ?? '';
+  const sessionId = route.params?.sessionId ?? 'active';
   const { logout } = useAuth();
   const { showToast } = useToast();
 
