@@ -5,6 +5,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { downloadTextFile } from '../../utils/webExport';
 import { parentApi } from '../../api';
@@ -205,6 +207,7 @@ function BehaviorChart({ data }: { data: BehaviorTrend[] }) {
 
 export default function ChildProgressScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'ChildProgress'>) {
   const [data, setData] = useState<ChildProgressData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionSummary | null>(null);
 
   const load = useCallback(async () => {
@@ -213,7 +216,7 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
       const dashRes: any = await parentApi.dashboard();
       const childId = dashRes.childSummary?.id;
       if (!childId) {
-        setData(null);
+        setLoadError(true);
         return;
       }
       const res: any = await parentApi.childProgress(childId);
@@ -253,7 +256,7 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
         iupStation2: res.iupStation2 ?? [],
       });
     } catch (err) {
-      setData(null);
+      setLoadError(true);
     }
   }, []);
 
@@ -299,7 +302,8 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
     downloadTextFile(`Iup_${new Date().toISOString().slice(0, 10)}.html`, lines);
   };
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   const thisMonthCount = data.sessions.filter((s) => s.date.includes('Aug')).length || data.sessionsThisMonth;
 

@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getRoles,
@@ -56,9 +57,10 @@ export default function PermissionConfigurationScreen({
   navigation,
 }: NativeStackScreenProps<SystemAdminStackParamList, 'PermissionConfiguration'>) {
   const [roles, setRoles] = useState<PermissionRole[]>([]);
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('teacher');
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
   const [matrix, setMatrix] = useState<PermissionMatrix>({});
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
@@ -68,11 +70,12 @@ export default function PermissionConfigurationScreen({
     try {
       const { data } = await getRoles();
       setRoles(data);
-      if (!selectedRoleId && data.length) setSelectedRoleId(data[0].id);
+      setSelectedRoleId((prev) => prev || data[0]?.id || '');
     } catch (err) {
-      setRoles(DEMO_ROLES);
+      setRoles([]);
     }
-  }, [selectedRoleId]);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     loadRoles();
@@ -82,16 +85,16 @@ export default function PermissionConfigurationScreen({
     if (!selectedRoleId) return;
     getPermissionMatrix(selectedRoleId)
       .then(({ data }) => {
-        setMatrix(data);
+        setMatrix(data.matrix);
         setDirty(false);
       })
       .catch(() => {
-        setMatrix(DEFAULT_MATRIX(selectedRoleId));
+        setMatrix({});
         setDirty(false);
       });
     getPermissionAuditTrail(selectedRoleId)
       .then(({ data }) => setAuditTrail(data))
-      .catch(() => setAuditTrail(DEMO_AUDIT));
+      .catch(() => setAuditTrail([]));
   }, [selectedRoleId]);
 
   const selectedRole = useMemo(
@@ -156,9 +159,13 @@ export default function PermissionConfigurationScreen({
     setDirty(true);
   };
 
-  const handleCopyFromRole = (sourceRoleId: string) => {
-    const sourceMatrix = DEFAULT_MATRIX(sourceRoleId);
-    setMatrix(sourceMatrix);
+  const handleCopyFromRole = async (sourceRoleId: string) => {
+    try {
+      const { data } = await getPermissionMatrix(sourceRoleId);
+      setMatrix(data.matrix);
+    } catch (err) {
+      setMatrix({});
+    }
     setDirty(true);
     setCopyModalOpen(false);
   };
@@ -167,6 +174,8 @@ export default function PermissionConfigurationScreen({
     if (!selectedRoleId) return;
     try {
       await savePermissionMatrix(selectedRoleId, matrix);
+      const { data } = await getPermissionAuditTrail(selectedRoleId);
+      setAuditTrail(data);
     } catch (err) {}
     setDirty(false);
     Alert.alert('Permissions Saved', `Permissions for ${selectedRole.name} updated successfully.`);
@@ -203,6 +212,8 @@ export default function PermissionConfigurationScreen({
     });
     return statements;
   }, [matrix]);
+
+  if (loading) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -425,36 +436,6 @@ export default function PermissionConfigurationScreen({
     </SafeAreaView>
   );
 }
-
-const DEMO_ROLES: PermissionRole[] = [
-  { id: 'teacher', name: 'teacher' },
-  { id: 'coordinator', name: 'coordinator' },
-  { id: 'director', name: 'director' },
-  { id: 'institutional_admin', name: 'institutional_admin' },
-  { id: 'sysadmin', name: 'sysadmin' },
-];
-
-function DEFAULT_MATRIX(roleId: string): PermissionMatrix {
-  const base: PermissionMatrix = {};
-  MODULES.forEach((m) => {
-    base[m] = { VIEW: false, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-  });
-
-  if (roleId === 'teacher') {
-    base['Students / Enrollment'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    base['Assessments'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    base['IUP & Goals'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    base['Active Therapy'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    base['Reports'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    base['Staff'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    base['Admin'] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-  }
-  return base;
-}
-
-const DEMO_AUDIT: AuditEntry[] = [
-  { date: 'Aug 5, 2026', user: 'Sysadmin A', resource: 'Reports', action: 'APPROVE', roleName: 'coordinator' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

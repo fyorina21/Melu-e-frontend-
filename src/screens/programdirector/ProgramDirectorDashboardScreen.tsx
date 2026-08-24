@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -35,18 +37,15 @@ function StatCard({ label, value, onPress }: { label: string; value: number; onP
 
 export default function ProgramDirectorDashboardScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'ProgramDirectorDashboard'>) {
   const [data, setData] = useState<ProgramDirectorDashboardData | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { data: res } = await getProgramDirectorDashboard();
-      setData({
-        ...DEMO_DATA,
-        ...res,
-        pipeline: Array.isArray(res?.pipeline) ? res.pipeline : [],
-        recentActivity: Array.isArray(res?.recentActivity) ? res.recentActivity : [],
-      });
+      setData(res);
+      setLoadError(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setLoadError(true);
     }
   }, []);
 
@@ -54,7 +53,8 @@ export default function ProgramDirectorDashboardScreen({ navigation }: NativeSta
 
   const goto = (tab: string) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab]);
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -105,7 +105,7 @@ export default function ProgramDirectorDashboardScreen({ navigation }: NativeSta
           <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Caseload')}>
             <Text style={typography.bodyBold}>Assign Goals</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Goal Bank')}>
+          <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Clinical Quality')}>
             <Text style={typography.bodyBold}>View Goal Bank</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Enrollment')}>
@@ -116,24 +116,6 @@ export default function ProgramDirectorDashboardScreen({ navigation }: NativeSta
     </SafeAreaView>
   );
 }
-
-const DEMO_DATA: ProgramDirectorDashboardData = {
-  unreadCount: 2,
-  studentsInAssessment: 3,
-  readyForIup: 2,
-  activeIupPlans: 9,
-  goalsAssignedThisMonth: 14,
-  pipeline: [
-    { name: 'In Assessment', count: 3 },
-    { name: 'Assessment Complete', count: 2 },
-    { name: 'IUP Created', count: 9 },
-  ],
-  recentActivity: [
-    'Assessment completed for Student C - Ready for IUP',
-    'IUP draft saved for Student D',
-    "Goal Bank updated with new goal: 'Toileting Independence'",
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

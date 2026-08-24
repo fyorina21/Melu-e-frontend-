@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import {
   View,
   Text,
@@ -81,8 +82,8 @@ export default function SessionNoteEditorScreen({ route, navigation }: Props) {
       setBody(data.bodyMarkdown || '');
       setAttachments(data.attachments || []);
     } catch (err) {
-      setBody(DEMO_NOTE.bodyMarkdown);
-      setAttachments(DEMO_NOTE.attachments);
+      setBody('');
+      setAttachments([]);
     } finally {
       setLoading(false);
     }
@@ -156,7 +157,7 @@ export default function SessionNoteEditorScreen({ route, navigation }: Props) {
     }
   };
 
-  if (loading) return null;
+  if (loading) return <ScreenLoader />;
 
   const isReadOnly = mode === 'view';
 
@@ -236,11 +237,6 @@ function buildFormData(asset: { uri: string; name?: string | null; fileName?: st
   } as unknown as Blob);
   return formData;
 }
-
-const DEMO_NOTE: { bodyMarkdown: string; attachments: Attachment[] } = {
-  bodyMarkdown: 'Student A independently requested toys five times.\nEye contact improved.\nOne tantrum occurred during cleanup.\n\nExcellent participation overall.',
-  attachments: [],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

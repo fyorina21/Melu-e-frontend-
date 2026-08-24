@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -72,19 +74,22 @@ interface AssessmentData {
 export default function AssessmentDashboardScreen({ navigation }: Props) {
   const { logout } = useAuth();
   const [data, setData] = useState<AssessmentData | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { data: res } = await getAssessmentDashboard();
       setData(res);
+      setLoadError(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setLoadError(true);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -177,17 +182,6 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_DATA: AssessmentData = {
-  periodLabel: 'Jul 28 – Aug 8, 2026',
-  stats: { total: 4, completed: 1, inProgress: 2, notStarted: 1 },
-  students: [
-    { id: 'student-a', name: 'Student A', initial: 'S', age: 6, program: 'Regular Program', therapist: 'Teacher A', lastAssessment: 'Jul 28, 2026', score: 62, ablls: { status: 'In Progress', progress: 45 }, behavior: { status: 'Not Started', progress: 0 } },
-    { id: 'student-b', name: 'Student B', initial: 'S', age: 7, program: 'Regular Program', therapist: 'Teacher B', lastAssessment: 'Aug 2, 2026', score: 88, ablls: { status: 'Completed', progress: 100 }, behavior: { status: 'Completed', progress: 100 } },
-    { id: 'student-c', name: 'Student C', initial: 'S', age: 5, program: 'Pooled-Out', therapist: 'Teacher C', lastAssessment: 'Jul 30, 2026', score: 41, ablls: { status: 'In Progress', progress: 20 }, behavior: { status: 'In Progress', progress: 20 } },
-    { id: 'student-d', name: 'Student D', initial: 'S', age: 6, program: 'Regular Program', therapist: 'Teacher A', lastAssessment: '—', score: 0, ablls: { status: 'Not Started', progress: 0 }, behavior: { status: 'Not Started', progress: 0 } },
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

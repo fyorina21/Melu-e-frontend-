@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import ScreenLoader from '../../components/ScreenLoader';
 import { radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -124,6 +125,8 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  if (!dash) return <ScreenLoader />;
 
   const dismissNotification = (id: number) => setNotifications((prev) => prev.filter((n) => n.id !== id));
 

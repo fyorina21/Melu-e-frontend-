@@ -1,27 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import DobPicker from '../../components/DobPicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { useAuth, ROLES } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { getStaffOptions, getStudentOptions, type StaffOption, type StudentOption } from '../../api/optionsApi';
 import { createStudentEnrollment } from '../../api/coordinatorApi';
-import type { CoordinatorStackParamList, ProgramDirectorStackParamList } from '../../types';
+import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Documents', 'Assign Therapist', 'Review'];
 
 const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
 const GENDERS = ['Female', 'Male', 'Other'];
-const THERAPISTS = ['Teacher A', 'Teacher B', 'Teacher C'];
 const DOC_TYPES = ['Birth Certificate', 'Medical Reports', 'Assessment Reports', 'Referral Letter', 'Insurance Documents'];
-const EXISTING_STUDENTS = ['Emily Johnson', 'Michael Brown', 'Sophia Davis', 'Liam Wilson', 'Olivia Martinez'];
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DOB_RE = /^\d{2}\/\d{2}\/\d{4}$/;
+const DOB_PLACEHOLDER = new Date(2018, 0, 1);
 
 interface UploadedFile {
   id: string;
@@ -54,69 +54,133 @@ const INITIAL_STATE: WizardState = {
   parentEmail: '',
   diagnosis: '',
   medicalNotes: '',
-  therapist: THERAPISTS[0],
+  therapist: '',
   documents: [],
   files: [],
 };
 
-type Props = NativeStackScreenProps<CoordinatorStackParamList | ProgramDirectorStackParamList, 'StudentEnrollmentWizard'>;
+type Props = NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentEnrollmentWizard'>;
+
+function Chips({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <View style={styles.chipRow}>
+      {options.map((opt) => (
+        <TouchableOpacity key={opt} style={[styles.chip, value === opt && styles.chipSelected]} onPress={() => onChange(opt)}>
+          <Text style={[styles.chipText, value === opt && styles.chipTextSelected]}>{opt}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function Field({ label, value, onChangeText, keyboardType, multiline }: { label: string; value: string; onChangeText: (t: string) => void; keyboardType?: 'phone-pad' | 'email-address'; multiline?: boolean }) {
+  return (
+    <View style={styles.field}>
+      <Text style={typography.label}>{label}</Text>
+      <TextInput
+        style={[styles.textInput, multiline && styles.textArea]}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        multiline={multiline}
+      />
+    </View>
+  );
+}
 
 export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
-  const { session } = useAuth();
-  const isProgramDirector = session?.role === ROLES.PROGRAM_DIRECTOR;
+  const { showToast } = useToast();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<WizardState>(INITIAL_STATE);
+  const [therapists, setTherapists] = useState<StaffOption[]>([]);
+  const [existingStudents, setExistingStudents] = useState<StudentOption[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getStaffOptions()
+      .then(({ data }) => {
+        const teachers = data.filter((s) => s.role === 'teacher');
+        setTherapists(teachers);
+        setForm((prev) => ({ ...prev, therapist: prev.therapist || teachers[0]?.name || '' }));
+      })
+      .catch(() => setTherapists([]));
+    getStudentOptions()
+      .then(({ data }) => setExistingStudents(data))
+      .catch(() => setExistingStudents([]));
+  }, []);
+
+  const therapistNames = therapists.map((t) => t.name);
 
   const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const next = () => {
     if (step === 0) {
-      if (!form.name.trim()) { Alert.alert('Student name is required'); return; }
-      if (form.dob.trim() && !DOB_RE.test(form.dob.trim())) {
-        Alert.alert('Invalid date', 'Enter the date of birth as MM/DD/YYYY, or leave it blank.');
-        return;
-      }
+      if (!form.name.trim()) { showToast('Student name is required', 'error'); return; }
     }
     if (step === 1) {
-      if (!form.parentName.trim()) { Alert.alert('Parent name is required'); return; }
-      if (!form.parentPhone.trim()) { Alert.alert('Parent phone is required'); return; }
+      if (!form.parentName.trim()) { showToast('Parent name is required', 'error'); return; }
+      if (!form.parentPhone.trim()) { showToast('Parent phone is required', 'error'); return; }
       if (!PHONE_RE.test(form.parentPhone.trim())) {
-        Alert.alert('Invalid phone', 'Enter a valid phone number (7-20 digits, digits/spaces/()/+-).');
+        showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
         return;
       }
       if (form.parentEmail.trim() && !EMAIL_RE.test(form.parentEmail.trim())) {
-        Alert.alert('Invalid email', 'Enter a valid parent email address or leave it blank.');
+        showToast('Invalid parent email address', 'error');
         return;
       }
     }
+    duplicateConfirmed.current = false;
     if (step < STEPS.length - 1) setStep(step + 1);
   };
 
   const saveProgress = () => {
-    Alert.alert('Progress saved', `Draft enrollment for "${form.name || 'new student'}" stored locally on this device.`);
+    try {
+      const key = `enrollment-draft-${form.name.trim().toLowerCase() || 'untitled'}`;
+      localStorage.setItem(key, JSON.stringify(form));
+      showToast('Draft stored locally on this device', 'success');
+    } catch (err) {
+      showToast('This device does not support local drafts', 'error');
+    }
   };
 
   const submitEnrollment = async () => {
+    if (saving) return;
+    setSaving(true);
+    const [firstName, ...rest] = form.name.trim().split(/\s+/);
+    const payload = {
+      firstName,
+      lastName: rest.join(' ') || '-',
+      dateOfBirth: form.dob,
+      programType: form.program,
+      therapyGroup: '',
+      gender: form.gender,
+      parentName: form.parentName.trim(),
+      parentPhone: form.parentPhone.trim(),
+      parentEmail: form.parentEmail.trim(),
+      diagnosis: form.diagnosis.trim(),
+      medicalNotes: form.medicalNotes.trim(),
+      documents: form.documents,
+      assignedTherapist: form.therapist,
+    };
     try {
-      await createStudentEnrollment(form as unknown as Record<string, unknown>);
-    } catch (err) {}
-    Alert.alert('Enrollment submitted', `${form.name} has been enrolled in ${form.program}.`, [
-      { text: 'Done', onPress: () => navigation?.goBack?.() },
-    ]);
+      await createStudentEnrollment(payload);
+      showToast(`${form.name} enrolled in ${form.program}`, 'success');
+      navigation?.goBack?.();
+    } catch (err) {
+      showToast('Could not save the enrollment. Please try again.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const duplicateConfirmed = React.useRef(false);
 
   const handleSubmit = () => {
     const normalized = form.name.trim().toLowerCase();
-    const dup = EXISTING_STUDENTS.find((n) => n.toLowerCase() === normalized);
-    if (dup) {
-      Alert.alert(
-        'Possible duplicate',
-        `${form.name.trim()} already appears in the student register. Enroll anyway?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Enroll anyway', onPress: submitEnrollment },
-        ]
-      );
+    const dup = existingStudents.find((s) => s.name.toLowerCase() === normalized);
+    if (dup && !duplicateConfirmed.current) {
+      duplicateConfirmed.current = true;
+      showToast('Name already exists — press Finish Enrollment again to confirm', 'error');
       return;
     }
     submitEnrollment();
@@ -131,7 +195,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const handleUploadImage = async (docType: string) => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to attach images.');
+      showToast('Allow photo library access to attach images', 'error');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images });
@@ -150,36 +214,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   const docFiles = (docType: string) => form.files.filter((f) => f.docType === docType);
 
-  const Chips = ({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) => (
-    <View style={styles.chipRow}>
-      {options.map((opt) => (
-        <TouchableOpacity key={opt} style={[styles.chip, value === opt && styles.chipSelected]} onPress={() => onChange(opt)}>
-          <Text style={[styles.chipText, value === opt && styles.chipTextSelected]}>{opt}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  const Field = ({ label, value, onChangeText, keyboardType, multiline }: { label: string; value: string; onChangeText: (t: string) => void; keyboardType?: 'phone-pad' | 'email-address'; multiline?: boolean }) => (
-    <View style={styles.field}>
-      <Text style={typography.label}>{label}</Text>
-      <TextInput
-        style={[styles.textInput, multiline && styles.textArea]}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        multiline={multiline}
-      />
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.safe}>
-      {isProgramDirector ? (
-        <AppNavbar activeTab="Enrollment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
-      ) : (
-        <AppNavbar activeTab="Enrollment" onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)} />
-      )}
+      <AppNavbar activeTab="Enrollment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
 
       <View style={styles.header}>
         <Text style={typography.h1}>Enrollment Wizard</Text>
@@ -202,7 +239,14 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           <View style={styles.card}>
             <Text style={typography.h3}>Student Information</Text>
             <Field label="Full Name" value={form.name} onChangeText={(t) => set('name', t)} />
-            <Field label="Date of Birth" value={form.dob} onChangeText={(t) => set('dob', t)} />
+            <View style={styles.field}>
+              <Text style={typography.label}>Date of Birth</Text>
+              <DobPicker
+                value={form.dob ? new Date(`${form.dob}T00:00:00`) : DOB_PLACEHOLDER}
+                maximumDate={new Date()}
+                onChange={(iso) => set('dob', iso)}
+              />
+            </View>
             <View style={styles.field}><Text style={typography.label}>Gender</Text><Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} /></View>
             <View style={styles.field}><Text style={typography.label}>Program</Text><Chips options={PROGRAMS} value={form.program} onChange={(v) => set('program', v)} /></View>
           </View>
@@ -264,7 +308,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         {step === 4 && (
           <View style={styles.card}>
             <Text style={typography.h3}>Assign Therapist</Text>
-            <View style={styles.field}><Text style={typography.label}>Therapist</Text><Chips options={THERAPISTS} value={form.therapist} onChange={(v) => set('therapist', v)} /></View>
+            <View style={styles.field}><Text style={typography.label}>Therapist</Text>{therapistNames.length ? <Chips options={therapistNames} value={form.therapist} onChange={(v) => set('therapist', v)} /> : <Text style={typography.caption}>No therapists available.</Text>}</View>
           </View>
         )}
 
@@ -304,30 +348,19 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               <Feather name="arrow-right" size={16} color={colors.navyText} />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-              <Feather name="check" size={16} color={colors.navyText} />
-              <Text style={styles.nextBtnText}>Finish Enrollment</Text>
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
+              {saving ? (
+                <ActivityIndicator size="small" color={colors.navyText} />
+              ) : (
+                <Feather name="check" size={16} color={colors.navyText} />
+              )}
+              <Text style={styles.nextBtnText}>{saving ? 'Submitting…' : 'Finish Enrollment'}</Text>
             </TouchableOpacity>
           )}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return ({
-    Dashboard: 'CoordinatorDashboard',
-    'Live Sessions': 'LiveSessionMonitoring',
-    Review: 'SessionSummaryReview',
-    Progress: 'CoordinatorStudentProgress',
-    Schedule: 'CoordinatorSchedule',
-    Parents: 'CoordinatorParentCommunication',
-    Enrollment: 'StudentEnrollment',
-    Workload: 'WorkloadDashboard',
-    Notifications: 'Notifications',
-    Rooms: 'RoomResourceScheduling',
-  } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
 
 const styles = StyleSheet.create({

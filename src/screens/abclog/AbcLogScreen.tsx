@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -161,7 +162,7 @@ export default function AbcLogScreen({ navigation }: Props) {
   };
   const currentStudent = studentOptions.find((s) => s.id === studentId);
 
-  if (!data) return null;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>

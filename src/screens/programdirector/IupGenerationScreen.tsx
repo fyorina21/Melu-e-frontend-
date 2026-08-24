@@ -2,6 +2,7 @@
 // SCR-PD-003: IUP Generation & Management
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -37,7 +38,7 @@ function IupPreviewModal({ visible, student, context, slots, onClose, onExport }
   onClose: () => void;
   onExport: () => void;
 }) {
-  if (!student || !context) return null;
+  if (!student || !context) return <ScreenLoader />;
   const allSlots = [...slots.station1, ...slots.station2];
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -193,17 +194,17 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
   const load = useCallback(async () => {
     let loadedCandidates: IupCandidate[] = [];
     try {
-      const { data } = await getIupCandidates();
-      loadedCandidates = data;
+      const { data: res } = await getIupCandidates();
+      loadedCandidates = res;
     } catch (err) {
-      loadedCandidates = DEMO_CANDIDATES;
+      loadedCandidates = [];
     }
     setCandidates(loadedCandidates);
     try {
-      const { data } = await getGoalBank({});
-      setGoalBank(data);
+      const { data: res } = await getGoalBank({});
+      setGoalBank(res);
     } catch (err) {
-      setGoalBank(DEMO_GOAL_BANK);
+      setGoalBank([]);
     }
     const pre = route.params?.studentId;
     if (pre) {
@@ -217,7 +218,7 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
 
   useEffect(() => {
     if (!selectedStudentId) return;
-    getIupContext(selectedStudentId).then(({ data }) => setContext(data)).catch(() => setContext(DEMO_CONTEXT));
+    getIupContext(selectedStudentId).then(({ data }) => setContext(data)).catch(() => setContext(null));
   }, [selectedStudentId]);
 
   const handleSelectGoal = (goal: GoalBankItem) => {
@@ -252,8 +253,8 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
     if (!selectedStudentId) return;
     try {
       await saveIupDraft(selectedStudentId, { slots });
+      await load();
     } catch (err) {}
-    setCandidates((prev) => prev.map((c) => (c.id === selectedStudentId ? { ...c, status: 'IUP Draft' } : c)));
     Alert.alert('Draft saved', 'The IUP draft has been saved and appears in the IUP Library.');
   };
 
@@ -308,8 +309,8 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
           onPress: async () => {
             try {
               await finalizeIup(selectedStudentId, { slots });
+              await load();
             } catch (err) {}
-            setCandidates((prev) => prev.map((c) => (c.id === selectedStudentId ? { ...c, status: 'Active Therapy' } : c)));
             Alert.alert('IUP Finalized', 'Student moved to Active Therapy. Goals are now visible in the Teacher session screen.');
           },
         },
@@ -320,7 +321,7 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
   return (
     <SafeAreaView style={styles.safe}>
       {isCoordinator ? (
-        <AppNavbar activeTab="Schedule" onTabPress={(t) => t !== 'Schedule' && navigation?.navigate?.(coordinatorRouteForTab(t) as never)} />
+        <AppNavbar activeTab="IUP Creation & Goal Assignment" onTabPress={(t) => t !== 'IUP Creation & Goal Assignment' && navigation?.navigate?.(coordinatorRouteForTab(t) as never)} />
       ) : (
         <AppNavbar activeTab="IUP" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
       )}
@@ -435,11 +436,6 @@ export default function IupGenerationScreen({ navigation, route }: NativeStackSc
   );
 }
 
-const DEMO_CANDIDATES: IupCandidate[] = [
-  { id: 'student-c', name: 'Student C', status: 'Ready for IUP' },
-  { id: 'student-d', name: 'Student D', status: 'IUP Draft' },
-];
-
 function coordinatorRouteForTab(tab: string): keyof CoordinatorStackParamList {
   return ({
     Dashboard: 'CoordinatorDashboard',
@@ -454,22 +450,6 @@ function coordinatorRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Notifications: 'Notifications',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-const DEMO_CONTEXT: IupContext = {
-  studentName: 'Student C',
-  age: 5,
-  dob: '2021-03-14',
-  program: 'Pooled-Out',
-  enrollmentDate: '2025-09-01',
-  skillsStrengths: 'Receptive language, gross motor, imitation.',
-  behaviorFunctions: 'Escape/avoidance during transitions (primary), attention-seeking (secondary).',
-  topReinforcers: ['Bubbles', 'Tablet time', 'Music', 'Blocks', 'Swing'],
-  sensorySummary: 'Enjoyed swinging and deep pressure; refused loud noises and textured play.',
-};
-const DEMO_GOAL_BANK: GoalBankItem[] = [
-  { id: 'g1', name: 'Identify Colors', domain: 'Cognition', description: 'Student identifies 6 target colors upon request.', goalType: 'standard', masteryCriteria: '80% independent across 3 sessions' },
-  { id: 'g2', name: 'Request Items', domain: 'Communication', description: 'Student requests preferred items using words/PECS.', goalType: 'standard', masteryCriteria: '90% independent across 3 sessions' },
-  { id: 'g3', name: 'Handwashing Sequence', domain: 'Self-Help', description: '8-step handwashing task analysis.', goalType: 'task_analysis', masteryCriteria: '100% steps independent across 3 sessions' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

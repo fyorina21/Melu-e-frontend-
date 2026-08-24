@@ -15,7 +15,10 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../../types';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getGoalDomains, saveGoalDomains } from '../../api/institutionalAdminApi';
+import ScreenLoader from '../../components/ScreenLoader';
 
 export type GoalDomain = {
   id: string;
@@ -24,19 +27,11 @@ export type GoalDomain = {
   active: boolean;
 };
 
-const DEMO_DOMAINS: GoalDomain[] = [
-  { id: 'd1', name: 'Cognitive', description: 'Problem solving, memory, attention', active: true },
-  { id: 'd2', name: 'Receptive Language', description: 'Understanding verbal/non-verbal communication', active: true },
-  { id: 'd3', name: 'Expressive Language', description: 'Verbal and non-verbal expression', active: true },
-  { id: 'd4', name: 'Social Skills', description: 'Interaction, turn-taking, peer engagement', active: true },
-  { id: 'd5', name: 'Motor Skills', description: 'Fine and gross motor development', active: true },
-  { id: 'd6', name: 'Adaptive', description: 'Daily living and self-care skills', active: true },
-];
-
 export default function GoalDomainDefinitionsScreen({
   navigation,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'GoalDomainDefinitions'>) {
   const [domains, setDomains] = useState<GoalDomain[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // New Domain Form State
@@ -47,15 +42,19 @@ export default function GoalDomainDefinitionsScreen({
   const load = useCallback(async () => {
     try {
       const { data } = await getGoalDomains();
-      setDomains(data && data.length > 0 ? data : DEMO_DOMAINS);
+      setDomains(Array.isArray(data) ? data : []);
     } catch (err) {
-      setDomains(DEMO_DOMAINS);
+      setDomains([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  if (loading) return <ScreenLoader />;
 
   // Order Handlers
   const handleMoveUp = (index: number) => {
@@ -123,18 +122,22 @@ export default function GoalDomainDefinitionsScreen({
     }
     try {
       await saveGoalDomains(domains);
-    } catch (err) {
-      // Fallback local save UI handling
-    }
+      await load();
+    } catch (err) {}
     Alert.alert('Configuration saved', 'Changes reflected in the Goal Bank.');
   };
 
   return (
     <SafeAreaView style={styles.safe}>
+      <AppNavbar activeTab="Goal Domains" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Top Navigation & Breadcrumbs */}
         <View style={styles.topHeader}>
           <View style={styles.titleRow}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+              <Feather name="arrow-left" size={16} color="#334155" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
             <Text style={styles.breadcrumbTitle}>Goal Domain Definitions</Text>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>SCR-ADMIN-005</Text>
@@ -325,6 +328,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backText: { color: '#334155', fontSize: 14, fontWeight: '500' },
   breadcrumbTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   badge: {
     backgroundColor: '#F1F5F9',

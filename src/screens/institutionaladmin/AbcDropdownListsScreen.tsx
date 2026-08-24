@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,10 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../../types';
+import AppNavbar from '../../components/AppNavbar';
+import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
+import { getAbcLists, saveAbcList, resetAbcListsToDefault } from '../../api/institutionalAdminApi';
+import { useToast } from '../../context/ToastContext';
 
 type ListTab = 'Behaviors' | 'Antecedents' | 'Consequences' | 'Locations';
 
@@ -29,7 +33,9 @@ const CATEGORY_OPTIONS = ['Physical', 'Safety', 'Verbal', 'Social'];
 export default function AbcDropdownListsScreen({
   navigation,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'AbcDropdownLists'>) {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<ListTab>('Behaviors');
+  const [saving, setSaving] = useState(false);
 
   // Demo datasets per tab matching screenshots
   const [behaviors, setBehaviors] = useState<AbcItem[]>([
@@ -76,6 +82,42 @@ export default function AbcDropdownListsScreen({
     { id: 'l4', name: 'Sensory Room', status: 'Inactive' },
   ]);
 
+  const toWire = (items: AbcItem[]) =>
+    items.map((i) => ({
+      id: i.id,
+      name: i.name,
+      ...(i.definition ? { definition: i.definition } : {}),
+      ...(i.category ? { category: i.category } : {}),
+      ...(i.type ? { type: i.type } : {}),
+      active: i.status === 'Active',
+    }));
+
+  const fromWire = (raw: unknown): AbcItem[] =>
+    (Array.isArray(raw) ? raw : []).map((r: Record<string, unknown>) => ({
+      id: String(r.id ?? ''),
+      name: String(r.name ?? ''),
+      definition: r.definition as string | undefined,
+      category: r.category as string | undefined,
+      type: r.type as string | undefined,
+      status: r.active === false ? 'Inactive' : 'Active',
+    }));
+
+  const applyLoaded = useCallback(
+    (data: Record<string, unknown>) => {
+      if (Array.isArray(data.Behaviors)) setBehaviors(fromWire(data.Behaviors));
+      if (Array.isArray(data.Antecedents)) setAntecedents(fromWire(data.Antecedents));
+      if (Array.isArray(data.Consequences)) setConsequences(fromWire(data.Consequences));
+      if (Array.isArray(data.Locations)) setLocations(fromWire(data.Locations));
+    },
+    []
+  );
+
+  useEffect(() => {
+    getAbcLists()
+      .then(({ data }) => applyLoaded(data as Record<string, unknown>))
+      .catch(() => {});
+  }, [applyLoaded]);
+
   // Inline Add State (Behaviors tab)
   const [isAddingBehavior, setIsAddingBehavior] = useState(false);
   const [newBehaviorName, setNewBehaviorName] = useState('');
@@ -94,6 +136,7 @@ export default function AbcDropdownListsScreen({
       status: 'Active',
     };
     setBehaviors([...behaviors, newItem]);
+    showToast('Behavior added — press Save Changes to persist', 'info');
     setIsAddingBehavior(false);
     setNewBehaviorName('');
     setNewBehaviorDefinition('');
@@ -107,52 +150,65 @@ export default function AbcDropdownListsScreen({
 
   const handleDeleteBehavior = (id: string) => {
     setBehaviors((prev) => prev.filter((item) => item.id !== id));
+    showToast('Behavior removed — press Save Changes to persist', 'info');
   };
 
   const handleDeleteAntecedent = (id: string) => {
     setAntecedents((prev) => prev.filter((item) => item.id !== id));
+    showToast('Antecedent removed — press Save Changes to persist', 'info');
   };
 
   const handleDeleteConsequence = (id: string) => {
     setConsequences((prev) => prev.filter((item) => item.id !== id));
+    showToast('Consequence removed — press Save Changes to persist', 'info');
   };
 
   const handleDeleteLocation = (id: string) => {
     setLocations((prev) => prev.filter((item) => item.id !== id));
+    showToast('Location removed — press Save Changes to persist', 'info');
   };
 
-  const handleResetToDefault = () => {
-    setBehaviors([
-      {
-        id: 'b1',
-        name: 'Self-Injurious Behavior',
-        definition: 'Any behavior that causes harm to self',
-        category: 'Physical',
-        status: 'Active',
-      },
-      {
-        id: 'b2',
-        name: 'Aggression',
-        definition: 'Physical or verbal acts directed toward others',
-        category: 'Physical',
-        status: 'Active',
-      },
-      {
-        id: 'b3',
-        name: 'Elopement',
-        definition: 'Leaving designated area without permission',
-        category: 'Safety',
-        status: 'Active',
-      },
-    ]);
+  const handleResetToDefault = async () => {
+    try {
+      await resetAbcListsToDefault();
+      const { data } = await getAbcLists();
+      applyLoaded(data as Record<string, unknown>);
+      showToast('ABC lists reset to defaults', 'success');
+    } catch (err) {
+      showToast('Failed to reset ABC lists', 'error');
+    }
+  };
+
+  const handleSaveConfiguration = async () => {
+    setSaving(true);
+    try {
+      await Promise.all([
+        saveAbcList('Behaviors', toWire(behaviors)),
+        saveAbcList('Antecedents', toWire(antecedents)),
+        saveAbcList('Consequences', toWire(consequences)),
+        saveAbcList('Locations', toWire(locations)),
+      ]);
+      showToast('Configuration saved successfully', 'success');
+    } catch (err) {
+      showToast('Failed to save configuration', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
+      <AppNavbar activeTab="ABC Lists" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Sub Header / Breadcrumb */}
         <View style={styles.topHeader}>
-          <Text style={styles.breadcrumbTitle}>ABC Dropdown Lists</Text>
+          <View style={styles.titleRow}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+              <Feather name="arrow-left" size={16} color="#334155" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.breadcrumbTitle}>ABC Dropdown Lists</Text>
+          </View>
           <View style={styles.breadcrumbRow}>
             <Feather name="settings" size={12} color="#64748B" />
             <Text style={styles.breadcrumbText}> Clinical Configuration / ABC Dropdown Lists</Text>
@@ -397,9 +453,9 @@ export default function AbcDropdownListsScreen({
 
         {/* Bottom Action Controls */}
         <View style={styles.bottomControls}>
-          <TouchableOpacity style={styles.saveConfigBtn}>
+          <TouchableOpacity style={[styles.saveConfigBtn, saving && styles.saveBtnDisabled]} onPress={handleSaveConfiguration} disabled={saving}>
             <Feather name="save" size={14} color="#0F172A" />
-            <Text style={styles.saveConfigBtnText}>Save Configuration</Text>
+            <Text style={styles.saveConfigBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.resetBtn} onPress={handleResetToDefault}>
@@ -417,6 +473,14 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 24, paddingBottom: 60 },
 
   topHeader: { marginBottom: 16 },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backText: { color: '#334155', fontSize: 14, fontWeight: '500' },
   breadcrumbTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   breadcrumbRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   breadcrumbText: { fontSize: 12, color: '#64748B' },
@@ -604,4 +668,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#EF4444',
   },
+  saveBtnDisabled: { opacity: 0.6 },
 });

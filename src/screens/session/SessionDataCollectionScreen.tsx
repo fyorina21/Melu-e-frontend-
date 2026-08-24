@@ -7,13 +7,14 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -55,11 +56,12 @@ export default function SessionDataCollectionScreen({
   route,
   navigation,
 }: Props) {
-  const sessionId = route.params?.sessionId ?? 'DEMO_SESSION_ID';
+  const sessionId = route.params?.sessionId ?? '';
   const { logout } = useAuth();
   const { showToast } = useToast();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [session, setSession] = useState<SessionRoster | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(
     null
@@ -84,16 +86,8 @@ export default function SessionDataCollectionScreen({
       setSecondsRemaining(remainingSeconds());
       setIsRunning(isTimerRunning());
     } catch (err) {
-      // Fallback demo data so the screen is reviewable before backend is ready
-      setSession(DEMO_SESSION);
-
-      startSessionTimer(
-        sessionId,
-        (DEMO_SESSION.blockDurationMinutes || 90) * 60
-      );
-
-      setSecondsRemaining(remainingSeconds());
-      setIsRunning(isTimerRunning());
+      setSession(null);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -117,12 +111,7 @@ export default function SessionDataCollectionScreen({
     if (isRunning) {
       pauseSessionTimer();
     } else {
-      resumeSessionTimer(
-        sessionId,
-        (session?.blockDurationMinutes ||
-          DEMO_SESSION.blockDurationMinutes ||
-          90) * 60
-      );
+      resumeSessionTimer(sessionId, (session?.blockDurationMinutes || 90) * 60);
     }
 
     setSecondsRemaining(remainingSeconds());
@@ -135,35 +124,13 @@ export default function SessionDataCollectionScreen({
     level: string,
     stepId?: string
   ) => {
-    // Optimistic UI update
-    setSession((prev) =>
-      prev
-        ? {
-            ...prev,
-            students: prev.students.map((s) =>
-              s.id === studentId
-                ? {
-                    ...s,
-                    trials: [
-                      {
-                        promptLevel: level,
-                        timestamp: 'Just now',
-                      },
-                      ...(s.trials || []),
-                    ],
-                  }
-                : s
-            ),
-          }
-        : prev
-    );
-
     try {
       await logTrial(sessionId, studentId, goalId ?? '', {
         promptLevel: level,
         stepId,
       });
       showToast('Trial logged successfully', 'success');
+      await loadRoster();
     } catch (err) {
       Alert.alert(
         'Sync failed',
@@ -222,6 +189,7 @@ export default function SessionDataCollectionScreen({
         incidentModal?.studentId ?? '',
         incidentData as unknown as Payload
       );
+      await loadRoster();
     } catch (err) {
       // Demo/offline fallback: incident recorded locally
     }
@@ -247,24 +215,7 @@ export default function SessionDataCollectionScreen({
       // Continue with local swap if backend is unavailable.
     }
     showToast('Students swapped successfully', 'success');
-
-    setSession((prev) => {
-      if (!prev || prev.students.length < 2) {
-        return prev;
-      }
-
-      const students = [...prev.students];
-      const firstStudent = students[0];
-      const secondStudent = students[1];
-
-      students[0] = secondStudent;
-      students[1] = firstStudent;
-
-      return {
-        ...prev,
-        students,
-      };
-    });
+    await loadRoster();
   };
 
   const handleActivate = (studentId: string) => {
@@ -303,21 +254,14 @@ export default function SessionDataCollectionScreen({
     });
   };
 
+  if (loadError) return <ScreenError onRetry={loadRoster} />;
+
   if (
     loading ||
     !session ||
     secondsRemaining === null
   ) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#0F172A" style={{ marginBottom: 12 }} />
-          <Text style={typography.body}>
-            Loading session…
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <ScreenLoader />;
   }
 
   const minutes = String(
@@ -464,61 +408,6 @@ export default function SessionDataCollectionScreen({
     </SafeAreaView>
   );
 }
-
-const DEMO_SESSION: SessionRoster = {
-  teacherName: 'Teacher A',
-  stationName: 'Station 1 (Basic Skills)',
-  roomName: 'Room 2',
-  blockDurationMinutes: 90,
-
-  students: [
-    {
-      id: 'student-a',
-      name: 'Student A',
-      initial: 'S',
-      program: 'Basic',
-      active: true,
-
-      goals: [
-        {
-          id: 'goal-1',
-          name: 'Identify Colors',
-          category: 'Cognitive',
-        },
-        {
-          id: 'goal-2',
-          name: 'Goal 2',
-          category: '',
-        },
-      ],
-
-      trials: [],
-    },
-
-    {
-      id: 'student-b',
-      name: 'Student B',
-      initial: 'S',
-      program: 'Functional',
-      active: false,
-
-      goals: [
-        {
-          id: 'goal-3',
-          name: 'Request Items',
-          category: 'Expressive Language',
-        },
-        {
-          id: 'goal-4',
-          name: 'Goal 2',
-          category: '',
-        },
-      ],
-
-      trials: [],
-    },
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: {

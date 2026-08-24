@@ -8,6 +8,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { parentApi } from '../../api';
 import type { ParentStackParamList } from '../../types';
+import ScreenLoader from '../../components/ScreenLoader';
 
 type Category = 'Behavior' | 'Achievement' | 'Concern' | 'General';
 type AckStatus = 'Acknowledged' | 'Pending' | 'Needs Response';
@@ -272,6 +273,7 @@ function StrategyModal({ visible, onClose, onSend }: { visible: boolean; onClose
 
 export default function HomeObservationLogScreen({ navigation }: NativeStackScreenProps<ParentStackParamList, 'HomeObservationLog'>) {
   const [observations, setObservations] = useState<Observation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [showStrategyModal, setShowStrategyModal] = useState(false);
@@ -281,11 +283,15 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
       const rows = await parentApi.observations({});
       setObservations(Array.isArray(rows) ? rows.map(toObservation) : []);
     } catch (err) {
-      setObservations(DEMO_OBSERVATIONS.map(toObservation));
+      setObservations([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  if (loading) return <ScreenLoader />;
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -304,19 +310,7 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
         notes: `Category: ${payload.category}`,
       });
       await load();
-    } catch (err) {
-      const newObs: Observation = {
-        id: `local-${Date.now()}`,
-        date: payload.date,
-        time: payload.time,
-        category: payload.category,
-        text: payload.text,
-        status: 'Pending',
-        location: payload.location,
-        duration: payload.duration,
-      };
-      setObservations((prev) => [newObs, ...prev]);
-    }
+    } catch (err) {}
     Alert.alert('Observation submitted!');
   };
 
@@ -420,53 +414,6 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
     </SafeAreaView>
   );
 }
-
-const DEMO_OBSERVATIONS: any[] = [
-  {
-    id: '1',
-    date: '2026-08-15',
-    time: '08:30',
-    category: 'Achievement',
-    text: "Student A said 'more juice' without prompting at breakfast! First spontaneous request at home.",
-    status: 'Acknowledged',
-    teamResponse: "That's wonderful! This aligns perfectly with the verbal requesting goal we've been working on.",
-    therapistName: 'Teacher A',
-    location: 'Home',
-    duration: '—',
-  },
-  {
-    id: '2',
-    date: '2026-08-13',
-    time: '16:15',
-    category: 'Behavior',
-    text: 'Had a 10-minute tantrum when iPad time ended. Screaming and crying.',
-    status: 'Acknowledged',
-    teamResponse: "Thank you for sharing. We'll review the transition strategies and send you a tip sheet.",
-    therapistName: 'Teacher A',
-    location: 'Home',
-    duration: '10 minutes',
-  },
-  {
-    id: '3',
-    date: '2026-08-11',
-    time: '07:00',
-    category: 'Concern',
-    text: 'Not sleeping well — waking multiple times. Seems more irritable at therapy time.',
-    status: 'Needs Response',
-    location: 'Home',
-  },
-  {
-    id: '4',
-    date: '2026-08-04',
-    time: '15:00',
-    category: 'General',
-    text: 'Practiced counting to 5 with blocks. Managed to count to 4 independently!',
-    status: 'Acknowledged',
-    teamResponse: 'Great practice at home! Counting skills are improving steadily — keep it up.',
-    therapistName: 'Teacher A',
-    location: 'Home',
-  },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },

@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import {
   View,
   Text,
@@ -167,6 +169,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId;
 
   const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
   const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
 
@@ -175,12 +178,11 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       if (sessionId) {
         const { data } = await getSessionSummary(sessionId);
         setSummary(data);
-        return;
       }
+      setLoadError(false);
     } catch (err) {
-      // Fallback to DEMO_SUMMARY on error
+      setLoadError(true);
     }
-    setSummary(DEMO_SUMMARY);
   }, [sessionId]);
 
   useEffect(() => {
@@ -264,7 +266,8 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     openPrintWindow(formattedHtml, title);
   };
 
-  if (!summary) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!summary) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -378,73 +381,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 }
 
 export default SessionSummaryScreen;
-
-const DEMO_SUMMARY: SessionSummary = {
-  stationName: 'Station A',
-  teacherName: 'Teacher A',
-  startTime: '9:00 AM',
-  endTime: '9:30 AM',
-  durationMinutes: 30,
-  students: [
-    {
-      id: 's1',
-      name: 'Student A',
-      goals: [
-        {
-          id: 'g1',
-          name: 'Identify Colors',
-          goalType: 'standard',
-          independencePercent: 40,
-          totalTrials: 10,
-          promptBreakdown: { FP: 1, PP: 2, G: 3, INDEPENDENT: 4 },
-          trialLog: [],
-        },
-        {
-          id: 'g2',
-          name: 'Follow 2-Step Commands',
-          goalType: 'standard',
-          independencePercent: 70,
-          totalTrials: 10,
-          promptBreakdown: { FP: 0, PP: 1, G: 2, INDEPENDENT: 7 },
-          trialLog: [],
-        },
-      ],
-    },
-    {
-      id: 's2',
-      name: 'Student B',
-      goals: [
-        {
-          id: 'g5',
-          name: 'Request Items',
-          goalType: 'standard',
-          independencePercent: 80,
-          totalTrials: 10,
-          promptBreakdown: { FP: 0, PP: 0, G: 2, INDEPENDENT: 8 },
-          trialLog: [],
-        },
-        {
-          id: 'g6',
-          name: 'Eye Contact',
-          goalType: 'standard',
-          independencePercent: 50,
-          totalTrials: 10,
-          promptBreakdown: { FP: 0, PP: 1, G: 4, INDEPENDENT: 5 },
-          trialLog: [],
-        },
-      ],
-    },
-  ],
-  incidents: [
-  {
-    time: '9:15 AM',
-    studentName: 'Student A',
-    behavior: 'Threw materials',
-    antecedent: 'Task demand',
-    consequence: 'Offered break',
-  } as any,
-],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },

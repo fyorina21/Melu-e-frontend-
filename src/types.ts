@@ -141,11 +141,11 @@ export type CoordinatorStackParamList = {
   CoordinatorSchedule: undefined;
   CoordinatorParentCommunication: undefined;
   StudentEnrollment: undefined;
-  StudentEnrollmentWizard: undefined;
-  StudentProfile: { studentId: string };
+  StudentProfile: { studentId?: string } | undefined;
   WorkloadDashboard: undefined;
   RoomResourceScheduling: undefined;
   IupGeneration: { studentId?: string } | undefined;
+  AssessmentSummaryReport: undefined;
   Notifications: undefined;
 };
 
@@ -170,6 +170,7 @@ export type ProgramDirectorStackParamList = {
   PdParentCommunication: undefined;
   GraphChartView: undefined;
   StudentEnrollmentWizard: undefined;
+  AssessmentSummaryReport: undefined;
 };
 
 export type InstitutionalAdminStackParamList = {

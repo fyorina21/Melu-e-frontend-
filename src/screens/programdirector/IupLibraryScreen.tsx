@@ -2,6 +2,7 @@
 // SCR-PD-004: IUP Library Management
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -21,26 +22,28 @@ interface IupRecord {
   program: string;
   finalizedDate: string;
   goalCount: number;
-  version: number;
+  version: string;
   status: string;
 }
 
 export default function IupLibraryScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'IupLibrary'>) {
-  const [list, setList] = useState<IupRecord[]>([]);
+  const [list, setList] = useState<IupRecord[] | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [exportTarget, setExportTarget] = useState<IupRecord | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getIupLibrary({ search, status: statusFilter });
-      setList(data);
+      const { data: res } = await getIupLibrary({ search, status: statusFilter });
+      setList(res);
     } catch (err) {
-      setList(DEMO_LIST);
+      setList([]);
     }
   }, [search, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  if (!list) return <ScreenLoader />;
 
   const handleArchive = (iup: IupRecord) => {
     Alert.alert(`Archive ${iup.studentName}'s IUP?`, undefined, [
@@ -49,8 +52,10 @@ export default function IupLibraryScreen({ navigation }: NativeStackScreenProps<
         text: 'Archive',
         style: 'destructive',
         onPress: async () => {
-          try { await archiveIup(iup.id); } catch (err) {}
-          setList((prev) => prev.map((i) => (i.id === iup.id ? { ...i, status: 'Archived' } : i)));
+          try {
+            await archiveIup(iup.id);
+            await load();
+          } catch (err) {}
         },
       },
     ]);
@@ -77,7 +82,7 @@ export default function IupLibraryScreen({ navigation }: NativeStackScreenProps<
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Library" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar activeTab="IUP Library" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
         <Text style={typography.h1}>IUP Library Management</Text>
       </View>
@@ -131,12 +136,6 @@ export default function IupLibraryScreen({ navigation }: NativeStackScreenProps<
     </SafeAreaView>
   );
 }
-
-const DEMO_LIST: IupRecord[] = [
-  { id: '1', studentId: 'student-a', studentName: 'Student A', program: 'Pooled-Out', finalizedDate: 'Jun 2, 2026', goalCount: 4, version: 2, status: 'Active' },
-  { id: '2', studentId: 'student-b', studentName: 'Student B', program: 'Regular Program', finalizedDate: 'May 20, 2026', goalCount: 3, version: 1, status: 'Active' },
-  { id: '3', studentId: 'student-d', studentName: 'Student D', program: 'Regular Program', finalizedDate: '—', goalCount: 2, version: 1, status: 'Draft' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

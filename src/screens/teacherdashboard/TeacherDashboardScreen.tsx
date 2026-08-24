@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Dimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -66,14 +68,16 @@ const NOTIF_ICON: Record<string, { name: FeatherIconName; color: string }> = {
 export default function TeacherDashboardScreen({ navigation }: Props) {
   const { session } = useAuth();
   const [data, setData] = useState<TeacherDashboardData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [now, setNow] = useState(new Date());
 
   const load = useCallback(async () => {
     try {
       const { data: res } = await getTeacherDashboard();
       setData(res);
+      setLoadError(false);
     } catch (err) {
-      setData(DEMO_DATA);
+      setLoadError(true);
     }
   }, []);
 
@@ -86,7 +90,8 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
   const handleStartSession = () => navigation?.navigate?.('SessionDataCollection');
 
-  if (!data) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -261,34 +266,6 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_DATA: TeacherDashboardData = {
-  todaySchedule: {
-    stationName: 'Station 1 — Basic Skills',
-    roomName: 'Room 2',
-    sessionBlock: 'Block B · Daily Living',
-    startTime: '9:00 AM',
-    endTime: '10:30 AM',
-    startsIn: 'Starts in 3h 58m',
-    students: [{ id: 'student-a', name: 'Student A', initial: 'A' }, { id: 'student-b', name: 'Student B', initial: 'B' }],
-  },
-  assessmentTasks: [
-    { id: 't1', studentName: 'Student C', studentInitial: 'C', assessmentName: 'ABLLS Assessment', status: 'In Progress', progress: 45 },
-    { id: 't2', studentName: 'Student D', studentInitial: 'D', assessmentName: 'Behavior Assessment', status: 'Not Started', progress: 0 },
-  ],
-  pendingMasteryChecks: [
-    { id: 'm1', studentId: 'student-a', goalId: 'goal-1', studentName: 'Student A', goalName: 'Identify Colors', pendingLabel: 'Pending B/C verification' },
-    { id: 'm2', studentId: 'student-b', goalId: 'goal-3', studentName: 'Student B', goalName: 'Request Items', pendingLabel: 'Pending Director Review' },
-    { id: 'm3', studentId: 'student-c', goalId: 'goal-4', studentName: 'Student C', goalName: 'Hand Washing Steps', pendingLabel: 'Pending B/C verification' },
-  ],
-  notifications: [
-    { id: 'n1', type: 'approved', title: 'Session summary approved', source: 'Coordinator A', timeAgo: '2 hrs ago', unread: false },
-    { id: 'n2', type: 'revision', title: 'Session revision requested', source: 'Coordinator A', timeAgo: '3 hrs ago', unread: true },
-    { id: 'n3', type: 'alert', title: 'Coordinator alert: Parent meeting Thursday', source: 'Coordinator A', timeAgo: '5 hrs ago', unread: true },
-    { id: 'n4', type: 'message', title: 'Parent message from Parent A', source: 'Parent A', timeAgo: 'Yesterday', unread: true },
-    { id: 'n5', type: 'approved', title: 'Behavior plan update', source: 'Coordinator B', timeAgo: '2 days ago', unread: false },
-  ],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },

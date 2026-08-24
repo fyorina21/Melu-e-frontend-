@@ -1,11 +1,14 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { getGoalProgress, updateGoalProgress } from '../../api/sessionApi';
+import { getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'GoalProgress'>;
@@ -19,20 +22,58 @@ interface GoalProgressData {
   currentPhaseDescription: string;
   consecutiveIndependentTrials: number;
   masteryThreshold: number;
-  currentPhaseIndex?: number;
   trend: number[];
 }
 
+interface GoalProgressRow {
+  id: string;
+  name: string;
+  status: string;
+  progressPercent: number;
+}
+
+interface GoalProgressResponse {
+  studentId: string;
+  goals: GoalProgressRow[];
+}
+
+interface StudentProfile {
+  id: string;
+  fullName: string;
+}
+
 export default function GoalProgressScreen({ navigation, route }: Props) {
-  const { studentId = 'DEMO_STUDENT', goalId = 'DEMO_GOAL' } = route.params;
+  const { studentId, goalId } = route.params;
   const [goal, setGoal] = useState<GoalProgressData | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getGoalProgress(studentId, goalId);
-      setGoal(data);
+      const { data: res } = await getGoalProgress(studentId, goalId);
+      const payload = res as GoalProgressResponse;
+      const row = payload.goals.find((g) => g.id === goalId) ?? payload.goals[0];
+      let studentName = '';
+      try {
+        const { data: profile } = await getTeacherStudentProfile(studentId);
+        studentName = profile?.fullName ?? '';
+      } catch (err) {}
+      if (!row) {
+        setLoadError(true);
+        return;
+      }
+      setGoal({
+        name: row.name,
+        studentName,
+        category: '',
+        overallPercent: row.progressPercent,
+        currentPhaseName: `Status: ${row.status}`,
+        currentPhaseDescription: '',
+        consecutiveIndependentTrials: 0,
+        masteryThreshold: 0,
+        trend: [row.progressPercent],
+      });
     } catch (err) {
-      setGoal(DEMO_GOAL);
+      setLoadError(true);
     }
   }, [studentId, goalId]);
 
@@ -42,14 +83,18 @@ export default function GoalProgressScreen({ navigation, route }: Props) {
 
   const handleAdvancePhase = async () => {
     try {
-      await updateGoalProgress(studentId, goalId, { phaseIndex: (goal?.currentPhaseIndex ?? 0) + 1 });
+      await updateGoalProgress(studentId, goalId, {
+        progressPercent: Math.min(100, (goal?.overallPercent ?? 0) + 10),
+        status: 'active',
+      });
       load();
     } catch (err) {
       // TODO: error toast
     }
   };
 
-  if (!goal) return null;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!goal) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -101,18 +146,6 @@ export default function GoalProgressScreen({ navigation, route }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_GOAL: GoalProgressData = {
-  name: 'Identify Colors',
-  studentName: 'Student A',
-  category: 'Cognitive',
-  overallPercent: 45,
-  currentPhaseName: 'Phase 2: Partial Prompt Fading',
-  currentPhaseDescription: 'Student identifies 4/6 target colors with partial physical prompting.',
-  consecutiveIndependentTrials: 2,
-  masteryThreshold: 5,
-  trend: [20, 25, 30, 28, 35, 40, 38, 42, 45, 45],
-};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

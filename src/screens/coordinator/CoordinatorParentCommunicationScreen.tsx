@@ -17,21 +17,23 @@ import type { CoordinatorStackParamList } from '../../types';
 
 interface Conversation {
   id: string;
-  studentName: string;
-  parentName: string;
-  lastMessagePreview: string;
-  lastMessageDate: string;
-  unreadCount: number;
-  resolved: boolean;
+  studentId?: string;
+  studentName?: string;
+  parentName?: string;
+  teacherName?: string;
+  recipient: string;
+  role: string;
+  unread: number;
+  lastMessage: string;
+  time: string;
 }
 
 interface ThreadMessage {
   id: string;
-  sender: string;
-  senderLabel: string;
+  from: 'parent' | 'team';
+  senderName: string;
   text: string;
-  timestamp: string;
-  attachments?: { id: string; name: string }[];
+  sentAt: string;
 }
 
 export default function CoordinatorParentCommunicationScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorParentCommunication'>) {
@@ -45,7 +47,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
   const [studentFilter, setStudentFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('All');
 
-  const studentOptions = ['All', ...Array.from(new Set(conversations.map((c) => c.studentName)))];
+  const studentOptions = ['All', ...Array.from(new Set(conversations.map((c) => c.recipient)))];
 
   const filterByDate = (dateStr: string, filter: string) => {
     if (filter === 'All') return true;
@@ -67,12 +69,12 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
 
   const filteredConversations = conversations.filter(
     (c) =>
-      (studentFilter === 'All' || c.studentName === studentFilter) &&
-      filterByDate(c.lastMessageDate, dateFilter) &&
+      (studentFilter === 'All' || c.recipient === studentFilter) &&
+      filterByDate(c.time, dateFilter) &&
       (!search ||
-        c.studentName.toLowerCase().includes(search.toLowerCase()) ||
-        c.parentName.toLowerCase().includes(search.toLowerCase()) ||
-        c.lastMessagePreview.toLowerCase().includes(search.toLowerCase()))
+        c.recipient.toLowerCase().includes(search.toLowerCase()) ||
+        c.role.toLowerCase().includes(search.toLowerCase()) ||
+        c.lastMessage.toLowerCase().includes(search.toLowerCase()))
   );
 
   const loadList = useCallback(async () => {
@@ -81,8 +83,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
       setConversations(data);
       if (!activeId && data.length) setActiveId(data[0].id);
     } catch (err) {
-      setConversations(DEMO_CONVERSATIONS);
-      if (!activeId) setActiveId(DEMO_CONVERSATIONS[0].id);
+      setConversations([]);
     }
   }, [activeId]);
 
@@ -90,12 +91,19 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
     loadList();
   }, [loadList]);
 
-  useEffect(() => {
+  const loadThread = useCallback(async () => {
     if (!activeId) return;
-    getConversationThread(activeId)
-      .then(({ data }) => setThread(data.messages))
-      .catch(() => setThread(DEMO_THREAD));
+    try {
+      const { data } = await getConversationThread(activeId);
+      setThread(data.messages ?? []);
+    } catch (err) {
+      setThread([]);
+    }
   }, [activeId]);
+
+  useEffect(() => {
+    loadThread();
+  }, [loadThread]);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
 
@@ -111,13 +119,13 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
   const handleSend = async () => {
     if (!activeId) return;
     if (!draft.trim() && pendingAttachments.length === 0) return;
-    const newMsg: ThreadMessage = { id: `local-${Date.now()}`, sender: 'coordinator', senderLabel: 'Coordinator', text: draft, timestamp: 'Just now', attachments: pendingAttachments };
-    setThread((prev) => [...prev, newMsg]);
+    try {
+      await sendCoordinatorMessage(activeId, { text: draft, attachments: pendingAttachments });
+    } catch (err) {}
     setDraft('');
     setPendingAttachments([]);
-    try {
-      await sendCoordinatorMessage(activeId, { text: newMsg.text, attachments: newMsg.attachments });
-    } catch (err) {}
+    await loadThread();
+    await loadList();
   };
 
   const handleShareSchedule = () => {
@@ -144,8 +152,10 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
 
   const handleResolve = async () => {
     if (!activeId) return;
-    try { await markConversationResolved(activeId); } catch (err) {}
-    setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, resolved: true } : c)));
+    try {
+      await markConversationResolved(activeId);
+      await loadList();
+    } catch (err) {}
     Alert.alert('Marked as resolved');
   };
 
@@ -189,10 +199,10 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
           <ScrollView>
             {filteredConversations.map((c) => (
               <TouchableOpacity key={c.id} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]} onPress={() => setActiveId(c.id)}>
-                <Text style={typography.bodyBold}>{c.studentName}</Text>
-                <Text style={typography.caption} numberOfLines={1}>{c.lastMessagePreview}</Text>
-                {c.unreadCount > 0 && (
-                  <View style={styles.unreadBadge}><Text style={styles.unreadBadgeText}>{c.unreadCount}</Text></View>
+                <Text style={typography.bodyBold}>{c.recipient}</Text>
+                <Text style={typography.caption} numberOfLines={1}>{c.lastMessage}</Text>
+                {c.unread > 0 && (
+                  <View style={styles.unreadBadge}><Text style={styles.unreadBadgeText}>{c.unread}</Text></View>
                 )}
               </TouchableOpacity>
             ))}
@@ -203,7 +213,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
           {activeConversation ? (
             <>
               <View style={styles.chatHeader}>
-                <Text style={typography.h3}>{activeConversation.studentName} — {activeConversation.parentName}</Text>
+                <Text style={typography.h3}>{activeConversation.recipient} · {activeConversation.role}</Text>
                 <View style={styles.chatHeaderActions}>
                   <TouchableOpacity onPress={() => handleEscalate('program_director')}>
                     <Text style={styles.escalateText}>Escalate to PD</Text>
@@ -218,15 +228,9 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
               </View>
               <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesContent}>
                 {thread.map((m) => (
-                  <View key={m.id} style={[styles.messageBubble, m.sender === 'coordinator' && styles.messageBubbleMine]}>
-                    <Text style={typography.caption}>{m.senderLabel}</Text>
+                  <View key={m.id} style={[styles.messageBubble, m.from === 'team' && styles.messageBubbleMine]}>
+                    <Text style={typography.caption}>{m.senderName}</Text>
                     {m.text ? <Text style={typography.body}>{m.text}</Text> : null}
-                    {m.attachments?.map((a) => (
-                      <View key={a.id} style={styles.messageAttachmentRow}>
-                        <Feather name="paperclip" size={12} color={colors.mutedText} />
-                        <Text style={styles.messageAttachmentText} numberOfLines={1}>{a.name}</Text>
-                      </View>
-                    ))}
                   </View>
                 ))}
               </ScrollView>
@@ -288,15 +292,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
 
-const DEMO_CONVERSATIONS: Conversation[] = [
-  { id: '1', studentName: 'Student A', parentName: 'Parent A', lastMessagePreview: 'Thank you for the update!', lastMessageDate: 'Aug 11, 2026', unreadCount: 2, resolved: false },
-  { id: '2', studentName: 'Student B', parentName: 'Parent B', lastMessagePreview: 'Can we schedule a meeting?', lastMessageDate: 'Jul 2, 2026', unreadCount: 0, resolved: false },
-];
-const DEMO_THREAD: ThreadMessage[] = [
-  { id: '1', sender: 'parent', senderLabel: 'Parent A', text: 'How did today\u2019s session go?', timestamp: '10:00 AM' },
-  { id: '2', sender: 'coordinator', senderLabel: 'Coordinator', text: 'Great progress on requesting items!', timestamp: '10:15 AM', attachments: [{ id: 'att-1', name: 'goals_overview.pdf' }] },
-];
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   body: { flex: 1, flexDirection: 'row' },
@@ -322,8 +317,6 @@ const styles = StyleSheet.create({
   messagesContent: { padding: spacing.lg, gap: spacing.sm },
   messageBubble: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, maxWidth: '75%', alignSelf: 'flex-start' },
   messageBubbleMine: { backgroundColor: '#DBEAFE', alignSelf: 'flex-end' },
-  messageAttachmentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4, backgroundColor: colors.bgApp },
-  messageAttachmentText: { fontSize: 10, fontWeight: '600', color: colors.navyText, flex: 1 },
   pendingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   pendingChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.primaryYellowDark, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4, backgroundColor: colors.statusPendingBg },
   pendingChipText: { fontSize: 10, fontWeight: '600', color: colors.navyText, maxWidth: 160 },

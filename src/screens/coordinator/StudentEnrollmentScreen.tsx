@@ -26,6 +26,15 @@ export interface EnrolledStudent {
   studentId: string;
 }
 
+interface EnrollmentStudentRow {
+  id: string;
+  fullName: string;
+  age: number;
+  programType: string;
+  therapyGroup: string;
+  status: string;
+}
+
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollment'>;
 
 export default function StudentEnrollmentScreen({ navigation }: Props) {
@@ -47,9 +56,19 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         diagnosis: diagnosisFilter,
         age: ageFilter,
       });
-      setStudents(data);
+      setStudents((data as EnrollmentStudentRow[]).map((row) => ({
+        id: row.id,
+        name: row.fullName,
+        age: row.age,
+        gender: '',
+        program: row.programType,
+        therapist: row.therapyGroup,
+        diagnosis: '',
+        status: row.status === 'active' ? 'Active' : 'Inactive',
+        studentId: row.id,
+      })));
     } catch (err) {
-      setStudents(DEMO_STUDENTS);
+      setStudents([]);
     }
   }, [search, programFilter, therapistFilter, statusFilter, diagnosisFilter, ageFilter]);
 
@@ -92,10 +111,6 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           <Text style={typography.h1}>Student Register</Text>
           <Text style={typography.caption}>MR-16 — register, search and filter enrolled students</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => navigation?.navigate?.('StudentEnrollmentWizard')}>
-          <Feather name="plus" size={14} color={colors.navyText} />
-          <Text style={styles.addBtnText}>Enroll Student</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.filtersRow}>
@@ -150,18 +165,9 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
 
-const DEMO_STUDENTS: EnrolledStudent[] = [
-  { id: 'stu-1', name: 'Emily Johnson', age: 6, gender: 'Female', program: 'ABA', therapist: 'Teacher A', diagnosis: 'Autism Spectrum', status: 'Active', studentId: 'MLU-0012' },
-  { id: 'stu-2', name: 'Michael Brown', age: 7, gender: 'Male', program: 'ABA', therapist: 'Teacher B', diagnosis: 'Autism Spectrum', status: 'Active', studentId: 'MLU-0013' },
-  { id: 'stu-3', name: 'Sophia Davis', age: 5, gender: 'Female', program: 'Speech Therapy', therapist: 'Teacher C', diagnosis: 'Speech Delay', status: 'Active', studentId: 'MLU-0014' },
-  { id: 'stu-4', name: 'Liam Wilson', age: 8, gender: 'Male', program: 'Occupational Therapy', therapist: 'Teacher A', diagnosis: 'Motor Delay', status: 'Inactive', studentId: 'MLU-0015' },
-  { id: 'stu-5', name: 'Olivia Martinez', age: 6, gender: 'Female', program: 'ABA', therapist: 'Teacher B', diagnosis: 'Global Delay', status: 'Active', studentId: 'MLU-0016' },
-];
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, flexWrap: 'wrap', gap: spacing.sm },
-  addBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   addBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   filtersRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
   searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },

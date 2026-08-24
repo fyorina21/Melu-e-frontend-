@@ -18,6 +18,7 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
+import ScreenLoader from '../../components/ScreenLoader';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
 const FORMS = ['Enrollment Wizard', 'IUP Form', 'ABLLS Assessment Form'];
@@ -44,6 +45,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [fields, setFields] = useState<FormField[]>([]);
   const [isDefault, setIsDefault] = useState<boolean>(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Form Dropdown State
   const [showFormModal, setShowFormModal] = useState<boolean>(false);
@@ -61,19 +63,23 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const load = useCallback(async () => {
     try {
       const { data } = await getFormConfig(selectedForm);
-      setFields(data.fields);
-      setIsDefault(data.isDefault);
-      setHistory(data.history || DEMO_HISTORY);
+      setFields(Array.isArray(data?.fields) ? data.fields : []);
+      setIsDefault(Boolean(data?.isDefault));
+      setHistory(Array.isArray(data?.history) ? data.history : []);
     } catch (err) {
-      setFields(DEMO_FIELDS[selectedForm] || []);
+      setFields([]);
       setIsDefault(true);
-      setHistory(DEMO_HISTORY);
+      setHistory([]);
+    } finally {
+      setLoading(false);
     }
   }, [selectedForm]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  if (loading) return <ScreenLoader />;
 
   const toggleRequired = (id: string) => {
     const fieldObj = fields.find((f) => f.id === id);
@@ -179,6 +185,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     }
     try {
       await saveFormConfig(selectedForm, { fields, history });
+      await load();
     } catch (err) {}
     Alert.alert('Success', 'Configuration saved successfully.');
   };
@@ -194,14 +201,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             await resetFormToDefault(selectedForm);
           } catch (err) {}
 
-          const defaultFields = DEMO_FIELDS[selectedForm] || [];
-          
-          // Purge dynamically added fields & reset to defaults
-          setFields(defaultFields.filter((f) => !f.id.startsWith('f-')));
-          setIsDefault(true);
-
-          // Clear 'Added' entries from history state
-          setHistory(DEMO_HISTORY.filter((item) => item.newValue !== 'Added'));
+          await load();
         },
       },
     ]);
@@ -455,28 +455,6 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     </SafeAreaView>
   );
 }
-
-const DEMO_FIELDS: Record<string, FormField[]> = {
-  'Enrollment Wizard': [
-    { id: 'def-1', type: 'Text', label: 'Full Name', required: true, visible: true },
-    { id: 'def-2', type: 'Date', label: 'Date of Birth', required: true, visible: true },
-    { id: 'def-3', type: 'Dropdown', label: 'Program Type', required: false, visible: true },
-    { id: 'def-4', type: 'Text', label: 'Parent Name', required: false, visible: true },
-    { id: 'def-5', type: 'Text', label: 'Phone', required: false, visible: true },
-  ],
-  'IUP Form': [
-    { id: 'def-6', type: 'Text', label: 'Goal Name', required: true, visible: true },
-  ],
-  'ABLLS Assessment Form': [
-    { id: 'def-7', type: 'Dropdown', label: 'Skill Score', required: true, visible: true },
-  ],
-};
-
-const DEMO_HISTORY: HistoryEntry[] = [
-  { date: '2025-07-28', user: 'Admin A', field: 'Program Type', oldValue: 'Text', newValue: 'Dropdown' },
-  { date: '2025-07-15', user: 'Admin A', field: 'Phone', oldValue: 'Hidden', newValue: 'Visible' },
-  { date: '2025-06-30', user: 'Sysadmin', field: 'Date of Birth', oldValue: 'Optional', newValue: 'Required' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },

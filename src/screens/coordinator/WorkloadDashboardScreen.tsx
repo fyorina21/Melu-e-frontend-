@@ -36,13 +36,13 @@ export default function WorkloadDashboardScreen({ navigation }: Props) {
       const { data } = await getWorkloadDashboard();
       setRows(data);
     } catch (err) {
-      setRows(DEMO_ROWS);
+      setRows([]);
     }
     try {
       const { data } = await getWorkloadTrend();
       setTrend(data);
     } catch (err) {
-      setTrend(DEMO_TREND);
+      setTrend([]);
     }
   }, []);
 
@@ -128,20 +128,6 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
     Rooms: 'RoomResourceScheduling',
   } as Record<string, keyof CoordinatorStackParamList>)[tab];
 }
-
-const DEMO_ROWS: WorkloadRow[] = [
-  { teacherId: 't-a', teacherName: 'Teacher A', students: 18, todaySessions: 6, weeklySessions: 24, hours: 7, goals: 31, pendingNotes: 2, attendanceRate: 95 },
-  { teacherId: 't-b', teacherName: 'Teacher B', students: 14, todaySessions: 4, weeklySessions: 18, hours: 5, goals: 22, pendingNotes: 0, attendanceRate: 98 },
-  { teacherId: 't-c', teacherName: 'Teacher C', students: 11, todaySessions: 5, weeklySessions: 20, hours: 6, goals: 19, pendingNotes: 1, attendanceRate: 91 },
-];
-
-const DEMO_TREND: TrendPoint[] = [
-  { label: 'Mon', sessions: 20 },
-  { label: 'Tue', sessions: 24 },
-  { label: 'Wed', sessions: 22 },
-  { label: 'Thu', sessions: 26 },
-  { label: 'Fri', sessions: 18 },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

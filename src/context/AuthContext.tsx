@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
-import { Alert } from 'react-native';
 import type { DemoAccount, AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
+import { useToast } from './ToastContext';
 
 export const ROLES = {
   TEACHER: 'teacher',
@@ -37,6 +37,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
 
   useEffect(() => {
     async function restoreSession() {
@@ -69,9 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userName: user.name,
         email: user.email,
       });
+      showToast(`Welcome back, ${user.name}!`, 'success');
     } catch (err) {
       console.error('Login failed:', err);
-      Alert.alert('Login failed', 'Invalid credentials');
+      showToast('Login failed. Please check your credentials and try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -84,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn('Logout API failed:', err);
     } finally {
       setSession(null);
+      showToast('You have been signed out.', 'info');
     }
   };
 

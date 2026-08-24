@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert, Share } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -10,10 +10,10 @@ import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import StatusPill from '../../components/StatusPill';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { generateCustomReport } from '../../api/directorApi';
+import { getStaffOptions } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
 const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
-const THERAPISTS = ['Teacher A', 'Teacher B', 'Teacher C'];
 const PERIODS = ['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
 const SCORE_FILTERS = ['All', '>50%', '>70%'];
 const GOAL_STATUSES = ['All', 'On Track', 'Needs Support'];
@@ -50,6 +50,13 @@ export default function ReportBuilderScreen({ navigation }: Props) {
   const [results, setResults] = useState<ReportRow[] | null>(null);
   const [generating, setGenerating] = useState(false);
   const [exportContent, setExportContent] = useState<string | null>(null);
+  const [therapists, setTherapists] = useState<string[]>([]);
+
+  useEffect(() => {
+    getStaffOptions()
+      .then(({ data: opts }) => setTherapists(opts.filter((t) => t.role === 'teacher').map((t) => t.name)))
+      .catch(() => setTherapists([]));
+  }, []);
 
   const Chip = ({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) => (
     <TouchableOpacity style={[styles.chip, selected && styles.chipSelected]} onPress={onPress}>
@@ -64,27 +71,13 @@ export default function ReportBuilderScreen({ navigation }: Props) {
     </View>
   );
 
-  const filterDemo = (rows: ReportRow[]): ReportRow[] =>
-    rows.filter(
-      (r) =>
-        (program === 'All' || r.program === program) &&
-        (therapist === 'All' || r.therapist === therapist) &&
-        r.age >= ageFrom && r.age <= ageTo &&
-        r.attendance <= attendanceMax &&
-        (scoreFilter === 'All' || (scoreFilter === '>50%' && r.assessmentScore > 50) || (scoreFilter === '>70%' && r.assessmentScore > 70)) &&
-        (goalStatus === 'All' || r.goalStatus === goalStatus) &&
-        (behaviorType === 'All' || r.behaviorType === behaviorType) &&
-        (diagnosis === 'All' || r.diagnosis === diagnosis) &&
-        (!studentSearch.trim() || r.name.toLowerCase().includes(studentSearch.trim().toLowerCase()))
-    );
-
   const handleGenerate = async () => {
     setGenerating(true);
     try {
       const { data } = await generateCustomReport({ program, therapist, ageFrom, ageTo, attendanceMax, period, studentSearch, scoreFilter, goalStatus, behaviorType, diagnosis });
       setResults(data);
     } catch (err) {
-      setResults(filterDemo(DEMO_RESULTS));
+      setResults([]);
     }
     setGenerating(false);
   };
@@ -146,7 +139,7 @@ export default function ReportBuilderScreen({ navigation }: Props) {
         <View style={styles.card}>
           <Text style={typography.h3}>Filters</Text>
           <View style={styles.field}><Text style={typography.label}>Program</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{PROGRAMS.map((p) => <Chip key={p} label={p} selected={program === p} onPress={() => setProgram(p)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Therapist</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{['All', ...THERAPISTS].map((t) => <Chip key={t} label={t} selected={therapist === t} onPress={() => setTherapist(t)} />)}</ScrollView></View>
+          <View style={styles.field}><Text style={typography.label}>Therapist</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{['All', ...therapists].map((t) => <Chip key={t} label={t} selected={therapist === t} onPress={() => setTherapist(t)} />)}</ScrollView></View>
           <View style={styles.field}><Text style={typography.label}>Age range</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{[3, 4, 5, 6, 7, 8, 9, 10].map((a) => <Chip key={a} label={`${a}`} selected={a === ageFrom} onPress={() => setAgeFrom(a)} />)}<Text style={styles.midDash}>to</Text>{[3, 4, 5, 6, 7, 8, 9, 10].map((a) => <Chip key={a} label={`${a}`} selected={a === ageTo} onPress={() => setAgeTo(a)} />)}</ScrollView></View>
           <View style={styles.field}><Text style={typography.label}>Attendance below</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{[70, 75, 80, 85, 90].map((v) => <Chip key={v} label={`<${v}%`} selected={attendanceMax === v} onPress={() => setAttendanceMax(v)} />)}</ScrollView></View>
           <View style={styles.field}><Text style={typography.label}>Date range</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{PERIODS.map((p) => <Chip key={p} label={p} selected={period === p} onPress={() => setPeriod(p)} />)}</ScrollView></View>
@@ -209,15 +202,6 @@ export default function ReportBuilderScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
-
-const DEMO_RESULTS: ReportRow[] = [
-  { id: 'stu-1', name: 'Emily Johnson', age: 6, program: 'ABA', therapist: 'Teacher A', attendance: 72, assessmentScore: 55, goalStatus: 'Needs Support', behaviorType: 'Tantrums', diagnosis: 'Autism Spectrum' },
-  { id: 'stu-2', name: 'Michael Brown', age: 7, program: 'ABA', therapist: 'Teacher B', attendance: 91, assessmentScore: 78, goalStatus: 'On Track', behaviorType: 'Non-Compliance', diagnosis: 'Autism Spectrum' },
-  { id: 'stu-3', name: 'Sophia Davis', age: 5, program: 'Speech Therapy', therapist: 'Teacher C', attendance: 66, assessmentScore: 44, goalStatus: 'Needs Support', behaviorType: 'Elopement', diagnosis: 'Speech Delay' },
-  { id: 'stu-4', name: 'Liam Wilson', age: 8, program: 'ABA', therapist: 'Teacher A', attendance: 68, assessmentScore: 41, goalStatus: 'Needs Support', behaviorType: 'Aggression', diagnosis: 'Motor Delay' },
-  { id: 'stu-5', name: 'Olivia Martinez', age: 6, program: 'ABA', therapist: 'Teacher B', attendance: 95, assessmentScore: 88, goalStatus: 'On Track', behaviorType: 'Tantrums', diagnosis: 'Global Delay' },
-  { id: 'stu-6', name: 'Noah Thompson', age: 9, program: 'Occupational Therapy', therapist: 'Teacher C', attendance: 74, assessmentScore: 61, goalStatus: 'Needs Support', behaviorType: 'Self-Injury', diagnosis: 'Autism Spectrum' },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

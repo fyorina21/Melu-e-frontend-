@@ -18,6 +18,18 @@ interface Conversation {
   lastMessagePreview: string;
 }
 
+interface ApiConversation {
+  id: string;
+  studentId?: string;
+  studentName?: string;
+  parentName?: string;
+  recipient?: string;
+  role?: string;
+  unread?: number;
+  lastMessage?: string;
+  time?: string;
+}
+
 interface ThreadMessage {
   id: string;
   sender: string;
@@ -25,6 +37,33 @@ interface ThreadMessage {
   text: string;
   timestamp?: string;
   attachments?: { id: string; name: string }[];
+}
+
+interface ApiMessage {
+  id: string;
+  from: 'parent' | 'team';
+  senderName: string;
+  text: string;
+  sentAt: string;
+}
+
+function conversationRow(c: ApiConversation): Conversation {
+  return {
+    id: c.id,
+    studentName: c.studentName ?? c.recipient ?? 'Student',
+    parentName: c.parentName ?? 'Parent/Guardian',
+    lastMessagePreview: c.lastMessage ?? '',
+  };
+}
+
+function threadRow(m: ApiMessage): ThreadMessage {
+  return {
+    id: m.id,
+    sender: m.from === 'parent' ? 'parent' : 'pd',
+    senderLabel: m.senderName,
+    text: m.text,
+    timestamp: m.sentAt,
+  };
 }
 
 export default function PdParentCommunicationScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'PdParentCommunication'>) {
@@ -36,12 +75,12 @@ export default function PdParentCommunicationScreen({ navigation }: NativeStackS
 
   const loadList = useCallback(async () => {
     try {
-      const { data } = await getPdConversations({});
-      setConversations(data);
-      if (!activeId && data.length) setActiveId(data[0].id);
+      const { data: res } = await getPdConversations({});
+      const rows = (res as ApiConversation[]).map(conversationRow);
+      setConversations(rows);
+      if (!activeId && rows.length) setActiveId(rows[0].id);
     } catch (err) {
-      setConversations(DEMO_CONVERSATIONS);
-      if (!activeId) setActiveId(DEMO_CONVERSATIONS[0].id);
+      setConversations([]);
     }
   }, [activeId]);
 
@@ -49,7 +88,9 @@ export default function PdParentCommunicationScreen({ navigation }: NativeStackS
 
   useEffect(() => {
     if (!activeId) return;
-    getPdConversationThread(activeId).then(({ data }) => setThread(data.messages)).catch(() => setThread(DEMO_THREAD));
+    getPdConversationThread(activeId)
+      .then(({ data }) => setThread(((data as { messages?: ApiMessage[] }).messages ?? []).map(threadRow)))
+      .catch(() => setThread([]));
   }, [activeId]);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
@@ -65,17 +106,21 @@ export default function PdParentCommunicationScreen({ navigation }: NativeStackS
 
   const handleSend = async () => {
     if (!draft.trim() && pendingAttachments.length === 0) return;
-    const newMsg: ThreadMessage = { id: `local-${Date.now()}`, sender: 'pd', senderLabel: 'Program Director', text: draft, attachments: pendingAttachments };
-    setThread((prev) => [...prev, newMsg]);
+    const text = draft;
+    const attachments = pendingAttachments;
     setDraft('');
     setPendingAttachments([]);
-    try { await sendPdMessage(activeId!, { text: newMsg.text, attachments: newMsg.attachments }); } catch (err) {}
+    try {
+      await sendPdMessage(activeId!, { text, attachments });
+      const { data } = await getPdConversationThread(activeId!);
+      setThread(((data as { messages?: ApiMessage[] }).messages ?? []).map(threadRow));
+    } catch (err) {}
   };
 
   const handleEscalate = () => {
     Alert.alert('Escalate to Director?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Escalate', onPress: async () => { try { await escalateToDirector(activeId!, {}); } catch (err) {} Alert.alert('Escalated to Director'); } },
+      { text: 'Escalate', onPress: async () => { try { await escalateToDirector(activeId!, {}); await loadList(); } catch (err) {} Alert.alert('Escalated to Director'); } },
     ]);
   };
 
@@ -150,13 +195,6 @@ export default function PdParentCommunicationScreen({ navigation }: NativeStackS
     </SafeAreaView>
   );
 }
-
-const DEMO_CONVERSATIONS: Conversation[] = [
-  { id: '1', studentName: 'Student C', parentName: 'Parent C', lastMessagePreview: 'Requesting a meeting about the IUP.' },
-];
-const DEMO_THREAD: ThreadMessage[] = [
-  { id: '1', sender: 'parent', senderLabel: 'Parent C', text: "I'd like to discuss the new goals in the IUP.", timestamp: '9:00 AM', attachments: [{ id: 'att-1', name: 'iup_draft.pdf' }] },
-];
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },

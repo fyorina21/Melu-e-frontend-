@@ -1,300 +1,214 @@
-// screens/director/DirectorDashboardScreen.tsx
-// SCR-DIR-001: Director Dashboard Screen
+// screens/director/DirectorStudentProgressScreen.js
+// SCR-DIR-006: Student Progress Monitoring (Director View)
 
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ActivityIndicator,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getDirectorDashboard } from '../../api/directorApi';
+import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { getDirectorStudentProgress } from '../../api/directorApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
-interface AlertItem {
-  id: string;
-  type: 'warning' | 'info' | 'danger';
-  title: string;
-  description: string;
-  timestamp: string;
-}
-
-interface ActivityItem {
-  id: string;
-  user: string;
-  action: string;
-  time: string;
-}
-
-interface GroupSummary {
+interface DirectorGoal {
   id: string;
   name: string;
-  studentsCount: number;
-  teachersCount: number;
-  status: string;
+  percent: number;
+  trend: number[];
 }
 
-interface DirectorDashboardData {
-  stats: {
-    totalStudents: number;
-    activeSessions: number;
-    teachersOnDuty: number;
-    pendingReviews: number;
-  };
-  alerts: AlertItem[];
-  activities: ActivityItem[];
-  groups: GroupSummary[];
+interface SessionHistoryEntry {
+  id: string;
+  date: string;
+  teacherName: string;
 }
 
-const FALLBACK_DATA: DirectorDashboardData = {
-  stats: {
-    totalStudents: 42,
-    activeSessions: 8,
-    teachersOnDuty: 12,
-    pendingReviews: 3,
-  },
-  alerts: [
-    {
-      id: 'a1',
-      type: 'warning',
-      title: 'IEP Review Due',
-      description: 'Student Aiden Rivera has an IEP review scheduled for this Friday.',
-      timestamp: '10m ago',
-    },
-    {
-      id: 'a2',
-      type: 'danger',
-      title: 'Incident Logged',
-      description: 'Behavior incident logged in Group B during morning station.',
-      timestamp: '1h ago',
-    },
-  ],
-  activities: [
-    { id: 'act1', user: 'Ms. Reyes', action: 'Completed ABA session for Student A', time: '15m ago' },
-    { id: 'act2', user: 'Mr. Cruz', action: 'Submitted weekly progress report', time: '45m ago' },
-    { id: 'act3', user: 'Ms. Santos', action: 'Updated trial logs for Group C', time: '2h ago' },
-  ],
-  groups: [
-    { id: 'g1', name: 'Group A - Basic Therapy', studentsCount: 12, teachersCount: 4, status: 'Active' },
-    { id: 'g2', name: 'Group B - Advanced ABA', studentsCount: 15, teachersCount: 5, status: 'Active' },
-    { id: 'g3', name: 'Group C - Early Intervention', studentsCount: 15, teachersCount: 3, status: 'Active' },
-  ],
-};
+interface DirectorStudentData {
+  name: string;
+  age: number;
+  program: string;
+  assessmentSummary: { skills: string; behavior: string; preferences: string };
+  goals: DirectorGoal[];
+  sessionHistory: SessionHistoryEntry[];
+  incidentSummary: string;
+}
 
-export default function DirectorDashboardScreen({
-  navigation,
-}: NativeStackScreenProps<DirectorStackParamList, 'DirectorStudentProgress'>) {  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DirectorDashboardData>(FALLBACK_DATA);
-
-  const loadDashboard = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await getDirectorDashboard();
-      if (res?.data) {
-        setData({
-          stats: res.data.stats || FALLBACK_DATA.stats,
-          alerts: Array.isArray(res.data.alerts) ? res.data.alerts : [],
-          activities: Array.isArray(res.data.activities) ? res.data.activities : [],
-          groups: Array.isArray(res.data.groups) ? res.data.groups : [],
-        });
-      }
-    } catch {
-      setData(FALLBACK_DATA);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+export default function DirectorStudentProgressScreen({ navigation }: NativeStackScreenProps<DirectorStackParamList, 'DirectorStudentProgress'>) {
+  const [selectedStudentId, setSelectedStudentId] = useState('student-a');
+  const [data, setData] = useState<DirectorStudentData | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [exportContent, setExportContent] = useState<string | null>(null);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
 
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+    getStudentOptions()
+      .then(({ data: opts }) => {
+        setStudentOptions(opts);
+        if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
+          setSelectedStudentId(opts[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
-  if (loading && !data) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <AppNavbar
-          activeTab="Dashboard"
-          onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t] as any)}
-        />
-        <View style={styles.loadingCenter}>
-          <ActivityIndicator size="large" color={colors.navyText} />
-        </View>
-      </SafeAreaView>
+  const load = useCallback(async () => {
+    try {
+      const { data: res } = await getDirectorStudentProgress(selectedStudentId);
+      setData(res);
+      setLoadError(false);
+    } catch (err) {
+      setLoadError(true);
+    }
+  }, [selectedStudentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handlePrint = () => {
+    if (!data) return;
+    setExportContent(
+      [
+        `Melu'e Foundation — Student Progress Report (Director)`,
+        `Student: ${data.name} · Age ${data.age} · ${data.program}`,
+        '',
+        'ASSESSMENT SUMMARY',
+        `Skills: ${data.assessmentSummary.skills}`,
+        `Behavior: ${data.assessmentSummary.behavior}`,
+        `Preferences: ${data.assessmentSummary.preferences}`,
+        '',
+        'CURRENT GOALS',
+        ...data.goals.map((g) => `• ${g.name}: ${g.percent}% independent`),
+        '',
+        'SESSION HISTORY',
+        ...data.sessionHistory.map((s) => `• ${s.date} — ${s.teacherName}`),
+        '',
+        'BEHAVIOR INCIDENT TRENDS',
+        data.incidentSummary,
+        '',
+        'DIRECTOR NOTES',
+        notes || '(none)',
+      ].join('\n')
     );
-  }
+  };
 
-  // Safe extractions with fallback arrays to guarantee .map never receives undefined
-  const alertsList = Array.isArray(data?.alerts) ? data.alerts : [];
-  const activitiesList = Array.isArray(data?.activities) ? data.activities : [];
-  const groupsList = Array.isArray(data?.groups) ? data.groups : [];
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Dashboard"
-        onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t] as any)}
-      />
+      <AppNavbar activeTab="Progress" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
+      <View style={styles.header}>
+        <Text style={typography.h1}>Student Progress Monitoring</Text>
+        <TouchableOpacity style={styles.printBtn} onPress={handlePrint}>
+          <Feather name="printer" size={14} color={colors.navyText} />
+          <Text style={styles.printBtnText}>Print Report</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.selectorRow}>
+        {studentOptions.map((s) => (
+          <TouchableOpacity key={s.id} style={[styles.studentChip, selectedStudentId === s.id && styles.studentChipActive]} onPress={() => setSelectedStudentId(s.id)}>
+            <Text style={[typography.bodyBold, selectedStudentId === s.id && { color: colors.navyText }]}>{s.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={typography.h1}>Director Dashboard</Text>
-          <Text style={typography.caption}>Overview & Operational Metrics</Text>
-        </View>
-
-        {/* Key Operational Stats */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={typography.caption}>Total Students</Text>
-            <Text style={typography.h1}>{data?.stats?.totalStudents ?? 0}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={typography.caption}>Active Sessions</Text>
-            <Text style={typography.h1}>{data?.stats?.activeSessions ?? 0}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={typography.caption}>Teachers On Duty</Text>
-            <Text style={typography.h1}>{data?.stats?.teachersOnDuty ?? 0}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={typography.caption}>Pending Reviews</Text>
-            <Text style={typography.h1}>{data?.stats?.pendingReviews ?? 0}</Text>
-          </View>
-        </View>
-
-        {/* Priority Alerts */}
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="alert-circle-outline" size={20} color={colors.navyText} />
-            <Text style={typography.h3}>Priority Alerts</Text>
-          </View>
-          {alertsList.length === 0 ? (
-            <Text style={typography.caption}>No active alerts at this time.</Text>
-          ) : (
-            alertsList.map((alert) => (
-              <View key={alert.id} style={styles.alertRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={typography.bodyBold}>{alert.title}</Text>
-                  <Text style={typography.caption}>{alert.description}</Text>
-                </View>
-                <Text style={typography.caption}>{alert.timestamp}</Text>
+          <Text style={typography.h3}>{data.name}</Text>
+          <Text style={typography.caption}>Age {data.age} · {data.program}</Text>
+          <TouchableOpacity onPress={() => Alert.alert('Student Profile', 'Full profile view is Student Management module (out of this scope).')}>
+            <Text style={styles.linkText}>View Full Student Profile →</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={typography.h3}>Assessment Summary</Text>
+          <Text style={typography.body}>Skills: {data.assessmentSummary.skills}</Text>
+          <Text style={typography.body}>Behavior: {data.assessmentSummary.behavior}</Text>
+          <Text style={typography.body}>Preferences: {data.assessmentSummary.preferences}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={typography.h3}>Current Goals</Text>
+          {data.goals.map((g) => (
+            <View key={g.id} style={styles.goalRow}>
+              <Text style={typography.bodyBold}>{g.name}</Text>
+              <Text style={typography.caption}>{g.percent}% independent</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={typography.h3}>Session History</Text>
+          {data.sessionHistory.map((s) => (
+            <View key={s.id} style={styles.sessionRow}>
+              <Text style={typography.body}>{s.date} — {s.teacherName}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={typography.h3}>Behavior Incident Trends</Text>
+          <Text style={typography.body}>{data.incidentSummary}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={typography.h3}>Goal Progress Chart</Text>
+          <View style={styles.chartRow}>
+            {data.goals[0]?.trend.map((v, i) => (
+              <View key={i} style={styles.chartBarWrap}>
+                <View style={[styles.chartBar, { height: Math.max(4, v) }]} />
               </View>
-            ))
-          )}
+            ))}
+          </View>
         </View>
 
-        {/* Active Therapy Groups */}
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="people-outline" size={20} color={colors.navyText} />
-            <Text style={typography.h3}>Active Groups</Text>
-          </View>
-          {groupsList.length === 0 ? (
-            <Text style={typography.caption}>No active groups found.</Text>
-          ) : (
-            groupsList.map((group) => (
-              <TouchableOpacity
-                key={group.id}
-                style={styles.groupRow}
-                onPress={() => navigation.navigate('DirectorStudentProgress')}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={typography.bodyBold}>{group.name}</Text>
-                  <Text style={typography.caption}>
-                    {group.studentsCount} Students · {group.teachersCount} Teachers
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.mutedText} />
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
-
-        {/* Recent Staff Activity */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="time-outline" size={20} color={colors.navyText} />
-            <Text style={typography.h3}>Recent Staff Activity</Text>
-          </View>
-          {activitiesList.length === 0 ? (
-            <Text style={typography.caption}>No recent activity logged.</Text>
-          ) : (
-            activitiesList.map((act) => (
-              <View key={act.id} style={styles.activityRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={typography.bodyBold}>{act.user}</Text>
-                  <Text style={typography.caption}>{act.action}</Text>
-                </View>
-                <Text style={typography.caption}>{act.time}</Text>
-              </View>
-            ))
-          )}
+          <Text style={typography.h3}>Director Notes</Text>
+          <TextInput
+            style={styles.textArea}
+            multiline
+            placeholder="Timestamped internal notes..."
+            placeholderTextColor={colors.mutedText}
+            value={notes}
+            onChangeText={setNotes}
+          />
         </View>
       </ScrollView>
+
+      <ExportPreviewModal
+        visible={!!exportContent}
+        title="Student Progress Report"
+        filename={`${data.name.replace(/\s+/g, '_')}_ProgressReport.txt`}
+        content={exportContent ?? ''}
+        onClose={() => setExportContent(null)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  loadingCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
+  printBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  printBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
+  selectorRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.bgCard },
+  studentChip: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.bgApp },
+  studentChipActive: { backgroundColor: colors.primaryYellow },
   content: { padding: spacing.lg, gap: spacing.lg },
-  header: { gap: 2 },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  card: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  alertRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  groupRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  activityRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
+  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
+  linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 12 },
+  goalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+  sessionRow: { paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+  chartRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs, height: 60 },
+  chartBarWrap: { flex: 1, justifyContent: 'flex-end' },
+  chartBar: { backgroundColor: colors.promptG, borderRadius: 2 },
+  textArea: { minHeight: 70, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, textAlignVertical: 'top', color: colors.navyText },
 });
