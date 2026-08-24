@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
 import type { NavigationContainerRef, NavigationState, PartialState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -14,8 +14,14 @@ import DirectorStack from './DirectorStack';
 import InstitutionalAdminStack from './InstitutionalAdminStack';
 import SystemAdminStack from './SystemAdminStack';
 import ParentStack from './ParentStack';
+import RoleSidebar from '../components/RoleSidebar';
+import { SidebarNavContext } from './SidebarNavContext';
 
 const Stack = createNativeStackNavigator();
+
+// Roles whose navigation lives in a persistent docked sidebar instead of
+// the top navbar tabs.
+const SIDEBAR_ROLES = new Set<Role>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADMIN]);
 
 const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
   [ROLES.TEACHER]: SessionStack,
@@ -65,6 +71,18 @@ function AppNavigator() {
   if (!RoleStack) {
     throw new Error(`No navigation stack registered for role: ${session.role}`);
   }
+
+  if (SIDEBAR_ROLES.has(session.role)) {
+    return (
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <RoleSidebar role={session.role} />
+        <View style={{ flex: 1 }}>
+          <RoleStack />
+        </View>
+      </View>
+    );
+  }
+
   return <RoleStack />;
 }
 
@@ -73,6 +91,7 @@ export default function RootNavigator() {
   const navRef = React.useRef<NavigationContainerRef<any>>(null);
   const { session } = useAuth();
   const deepLinkRestored = React.useRef(false);
+  const [navVersion, setNavVersion] = React.useState(0);
 
   // On web, restore the screen from the URL after login/session restore so a
   // refresh keeps the user where they were instead of bouncing to the
@@ -104,15 +123,20 @@ export default function RootNavigator() {
     <NavigationIndependentTree>
       <NavigationContainer
         ref={navRef}
-        onStateChange={syncUrlToScreen}
+        onStateChange={(state) => {
+          syncUrlToScreen(state);
+          setNavVersion((v) => v + 1);
+        }}
         onReady={() => {
           // Sync URL for the very first screen since onStateChange only fires on changes.
           if (Platform.OS === 'web' && navRef.current) {
-            syncUrlToScreen(navRef.current.getState() as NavigationState);
+            syncUrlToScreen(navRef.current.getState());
           }
         }}
       >
-        <AppNavigator />
+        <SidebarNavContext.Provider value={{ navRef, version: navVersion }}>
+          <AppNavigator />
+        </SidebarNavContext.Provider>
       </NavigationContainer>
     </NavigationIndependentTree>
   );

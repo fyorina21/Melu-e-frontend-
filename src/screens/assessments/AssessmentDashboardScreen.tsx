@@ -149,23 +149,23 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                   </View>
                 </View>
 
-              <AssessmentRow label="ABLLS Assessment" status={s.ablls.status} progress={s.ablls.progress} />
+              <AssessmentRow label="Skills Assessment" status={s.ablls.status} progress={s.ablls.progress} />
               <AssessmentRow label="Behavior Assessment" status={s.behavior.status} progress={s.behavior.progress} />
 
               <View style={styles.studentBtnRow}>
-                <TouchableOpacity style={styles.primaryLaunchBtn} onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}>
-                  <Text style={styles.primaryLaunchBtnText}>ABLLS Assessment →</Text>
+                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]} onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}>
+                  <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryLaunchBtn} onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })}>
-                  <Text style={styles.secondaryLaunchBtnText}>Behavior Assessment →</Text>
+                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#EF4444' }]} onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })}>
+                  <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.studentBtnRow}>
-                <TouchableOpacity style={styles.secondaryLaunchBtn} onPress={() => navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })}>
-                  <Text style={styles.secondaryLaunchBtnText}>Preference →</Text>
+                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#22C55E' }]} onPress={() => navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })}>
+                  <Text style={styles.launchBtnTextLight}>Preference →</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryLaunchBtn} onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}>
-                  <Text style={styles.secondaryLaunchBtnText}>Sensory →</Text>
+                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#A855F7' }]} onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}>
+                  <Text style={styles.launchBtnTextLight}>Sensory →</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -175,7 +175,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <View style={styles.guidelinesBox}>
           <Feather name="info" size={16} color={colors.primaryYellowDark} />
           <Text style={styles.guidelinesText}>
-            All students must complete ABLLS and Behavior assessments within the 6-week window. Contact your coordinator if you need an extension.
+            All students must complete the Skills and Behavior assessments within the 6-week window. Contact your coordinator if you need an extension.
           </Text>
         </View>
       </ScrollView>
@@ -209,10 +209,8 @@ const styles = StyleSheet.create({
   progressTrack: { height: 6, borderRadius: radius.pill, backgroundColor: colors.bgApp, overflow: 'hidden' },
   progressFill: { height: '100%' },
   studentBtnRow: { flexDirection: 'row', gap: spacing.sm },
-  primaryLaunchBtn: { flex: 1, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  primaryLaunchBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 11 },
-  secondaryLaunchBtn: { flex: 1, borderWidth: 1, borderColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  secondaryLaunchBtnText: { fontWeight: '700', color: colors.primaryYellowDark, fontSize: 11 },
+  launchBtn: { flex: 1, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  launchBtnTextLight: { fontWeight: '700', color: colors.white, fontSize: 11 },
   guidelinesBox: { flexDirection: 'row', gap: spacing.sm, backgroundColor: '#FEF3C7', borderRadius: radius.md, padding: spacing.lg },
   guidelinesText: { flex: 1, fontSize: 13, color: '#92400E' },
 });

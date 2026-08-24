@@ -162,23 +162,10 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <ScreenLoader />;
-
-  const domain = ABLLS_DOMAINS[activeDomain];
-  const studentName = profile?.fullName || 'Student A';
-  const studentInitials = studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase();
-
-  const domainTotalItems = domain.items.length;
-  const domainAnswered = domain.items.filter((i) => scores[i.id] !== undefined).length;
-  const domainProgress = domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalItems = ABLLS_DOMAINS.reduce((sum, d) => sum + d.items.length, 0);
   const totalAnswered = Object.keys(scores).length;
-
-  const setScore = (itemId: string, score: Score) =>
-    setScores((prev) => ({ ...prev, [itemId]: score }));
-
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
@@ -190,6 +177,19 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
   }, [scores, notes, studentId, totalAnswered]);
+
+  if (loading) return <ScreenLoader />;
+
+  const domain = ABLLS_DOMAINS[activeDomain];
+  const studentName = profile?.fullName || 'Student A';
+  const studentInitials = studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase();
+
+  const domainTotalItems = domain.items.length;
+  const domainAnswered = domain.items.filter((i) => scores[i.id] !== undefined).length;
+  const domainProgress = domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
+
+  const setScore = (itemId: string, score: Score) =>
+    setScores((prev) => ({ ...prev, [itemId]: score }));
 
   const handleSaveDraft = async () => {
     try {

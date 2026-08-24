@@ -186,3 +186,15 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   Rooms: 'RoomResourceScheduling',
   Notifications: 'Notifications',
 };
+
+export function routeMapForRole(role: Role): Record<string, string> | undefined {
+  switch (role) {
+    case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
+    case 'program_director': return PD_ROUTE_BY_TAB;
+    case 'director': return DIRECTOR_ROUTE_BY_TAB;
+    case 'institutional_admin': return IA_ROUTE_BY_TAB;
+    case 'system_admin': return SYS_ROUTE_BY_TAB;
+    case 'parent': return PARENT_ROUTE_BY_TAB;
+    default: return undefined;
+  }
+}

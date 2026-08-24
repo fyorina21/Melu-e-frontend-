@@ -29,6 +29,8 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const [drawerOpen, setDrawerOpen] = useState(false);
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
+  const role = (session?.role ?? 'teacher') as Role;
+  const sidebarRole = role === 'institutional_admin' || role === 'system_admin';
 
   // Keep the active tab visible in the horizontally scrolling tab strip:
   // measure each tab's position and scroll the strip so the active one is
@@ -45,7 +47,6 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     tabsScrollRef.current.scrollTo({ x: Math.max(0, target), animated: true });
   };
 
-  const role = (session?.role ?? 'teacher') as Role;
   const tabs = ROLE_TABS[role] ?? [];
   const roleLabel = ROLE_LABELS[role] ?? '';
   const userName = session?.userName ?? 'User';
@@ -138,7 +139,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   return (
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
-        {isCompact && (
+        {isCompact && !sidebarRole && (
           <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.hamburgerBtn} accessibilityLabel="Open menu">
             <Feather name="menu" size={20} color={colors.navyText} />
           </TouchableOpacity>
@@ -147,7 +148,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
 
-      {!isCompact && (
+      {!isCompact && !sidebarRole && (
         <ScrollView
           ref={tabsScrollRef}
           horizontal
