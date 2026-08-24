@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: colors.primaryYellow },
   tabText: { fontWeight: '600', color: colors.bodyText, fontSize: 13 },
   tabTextActive: { color: colors.navyText },
-  rightBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  rightBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginLeft: 'auto' },
   iconBtn: { padding: spacing.xs, position: 'relative' },
   badge: {
     position: 'absolute',

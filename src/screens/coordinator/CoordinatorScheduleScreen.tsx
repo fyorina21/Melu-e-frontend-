@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
+import { markTeacherUnavailable } from '../../api/sessionApi';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorSchedule'>;
@@ -46,39 +48,26 @@ interface Teacher {
   available: boolean;
 }
 
-const INITIAL_TEACHERS: Teacher[] = [
-  { id: '1', name: 'Teacher A', station: 'Station 1', room: 'Room 2', students: ['Student A', 'Student B'], sessions: 24, trials: 312, independence: 72, incidents: 3, available: true },
-  { id: '2', name: 'Teacher B', station: 'Station 1', room: 'Room 1', students: ['Student C', 'Student D'], sessions: 20, trials: 260, independence: 68, incidents: 5, available: true },
-  { id: '3', name: 'Teacher C', station: 'Station 2', room: 'Room 1', students: [], sessions: 22, trials: 286, independence: 70, incidents: 2, available: false },
-];
-
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 type Cell = { station: string; room: string } | null;
 
-const SCHEDULE_DATA: Record<string, Record<string, Cell>> = {
-  '1': {
-    Mon: { station: 'Station 1', room: 'Room 2' },
-    Tue: { station: 'Station 1', room: 'Room 2' },
-    Wed: null,
-    Thu: { station: 'Station 1', room: 'Room 2' },
-    Fri: { station: 'Station 1', room: 'Room 2' },
-  },
-  '2': {
-    Mon: { station: 'Station 1', room: 'Room 1' },
-    Tue: null,
-    Wed: { station: 'Station 1', room: 'Room 1' },
-    Thu: { station: 'Station 1', room: 'Room 1' },
-    Fri: { station: 'Station 1', room: 'Room 1' },
-  },
-  '3': {
-    Mon: { station: 'Station 2', room: 'Room 1' },
-    Tue: { station: 'Station 2', room: 'Room 1' },
-    Wed: { station: 'Station 2', room: 'Room 1' },
-    Thu: null,
-    Fri: { station: 'Station 2', room: 'Room 1' },
-  },
-};
+interface MetricsRow {
+  teacherId: string;
+  teacherName: string;
+  sessions: number;
+  trials: number;
+  independencePercent: number;
+  incidents: number;
+}
+
+interface WeekAppointment {
+  therapistId: string;
+  therapistName: string;
+  roomName: string;
+  studentNames: string[];
+  status?: string;
+}
 
 function StationChip({ station }: { station: string }) {
   const isStation1 = station === 'Station 1';
@@ -102,7 +91,8 @@ function KpiCard({ label, value, unit = '' }: { label: string; value: number | s
 }
 
 export default function CoordinatorScheduleScreen({ navigation }: Props) {
-  const [teachers, setTeachers] = useState<Teacher[]>(INITIAL_TEACHERS);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [scheduleData, setScheduleData] = useState<Record<string, Record<string, Cell>>>({});
   const [teacherFilter, setTeacherFilter] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [unavailableModal, setUnavailableModal] = useState<Teacher | null>(null);
@@ -120,6 +110,55 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [reassignOpen, setReassignOpen] = useState(false);
   const [reassignError, setReassignError] = useState('');
 
+  const load = useCallback(async () => {
+    try {
+      const [{ data: metrics }, { data: week }] = await Promise.all([
+        getTeacherPerformanceMetrics({}),
+        getOperationalSchedule({}),
+      ]);
+      const rows = (Array.isArray(metrics) ? metrics : []) as MetricsRow[];
+      const weekRows = (week ?? {}) as Record<number, WeekAppointment[]>;
+
+      const nextTeachers: Teacher[] = [];
+      const nextSchedule: Record<string, Record<string, Cell>> = {};
+      rows.forEach((m, i) => {
+        const appts = Object.values(weekRows).flat().filter((a) => a.therapistId === m.teacherId);
+        const first = appts[0];
+        const students = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
+        nextTeachers.push({
+          id: m.teacherId,
+          name: m.teacherName,
+          station: i % 2 === 0 ? 'Station 1' : 'Station 2',
+          room: first?.roomName ?? 'Room 1',
+          students,
+          sessions: m.sessions,
+          trials: m.trials,
+          independence: m.independencePercent,
+          incidents: m.incidents,
+          available: true,
+        });
+        nextSchedule[m.teacherId] = Object.fromEntries(
+          DAYS.map((day, di) => {
+            const dayAppt = (weekRows[di] ?? []).find((a) => a.therapistId === m.teacherId);
+            return [
+              day,
+              dayAppt ? { station: i % 2 === 0 ? 'Station 1' : 'Station 2', room: dayAppt.roomName } : null,
+            ];
+          }),
+        );
+      });
+      setTeachers(nextTeachers);
+      setScheduleData(nextSchedule);
+    } catch (err) {
+      setTeachers([]);
+      setScheduleData({});
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const filteredTeachers =
     teacherFilter === 'all' ? teachers : teachers.filter((t) => t.id === teacherFilter);
 
@@ -128,6 +167,10 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const handleMarkUnavailable = () => {
     if (!unavailableModal) return;
     setTeachers((prev) => prev.map((t) => (t.id === unavailableModal.id ? { ...t, available: false } : t)));
+    markTeacherUnavailable(unavailableModal.id, {
+      date: unavailableFrom,
+      reason: unavailableReason || 'Unavailable',
+    }).catch(() => {});
     Alert.alert('Done', `${unavailableModal.name} marked as unavailable.`);
     setUnavailableModal(null);
     setUnavailableFrom('');
@@ -292,7 +335,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                     </View>
                   </View>
                   {DAYS.map((day) => {
-                    const cell = SCHEDULE_DATA[teacher.id]?.[day];
+                    const cell = scheduleData[teacher.id]?.[day];
                     return (
                       <TouchableOpacity
                         key={day}

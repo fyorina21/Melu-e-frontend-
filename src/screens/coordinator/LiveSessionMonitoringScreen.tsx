@@ -25,11 +25,46 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
+import { downloadTextFile } from '../../utils/webExport';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'LiveSessionMonitoring'>;
 
 type SessionStatus = 'on-track' | 'needs-attention' | 'overdue';
+
+interface ActiveSessionRow {
+  id: string;
+  teacherName: string;
+  stationName: string;
+  roomName?: string;
+  status: string;
+  timer: string;
+  trialCount: number;
+  studentNames: string[];
+  incidents: unknown[];
+}
+
+const STATUS_FROM_API: Record<string, SessionStatus> = {
+  'On Track': 'on-track',
+  'Needs Attention': 'needs-attention',
+  Overdue: 'overdue',
+};
+
+function mapActiveSession(row: ActiveSessionRow): Session {
+  const [m, s] = String(row.timer ?? '0:00').split(':').map(Number);
+  return {
+    id: row.id,
+    teacher: row.teacherName,
+    station: row.stationName,
+    room: row.roomName ?? '—',
+    students: row.studentNames ?? [],
+    timer: (m || 0) * 60 + (s || 0),
+    trials: row.trialCount ?? 0,
+    status: STATUS_FROM_API[row.status] ?? 'on-track',
+    incidents: Array.isArray(row.incidents) ? row.incidents.length : 0,
+  };
+}
 
 interface Session {
   id: string;
@@ -42,15 +77,6 @@ interface Session {
   status: SessionStatus;
   incidents: number;
 }
-
-const INITIAL_SESSIONS: Session[] = [
-  { id: 's1', teacher: 'Teacher A', station: 'Station 1', room: 'Room 1', students: ['Student A', 'Student B'], timer: 2340, trials: 18, status: 'on-track', incidents: 0 },
-  { id: 's2', teacher: 'Teacher B', station: 'Station 1', room: 'Room 2', students: ['Student C', 'Student D'], timer: 1800, trials: 12, status: 'needs-attention', incidents: 1 },
-  { id: 's3', teacher: 'Teacher C', station: 'Station 2', room: 'Room 1', students: ['Student A', 'Student C'], timer: 900, trials: 6, status: 'on-track', incidents: 0 },
-  { id: 's4', teacher: 'Teacher B', station: 'Station 2', room: 'Room 2', students: ['Student B', 'Student D'], timer: 3600, trials: 24, status: 'overdue', incidents: 2 },
-  { id: 's5', teacher: 'Teacher A', station: 'Station 1', room: 'Room 3', students: ['Student C', 'Student A'], timer: 1200, trials: 9, status: 'on-track', incidents: 0 },
-  { id: 's6', teacher: 'Teacher C', station: 'Station 2', room: 'Room 3', students: ['Student D', 'Student B'], timer: 600, trials: 4, status: 'needs-attention', incidents: 1 },
-];
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -98,7 +124,7 @@ const STUDENT_ID_MAP: Record<string, string> = {
 };
 
 export default function LiveSessionMonitoringScreen({ navigation }: Props) {
-  const [sessions, setSessions] = useState<Session[]>(INITIAL_SESSIONS.map((s) => ({ ...s })));
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stationFilter, setStationFilter] = useState<string>('all');
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -106,6 +132,19 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('FYI');
   const [refreshCountdown, setRefreshCountdown] = useState(30);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const { data } = await getActiveSessions({});
+      setSessions((Array.isArray(data) ? data : []).map(mapActiveSession));
+    } catch (err) {
+      setSessions([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -126,11 +165,17 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
 
   const handleManualRefresh = useCallback(() => {
     setRefreshCountdown(30);
-    Alert.alert('Refreshed', 'Sessions refreshed');
-  }, []);
+    loadSessions();
+  }, [loadSessions]);
 
-  const handleExport = useCallback(() => {
-    Alert.alert('Export', 'Session log exported');
+  const handleExport = useCallback(async () => {
+    try {
+      const { data } = await exportSessionLog({});
+      const csv = (data as { csv?: string })?.csv ?? '';
+      downloadTextFile('session_log.csv', csv);
+    } catch (err) {
+      Alert.alert('Export failed', 'Could not export the session log.');
+    }
   }, []);
 
   const filtered = sessions.filter((s) => {
@@ -152,12 +197,17 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
     setAlertType('FYI');
   };
 
-  const handleSendAlert = () => {
-    if (!alertMessage.trim()) {
+  const handleSendAlert = async () => {
+    if (!alertMessage.trim() || !alertSession) {
       Alert.alert('Error', 'Please enter an alert message');
       return;
     }
-    Alert.alert('Sent', `Alert sent to ${alertSession?.teacher}`);
+    try {
+      await sendAlertToTeacher(alertSession.id, { type: alertType, message: alertMessage });
+      Alert.alert('Sent', `Alert sent to ${alertSession.teacher}`);
+    } catch (err) {
+      Alert.alert('Failed', 'Could not deliver the alert.');
+    }
     closeAlertModal();
   };
 

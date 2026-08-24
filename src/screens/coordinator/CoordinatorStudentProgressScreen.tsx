@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -23,10 +23,10 @@ import {
   FileText,
   Save,
 } from 'lucide-react-native';
-import { mockStudents, mockGoals } from '../../api/data/mockData';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import { getEnrollmentStudents, getStudentProgressOverview, flagStudent } from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorStudentProgress'>;
@@ -35,34 +35,49 @@ const SKY = '#38BDF8';
 const AMBER = '#FCD34D';
 const DARK_TEXT = '#1F2937';
 
-const goalProgressData = [
-  { week: 'Wk 1', goal1: 45, goal2: 30 },
-  { week: 'Wk 2', goal1: 52, goal2: 38 },
-  { week: 'Wk 3', goal1: 58, goal2: 44 },
-  { week: 'Wk 4', goal1: 63, goal2: 50 },
-  { week: 'Wk 5', goal1: 67, goal2: 55 },
-  { week: 'Wk 6', goal1: 70, goal2: 60 },
-  { week: 'Wk 7', goal1: 74, goal2: 65 },
-  { week: 'Wk 8', goal1: 78, goal2: 70 },
-];
+interface StudentListItem {
+  id: string;
+  fullName: string;
+  age: number;
+  programType: string;
+  therapyGroup: string;
+  status?: string;
+}
 
-const mockSessions = [
-  { id: 'sess1', date: 'Aug 4, 2026', duration: '45 min', trials: 42, independence: 74, incidents: 0, notes: 'Student demonstrated strong performance on color identification. Prompted once on 2-step commands. Good attention throughout session.' },
-  { id: 'sess2', date: 'Aug 2, 2026', duration: '45 min', trials: 38, independence: 70, incidents: 1, notes: 'Minor behavioral incident during transition — redirected with verbal cue. Recovered quickly. Made progress on matching goals.' },
-  { id: 'sess3', date: 'Jul 31, 2026', duration: '40 min', trials: 35, independence: 66, incidents: 0, notes: 'Solid session. Student requested items verbally without prompting on 3 occasions. Continued work on eye contact goal.' },
-  { id: 'sess4', date: 'Jul 29, 2026', duration: '45 min', trials: 40, independence: 63, incidents: 2, notes: 'Two incidents logged — both during peer interaction. Strategies reviewed with supervising coordinator post-session.' },
-  { id: 'sess5', date: 'Jul 27, 2026', duration: '35 min', trials: 30, independence: 58, incidents: 0, notes: 'Short session due to student arrival time. Good engagement on cognitive tasks. Will increase trials next session.' },
-];
+interface GoalRow {
+  id: string;
+  name: string;
+  percent: number;
+  status: string;
+  domain?: string;
+  trend: number[];
+}
 
-const incidentData = [
-  { week: 'Week 1', count: 3 },
-  { week: 'Week 2', count: 2 },
-  { week: 'Week 3', count: 1 },
-  { week: 'Week 4', count: 0 },
-];
+interface SessionHistoryRow {
+  id: string;
+  date: string;
+  stationName?: string;
+  bodyPreview: string;
+  status?: string;
+  independencePercent: number;
+}
 
-const goalStatuses = ['Active', 'Active', 'Mastered', 'On Hold', 'Active', 'Active'];
-const goalProgress = [74, 70, 100, 45, 62, 55];
+interface ProgressOverview {
+  name: string;
+  age: number;
+  program: string;
+  assessmentSummary: { skills: string; behavior: string; preferences: string };
+  goals: GoalRow[];
+  sessionHistory: SessionHistoryRow[];
+  incidentSummary: string;
+  incidents: { date: string; type: string; detail: string }[];
+}
+
+const STATUS_PERCENT: Record<string, number> = {
+  Completed: 100,
+  'In Progress': 50,
+  'Not Started': 0,
+};
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; text: string }> = {
@@ -93,7 +108,9 @@ function MiniProgressBar({ value, color = SKY }: { value: number; color?: string
 }
 
 export default function CoordinatorStudentProgressScreen({ navigation }: Props) {
+  const [students, setStudents] = useState<StudentListItem[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [overview, setOverview] = useState<ProgressOverview | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [flagged, setFlagged] = useState(false);
@@ -101,20 +118,53 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
   const [flagReason, setFlagReason] = useState('');
   const [notes, setNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<(typeof mockSessions)[0] | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionHistoryRow | null>(null);
 
-  const selectedStudent = mockStudents.find((s) => s.id === selectedStudentId) ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    getEnrollmentStudents({})
+      .then(({ data }) => {
+        if (!cancelled) setStudents(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setStudents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const filteredStudents = mockStudents.filter((s) =>
-    s.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    if (!selectedStudentId) {
+      setOverview(null);
+      return;
+    }
+    let cancelled = false;
+    setOverview(null);
+    getStudentProgressOverview(selectedStudentId)
+      .then(({ data }) => {
+        if (!cancelled) setOverview(data as ProgressOverview);
+      })
+      .catch(() => {
+        if (!cancelled) setOverview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudentId]);
+
+  const selectedStudent = students.find((s) => s.id === selectedStudentId) ?? null;
+
+  const filteredStudents = students.filter((s) =>
+    (s.fullName ?? '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const studentGoalIds = selectedStudent
-    ? [...selectedStudent.goals.station1, ...selectedStudent.goals.station2].slice(0, 6)
-    : [];
-  const studentGoals = mockGoals.filter((g) => studentGoalIds.includes(g.id)).slice(0, 6);
-
-  const handleFlagConfirm = () => {
+  const handleFlagConfirm = async () => {
+    if (selectedStudentId && flagReason.trim()) {
+      try {
+        await flagStudent(selectedStudentId, { reason: flagReason });
+      } catch (err) {}
+    }
     setFlagged(true);
     setShowFlagModal(false);
     setFlagReason('');
@@ -139,8 +189,8 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
     if (route) navigation?.navigate?.(route as never);
   };
 
-  const incidentBarColors = ['#EF4444', '#F97316', '#EAB308', '#22C55E'];
-  const maxChartValue = Math.max(...goalProgressData.map((d) => Math.max(d.goal1, d.goal2)));
+  const chartGoals = (overview?.goals ?? []).slice(0, 2);
+  const maxChartValue = Math.max(1, ...chartGoals.flatMap((g) => g.trend ?? []));
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -190,7 +240,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                       <Text style={[styles.dropdownItemName, selectedStudentId === s.id && { color: '#0369A1' }]}>
                         {s.fullName}
                       </Text>
-                      <Text style={styles.dropdownItemStation}>{s.station}</Text>
+                      <Text style={styles.dropdownItemStation}>{s.programType}</Text>
                     </TouchableOpacity>
                   ))
                 )}
@@ -232,7 +282,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                         <Text style={styles.amberChipText}>{selectedStudent.therapyGroup} group</Text>
                       </View>
                       <View style={styles.grayChip}>
-                        <Text style={styles.grayChipText}>{selectedStudent.station}</Text>
+                        <Text style={styles.grayChipText}>{selectedStudent.status}</Text>
                       </View>
                     </View>
                   </View>
@@ -259,22 +309,30 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
             {/* Assessment Summary */}
             <Text style={styles.sectionHeading}>ASSESSMENT SUMMARY</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-              {[
-                { label: 'ABLLS Status', status: 'In Progress', progress: 45, color: SKY },
-                { label: 'Behavior Assessment', status: 'Not Started', progress: 0, color: '#9CA3AF' },
-                { label: 'Preferences Assessment', status: 'Completed', progress: 100, color: '#22C55E' },
-              ].map((item) => (
+              {overview
+                ? [
+                    { label: 'Skills Assessment', status: overview.assessmentSummary.skills },
+                    { label: 'Behavior Assessment', status: overview.assessmentSummary.behavior },
+                    { label: 'Preferences Assessment', status: overview.assessmentSummary.preferences },
+                  ].map((item) => {
+                    const progress = STATUS_PERCENT[item.status] ?? 0;
+                    const color = progress === 100 ? '#22C55E' : progress > 0 ? SKY : '#9CA3AF';
+                    return (
                 <View key={item.label} style={[styles.card, { flexGrow: 1, minWidth: 250 }]}>
                   <View style={styles.assessmentHeader}>
                     <Text style={styles.assessmentLabel}>{item.label}</Text>
                     <StatusBadge status={item.status} />
                   </View>
                   <View style={styles.barTrackTall}>
-                    <View style={[styles.barFillTall, { width: `${item.progress}%`, backgroundColor: item.color }]} />
+                    <View style={[styles.barFillTall, { width: `${progress}%`, backgroundColor: color }]} />
                   </View>
-                  <Text style={styles.assessmentPct}>{item.progress}% complete</Text>
+                  <Text style={styles.assessmentPct}>{progress}% complete</Text>
                 </View>
-              ))}
+                    );
+                  })
+                : (
+                  <Text style={styles.emptyDropdownText}>Loading assessment data...</Text>
+                )}
             </View>
 
             {/* Current Goals */}
@@ -283,22 +341,23 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Target size={16} color={SKY} />
                 <Text style={styles.cardTitle}>Current Goals</Text>
               </View>
-              {studentGoals.map((goal, i) => (
-                <View key={goal.id} style={[styles.tableRow, i < studentGoals.length - 1 && styles.tableRowBorder]}>
+              {(overview?.goals ?? []).slice(0, 6).map((goal, i, arr) => (
+                <View key={goal.id} style={[styles.tableRow, i < arr.length - 1 && styles.tableRowBorder]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.goalCellName}>{goal.name}</Text>
-                    <Text style={styles.goalCellDomain}>{goal.domain}</Text>
                   </View>
                   <View style={styles.goalRightCol}>
-                    <StatusBadge status={goalStatuses[i] ?? 'Active'} />
+                    <StatusBadge status={goal.status} />
                     <MiniProgressBar
-                      value={goalProgress[i] ?? 50}
-                      color={goalStatuses[i] === 'Mastered' ? '#22C55E' : SKY}
+                      value={goal.percent}
+                      color={goal.status === 'Mastered' ? '#22C55E' : SKY}
                     />
-                    <Text style={styles.lastSessionText}>Aug 4, 2026</Text>
                   </View>
                 </View>
               ))}
+              {overview && (overview?.goals.length ?? 0) === 0 && (
+                <Text style={styles.emptyDropdownText}>No goals assigned yet.</Text>
+              )}
             </View>
 
             {/* Session History */}
@@ -307,28 +366,20 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Activity size={16} color={SKY} />
                 <Text style={styles.cardTitle}>Session History</Text>
               </View>
-              {mockSessions.map((session, i) => (
-                <View key={session.id} style={[styles.tableRow, i < mockSessions.length - 1 && styles.tableRowBorder]}>
+              {(overview?.sessionHistory ?? []).map((session, i, arr) => (
+                <View key={session.id} style={[styles.tableRow, i < arr.length - 1 && styles.tableRowBorder]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.goalCellName}>{session.date}</Text>
                     <Text style={styles.goalCellDomain}>
-                      {session.duration} · {session.trials} trials
+                      {session.stationName ?? 'Session'}
+                      {session.status ? ` · ${session.status}` : ''}
                     </Text>
                   </View>
                   <View style={styles.sessionRightCol}>
-                    <MiniProgressBar value={session.independence} />
+                    <MiniProgressBar value={session.independencePercent ?? 0} />
                     <View style={styles.incidentInline}>
-                      {session.incidents > 0 ? (
-                        <>
-                          <AlertTriangle size={14} color="#DC2626" />
-                          <Text style={[styles.incidentCountText, { color: '#DC2626' }]}>{session.incidents}</Text>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle size={14} color="#16A34A" />
-                          <Text style={[styles.incidentCountText, { color: '#16A34A' }]}>0</Text>
-                        </>
-                      )}
+                      <CheckCircle size={14} color="#16A34A" />
+                      <Text style={[styles.incidentCountText, { color: '#16A34A' }]}>✓</Text>
                     </View>
                     <TouchableOpacity
                       style={styles.viewButton}
@@ -341,65 +392,78 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                   </View>
                 </View>
               ))}
+              {overview && (overview?.sessionHistory.length ?? 0) === 0 && (
+                <Text style={styles.emptyDropdownText}>No session history yet.</Text>
+              )}
             </View>
 
             {/* Goal Progress Chart */}
             <View style={styles.card}>
               <View style={styles.chartHeaderRow}>
                 <Activity size={16} color={SKY} />
-                <Text style={styles.cardTitle}>Goal Progress Chart — 8-Week Trend</Text>
+                <Text style={styles.cardTitle}>Goal Progress Trend</Text>
               </View>
+              {chartGoals.length > 0 ? (
+                <>
               <View style={styles.legendRow}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: SKY }]} />
-                  <Text style={styles.legendText}>{studentGoals[0]?.name ?? 'Goal 1'}</Text>
+                  <Text style={styles.legendText}>{chartGoals[0]?.name ?? 'Goal 1'}</Text>
                 </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: AMBER }]} />
-                  <Text style={styles.legendText}>{studentGoals[1]?.name ?? 'Goal 2'}</Text>
-                </View>
+                {chartGoals[1] && (
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: AMBER }]} />
+                    <Text style={styles.legendText}>{chartGoals[1].name}</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.chartArea}>
-                {goalProgressData.map((d) => (
-                  <View key={d.week} style={styles.chartCol}>
-                    <View style={styles.barsRow}>
-                      <View style={[styles.chartBar, { height: `${(d.goal1 / maxChartValue) * 100}%`, backgroundColor: SKY }]}>
-                        <Text style={styles.chartBarValue}>{d.goal1}%</Text>
+                {(chartGoals[0]?.trend ?? []).map((v1, wi) => {
+                  const v2 = chartGoals[1]?.trend?.[wi];
+                  return (
+                    <View key={wi} style={styles.chartCol}>
+                      <View style={styles.barsRow}>
+                        <View style={[styles.chartBar, { height: `${(v1 / maxChartValue) * 100}%`, backgroundColor: SKY }]}>
+                          <Text style={styles.chartBarValue}>{v1}%</Text>
+                        </View>
+                        {v2 !== undefined && (
+                          <View style={[styles.chartBar, { height: `${(v2 / maxChartValue) * 100}%`, backgroundColor: AMBER }]}>
+                            <Text style={styles.chartBarValueDark}>{v2}%</Text>
+                          </View>
+                        )}
                       </View>
-                      <View style={[styles.chartBar, { height: `${(d.goal2 / maxChartValue) * 100}%`, backgroundColor: AMBER }]}>
-                        <Text style={styles.chartBarValueDark}>{d.goal2}%</Text>
-                      </View>
+                      <Text style={styles.chartWeekLabel}>Wk {wi + 1}</Text>
                     </View>
-                    <Text style={styles.chartWeekLabel}>{d.week}</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
+                </>
+              ) : (
+                <Text style={styles.emptyDropdownText}>No goal trend data yet.</Text>
+              )}
             </View>
 
             {/* Behavior Incident Trends */}
             <View style={styles.card}>
               <View style={styles.chartHeaderRow}>
                 <AlertTriangle size={16} color={AMBER} />
-                <Text style={styles.cardTitle}>Behavior Incident Trends</Text>
+                <Text style={styles.cardTitle}>Behavior Incidents</Text>
               </View>
-              {incidentData.map((item, i) => (
-                <View key={item.week} style={styles.incidentTrendRow}>
-                  <Text style={styles.incidentWeekLabel}>{item.week}</Text>
-                  <View style={styles.incidentBarTrack}>
-                    <View
-                      style={[
-                        styles.incidentBarFill,
-                        {
-                          width: item.count === 0 ? '8%' : `${(item.count / 3) * 100}%`,
-                          backgroundColor: incidentBarColors[i],
-                        },
-                      ]}
-                    />
+              {(overview?.incidents ?? []).map((incident, i) => (
+                <View key={`${incident.date}-${i}`} style={[styles.incidentTrendRow, { alignItems: 'flex-start' }]}>
+                  <Text style={styles.incidentWeekLabel}>{incident.date}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: DARK_TEXT }}>{incident.type}</Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{incident.detail}</Text>
                   </View>
-                  <Text style={[styles.incidentCount, { color: incidentBarColors[i] }]}>{item.count}</Text>
-                  <Text style={styles.incidentWord}>{item.count === 1 ? 'incident' : 'incidents'}</Text>
                 </View>
               ))}
+              {!overview && (
+                <Text style={styles.emptyDropdownText}>Loading incident data...</Text>
+              )}
+              {overview && (overview.incidents.length ?? 0) === 0 && (
+                <Text style={styles.emptyDropdownText}>{overview.incidentSummary || 'No incidents recorded.'}</Text>
+              )}
             </View>
 
             {/* Internal Notes */}
@@ -447,7 +511,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Text style={styles.modalTitle}>Session Notes</Text>
                 {selectedSession && (
                   <Text style={styles.modalSubtitle}>
-                    {selectedSession.date} · {selectedSession.duration}
+                    {selectedSession.date}
                   </Text>
                 )}
               </View>
@@ -458,34 +522,18 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
             {selectedSession && (
               <>
                 <View style={styles.modalBody}>
+                  <Text style={styles.modalSubtitle}>
+                    {selectedSession.stationName}
+                    {selectedSession.status ? ` · ${selectedSession.status}` : ''}
+                  </Text>
                   <View style={styles.sessionStatsGrid}>
-                    <View style={styles.sessionStatTile}>
-                      <Text style={styles.statTileLabel}>Trials</Text>
-                      <Text style={styles.statTileValue}>{selectedSession.trials}</Text>
-                    </View>
                     <View style={[styles.sessionStatTile, { backgroundColor: '#F0F9FF' }]}>
                       <Text style={styles.statTileLabel}>Independence</Text>
-                      <Text style={[styles.statTileValue, { color: '#0284C7' }]}>{selectedSession.independence}%</Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.sessionStatTile,
-                        { backgroundColor: selectedSession.incidents > 0 ? '#FEF2F2' : '#F0FDF4' },
-                      ]}
-                    >
-                      <Text style={styles.statTileLabel}>Incidents</Text>
-                      <Text
-                        style={[
-                          styles.statTileValue,
-                          { color: selectedSession.incidents > 0 ? '#DC2626' : '#16A34A' },
-                        ]}
-                      >
-                        {selectedSession.incidents}
-                      </Text>
+                      <Text style={[styles.statTileValue, { color: '#0284C7' }]}>{selectedSession.independencePercent ?? 0}%</Text>
                     </View>
                   </View>
                   <Text style={styles.notesSectionLabel}>SESSION NOTES</Text>
-                  <Text style={styles.sessionNotesText}>{selectedSession.notes}</Text>
+                  <Text style={styles.sessionNotesText}>{selectedSession.bodyPreview}</Text>
                 </View>
                 <View style={styles.modalFooterSingle}>
                   <TouchableOpacity

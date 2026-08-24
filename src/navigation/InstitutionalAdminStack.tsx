@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../types';
-// import AdminPanelOverviewScreen from '../screens/admin/AdminPanelOverviewScreen';
+import AdminPanelOverviewScreen from '../screens/admin/AdminPanelOverviewScreen';
 import FormBuilderScreen from '../screens/institutionaladmin/FormBuilderScreen';
 import TrialLoggingFormatScreen from '../screens/institutionaladmin/TrialLoggingFormatScreen';
 import AbcDropdownListsScreen from '../screens/institutionaladmin/AbcDropdownListsScreen';
@@ -17,8 +17,8 @@ const Stack = createNativeStackNavigator<InstitutionalAdminStackParamList>();
 
 export default function InstitutionalAdminStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {/* <Stack.Screen name="AdminPanelOverview" component={AdminPanelOverviewScreen} initialParams={{ panel: 'clinical' }} /> */}
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="AdminPanelOverview">
+      <Stack.Screen name="AdminPanelOverview" component={AdminPanelOverviewScreen} initialParams={{ panel: 'clinical' }} />
       <Stack.Screen name="FormBuilder" component={FormBuilderScreen} />
       <Stack.Screen name="TrialLoggingFormat" component={TrialLoggingFormatScreen} />
       <Stack.Screen name="AbcDropdownLists" component={AbcDropdownListsScreen} />

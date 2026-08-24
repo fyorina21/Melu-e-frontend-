@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import {
   Bell,
@@ -16,6 +16,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import { getCoordinatorDashboard, getCoordinatorNotifications } from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorDashboard'>;
@@ -23,16 +24,6 @@ type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorDashb
 const SKY = '#38BDF8';
 const AMBER = '#FCD34D';
 const DARK = '#1F2937';
-
-interface PendingReview {
-  id: string;
-  teacher: string;
-  station: string;
-  date: string;
-  students: string[];
-  independence: number;
-  incidents: number;
-}
 
 interface LiveSession {
   id: string;
@@ -44,6 +35,16 @@ interface LiveSession {
   status: 'on-track' | 'needs-attention' | 'overdue';
 }
 
+interface PendingReview {
+  id: string;
+  teacher: string;
+  station: string;
+  date: string;
+  students: string[];
+  independence: number;
+  incidents: number;
+}
+
 interface NotificationItem {
   id: string;
   text: string;
@@ -52,22 +53,36 @@ interface NotificationItem {
   urgent: boolean;
 }
 
-const PENDING_REVIEWS: PendingReview[] = [
-  { id: '1', teacher: 'Teacher A', station: 'Station 1', date: 'Aug 4, 2026', students: ['Student A', 'Student B'], independence: 72, incidents: 0 },
-  { id: '2', teacher: 'Teacher B', station: 'Station 1', date: 'Aug 4, 2026', students: ['Student C', 'Student D'], independence: 65, incidents: 1 },
-  { id: '3', teacher: 'Teacher A', station: 'Station 2', date: 'Aug 3, 2026', students: ['Student B', 'Student D'], independence: 70, incidents: 0 },
-  { id: '4', teacher: 'Teacher B', station: 'Station 1', date: 'Aug 2, 2026', students: ['Student A', 'Student B'], independence: 58, incidents: 2 },
-  { id: '5', teacher: 'Teacher C', station: 'Station 2', date: 'Aug 1, 2026', students: ['Student C'], independence: 68, incidents: 0 },
-];
+interface DashboardPayload {
+  summary?: { sessionsCompleted?: number; trialsLogged?: number; incidents?: number; goalsMastered?: number };
+  unreadCount?: number;
+  activeSessionsCount?: number;
+  pendingReviewCount?: number;
+  studentsInTherapyCount?: number;
+  teachersOnDutyCount?: number;
+  liveSessions?: {
+    id: string;
+    teacherName: string;
+    stationName: string;
+    status: 'green' | 'yellow' | 'red';
+    studentCount: number;
+  }[];
+  pendingReviews?: {
+    id: string;
+    teacherName: string;
+    stationName?: string;
+    date?: string;
+    studentNames: string[];
+    independencePercent?: number;
+    incidents?: number;
+  }[];
+}
 
-const INITIAL_SESSIONS: LiveSession[] = [
-  { id: 's1', teacher: 'Teacher A', station: 'Station 1', students: ['Student A', 'Student B'], timer: 2340, trials: 18, status: 'on-track' },
-  { id: 's2', teacher: 'Teacher B', station: 'Station 1', students: ['Student C', 'Student D'], timer: 1800, trials: 12, status: 'needs-attention' },
-  { id: 's3', teacher: 'Teacher C', station: 'Station 2', students: ['Student A', 'Student C'], timer: 900, trials: 6, status: 'on-track' },
-  { id: 's4', teacher: 'Teacher B', station: 'Station 2', students: ['Student B', 'Student D'], timer: 3600, trials: 24, status: 'overdue' },
-  { id: 's5', teacher: 'Teacher A', station: 'Station 1', students: ['Student C'], timer: 1200, trials: 9, status: 'on-track' },
-  { id: 's6', teacher: 'Teacher C', station: 'Station 2', students: ['Student D'], timer: 600, trials: 4, status: 'needs-attention' },
-];
+const STATUS_FROM_API: Record<string, LiveSession['status']> = {
+  green: 'on-track',
+  yellow: 'needs-attention',
+  red: 'overdue',
+};
 
 const STATUS_CONFIG: Record<LiveSession['status'], { dot: string; label: string; badgeBg: string; badgeText: string }> = {
   'on-track': { dot: '#4ADE80', label: 'On Track', badgeBg: '#F0FDF4', badgeText: '#15803D' },
@@ -75,23 +90,104 @@ const STATUS_CONFIG: Record<LiveSession['status'], { dot: string; label: string;
   overdue: { dot: '#F87171', label: 'Overdue', badgeBg: '#FEF2F2', badgeText: '#B91C1C' },
 };
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  { id: 'n1', text: 'Teacher B session in Station 1 needs attention — 1 incident logged.', read: false, time: '5 min ago', urgent: true },
-  { id: 'n2', text: 'Session summary from Teacher C pending review since Aug 3.', read: false, time: '20 min ago', urgent: false },
-  { id: 'n3', text: 'Teacher B Station 2 session is overdue by 15 min.', read: false, time: '1 hr ago', urgent: true },
-  { id: 'n4', text: 'Student A reached 80% independence on "Identify Colors" goal.', read: false, time: '2 hr ago', urgent: false },
-];
-
 function formatTimer(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 }
 
+type ApiNotification = {
+  id: string;
+  type: string;
+  payload: { title?: string; body?: string; name?: string } | null;
+  read: boolean;
+  createdAt: string;
+};
+
+function toNotificationItem(n: ApiNotification): NotificationItem {
+  const p = n.payload ?? {};
+  const text =
+    p.title && p.body
+      ? `${p.title} — ${p.body}`
+      : (p.title ?? p.body ?? (p.name ? `Goal update: ${p.name}` : 'New notification'));
+  const ageMs = Date.now() - new Date(n.createdAt).getTime();
+  const mins = Math.max(0, Math.round(ageMs / 60000));
+  const time = mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} hr ago`;
+  return { id: n.id, text, read: n.read, time, urgent: n.type === 'alert' };
+}
+
 export default function CoordinatorDashboardScreen({ navigation }: Props) {
-  const [sessions, setSessions] = useState<LiveSession[]>(INITIAL_SESSIONS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [sessions, setSessions] = useState<LiveSession[]>([]);
+  const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
+  const [counts, setCounts] = useState({ active: 0, pending: 0, students: 0, teachers: 0 });
+  const [summary, setSummary] = useState({ completed: 0, trials: 0, incidents: 0, goalsMastered: 0 });
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const { data } = await getCoordinatorDashboard();
+      const payload = (data ?? {}) as DashboardPayload;
+      setSessions(
+        (payload.liveSessions ?? []).map((row) => ({
+          id: row.id,
+          teacher: row.teacherName,
+          station: row.stationName,
+          students:
+            row.studentCount > 0
+              ? [`${row.studentCount} student${row.studentCount > 1 ? 's' : ''}`]
+              : [],
+          timer: 0,
+          trials: 0,
+          status: STATUS_FROM_API[row.status] ?? 'on-track',
+        })),
+      );
+      setPendingReviews(
+        (payload.pendingReviews ?? []).map((row) => ({
+          id: row.id,
+          teacher: row.teacherName,
+          station: row.stationName ?? '',
+          date: row.date ?? '',
+          students: row.studentNames ?? [],
+          independence: row.independencePercent ?? 0,
+          incidents: row.incidents ?? 0,
+        })),
+      );
+      setCounts({
+        active: payload.activeSessionsCount ?? payload.liveSessions?.length ?? 0,
+        pending: payload.pendingReviewCount ?? payload.pendingReviews?.length ?? 0,
+        students: payload.studentsInTherapyCount ?? 0,
+        teachers: payload.teachersOnDutyCount ?? 0,
+      });
+      setSummary({
+        completed: payload.summary?.sessionsCompleted ?? 0,
+        trials: payload.summary?.trialsLogged ?? 0,
+        incidents: payload.summary?.incidents ?? 0,
+        goalsMastered: payload.summary?.goalsMastered ?? 0,
+      });
+    } catch (err) {
+      setSessions([]);
+      setPendingReviews([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCoordinatorNotifications()
+      .then(({ data }) => {
+        if (!cancelled) setNotifications((data as ApiNotification[]).map(toNotificationItem));
+      })
+      .catch(() => {
+        if (!cancelled) setNotifications([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -121,17 +217,17 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
   const goto = (route: keyof CoordinatorStackParamList) => navigation?.navigate?.(route as never);
 
   const stats: { label: string; value: number; icon: typeof Activity; color: string; bg: string; route: keyof CoordinatorStackParamList }[] = [
-    { label: 'Active Sessions Now', value: sessions.length, icon: Activity, color: SKY, bg: '#F0F9FF', route: 'LiveSessionMonitoring' },
-    { label: 'Sessions Pending Review', value: PENDING_REVIEWS.length, icon: FileText, color: AMBER, bg: '#FFFBEB', route: 'SessionSummaryReview' },
-    { label: 'Students in Therapy', value: 4, icon: Target, color: '#22C55E', bg: '#F0FDF4', route: 'CoordinatorStudentProgress' },
-    { label: 'Teachers On Duty', value: 3, icon: Users, color: '#A855F7', bg: '#FAF5FF', route: 'WorkloadDashboard' },
+    { label: 'Active Sessions Now', value: counts.active, icon: Activity, color: SKY, bg: '#F0F9FF', route: 'LiveSessionMonitoring' },
+    { label: 'Sessions Pending Review', value: counts.pending, icon: FileText, color: AMBER, bg: '#FFFBEB', route: 'SessionSummaryReview' },
+    { label: 'Students in Therapy', value: counts.students, icon: Target, color: '#22C55E', bg: '#F0FDF4', route: 'CoordinatorStudentProgress' },
+    { label: 'Teachers On Duty', value: counts.teachers, icon: Users, color: '#A855F7', bg: '#FAF5FF', route: 'WorkloadDashboard' },
   ];
 
   const dailySummary: { label: string; value: number; icon: typeof Activity; color: string }[] = [
-    { label: 'Sessions Completed', value: 14, icon: CheckCircle, color: '#16A34A' },
-    { label: 'Trials Logged', value: 186, icon: ClipboardList, color: SKY },
-    { label: 'Incidents Recorded', value: 4, icon: AlertCircle, color: '#F97316' },
-    { label: 'Goals Mastered', value: 2, icon: TrendingUp, color: '#A855F7' },
+    { label: 'Sessions Completed', value: summary.completed, icon: CheckCircle, color: '#16A34A' },
+    { label: 'Trials Logged', value: summary.trials, icon: ClipboardList, color: SKY },
+    { label: 'Incidents Recorded', value: summary.incidents, icon: AlertCircle, color: '#F97316' },
+    { label: 'Goals Mastered', value: summary.goalsMastered, icon: TrendingUp, color: '#A855F7' },
   ];
 
   const quickActions: { label: string; icon: typeof Activity; route: keyof CoordinatorStackParamList; color: string }[] = [
@@ -310,17 +406,20 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
               <Clock size={16} color={AMBER} />
               <Text style={styles.cardTitle}>Pending Review Alerts</Text>
               <View style={styles.pendingCountBadge}>
-                <Text style={styles.pendingCountText}>{PENDING_REVIEWS.length}</Text>
+                <Text style={styles.pendingCountText}>{pendingReviews.length}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={() => goto('SessionSummaryReview')}>
               <Text style={styles.linkText}>View All</Text>
             </TouchableOpacity>
           </View>
-          {PENDING_REVIEWS.map((review, idx) => (
+          {pendingReviews.length === 0 && (
+            <Text style={styles.linkText}>No summaries pending review.</Text>
+          )}
+          {pendingReviews.map((review, idx) => (
             <View
               key={review.id}
-              style={[styles.reviewRow, idx < PENDING_REVIEWS.length - 1 && styles.reviewRowBorder]}
+              style={[styles.reviewRow, idx < pendingReviews.length - 1 && styles.reviewRowBorder]}
             >
               <View style={{ flex: 1 }}>
                 <View style={styles.reviewTopRow}>

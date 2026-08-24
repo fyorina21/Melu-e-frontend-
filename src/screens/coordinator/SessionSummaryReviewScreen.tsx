@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,12 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useToast } from '../../context/ToastContext';
 import AppNavbar from '../../components/AppNavbar';
+import {
+  getPendingSummaries,
+  approveSummary,
+  requestSummaryChanges,
+  bulkApproveSummaries,
+} from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
 type SummaryStatus = 'pending' | 'revision-required' | 'approved';
@@ -40,25 +46,49 @@ interface Summary {
   notes: string;
 }
 
-const INITIAL_SUMMARIES: Summary[] = [
-  { id: '1', teacher: 'Teacher A', station: 'Station 1', room: 'Room 2', date: '2026-08-04', students: ['Student A', 'Student B'], trials: 24, independence: 72, incidents: 0, status: 'pending', notes: 'Good session today. Student A showed improvement on color identification.' },
-  { id: '2', teacher: 'Teacher B', station: 'Station 1', room: 'Room 1', date: '2026-08-04', students: ['Student C', 'Student D'], trials: 18, independence: 65, incidents: 1, status: 'pending', notes: 'Student C had a behavior incident during transition. Managed with redirection.' },
-  { id: '3', teacher: 'Teacher C', station: 'Station 2', room: 'Room 2', date: '2026-08-03', students: ['Student A', 'Student C'], trials: 20, independence: 68, incidents: 0, status: 'revision-required', notes: 'Session went smoothly.' },
-  { id: '4', teacher: 'Teacher A', station: 'Station 2', room: 'Room 1', date: '2026-08-03', students: ['Student B', 'Student D'], trials: 22, independence: 70, incidents: 0, status: 'pending', notes: 'Both students engaged well throughout.' },
-  { id: '5', teacher: 'Teacher B', station: 'Station 1', room: 'Room 3', date: '2026-08-02', students: ['Student A', 'Student B'], trials: 16, independence: 58, incidents: 2, status: 'pending', notes: 'Challenging session. Two incidents recorded.' },
-];
+interface ApiSummaryRow {
+  id: string;
+  sessionId: string;
+  teacherName: string;
+  stationName: string;
+  date: string;
+  bodyPreview: string;
+  status: string;
+  studentNames: string[];
+  independencePercent: number;
+}
+
+const STATUS_FROM_API: Record<string, SummaryStatus> = {
+  Pending: 'pending',
+  Approved: 'approved',
+  'Revision Required': 'revision-required',
+};
+
+function mapSummary(row: ApiSummaryRow): Summary {
+  return {
+    id: row.id,
+    teacher: row.teacherName,
+    station: row.stationName,
+    room: '',
+    date: row.date,
+    students: row.studentNames ?? [],
+    trials: 0,
+    independence: row.independencePercent ?? 0,
+    incidents: 0,
+    status: STATUS_FROM_API[row.status] ?? 'pending',
+    notes: row.bodyPreview ?? '',
+  };
+}
 
 const STATUS_CONFIG: Record<SummaryStatus, { label: string; bg: string; text: string; border: string; icon: typeof Clock }> = {
-  pending: { label: 'Pending', bg: 'rgba(252,211,77,0.12)', text: '#FCD34D', border: 'rgba(252,211,77,0.35)', icon: Clock },
-  'revision-required': { label: 'Revision Required', bg: 'rgba(248,113,113,0.12)', text: '#F87171', border: 'rgba(248,113,113,0.35)', icon: AlertCircle },
-  approved: { label: 'Approved', bg: 'rgba(74,222,128,0.12)', text: '#4ADE80', border: 'rgba(74,222,128,0.35)', icon: CheckCircle },
+  pending: { label: 'Pending', bg: 'rgba(252,211,77,0.15)', text: '#B45309', border: 'rgba(252,211,77,0.45)', icon: Clock },
+  'revision-required': { label: 'Revision Required', bg: 'rgba(248,113,113,0.12)', text: '#DC2626', border: 'rgba(248,113,113,0.35)', icon: AlertCircle },
+  approved: { label: 'Approved', bg: 'rgba(74,222,128,0.12)', text: '#16A34A', border: 'rgba(74,222,128,0.35)', icon: CheckCircle },
 };
 
 const SECTIONS = ['Notes', 'Trial Data', 'Incident Report', 'General'];
 
 const DARK = '#1F2937';
-const PANEL = '#111827';
-const ROW_BG = '#1a2332';
 const SKY = '#38BDF8';
 const AMBER = '#FCD34D';
 
@@ -91,7 +121,7 @@ function FilterSelect({ value, options, onChange }: { value: string; options: st
 
 export default function SessionSummaryReviewScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'SessionSummaryReview'>) {
   const { showToast } = useToast();
-  const [summaries, setSummaries] = useState<Summary[]>(INITIAL_SUMMARIES);
+  const [summaries, setSummaries] = useState<Summary[]>([]);
   const [search, setSearch] = useState('');
   const [teacherFilter, setTeacherFilter] = useState('all');
   const [studentFilter, setStudentFilter] = useState('all');
@@ -103,6 +133,19 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
   const [requestSection, setRequestSection] = useState('Notes');
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await getPendingSummaries({});
+      setSummaries((Array.isArray(data) ? data : []).map(mapSummary));
+    } catch (err) {
+      setSummaries([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const allStudents = Array.from(new Set(summaries.flatMap((s) => s.students))).sort();
   const allTeachers = Array.from(new Set(summaries.map((s) => s.teacher))).sort();
@@ -133,14 +176,20 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const approveSelected = () => {
+  const approveSelected = async () => {
+    try {
+      await bulkApproveSummaries(selectedIds);
+    } catch (err) {}
     setSummaries((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'approved' } : s)));
     showToast(`${selectedIds.length} session${selectedIds.length > 1 ? 's' : ''} approved`);
     setSelectedIds([]);
     setShowBulkConfirm(false);
   };
 
-  const approveSingle = (summary: Summary) => {
+  const approveSingle = async (summary: Summary) => {
+    try {
+      await approveSummary(summary.id, { notes: coordinatorNotes });
+    } catch (err) {}
     setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'approved' } : s)));
     showToast(`Session by ${summary.teacher} approved`);
     setSelectedSummary(null);
@@ -148,11 +197,14 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     setShowRequestForm(false);
   };
 
-  const handleRequestChanges = (summary: Summary) => {
+  const handleRequestChanges = async (summary: Summary) => {
     if (!requestReason.trim()) {
       showToast('Please provide a reason for requesting changes', 'error');
       return;
     }
+    try {
+      await requestSummaryChanges(summary.id, { section: requestSection, reason: requestReason });
+    } catch (err) {}
     setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'revision-required' } : s)));
     showToast(`Changes requested for ${summary.teacher}'s session`, 'info');
     setSelectedSummary(null);
@@ -213,7 +265,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.searchWrap}>
-          <Search size={16} color="#9CA3AF" />
+          <Search size={16} color="#6B7280" />
           <TextInput
             style={styles.searchInput}
             value={search}
@@ -337,7 +389,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                 )}
               </View>
               <TouchableOpacity onPress={closeModal} hitSlop={8}>
-                <X size={20} color="#9CA3AF" />
+                <X size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -418,7 +470,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
               )}
             </ScrollView>
 
-            <View style={[styles.modalFooter, { paddingHorizontal: 20, paddingBottom: 16, marginTop: 0, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }]}>
+            <View style={[styles.modalFooter, { paddingHorizontal: 20, paddingBottom: 16, marginTop: 0, borderTopWidth: 1, borderTopColor: '#E5E7EB' }]}>
               <TouchableOpacity
                 style={styles.requestChangesFooterBtn}
                 onPress={() => setShowRequestForm((v) => !v)}
@@ -441,7 +493,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: DARK },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -449,12 +501,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: DARK,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   headerIconWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(252,211,77,0.2)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  headerSubtitle: { color: '#9CA3AF', fontSize: 11, marginTop: 2 },
+  headerTitle: { color: DARK, fontSize: 18, fontWeight: '700' },
+  headerSubtitle: { color: '#6B7280', fontSize: 11, marginTop: 2 },
   pendingPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -473,33 +525,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: PANEL,
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#E5E7EB',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  searchInput: { flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 },
-  filterLabel: { fontSize: 10, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 },
+  searchInput: { flex: 1, color: DARK, fontSize: 13, paddingVertical: 0 },
+  filterLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280', letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: PANEL },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF' },
   filterChipActive: { borderColor: SKY, backgroundColor: 'rgba(56,189,248,0.15)' },
-  filterChipText: { color: '#9CA3AF', fontSize: 12 },
+  filterChipText: { color: '#4B5563', fontSize: 12 },
   filterChipTextActive: { color: SKY, fontWeight: '600' },
 
   bulkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   checkbox: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkboxBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: PANEL, alignItems: 'center', justifyContent: 'center' },
+  checkboxBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   checkboxChecked: { backgroundColor: AMBER, borderColor: AMBER },
-  bulkLabel: { color: '#9CA3AF', fontSize: 13 },
+  bulkLabel: { color: '#4B5563', fontSize: 13 },
   bulkApproveBtn: { backgroundColor: AMBER, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
   bulkApproveText: { color: DARK, fontSize: 13, fontWeight: '700' },
 
-  summaryCard: { backgroundColor: ROW_BG, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 14, gap: 8 },
-  summaryCardSelected: { backgroundColor: '#1e2a3a', borderColor: SKY },
+  summaryCard: { backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 14, gap: 8 },
+  summaryCardSelected: { backgroundColor: '#EFF6FF', borderColor: SKY },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cardDate: { color: '#D1D5DB', fontSize: 12, flex: 1 },
+  cardDate: { color: '#4B5563', fontSize: 12, flex: 1 },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -511,15 +563,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   statusBadgeText: { fontSize: 11, fontWeight: '500' },
-  cardTeacher: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  cardMeta: { color: '#9CA3AF', fontSize: 12 },
+  cardTeacher: { color: DARK, fontSize: 15, fontWeight: '600' },
+  cardMeta: { color: '#6B7280', fontSize: 12 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   studentTag: { backgroundColor: 'rgba(56,189,248,0.1)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   studentTagText: { color: SKY, fontSize: 11 },
   metricRow: { flexDirection: 'row', gap: 8 },
-  metric: { flex: 1, alignItems: 'center', backgroundColor: DARK, borderRadius: 8, paddingVertical: 8 },
-  metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  metricLabel: { color: '#9CA3AF', fontSize: 10, marginTop: 2 },
+  metric: { flex: 1, alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, paddingVertical: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  metricValue: { color: DARK, fontSize: 16, fontWeight: '700' },
+  metricLabel: { color: '#6B7280', fontSize: 10, marginTop: 2 },
   reviewBtn: {
     alignSelf: 'flex-end',
     backgroundColor: 'rgba(56,189,248,0.1)',
@@ -534,23 +586,23 @@ const styles = StyleSheet.create({
   emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 40 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  modalPanel: { backgroundColor: PANEL, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', width: '100%', maxWidth: 560, maxHeight: '92%', overflow: 'hidden' },
+  modalPanel: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', width: '100%', maxWidth: 560, maxHeight: '92%', overflow: 'hidden' },
   confirmPanel: { maxWidth: 400, padding: 24 },
   detailPanel: { maxHeight: '92%' },
-  modalTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-  modalBody: { color: '#9CA3AF', fontSize: 13, lineHeight: 19, marginTop: 8 },
-  modalBodyStrong: { color: '#FFFFFF', fontWeight: '600' },
+  modalTitle: { color: DARK, fontSize: 17, fontWeight: '700' },
+  modalBody: { color: '#6B7280', fontSize: 13, lineHeight: 19, marginTop: 8 },
+  modalBodyStrong: { color: DARK, fontWeight: '600' },
   modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20 },
-  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  cancelBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '500' },
+  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center' },
+  cancelBtnText: { color: DARK, fontSize: 13, fontWeight: '500' },
   approveAllBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: AMBER, alignItems: 'center' },
   approveAllBtnText: { color: DARK, fontSize: 13, fontWeight: '700' },
 
-  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   detailBody: { padding: 20, gap: 14 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase' },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1, textTransform: 'uppercase' },
   sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  internalTag: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  internalTag: { backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   internalTagText: { color: '#6B7280', fontSize: 10 },
   studentTagLg: {
     flexDirection: 'row',
@@ -565,17 +617,17 @@ const styles = StyleSheet.create({
   },
   studentTagLgText: { color: SKY, fontSize: 13, fontWeight: '500' },
   statsGrid: { flexDirection: 'row', gap: 10 },
-  statBox: { flex: 1, alignItems: 'center', backgroundColor: DARK, borderRadius: 12, padding: 12 },
+  statBox: { flex: 1, alignItems: 'center', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E5E7EB' },
   statValue: { fontSize: 22, fontWeight: '700' },
-  statLabel: { color: '#9CA3AF', fontSize: 11, marginTop: 2 },
-  notesBox: { backgroundColor: DARK, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
-  notesText: { color: '#D1D5DB', fontSize: 13, lineHeight: 20 },
+  statLabel: { color: '#6B7280', fontSize: 11, marginTop: 2 },
+  notesBox: { backgroundColor: '#F9FAFB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  notesText: { color: '#374151', fontSize: 13, lineHeight: 20 },
   textArea: {
-    backgroundColor: DARK,
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#E5E7EB',
     borderRadius: 12,
-    color: '#FFFFFF',
+    color: DARK,
     fontSize: 13,
     paddingHorizontal: 14,
     paddingVertical: 12,

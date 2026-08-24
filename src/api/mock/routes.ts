@@ -1615,6 +1615,11 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: () => ({ csv: 'date,time,behavior,notes\n' }),
   },
   {
+    method: 'DELETE',
+    pattern: '/teacher/abc-log/:id',
+    handler: (ctx) => ({ removed: mockDb.removeById('incidents', requiredParam(ctx, 'id')) }),
+  },
+  {
     method: 'GET',
     pattern: '/teacher/notifications',
     handler: () => mockDb.all('notifications').map(notificationDisplayRow),
@@ -1720,7 +1725,11 @@ export const MOCK_ROUTES: MockRoute[] = [
         pendingReviews: pendingRows.map((r) => ({
           id: r.id,
           teacherName: r.teacherName,
+          stationName: r.stationName,
+          date: r.date,
           studentNames: r.studentNames,
+          independencePercent: r.independencePercent,
+          incidents: 0,
         })),
       };
     },
@@ -3016,6 +3025,7 @@ function buildActiveSessions() {
       id: s.id,
       teacherName: teacher?.name ?? 'Teacher A',
       stationName: i % 2 === 0 ? 'Station 1' : 'Station 2',
+      roomName: i % 2 === 0 ? 'Room 1' : 'Room 2',
       status: trialCount > 20 ? 'On Track' : trialCount > 5 ? 'Needs Attention' : 'Overdue',
       timer: `${mm}:${ss}`,
       trialCount,
@@ -3039,6 +3049,7 @@ function buildActiveSessions() {
         id: 'sess-demo',
         teacherName: teacher?.name ?? 'Teacher A',
         stationName: 'Station 1',
+        roomName: 'Room 1',
         status: 'On Track',
         timer: '42:10',
         trialCount: 18,

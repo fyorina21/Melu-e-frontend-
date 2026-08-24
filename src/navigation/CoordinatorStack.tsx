@@ -13,7 +13,6 @@ import WorkloadDashboardScreen from '../screens/coordinator/WorkloadDashboardScr
 import RoomResourceSchedulingScreen from '../screens/coordinator/RoomResourceSchedulingScreen';
 import CoordinatorNotificationsScreen from '../screens/notifications/CoordinatorNotificationsScreen';
 import IupGenerationScreen from '../screens/programdirector/IupGenerationScreen';
-import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
 
 const Stack = createNativeStackNavigator<CoordinatorStackParamList>();
 
@@ -31,7 +30,6 @@ export default function CoordinatorStack() {
       <Stack.Screen name="WorkloadDashboard" component={WorkloadDashboardScreen} />
       <Stack.Screen name="RoomResourceScheduling" component={RoomResourceSchedulingScreen} />
       <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
-      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentDashboardScreen as never} />
       <Stack.Screen name="Notifications" component={CoordinatorNotificationsScreen} />
     </Stack.Navigator>
   );

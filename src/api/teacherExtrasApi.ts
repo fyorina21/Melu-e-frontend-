@@ -14,6 +14,7 @@ export const getAbcLog = (params: QueryParams) =>
   // params: { studentId, from, to, behavior, category }
   client.get('/teacher/abc-log', { params });
 export const exportAbcLog = (params: QueryParams) => client.get('/teacher/abc-log/export', { params });
+export const deleteAbcIncident = (id: string) => client.delete(`/teacher/abc-log/${id}`);
 
 // MR-22/23/24/25: 6-Week Assessment forms
 export const getSkillsAssessment = (studentId: string) =>

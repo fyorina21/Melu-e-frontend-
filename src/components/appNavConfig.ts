@@ -28,7 +28,6 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Student Registration',
     'Staff Management & Linking',
     'IUP Creation & Goal Assignment',
-    'Assessment Summary Report',
   ],
   director: ['Dashboard', 'Staff Scheduling', 'Goal Mastery Approval', 'Parent Communication', 'Report & Oversight', 'Student Progress'],
   program_director: [
@@ -44,8 +43,8 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Parent Communication',
     'Reports',
   ],
-  institutional_admin: ['Task Analysis', 'Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
-  system_admin: ['Admin Panel'],
+  institutional_admin: ['Dashboard', 'Task Analysis', 'Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
+  system_admin: ['Dashboard', 'Staff account management', 'Role Management', 'Permission Configuration'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 
@@ -97,15 +96,17 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
 };
 
 export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
+  Dashboard: 'AdminPanelOverview',
   'Admin Panel': 'StaffAccountManagement',
-  'Staff Accounts': 'StaffAccountManagement',
-  Roles: 'RoleManagement',
-  Permissions: 'PermissionConfiguration',
+  'Staff account management': 'StaffAccountManagement',
+  'Role Management': 'RoleManagement',
+  'Permission Configuration': 'PermissionConfiguration',
   'Audit Log': 'AuditLog',
 };
 
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
   // Canonical tabs
+  Dashboard: 'AdminPanelOverview',
   'Task Analysis': 'TaskAnalysisTemplates',
   'Goal Domains': 'GoalDomainDefinitions',
   'Schedule & Capacity': 'ScheduleCapacityConfig',
@@ -169,10 +170,8 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   'Student Registration': 'StudentEnrollment',
   'Staff Management & Linking': 'WorkloadDashboard',
   'IUP Creation & Goal Assignment': 'IupGeneration',
-  'Assessment Summary Report': 'AssessmentSummaryReport',
   // Legacy aliases (existing screens / internal links)
   Student: 'StudentProfile',
-  Assessments: 'AssessmentSummaryReport',
   Live: 'LiveSessionMonitoring',
   Review: 'SessionSummaryReview',
   Progress: 'CoordinatorStudentProgress',
