@@ -101,7 +101,7 @@ export default function AbcLogScreen({ navigation }: Props) {
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['All']);
   const [incidents, setIncidents] = useState<AbcIncident[]>([]);
   const [stats, setStats] = useState<AbcStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedIncident, setSelectedIncident] = useState<AbcIncident | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -111,21 +111,45 @@ export default function AbcLogScreen({ navigation }: Props) {
   const currentStudent = studentOptions.find((s) => s.id === studentId);
 
   useEffect(() => {
+    let active = true;
     getStudentOptions()
       .then(({ data: opts }) => {
-        // Filter to only show students in Active phase
-        const activeStudents = opts.filter((s: StudentOption) => s.phase === 'Active' || s.phase === 'active');
-        setStudentOptions(activeStudents);
-        if (activeStudents.length > 0) setStudentId((prev) => prev || activeStudents[0].id);
+        if (!active) return;
+        const list = Array.isArray(opts) ? opts : [];
+        const activeStudents = list.filter(
+          (s: StudentOption) => !s.phase || s.phase.toLowerCase() === 'active'
+        );
+        const finalList = activeStudents.length > 0 ? activeStudents : list;
+        setStudentOptions(finalList);
+        if (finalList.length > 0) {
+          setStudentId((prev) => prev || finalList[0].id);
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) {
+          setStudentOptions([]);
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const load = useCallback(async () => {
-    if (!studentId) return;
+    if (!studentId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const { data: res } = await getAbcLog({ studentId, from, to, behavior: behaviorFilter, category: categoryFilter });
+      const { data: res } = await getAbcLog({
+        studentId,
+        from,
+        to,
+        behavior: behaviorFilter,
+        category: categoryFilter,
+      });
       const rows: AbcIncident[] = res?.incidents ?? res?.rows ?? [];
       setIncidents(rows);
       setStats(res?.stats ?? null);
