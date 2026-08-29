@@ -52,6 +52,7 @@ type StaffPayload = {
   name: string;
   email: string;
   phone: string;
+  password?: string;
   roles: string[];
   active: boolean;
 };
@@ -67,31 +68,95 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    if (staff) { setName(staff.name); setEmail(staff.email); setPhone(staff.phone || ''); setRoles(staff.roles); }
-    else { setName(''); setEmail(''); setPhone(''); setRoles([]); }
+    if (staff) {
+      setName(staff.name);
+      setEmail(staff.email);
+      setPhone(staff.phone || '');
+      setPassword('');
+      setRoles(staff.roles || []);
+    } else {
+      setName('');
+      setEmail('');
+      setPhone('');
+      setPassword('demo1234');
+      setRoles(['Teacher']);
+    }
   }, [staff, visible]);
 
   const toggleRole = (r: string) => setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
 
   const handleSave = () => {
-    if (!name.trim() || !email.trim()) { Alert.alert('Name and email required'); return; }
-    onSave({ id: staff?.id, name, email, phone, roles, active: staff?.active ?? true });
+    if (!name.trim() || !email.trim()) {
+      Alert.alert('Validation Error', 'Name and email are required.');
+      return;
+    }
+    if (!staff && !password.trim()) {
+      Alert.alert('Validation Error', 'Please enter a password for the new staff member.');
+      return;
+    }
+    onSave({
+      id: staff?.id,
+      name,
+      email,
+      phone,
+      password: password.trim() ? password.trim() : undefined,
+      roles: roles.length > 0 ? roles : ['Teacher'],
+      active: staff?.active ?? true,
+    });
   };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{staff ? 'Edit Staff' : 'Add Staff'}</Text>
+          <Text style={typography.h2}>{staff ? 'Edit Staff Account' : 'Add New Staff Member'}</Text>
           <ScrollView contentContainerStyle={{ gap: spacing.md }}>
-            <View style={styles.field}><Text style={typography.label}>Name</Text><TextInput style={styles.textInput} value={name} onChangeText={setName} /></View>
-            <View style={styles.field}><Text style={typography.label}>Email</Text><TextInput style={styles.textInput} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" /></View>
-            <View style={styles.field}><Text style={typography.label}>Phone</Text><TextInput style={styles.textInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" /></View>
             <View style={styles.field}>
-              <Text style={typography.label}>Roles</Text>
+              <Text style={typography.label}>Full Name *</Text>
+              <TextInput style={styles.textInput} placeholder="e.g. John Doe" placeholderTextColor={colors.mutedText} value={name} onChangeText={setName} />
+            </View>
+            <View style={styles.field}>
+              <Text style={typography.label}>Email Address (Login Username) *</Text>
+              <TextInput style={styles.textInput} placeholder="e.g. jdoe@melue.org" placeholderTextColor={colors.mutedText} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+            </View>
+            <View style={styles.field}>
+              <Text style={typography.label}>
+                {staff ? 'Change Password (Optional)' : 'Login Password *'}
+              </Text>
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={[styles.textInput, { flex: 1 }]}
+                  placeholder={staff ? 'Leave blank to keep existing password' : 'Enter login password (e.g. demo1234)'}
+                  placeholderTextColor={colors.mutedText}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={styles.passwordEyeBtn}
+                  onPress={() => setShowPassword((p) => !p)}
+                >
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={colors.navyText} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.fieldHintText}>
+                {staff
+                  ? 'Enter a new password if you wish to reset this user credentials.'
+                  : 'This password will allow the new staff member to sign in to the application.'}
+              </Text>
+            </View>
+            <View style={styles.field}>
+              <Text style={typography.label}>Phone Number</Text>
+              <TextInput style={styles.textInput} placeholder="e.g. +1 (555) 019-2834" placeholderTextColor={colors.mutedText} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            </View>
+            <View style={styles.field}>
+              <Text style={typography.label}>Assigned System Role(s)</Text>
               <View style={styles.chipRow}>
                 {ROLE_OPTIONS.map((r) => (
                   <TouchableOpacity key={r} style={[styles.chip, roles.includes(r) && styles.chipSelected]} onPress={() => toggleRole(r)}>
@@ -103,7 +168,7 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
           </ScrollView>
           <View style={styles.modalFooter}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}><Text style={styles.saveBtnText}>Save Changes</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}><Text style={styles.saveBtnText}>{staff ? 'Save Changes' : 'Create Staff Account'}</Text></TouchableOpacity>
           </View>
         </View>
       </View>
@@ -489,10 +554,24 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   };
 
   const handleResetPassword = (s: StaffMember) => {
-    Alert.alert('Send password reset email?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Send', onPress: async () => { try { await resetStaffPassword(s.id); } catch (err) {} showToast('Reset email sent successfully', 'success'); } },
-    ]);
+    Alert.alert(
+      'Reset Staff Password',
+      `Reset login password for ${s.name} (${s.email}) to default password "demo1234"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset Password',
+          onPress: async () => {
+            try {
+              await resetStaffPassword(s.id);
+              showToast(`Password for ${s.name} reset to "demo1234"`, 'success');
+            } catch (err) {
+              showToast('Failed to reset password', 'error');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleToggleActive = async (s: StaffMember) => {
@@ -635,6 +714,9 @@ const styles = StyleSheet.create({
   linkingHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   field: { gap: spacing.xs },
   textInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  passwordEyeBtn: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bgApp, alignItems: 'center', justifyContent: 'center' },
+  fieldHintText: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },

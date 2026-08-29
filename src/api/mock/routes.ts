@@ -20,7 +20,7 @@ import type {
   MockAdminConfig,
   MockStaffMember,
 } from './db';
-import { seed, type DemoConversation, type DemoMessage } from './seed';
+import { seed, type DemoConversation, type DemoMessage, type DemoRole } from './seed';
 import { mockDb } from './db';
 import { reassignStudentsInStore, getWeekData, resolveTherapistName } from '../../stores/scheduleStore';
 import { ApiError } from '../http/errors';
@@ -2344,18 +2344,39 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/sysadmin/staff',
     handler: (ctx) => {
-      const body = bodyAs<Partial<MockStaffMember> & { roles?: string[]; active?: boolean }>(ctx);
+      const body = bodyAs<Partial<MockStaffMember> & { roles?: string[]; active?: boolean; password?: string }>(ctx);
+      const primaryRole = body.role ?? roleKeyFromLabel(body.roles?.[0]) ?? 'teacher';
       const staff: MockStaffMember = {
         id: newId('stf'),
-        name: '',
-        email: '',
-        role: body.role ?? roleKeyFromLabel(body.roles?.[0]),
+        name: body.name || '',
+        email: body.email || '',
+        role: primaryRole,
         status: body.status ?? (body.active === false ? 'inactive' : 'active'),
         assignedStudents: [],
       };
-      if (body.name !== undefined) staff.name = body.name;
-      if (body.email !== undefined) staff.email = body.email;
       mockDb.insert('staffMembers', staff);
+
+      // Provision corresponding user account so the user can log in
+      const userRole = (primaryRole || 'teacher') as DemoRole;
+      const initialPassword = body.password || 'demo1234';
+      const existingUser = mockDb.all('users').find((u) => u.email.toLowerCase() === staff.email.toLowerCase());
+      if (existingUser) {
+        mockDb.updateById('users', existingUser.id, {
+          name: staff.name,
+          password: initialPassword,
+          role: userRole,
+        });
+      } else {
+        mockDb.insert('users', {
+          id: newId('user'),
+          name: staff.name,
+          email: staff.email,
+          password: initialPassword,
+          role: userRole,
+          childIds: [],
+        });
+      }
+
       return staffDisplayRow(staff);
     },
   },
@@ -2364,7 +2385,7 @@ export const MOCK_ROUTES: MockRoute[] = [
     pattern: '/sysadmin/staff/:id',
     handler: (ctx) => {
       const id = requiredParam(ctx, 'id');
-      const body = bodyAs<Partial<MockStaffMember> & { roles?: string[]; active?: boolean }>(ctx);
+      const body = bodyAs<Partial<MockStaffMember> & { roles?: string[]; active?: boolean; password?: string }>(ctx);
       const patch: Partial<MockStaffMember> = {
         name: body.name,
         email: body.email,
@@ -2372,18 +2393,60 @@ export const MOCK_ROUTES: MockRoute[] = [
         status: body.active !== undefined ? (body.active ? 'active' : 'inactive') : body.status,
       };
       const updated = mockDb.updateById('staffMembers', id, patch);
+      if (updated) {
+        const existingUser = mockDb.all('users').find((u) => u.email.toLowerCase() === (body.email || updated.email).toLowerCase());
+        if (existingUser) {
+          const userPatch: Record<string, any> = {};
+          if (body.name) userPatch.name = body.name;
+          if (body.email) userPatch.email = body.email;
+          if (patch.role) userPatch.role = patch.role;
+          if (body.password) userPatch.password = body.password;
+          mockDb.updateById('users', existingUser.id, userPatch);
+        }
+      }
       return updated ? staffDisplayRow(updated) : null;
     },
   },
   {
     method: 'DELETE',
     pattern: '/sysadmin/staff/:id',
-    handler: (ctx) => ({ deleted: mockDb.removeById('staffMembers', requiredParam(ctx, 'id')) }),
+    handler: (ctx) => {
+      const id = requiredParam(ctx, 'id');
+      const staff = mockDb.findById('staffMembers', id);
+      if (staff) {
+        const user = mockDb.all('users').find((u) => u.email.toLowerCase() === staff.email.toLowerCase());
+        if (user) {
+          mockDb.removeById('users', user.id);
+        }
+      }
+      return { deleted: mockDb.removeById('staffMembers', id) };
+    },
   },
   {
     method: 'POST',
     pattern: '/sysadmin/staff/:id/reset-password',
-    handler: () => ({ status: 'ok' as const }),
+    handler: (ctx) => {
+      const id = requiredParam(ctx, 'id');
+      const staff = mockDb.findById('staffMembers', id);
+      const body = bodyAs<{ newPassword?: string }>(ctx);
+      const newPassword = body?.newPassword || 'demo1234';
+      if (staff) {
+        const user = mockDb.all('users').find((u) => u.email.toLowerCase() === staff.email.toLowerCase());
+        if (user) {
+          mockDb.updateById('users', user.id, { password: newPassword });
+        } else {
+          mockDb.insert('users', {
+            id: newId('user'),
+            name: staff.name,
+            email: staff.email,
+            password: newPassword,
+            role: (staff.role || 'teacher') as DemoRole,
+            childIds: [],
+          });
+        }
+      }
+      return { status: 'ok' as const, password: newPassword };
+    },
   },
   {
     method: 'POST',

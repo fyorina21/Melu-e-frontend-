@@ -21,23 +21,30 @@ import type { DemoAccount } from '../../types';
 const ALL_DEMO_ACCOUNTS: DemoAccount[] = [...DEMO_ACCOUNTS, ...EXTRA_ROLES];
 
 export default function LoginScreen() {
-  const { loginAsRole } = useAuth();
+  const { loginAsRole, loginWithCredentials } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<{ Login: undefined; ForgotPassword: undefined }>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
 
-  const handleSignIn = () => {
-    const match = ALL_DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === email.trim().toLowerCase());
-    if (!match) {
-      Alert.alert('Unknown demo account', 'Use one of the demo emails listed below (any password works).');
+  const handleSignIn = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Missing fields', 'Please enter both your email address and password.');
       return;
     }
-    loginAsRole(match);
+    const success = await loginWithCredentials(email, password);
+    if (!success) {
+      // Fallback for demo shortcut accounts if entered with default password
+      const match = ALL_DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === email.trim().toLowerCase());
+      if (match) {
+        loginAsRole(match);
+      }
+    }
   };
 
   const handleDemoTap = (account: DemoAccount) => {
     setEmail(account.email);
+    setPassword('demo1234');
     loginAsRole(account);
   };
 

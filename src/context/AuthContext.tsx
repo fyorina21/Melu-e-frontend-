@@ -29,6 +29,7 @@ export const EXTRA_ROLES: DemoAccount[] = [
 interface AuthContextValue {
   session: AuthSession | null;
   loginAsRole: (account: DemoAccount) => void;
+  loginWithCredentials: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -79,6 +80,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loginWithCredentials = async (email: string, password: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      await authApi.login({ email: email.trim(), password: password.trim() });
+      const user = await authApi.me();
+      setSession({
+        role: user.role as Role,
+        userName: user.name,
+        email: user.email,
+      });
+      showToast(`Welcome back, ${user.name}!`, 'success');
+      return true;
+    } catch (err: any) {
+      console.error('Login failed:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Invalid email or password.';
+      showToast(msg, 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       await authApi.logout();
@@ -94,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       loginAsRole,
+      loginWithCredentials,
       logout,
     }),
     [session]
