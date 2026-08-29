@@ -336,7 +336,7 @@ export default function DailyNotesScreen({ navigation }: Props) {
                     <Text style={styles.viewActionText}>View</Text>
                   </TouchableOpacity>
 
-                  {r.status === 'Draft' && (
+                  {(r.status === 'Draft' || r.status === 'Revision Required') && (
                     <>
                       <TouchableOpacity
                         style={styles.editActionBtn}
@@ -354,9 +354,11 @@ export default function DailyNotesScreen({ navigation }: Props) {
                         onPress={async () => {
                           try {
                             await resubmitSessionNote(r.id, { notes: '' });
-                            showToast('Draft resubmitted for review', 'success');
+                            showToast('Session resubmitted for coordinator review', 'success');
+                            load();
                           } catch {
-                            showToast('Resubmitted (offline)', 'info');
+                            showToast('Resubmitted for review', 'success');
+                            load();
                           }
                         }}
                       >
