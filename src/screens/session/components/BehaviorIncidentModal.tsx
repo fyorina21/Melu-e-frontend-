@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { getAbcLists } from '../../../api/institutionalAdminApi';
 
 export interface IncidentPayload {
   antecedent: string;
@@ -28,7 +29,7 @@ interface BehaviorIncidentModalProps {
   onSave: (data: IncidentPayload) => void;
 }
 
-const ANTECEDENT_OPTIONS = [
+const DEFAULT_ANTECEDENT_OPTIONS = [
   'Task demand',
   'Transition',
   'Peer interaction',
@@ -39,7 +40,7 @@ const ANTECEDENT_OPTIONS = [
   'Other',
 ];
 
-const CONSEQUENCE_OPTIONS = [
+const DEFAULT_CONSEQUENCE_OPTIONS = [
   'Redirected to task',
   'Offered break',
   'Ignored behavior',
@@ -71,6 +72,32 @@ export default function BehaviorIncidentModal({
 
   // State to trigger "Discard Changes?" alert prompt
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
+
+  // Antecedent/Consequence options from Institutional Admin
+  const [antecedentOptions, setAntecedentOptions] = useState<string[]>(DEFAULT_ANTECEDENT_OPTIONS);
+  const [consequenceOptions, setConsequenceOptions] = useState<string[]>(DEFAULT_CONSEQUENCE_OPTIONS);
+
+  const loadAbcOptions = useCallback(async () => {
+    try {
+      const { data } = await getAbcLists();
+      if (Array.isArray(data.Antecedents)) {
+        const opts = data.Antecedents.map((a: { name: string }) => a.name).filter(Boolean);
+        if (opts.length > 0) setAntecedentOptions(['Other', ...opts]);
+      }
+      if (Array.isArray(data.Consequences)) {
+        const opts = data.Consequences.map((c: { name: string }) => c.name).filter(Boolean);
+        if (opts.length > 0) setConsequenceOptions(['Other', ...opts]);
+      }
+    } catch (err) {
+      // Use defaults if API fails
+    }
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      loadAbcOptions();
+    }
+  }, [visible, loadAbcOptions]);
 
   const isFormDirty =
     antecedent !== '' ||
@@ -193,7 +220,7 @@ export default function BehaviorIncidentModal({
 
               {showAntecedentDropdown && (
                 <View style={styles.inlineDropdownMenu}>
-                  {ANTECEDENT_OPTIONS.map((item) => (
+                  {antecedentOptions.map((item) => (
                     <TouchableOpacity
                       key={item}
                       style={[
@@ -272,7 +299,7 @@ export default function BehaviorIncidentModal({
 
               {showConsequenceDropdown && (
                 <View style={styles.inlineDropdownMenu}>
-                  {CONSEQUENCE_OPTIONS.map((item) => (
+                  {consequenceOptions.map((item) => (
                     <TouchableOpacity
                       key={item}
                       style={[

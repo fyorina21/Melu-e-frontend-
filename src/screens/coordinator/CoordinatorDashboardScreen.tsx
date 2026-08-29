@@ -21,9 +21,11 @@ import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorDashboard'>;
 
-const SKY = '#38BDF8';
+const SKY = colors.primaryYellowDark;
 const AMBER = '#FCD34D';
-const DARK = '#1F2937';
+const DARK = colors.navyText;
+const HEADER_BG = colors.bgCard;
+const HEADER_TEXT = colors.navyText;
 
 interface LiveSession {
   id: string;
@@ -217,7 +219,7 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
   const goto = (route: keyof CoordinatorStackParamList) => navigation?.navigate?.(route as never);
 
   const stats: { label: string; value: number; icon: typeof Activity; color: string; bg: string; route: keyof CoordinatorStackParamList }[] = [
-    { label: 'Active Sessions Now', value: counts.active, icon: Activity, color: SKY, bg: '#F0F9FF', route: 'LiveSessionMonitoring' },
+    { label: 'Active Sessions Now', value: counts.active, icon: Activity, color: SKY, bg: colors.bgApp, route: 'LiveSessionMonitoring' },
     { label: 'Sessions Pending Review', value: counts.pending, icon: FileText, color: AMBER, bg: '#FFFBEB', route: 'SessionSummaryReview' },
     { label: 'Students in Therapy', value: counts.students, icon: Target, color: '#22C55E', bg: '#F0FDF4', route: 'CoordinatorStudentProgress' },
     { label: 'Teachers On Duty', value: counts.teachers, icon: Users, color: '#A855F7', bg: '#FAF5FF', route: 'WorkloadDashboard' },
@@ -480,18 +482,20 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.lg },
 
   headerCard: {
-    backgroundColor: DARK,
+    backgroundColor: HEADER_BG,
     borderRadius: radius.lg,
     padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  headerTitle: { color: colors.white, fontSize: 20, fontWeight: '700' },
-  headerSubtitle: { color: '#9CA3AF', fontSize: 12, marginTop: spacing.xs },
+  headerTitle: { color: HEADER_TEXT, fontSize: 20, fontWeight: '700' },
+  headerSubtitle: { color: '#6B7280', fontSize: 12, marginTop: spacing.xs },
 
-  bellButton: { padding: 8, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.08)' },
+  bellButton: { padding: 8, borderRadius: radius.md, backgroundColor: colors.bgApp, borderWidth: 1, borderColor: colors.border },
   bellBadge: {
     position: 'absolute',
     top: -2,
@@ -526,17 +530,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  notifDropdownTitle: { fontSize: 13, fontWeight: '700', color: DARK },
+  notifDropdownTitle: { fontSize: 13, fontWeight: '700', color: HEADER_TEXT },
   closeBtn: { borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingVertical: spacing.sm },
   closeBtnText: { textAlign: 'center', fontSize: 12, color: '#9CA3AF' },
 
   notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   notifRead: { backgroundColor: colors.bgCard },
-  notifUnread: { backgroundColor: '#F0F9FF' },
+  notifUnread: { backgroundColor: colors.bgApp },
   notifText: { fontSize: 12, color: DARK, lineHeight: 16 },
   notifTime: { fontSize: 10, color: '#9CA3AF', marginTop: 2 },
 
-  linkText: { fontSize: 12, fontWeight: '600', color: SKY },
+  linkText: { fontSize: 12, fontWeight: '600', color: colors.primaryYellowDark },
 
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   statCard: {
@@ -585,7 +589,7 @@ const styles = StyleSheet.create({
   sessionStation: { fontSize: 12, color: '#9CA3AF' },
   sessionBottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  studentChip: { backgroundColor: '#F0F9FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
+  studentChip: { backgroundColor: colors.bgApp, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
   studentChipText: { fontSize: 10, color: SKY },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   timerText: { fontSize: 12, fontWeight: '700', color: DARK, fontVariant: ['tabular-nums'] },

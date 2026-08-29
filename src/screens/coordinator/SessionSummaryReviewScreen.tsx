@@ -28,6 +28,7 @@ import {
   requestSummaryChanges,
   bulkApproveSummaries,
 } from '../../api/coordinatorApi';
+import { colors } from '../../theme/colors';
 import type { CoordinatorStackParamList } from '../../types';
 
 type SummaryStatus = 'pending' | 'revision-required' | 'approved';
@@ -51,11 +52,15 @@ interface ApiSummaryRow {
   sessionId: string;
   teacherName: string;
   stationName: string;
+  roomName?: string;
   date: string;
   bodyPreview: string;
   status: string;
   studentNames: string[];
   independencePercent: number;
+  trialsTotal?: number;
+  trialsCorrect?: number;
+  incidentCount?: number;
 }
 
 const STATUS_FROM_API: Record<string, SummaryStatus> = {
@@ -69,12 +74,12 @@ function mapSummary(row: ApiSummaryRow): Summary {
     id: row.id,
     teacher: row.teacherName,
     station: row.stationName,
-    room: '',
+    room: row.roomName ?? '',
     date: row.date,
     students: row.studentNames ?? [],
-    trials: 0,
+    trials: row.trialsTotal ?? 0,
     independence: row.independencePercent ?? 0,
-    incidents: 0,
+    incidents: row.incidentCount ?? 0,
     status: STATUS_FROM_API[row.status] ?? 'pending',
     notes: row.bodyPreview ?? '',
   };
@@ -88,8 +93,8 @@ const STATUS_CONFIG: Record<SummaryStatus, { label: string; bg: string; text: st
 
 const SECTIONS = ['Notes', 'Trial Data', 'Incident Report', 'General'];
 
-const DARK = '#1F2937';
-const SKY = '#38BDF8';
+const DARK = colors.navyText;
+const SKY = colors.primaryYellowDark;
 const AMBER = '#FCD34D';
 
 function StatusBadge({ status }: { status: SummaryStatus }) {
@@ -323,8 +328,8 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                   <Text style={styles.cardDate}>{item.date}</Text>
                   <StatusBadge status={item.status} />
                 </View>
-                <Text style={styles.cardTeacher}>{item.teacher}</Text>
-                <Text style={styles.cardMeta}>{item.station} · {item.room}</Text>
+                 <Text style={styles.cardTeacher}>{item.teacher}</Text>
+                 <Text style={styles.cardMeta}>{item.station}{item.room ? ` · ${item.room}` : ''}</Text>
                 <View style={styles.tagRow}>
                   {item.students.map((st) => (
                     <View key={st} style={styles.studentTag}>
@@ -383,9 +388,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Session Review</Text>
                 {selectedSummary && (
-                  <Text style={styles.headerSubtitle}>
-                    {selectedSummary.teacher} · {selectedSummary.date} · {selectedSummary.station} · {selectedSummary.room}
-                  </Text>
+                <Text style={styles.headerSubtitle}>
+                  {selectedSummary.teacher} · {selectedSummary.date} · {selectedSummary.station}{selectedSummary.room ? ` · ${selectedSummary.room}` : ''}
+                </Text>
                 )}
               </View>
               <TouchableOpacity onPress={closeModal} hitSlop={8}>
@@ -549,7 +554,7 @@ const styles = StyleSheet.create({
   bulkApproveText: { color: DARK, fontSize: 13, fontWeight: '700' },
 
   summaryCard: { backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 14, gap: 8 },
-  summaryCardSelected: { backgroundColor: '#EFF6FF', borderColor: SKY },
+  summaryCardSelected: { backgroundColor: colors.bgApp, borderColor: SKY },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   cardDate: { color: '#4B5563', fontSize: 12, flex: 1 },
   statusBadge: {
@@ -585,7 +590,7 @@ const styles = StyleSheet.create({
 
   emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 40 },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  overlay: { flex: 1, backgroundColor: 'rgba(26,34,51,0.75)', alignItems: 'center', justifyContent: 'center', padding: 16 },
   modalPanel: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', width: '100%', maxWidth: 560, maxHeight: '92%', overflow: 'hidden' },
   confirmPanel: { maxWidth: 400, padding: 24 },
   detailPanel: { maxHeight: '92%' },
@@ -621,7 +626,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 22, fontWeight: '700' },
   statLabel: { color: '#6B7280', fontSize: 11, marginTop: 2 },
   notesBox: { backgroundColor: '#F9FAFB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#E5E7EB' },
-  notesText: { color: '#374151', fontSize: 13, lineHeight: 20 },
+  notesText: { color: colors.bodyText, fontSize: 13, lineHeight: 20 },
   textArea: {
     backgroundColor: '#F9FAFB',
     borderWidth: 1,

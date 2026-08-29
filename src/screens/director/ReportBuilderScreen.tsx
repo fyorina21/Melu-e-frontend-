@@ -1,6 +1,19 @@
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert, Share } from 'react-native';
+// screens/director/ReportBuilderScreen.tsx
+// SCR-DIR-007: Custom Report Builder (Director View)
+
+import React, { useEffect, useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -13,12 +26,14 @@ import { generateCustomReport } from '../../api/directorApi';
 import { getStaffOptions } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
-const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
-const PERIODS = ['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
-const SCORE_FILTERS = ['All', '>50%', '>70%'];
-const GOAL_STATUSES = ['All', 'On Track', 'Needs Support'];
-const BEHAVIOR_TYPES = ['All', 'Tantrums', 'Aggression', 'Self-Injury', 'Elopement', 'Non-Compliance'];
-const DIAGNOSES = ['All', 'Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
+const PROGRAMS = ['All Programs', 'ABA', 'Speech Therapy', 'Occupational Therapy'];
+const PERIODS = ['All Periods', 'Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
+const SCORE_FILTERS = ['All Scores', '>50%', '>70%', '>90%'];
+const GOAL_STATUSES = ['All Statuses', 'On Track', 'Needs Support', 'Mastered'];
+const BEHAVIOR_TYPES = ['All Types', 'Tantrums', 'Aggression', 'Self-Injury', 'Elopement', 'Non-Compliance'];
+const DIAGNOSES = ['All Diagnoses', 'Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
+const ATTENDANCE_OPTIONS = ['All', '<70%', '<75%', '<80%', '<85%', '<90%'];
+const AGE_OPTIONS = ['All', '3–5 yrs', '6–8 yrs', '9–12 yrs', '13+ yrs'];
 
 interface ReportRow {
   id: string;
@@ -33,50 +48,108 @@ interface ReportRow {
   diagnosis: string;
 }
 
-type Props = NativeStackScreenProps<DirectorStackParamList, 'ReportBuilder'>;
+function DropdownPickerModal({
+  visible,
+  title,
+  options,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  options: string[];
+  selected: string;
+  onSelect: (val: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.pickerModalCard}>
+          <View style={styles.pickerModalHeader}>
+            <Text style={styles.pickerModalTitle}>Select {title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Feather name="x" size={18} color={colors.navyText} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 280 }}>
+            {options.map((opt) => {
+              const isSelected = opt === selected;
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.pickerItem, isSelected && styles.pickerItemActive]}
+                  onPress={() => {
+                    onSelect(opt);
+                    onClose();
+                  }}
+                >
+                  <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}>
+                    {opt}
+                  </Text>
+                  {isSelected && <Feather name="check" size={16} color={colors.navyText} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
 
-export default function ReportBuilderScreen({ navigation }: Props) {
-  const [program, setProgram] = useState('ABA');
-  const [therapist, setTherapist] = useState('All');
-  const [ageFrom, setAgeFrom] = useState(5);
-  const [ageTo, setAgeTo] = useState(8);
-  const [attendanceMax, setAttendanceMax] = useState(80);
+export default function ReportBuilderScreen({
+  navigation,
+}: NativeStackScreenProps<DirectorStackParamList, 'ReportBuilder'>) {
+  const [program, setProgram] = useState(PROGRAMS[0]);
+  const [therapist, setTherapist] = useState('All Staff');
+  const [ageRange, setAgeRange] = useState(AGE_OPTIONS[0]);
+  const [attendanceFilter, setAttendanceFilter] = useState(ATTENDANCE_OPTIONS[0]);
   const [period, setPeriod] = useState(PERIODS[0]);
   const [studentSearch, setStudentSearch] = useState('');
-  const [scoreFilter, setScoreFilter] = useState('All');
-  const [goalStatus, setGoalStatus] = useState('All');
-  const [behaviorType, setBehaviorType] = useState('All');
-  const [diagnosis, setDiagnosis] = useState('All');
+  const [scoreFilter, setScoreFilter] = useState(SCORE_FILTERS[0]);
+  const [goalStatus, setGoalStatus] = useState(GOAL_STATUSES[0]);
+  const [behaviorType, setBehaviorType] = useState(BEHAVIOR_TYPES[0]);
+  const [diagnosis, setDiagnosis] = useState(DIAGNOSES[0]);
+
   const [results, setResults] = useState<ReportRow[] | null>(null);
   const [generating, setGenerating] = useState(false);
   const [exportContent, setExportContent] = useState<string | null>(null);
   const [therapists, setTherapists] = useState<string[]>([]);
 
+  // Active Dropdown Target
+  const [activePicker, setActivePicker] = useState<{
+    title: string;
+    options: string[];
+    selected: string;
+    onSelect: (val: string) => void;
+  } | null>(null);
+
   useEffect(() => {
     getStaffOptions()
-      .then(({ data: opts }) => setTherapists(opts.filter((t) => t.role === 'teacher').map((t) => t.name)))
-      .catch(() => setTherapists([]));
+      .then(({ data: opts }) =>
+        setTherapists(['All Staff', ...opts.filter((t) => t.role === 'teacher').map((t) => t.name)])
+      )
+      .catch(() => setTherapists(['All Staff']));
   }, []);
-
-  const Chip = ({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) => (
-    <TouchableOpacity style={[styles.chip, selected && styles.chipSelected]} onPress={onPress}>
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
-    </TouchableOpacity>
-  );
-
-  const Step = ({ label, value }: { label: string; value: string }) => (
-    <View style={styles.stepBtn}>
-      <Text style={typography.label}>{label}</Text>
-      <Text style={typography.bodyBold}>{value}</Text>
-    </View>
-  );
 
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const { data } = await generateCustomReport({ program, therapist, ageFrom, ageTo, attendanceMax, period, studentSearch, scoreFilter, goalStatus, behaviorType, diagnosis });
-      setResults(data);
-    } catch (err) {
+      const progParam = program === 'All Programs' ? 'ABA' : program;
+      const { data } = await generateCustomReport({
+        program: progParam,
+        therapist: therapist === 'All Staff' ? 'All' : therapist,
+        period: period === 'All Periods' ? 'Jan–Mar' : period,
+        studentSearch,
+        scoreFilter: scoreFilter === 'All Scores' ? 'All' : scoreFilter,
+        goalStatus: goalStatus === 'All Statuses' ? 'All' : goalStatus,
+        behaviorType: behaviorType === 'All Types' ? 'All' : behaviorType,
+        diagnosis: diagnosis === 'All Diagnoses' ? 'All' : diagnosis,
+      });
+      setResults(Array.isArray(data) ? data : []);
+    } catch {
       setResults([]);
     }
     setGenerating(false);
@@ -84,117 +157,302 @@ export default function ReportBuilderScreen({ navigation }: Props) {
 
   const buildCsv = (): string => {
     if (!results) return '';
-    const header = ['Name', 'Age', 'Program', 'Therapist', 'Attendance %', 'Assessment %', 'Goal Status', 'Behavior Type', 'Diagnosis'];
-    const rows = results.map((r) => [r.name, r.age, r.program, r.therapist, r.attendance, r.assessmentScore, r.goalStatus, r.behaviorType, r.diagnosis]);
+    const header = [
+      'Name',
+      'Age',
+      'Program',
+      'Therapist',
+      'Attendance %',
+      'Assessment %',
+      'Goal Status',
+      'Behavior Type',
+      'Diagnosis',
+    ];
+    const rows = results.map((r) => [
+      r.name,
+      r.age,
+      r.program,
+      r.therapist,
+      r.attendance,
+      r.assessmentScore,
+      r.goalStatus,
+      r.behaviorType,
+      r.diagnosis,
+    ]);
     return [header, ...rows].map((row) => row.join(',')).join('\n');
   };
 
   const buildReportText = (): string => {
     if (!results) return '';
-    const lines: string[] = [];
-    lines.push('CUSTOM STUDENT REPORT — MELUE FOUNDATION');
-    lines.push(`Generated: ${new Date().toLocaleDateString()}`);
-    lines.push(`Filters: ${program} · ${therapist} · Ages ${ageFrom}–${ageTo} · Attendance < ${attendanceMax}% · ${period}`);
-    lines.push(`Assessment: ${scoreFilter} · Goal: ${goalStatus} · Behavior: ${behaviorType} · Diagnosis: ${diagnosis}`);
-    lines.push('');
-    lines.push('Name | Age | Program | Therapist | Attendance % | Assessment % | Goal Status | Behavior Type | Diagnosis');
-    lines.push('---');
-    results.forEach((r) => {
-      lines.push(`${r.name} | ${r.age} | ${r.program} | ${r.therapist} | ${r.attendance} | ${r.assessmentScore} | ${r.goalStatus} | ${r.behaviorType} | ${r.diagnosis}`);
-    });
-    lines.push('---');
-    lines.push(`${results.length} student(s) matched.`);
+    const lines = [
+      '================================================================',
+      '         MELU\'E FOUNDATION — CUSTOM REPORT BUILDER              ',
+      '================================================================',
+      `GENERATED: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+      `FILTERS: Program: ${program} | Therapist: ${therapist} | Period: ${period}`,
+      `CRITERIA: Diagnosis: ${diagnosis} | Score: ${scoreFilter} | Goal: ${goalStatus}`,
+      '----------------------------------------------------------------',
+      '',
+      'MATCHED STUDENT RECORDS:',
+      ...results.map(
+        (r, i) =>
+          `  ${i + 1}. ${r.name} (Age ${r.age}) | Program: ${r.program} | Therapist: ${r.therapist}\n     Attendance: ${r.attendance}% | Assessment: ${r.assessmentScore}% | Goal Status: ${r.goalStatus}\n     Diagnosis: ${r.diagnosis} | Primary Behavior: ${r.behaviorType}`
+      ),
+      '',
+      '----------------------------------------------------------------',
+      `TOTAL MATCHED STUDENTS: ${results.length}`,
+      '================================================================',
+    ];
     return lines.join('\n');
   };
 
-  const handleExport = async (format: string) => {
-    if (!results || results.length === 0) { Alert.alert('Nothing to export', 'Generate a report first.'); return; }
+  const handleExport = (format: string) => {
+    if (!results || results.length === 0) {
+      Alert.alert('Generate Report First', 'Please generate report results before exporting.');
+      return;
+    }
     if (format === 'CSV') {
-      const csv = buildCsv();
-      try {
-        await Share.share({ title: 'Student report export', message: csv });
-      } catch (err) {
-        Alert.alert('CSV Export', 'Sharing is not available here. The report data is ready in memory for a file-service endpoint.');
-      }
+      setExportContent(buildCsv());
       return;
     }
     setExportContent(buildReportText());
   };
 
+  const FilterSelectButton = ({
+    label,
+    value,
+    options,
+    onSelect,
+  }: {
+    label: string;
+    value: string;
+    options: string[];
+    onSelect: (v: string) => void;
+  }) => (
+    <View style={styles.filterCol}>
+      <Text style={styles.filterLabel}>{label}</Text>
+      <TouchableOpacity
+        style={styles.selectDropdown}
+        onPress={() =>
+          setActivePicker({
+            title: label,
+            options,
+            selected: value,
+            onSelect,
+          })
+        }
+      >
+        <Text style={styles.selectDropdownText} numberOfLines={1}>
+          {value}
+        </Text>
+        <Feather name="chevron-down" size={14} color={colors.bodyText} />
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Builder" onTabPress={(t) => t !== 'Builder' && navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Builder"
+        onTabPress={(t) => t !== 'Builder' && navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])}
+      />
 
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Feather name="filter" size={18} color={colors.navyText} />
-          <View>
-            <Text style={typography.h1}>Report Builder</Text>
-            <Text style={typography.caption}>MR-46 — build a custom student report</Text>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Page Header */}
+        <View style={styles.pageHeader}>
+          <View style={styles.headerLeft}>
+            <View style={styles.badgeIcon}>
+              <Feather name="filter" size={20} color={colors.navyText} />
+            </View>
+            <View>
+              <Text style={styles.pageTitle}>Custom Report Builder</Text>
+              <Text style={styles.pageSubtitle}>
+                Build, filter, analyze, and export customized student clinical data
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+        {/* Filter Configuration Card */}
         <View style={styles.card}>
-          <Text style={typography.h3}>Filters</Text>
-          <View style={styles.field}><Text style={typography.label}>Program</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{PROGRAMS.map((p) => <Chip key={p} label={p} selected={program === p} onPress={() => setProgram(p)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Therapist</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{['All', ...therapists].map((t) => <Chip key={t} label={t} selected={therapist === t} onPress={() => setTherapist(t)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Age range</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{[3, 4, 5, 6, 7, 8, 9, 10].map((a) => <Chip key={a} label={`${a}`} selected={a === ageFrom} onPress={() => setAgeFrom(a)} />)}<Text style={styles.midDash}>to</Text>{[3, 4, 5, 6, 7, 8, 9, 10].map((a) => <Chip key={a} label={`${a}`} selected={a === ageTo} onPress={() => setAgeTo(a)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Attendance below</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{[70, 75, 80, 85, 90].map((v) => <Chip key={v} label={`<${v}%`} selected={attendanceMax === v} onPress={() => setAttendanceMax(v)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Date range</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{PERIODS.map((p) => <Chip key={p} label={p} selected={period === p} onPress={() => setPeriod(p)} />)}</ScrollView></View>
-          <View style={styles.field}>
-            <Text style={typography.label}>Student</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by student name..."
-              placeholderTextColor={colors.mutedText}
-              value={studentSearch}
-              onChangeText={setStudentSearch}
+          <Text style={styles.cardTitle}>Report Criteria & Filter Parameters</Text>
+
+          {/* Row 1 */}
+          <View style={styles.filterGrid}>
+            <FilterSelectButton
+              label="Therapy Program"
+              value={program}
+              options={PROGRAMS}
+              onSelect={setProgram}
+            />
+            <FilterSelectButton
+              label="Assigned Therapist"
+              value={therapist}
+              options={therapists}
+              onSelect={setTherapist}
             />
           </View>
-          <View style={styles.field}><Text style={typography.label}>Assessment score</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{SCORE_FILTERS.map((v) => <Chip key={v} label={v} selected={scoreFilter === v} onPress={() => setScoreFilter(v)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Goal status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{GOAL_STATUSES.map((v) => <Chip key={v} label={v} selected={goalStatus === v} onPress={() => setGoalStatus(v)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Behavior type</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{BEHAVIOR_TYPES.map((v) => <Chip key={v} label={v} selected={behaviorType === v} onPress={() => setBehaviorType(v)} />)}</ScrollView></View>
-          <View style={styles.field}><Text style={typography.label}>Diagnosis</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{DIAGNOSES.map((v) => <Chip key={v} label={v} selected={diagnosis === v} onPress={() => setDiagnosis(v)} />)}</ScrollView></View>
 
-          <TouchableOpacity style={styles.generateBtn} onPress={handleGenerate} disabled={generating}>
+          {/* Row 2 */}
+          <View style={styles.filterGrid}>
+            <FilterSelectButton
+              label="Age Bracket"
+              value={ageRange}
+              options={AGE_OPTIONS}
+              onSelect={setAgeRange}
+            />
+            <FilterSelectButton
+              label="Attendance Threshold"
+              value={attendanceFilter}
+              options={ATTENDANCE_OPTIONS}
+              onSelect={setAttendanceFilter}
+            />
+          </View>
+
+          {/* Row 3 */}
+          <View style={styles.filterGrid}>
+            <FilterSelectButton
+              label="Reporting Period"
+              value={period}
+              options={PERIODS}
+              onSelect={setPeriod}
+            />
+            <FilterSelectButton
+              label="Clinical Diagnosis"
+              value={diagnosis}
+              options={DIAGNOSES}
+              onSelect={setDiagnosis}
+            />
+          </View>
+
+          {/* Row 4 */}
+          <View style={styles.filterGrid}>
+            <FilterSelectButton
+              label="Assessment Score"
+              value={scoreFilter}
+              options={SCORE_FILTERS}
+              onSelect={setScoreFilter}
+            />
+            <FilterSelectButton
+              label="Goal Progress Status"
+              value={goalStatus}
+              options={GOAL_STATUSES}
+              onSelect={setGoalStatus}
+            />
+          </View>
+
+          {/* Row 5 */}
+          <View style={styles.filterGrid}>
+            <FilterSelectButton
+              label="Target Behavior Category"
+              value={behaviorType}
+              options={BEHAVIOR_TYPES}
+              onSelect={setBehaviorType}
+            />
+            <View style={styles.filterCol}>
+              <Text style={styles.filterLabel}>Student Name Search</Text>
+              <View style={styles.searchWrap}>
+                <Feather name="search" size={14} color={colors.mutedText} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Optional student name..."
+                  placeholderTextColor={colors.mutedText}
+                  value={studentSearch}
+                  onChangeText={setStudentSearch}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Generate Button */}
+          <TouchableOpacity
+            style={styles.generateBtn}
+            onPress={handleGenerate}
+            disabled={generating}
+          >
             <Feather name="play" size={16} color={colors.navyText} />
-            <Text style={styles.generateBtnText}>{generating ? 'Generating...' : 'Generate Report'}</Text>
+            <Text style={styles.generateBtnText}>
+              {generating ? 'Generating Custom Report...' : 'Generate Report Results'}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {results && (
+        {/* Results Section */}
+        {results !== null && (
           <View style={styles.card}>
             <View style={styles.resultHeader}>
-              <Text style={typography.h3}>Results · {results.length} students</Text>
+              <View>
+                <Text style={styles.cardTitle}>Report Results</Text>
+                <Text style={styles.resultSubtitle}>{results.length} Student Record(s) Matched</Text>
+              </View>
               <View style={styles.exportRow}>
-                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('CSV')}><Feather name="download" size={14} color={colors.navyText} /><Text style={styles.exportBtnText}>CSV</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('PDF')}><Feather name="file-text" size={14} color={colors.navyText} /><Text style={styles.exportBtnText}>PDF</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('Excel')}><Feather name="file-text" size={14} color={colors.navyText} /><Text style={styles.exportBtnText}>Excel</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('Print')}><Feather name="printer" size={14} color={colors.navyText} /><Text style={styles.exportBtnText}>Print</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('CSV')}>
+                  <Feather name="download" size={13} color={colors.navyText} />
+                  <Text style={styles.exportBtnText}>CSV</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('TXT')}>
+                  <Feather name="file-text" size={13} color={colors.navyText} />
+                  <Text style={styles.exportBtnText}>Document</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('PRINT')}>
+                  <Feather name="printer" size={13} color={colors.navyText} />
+                  <Text style={styles.exportBtnText}>Print / PDF</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            {results.map((r) => (
-              <View key={r.id} style={styles.resultRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={typography.bodyBold}>{r.name}</Text>
-                  <Text style={typography.caption}>Age {r.age} · {r.program} · {r.therapist}</Text>
-                  <Text style={typography.caption}>Attendance {r.attendance}% · Assessment {r.assessmentScore}% · {r.diagnosis} · {r.behaviorType}</Text>
+
+            {/* Results Table */}
+            <View style={styles.table}>
+              {results.map((r) => (
+                <View key={r.id} style={styles.resultRow}>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.studentTitleRow}>
+                      <Text style={styles.studentName}>{r.name}</Text>
+                      <Text style={styles.studentMeta}>Age {r.age} · {r.program}</Text>
+                    </View>
+                    <Text style={styles.studentSubMeta}>
+                      Therapist: {r.therapist} · Diagnosis: {r.diagnosis} · Behavior: {r.behaviorType}
+                    </Text>
+                    <View style={styles.metricRow}>
+                      <Text style={styles.metricText}>Attendance: {r.attendance}%</Text>
+                      <Text style={styles.metricText}>Assessment: {r.assessmentScore}%</Text>
+                    </View>
+                  </View>
+                  <StatusPill
+                    status={r.goalStatus === 'On Track' ? 'approved' : 'pending'}
+                    label={r.goalStatus}
+                  />
                 </View>
-                <StatusPill status={r.goalStatus === 'On Track' ? 'approved' : 'pending'} label={r.goalStatus} />
-              </View>
-            ))}
-            {results.length === 0 && <Text style={[typography.body, { color: colors.mutedText }]}>No students match these filters.</Text>}
+              ))}
+
+              {results.length === 0 && (
+                <View style={styles.emptyResults}>
+                  <Feather name="info" size={28} color={colors.mutedText} />
+                  <Text style={styles.emptyResultsTitle}>No Students Matched</Text>
+                  <Text style={styles.emptyResultsSub}>Try adjusting your filter parameters above.</Text>
+                </View>
+              )}
+            </View>
           </View>
         )}
-
-        <Step label="Tip" value="Only students in the selected program, age range, and below the attendance threshold are included." />
       </ScrollView>
 
+      {/* Interactive Picker Modal */}
+      {activePicker && (
+        <DropdownPickerModal
+          visible={true}
+          title={activePicker.title}
+          options={activePicker.options}
+          selected={activePicker.selected}
+          onSelect={activePicker.onSelect}
+          onClose={() => setActivePicker(null)}
+        />
+      )}
+
+      {/* Export Preview Modal */}
       <ExportPreviewModal
         visible={!!exportContent}
-        title="Custom Student Report"
+        title="Custom Student Clinical Report"
         filename={`CustomReport_${new Date().toISOString().slice(0, 10)}.txt`}
         content={exportContent ?? ''}
         onClose={() => setExportContent(null)}
@@ -205,23 +463,165 @@ export default function ReportBuilderScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
-  field: { gap: spacing.sm },
-  searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp, color: colors.navyText },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginRight: spacing.xs, backgroundColor: colors.bgApp },
-  chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
-  chipTextSelected: { color: colors.navyText },
-  midDash: { alignSelf: 'center', marginHorizontal: spacing.sm, color: colors.mutedText },
-  generateBtn: { flexDirection: 'row', gap: spacing.xs, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center' },
-  generateBtnText: { fontWeight: '700', color: colors.navyText },
-  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
-  exportRow: { flexDirection: 'row', gap: spacing.sm },
-  exportBtn: { flexDirection: 'row', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, alignItems: 'center' },
-  exportBtnText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
-  resultRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  stepBtn: { backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: 50 },
+
+  pageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  badgeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryYellow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitle: { fontSize: 20, fontWeight: '700', color: colors.navyText },
+  pageSubtitle: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
+
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText },
+
+  filterGrid: { flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' },
+  filterCol: { flexGrow: 1, minWidth: 220, gap: spacing.xs },
+  filterLabel: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
+
+  selectDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    backgroundColor: colors.bgApp,
+  },
+  selectDropdownText: { fontSize: 13, fontWeight: '600', color: colors.navyText, flex: 1, paddingRight: 6 },
+
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgApp,
+  },
+  searchInput: { flex: 1, paddingVertical: spacing.sm, fontSize: 13, color: colors.navyText },
+
+  generateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primaryYellow,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    marginTop: spacing.xs,
+  },
+  generateBtnText: { fontSize: 14, fontWeight: '700', color: colors.navyText },
+
+  resultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.bgApp,
+    paddingBottom: spacing.sm,
+  },
+  resultSubtitle: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
+  exportRow: { flexDirection: 'row', gap: spacing.xs },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: colors.bgApp,
+  },
+  exportBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
+
+  table: { gap: spacing.xs },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.bgApp,
+    gap: spacing.md,
+  },
+  studentTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  studentName: { fontSize: 14, fontWeight: '700', color: colors.navyText },
+  studentMeta: { fontSize: 12, color: colors.bodyText },
+  studentSubMeta: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
+  metricRow: { flexDirection: 'row', gap: spacing.md, marginTop: 4 },
+  metricText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
+
+  emptyResults: {
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  emptyResultsTitle: { fontSize: 15, fontWeight: '700', color: colors.navyText },
+  emptyResultsSub: { fontSize: 12, color: colors.mutedText },
+
+  /* Dropdown Modal */
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  pickerModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: spacing.sm,
+  },
+  pickerModalTitle: { fontSize: 15, fontWeight: '700', color: colors.navyText },
+  pickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.bgApp,
+  },
+  pickerItemActive: { backgroundColor: '#FEF9C3', borderRadius: radius.sm },
+  pickerItemText: { fontSize: 13, color: colors.navyText, fontWeight: '500' },
+  pickerItemTextActive: { fontWeight: '700' },
 });
+

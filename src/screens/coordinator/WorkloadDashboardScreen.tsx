@@ -60,7 +60,7 @@ export default function WorkloadDashboardScreen({ navigation }: Props) {
           <Feather name="briefcase" size={18} color={colors.navyText} />
           <View>
             <Text style={typography.h1}>Therapist Workload</Text>
-            <Text style={typography.caption}>MR-42 — weekly distribution across the team</Text>
+            <Text style={typography.caption}>Weekly distribution across the team</Text>
           </View>
         </View>
       </View>

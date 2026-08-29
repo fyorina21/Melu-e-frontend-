@@ -28,12 +28,13 @@ import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import { getEnrollmentStudents, getStudentProgressOverview, flagStudent } from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
+import ExportPreviewModal from '../../components/ExportPreviewModal';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorStudentProgress'>;
 
-const SKY = '#38BDF8';
+const SKY = colors.primaryYellowDark;
 const AMBER = '#FCD34D';
-const DARK_TEXT = '#1F2937';
+const DARK_TEXT = colors.navyText;
 
 interface StudentListItem {
   id: string;
@@ -81,7 +82,7 @@ const STATUS_PERCENT: Record<string, number> = {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; text: string }> = {
-    Active: { bg: '#E0F2FE', text: '#075985' },
+    Active: { bg: colors.bgApp, text: colors.bodyText },
     Mastered: { bg: '#DCFCE7', text: '#166534' },
     'On Hold': { bg: '#F3F4F6', text: '#4B5563' },
     'In Progress': { bg: '#FEF9C3', text: '#854D0E' },
@@ -119,6 +120,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
   const [notes, setNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionHistoryRow | null>(null);
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +198,17 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Progress" onTabPress={handleTabPress} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Page Header */}
+        <View style={styles.pageHeader}>
+          <View style={styles.headerIconWrap}>
+            <Activity size={20} color={colors.primaryYellowDark} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pageTitle}>Student Progress</Text>
+            <Text style={styles.pageSubtitle}>Monitor goals, sessions & behavior trends</Text>
+          </View>
+        </View>
+
         {/* Student Selector */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>SELECT STUDENT</Text>
@@ -237,7 +250,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                         setShowDropdown(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemName, selectedStudentId === s.id && { color: '#0369A1' }]}>
+                      <Text style={[styles.dropdownItemName, selectedStudentId === s.id && { color: colors.navyText }]}>
                         {s.fullName}
                       </Text>
                       <Text style={styles.dropdownItemStation}>{s.programType}</Text>
@@ -299,7 +312,11 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                     {flagged ? 'Flagged' : 'Flag Student'}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionButton, styles.outlineButton]} activeOpacity={0.8}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.outlineButton]}
+                  activeOpacity={0.8}
+                  onPress={() => setShowExport(true)}
+                >
                   <Printer size={16} color="#4B5563" />
                   <Text style={[styles.actionButtonText, { color: '#4B5563' }]}>Print Report</Text>
                 </TouchableOpacity>
@@ -527,9 +544,9 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                     {selectedSession.status ? ` · ${selectedSession.status}` : ''}
                   </Text>
                   <View style={styles.sessionStatsGrid}>
-                    <View style={[styles.sessionStatTile, { backgroundColor: '#F0F9FF' }]}>
+                    <View style={[styles.sessionStatTile, { backgroundColor: colors.bgApp }]}>
                       <Text style={styles.statTileLabel}>Independence</Text>
-                      <Text style={[styles.statTileValue, { color: '#0284C7' }]}>{selectedSession.independencePercent ?? 0}%</Text>
+                      <Text style={[styles.statTileValue, { color: colors.primaryYellowDark }]}>{selectedSession.independencePercent ?? 0}%</Text>
                     </View>
                   </View>
                   <Text style={styles.notesSectionLabel}>SESSION NOTES</Text>
@@ -603,6 +620,36 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
           </View>
         </View>
       </Modal>
+
+      {/* Student Progress Export Modal */}
+      <ExportPreviewModal
+        visible={showExport}
+        filename="student_progress_report.txt"
+        title={`Student Progress Report — ${overview?.name || selectedStudent?.fullName || 'Student'}`}
+        content={[
+          "MELU'E FOUNDATION FOR AUTISM & SPECIAL NEEDS",
+          'STUDENT PROGRESS & CLINICAL MONITORING REPORT',
+          '================================================================',
+          `STUDENT: ${overview?.name || selectedStudent?.fullName || 'Student'} (Age: ${overview?.age || selectedStudent?.age || 'N/A'})`,
+          `PROGRAM: ${overview?.program || selectedStudent?.programType || 'Special Education'}`,
+          `GENERATED: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+          '----------------------------------------------------------------',
+          '',
+          'ASSESSMENT STATUS:',
+          `• Skills Assessment: ${overview?.assessmentSummary?.skills || 'In Progress'}`,
+          `• Behavior Assessment: ${overview?.assessmentSummary?.behavior || 'In Progress'}`,
+          `• Preferences Assessment: ${overview?.assessmentSummary?.preferences || 'Completed'}`,
+          '',
+          'ACTIVE GOALS & MASTERY METRICS:',
+          ...(overview?.goals || []).map(
+            (g, i) =>
+              `${i + 1}. [${g.domain || 'Goal'}] ${g.name}\n   Status: ${g.status || 'Active'} | Independence: ${g.percent}%\n`
+          ),
+          '----------------------------------------------------------------',
+          `INCIDENT SUMMARY: ${overview?.incidentSummary || 'No recent behavioral escalations.'}`,
+        ].join('\n')}
+        onClose={() => setShowExport(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -610,6 +657,18 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   content: { padding: spacing.lg, gap: spacing.lg },
+
+  pageHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  headerIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryYellow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitle: { fontSize: 20, fontWeight: '700', color: colors.navyText },
+  pageSubtitle: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
 
   card: {
     backgroundColor: colors.bgCard,
@@ -634,8 +693,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   searchInput: { flex: 1, paddingVertical: spacing.sm + 2, fontSize: 14, color: DARK_TEXT },
-  selectedChip: { backgroundColor: '#E0F2FE', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: 999 },
-  selectedChipText: { fontSize: 12, fontWeight: '600', color: '#075985' },
+  selectedChip: { backgroundColor: colors.bgApp, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: 999 },
+  selectedChipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
   dropdown: {
     backgroundColor: colors.bgCard,
     borderWidth: 1,
@@ -651,7 +710,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm + 2,
   },
-  dropdownItemActive: { backgroundColor: '#F0F9FF' },
+  dropdownItemActive: { backgroundColor: colors.bgApp },
   dropdownItemName: { fontSize: 14, color: DARK_TEXT },
   dropdownItemStation: { fontSize: 12, color: '#9CA3AF' },
   emptyDropdownText: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontSize: 13, color: '#9CA3AF' },
@@ -677,8 +736,8 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
   grayChip: { backgroundColor: '#F3F4F6', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, alignSelf: 'flex-start' },
   grayChipText: { fontSize: 12, color: '#4B5563' },
-  skyChip: { backgroundColor: '#E0F2FE', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
-  skyChipText: { fontSize: 12, color: '#0369A1' },
+  skyChip: { backgroundColor: colors.bgApp, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
+  skyChipText: { fontSize: 12, color: colors.navyText },
   amberChip: { backgroundColor: '#FEF9C3', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
   amberChipText: { fontSize: 12, color: '#A16207' },
   profileActions: { flexDirection: 'row', gap: spacing.sm },
@@ -696,7 +755,7 @@ const styles = StyleSheet.create({
   actionButtonText: { fontSize: 13, fontWeight: '600' },
 
   assessmentHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  assessmentLabel: { fontSize: 14, fontWeight: '500', color: '#374151', flexShrink: 1 },
+  assessmentLabel: { fontSize: 14, fontWeight: '500', color: colors.bodyText, flexShrink: 1 },
   barTrackTall: { height: 8, borderRadius: 999, backgroundColor: '#F3F4F6', overflow: 'hidden' },
   barFillTall: { height: '100%', borderRadius: 999 },
   assessmentPct: { fontSize: 12, color: '#9CA3AF', marginTop: 6 },
@@ -757,7 +816,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     minHeight: 90,
     fontSize: 14,
-    color: '#374151',
+    color: colors.bodyText,
     backgroundColor: colors.bgCard,
   },
   notesFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36 },
@@ -770,14 +829,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.md,
-    backgroundColor: AMBER,
+    backgroundColor: colors.primaryYellow,
     marginLeft: 'auto',
   },
-  saveButtonText: { fontSize: 13, fontWeight: '700', color: DARK_TEXT },
+  saveButtonText: { fontSize: 13, fontWeight: '700', color: colors.navyText },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(26,34,51,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
@@ -827,10 +886,10 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: DARK_TEXT,
+    backgroundColor: colors.primaryYellow,
     alignItems: 'center',
   },
-  closeDarkButtonText: { color: colors.white, fontSize: 14, fontWeight: '600' },
+  closeDarkButtonText: { color: colors.navyText, fontSize: 14, fontWeight: '700' },
 
   flagDescription: { fontSize: 13, color: '#4B5563', lineHeight: 19 },
   flagInput: { minHeight: 70 },

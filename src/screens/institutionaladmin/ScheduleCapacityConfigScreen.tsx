@@ -258,10 +258,26 @@ export default function ScheduleCapacityConfigScreen({
           </Text>
         </View>
 
+        {/* Explanatory Guide Card */}
+        <View style={styles.infoBannerCard}>
+          <View style={styles.infoBannerIcon}>
+            <Feather name="info" size={18} color="#1E40AF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.infoBannerTitle}>How Scheduling & Capacity Configuration Works</Text>
+            <Text style={styles.infoBannerText}>
+              • <Text style={{ fontWeight: '700' }}>Session Schedule & Rounds:</Text> Defines the institutional timetable for morning and afternoon therapy blocks. Therapists utilize the Pre-Therapy Duration (in minutes) prior to direct student instruction for classroom setup and material preparation.
+            </Text>
+            <Text style={styles.infoBannerText}>
+              • <Text style={{ fontWeight: '700' }}>Staff-to-Student Capacity:</Text> Establishes the maximum allowable student caseload assigned to a single therapist during any active session block to maintain clinical safety and quality of care.
+            </Text>
+          </View>
+        </View>
+
         {/* Card 1: Session Schedule */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Session Schedule</Text>
+            <Text style={styles.cardTitle}>Session Schedule & Operational Hours</Text>
             <Feather name="chevron-up" size={18} color="#64748B" />
           </View>
 
@@ -334,6 +350,7 @@ export default function ScheduleCapacityConfigScreen({
                 onChangeText={setCapacity}
                 keyboardType="number-pad"
               />
+              <Text style={styles.fieldHint}>Recommended standard ratio is 2 students per therapist.</Text>
             </View>
           </View>
 
@@ -348,9 +365,13 @@ export default function ScheduleCapacityConfigScreen({
                 onChangeText={setDraftExpiry}
                 keyboardType="number-pad"
               />
+              <Text style={styles.fieldHint}>
+                Unsubmitted Session Summaries and Daily Notes saved in draft status will be automatically flagged or archived after this period.
+              </Text>
             </View>
           </View>
         </View>
+
 
         {/* Card 3: Session Block Definitions */}
         <View style={styles.card}>
@@ -547,6 +568,43 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     padding: 20,
     gap: 16,
+  },
+  infoBannerCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    padding: 16,
+  },
+  infoBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  infoBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E40AF',
+    marginBottom: 4,
+  },
+  infoBannerText: {
+    fontSize: 12,
+    color: '#1E3A8A',
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+    marginTop: 2,
   },
   cardHeaderRow: {
     flexDirection: 'row',

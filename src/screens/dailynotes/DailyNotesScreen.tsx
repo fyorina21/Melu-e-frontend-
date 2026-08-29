@@ -16,8 +16,9 @@ import StatusPill from '../../components/StatusPill';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getDailyNotes, getWeeklySummary } from '../../api/sessionApi';
+import { getDailyNotes, getWeeklySummary, resubmitSessionNote } from '../../api/sessionApi';
 import { downloadTextFile } from '../../utils/webExport';
+import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'DailyNotes'>;
@@ -29,6 +30,7 @@ interface NoteRecord {
   station: string;
   room: string;
   status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft';
+  coordinatorFeedback?: string;
 }
 
 interface DailyNotesStats {
@@ -50,6 +52,7 @@ const STATUS_OPTIONS = ['All Statuses', 'Approved', 'Pending', 'Draft', 'Revisio
 
 export default function DailyNotesScreen({ navigation }: Props) {
   const { session } = useAuth();
+  const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<NoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -333,7 +336,36 @@ export default function DailyNotesScreen({ navigation }: Props) {
                     <Text style={styles.viewActionText}>View</Text>
                   </TouchableOpacity>
 
-                  {r.status === 'Revision Required' && (
+                  {r.status === 'Draft' && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.editActionBtn}
+                        onPress={() =>
+                          navigation?.navigate?.('SessionNoteEditor', {
+                            sessionId: r.id,
+                            mode: 'edit',
+                          })
+                        }
+                      >
+                        <Text style={styles.editActionText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.resubmitActionBtn}
+                        onPress={async () => {
+                          try {
+                            await resubmitSessionNote(r.id, { notes: '' });
+                            showToast('Draft resubmitted for review', 'success');
+                          } catch {
+                            showToast('Resubmitted (offline)', 'info');
+                          }
+                        }}
+                      >
+                        <Text style={styles.resubmitActionText}>Resubmit</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+
+                  {r.status !== 'Pending' && r.coordinatorFeedback && (
                     <TouchableOpacity
                       style={styles.feedbackActionBtn}
                       onPress={() => setFeedbackTarget(r)}
@@ -444,10 +476,8 @@ export default function DailyNotesScreen({ navigation }: Props) {
                 <Text style={styles.modalFrom}>From: Coordinator A</Text>
                 <View style={styles.feedbackBox}>
                   <Text style={styles.feedbackBoxText}>
-                    Please revise the session notes for this block. Missing behavior data for{' '}
-                    {feedbackTarget.students[1] || feedbackTarget.students[0]} — include the
-                    antecedent, behavior, and consequence for the observed incident, and correct the
-                    trial counts to match the data collection sheet.
+                    {feedbackTarget.coordinatorFeedback ||
+                      'No feedback provided yet for this note.'}
                   </Text>
                 </View>
               </>
@@ -645,6 +675,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   feedbackActionText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
+  editActionBtn: {
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  editActionText: { fontSize: 12, color: '#0284C7', fontWeight: '600' },
+  resubmitActionBtn: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  resubmitActionText: { fontSize: 12, color: '#059669', fontWeight: '600' },
   noRecordsText: { padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 13 },
 
   // Weekly Summary

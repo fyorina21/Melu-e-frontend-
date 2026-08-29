@@ -68,6 +68,7 @@ interface AssessmentData {
     score: number;
     ablls: { status: string; progress: number };
     behavior: { status: string; progress: number };
+    phase?: string; // e.g., '6-week', 'active', 'maintenance'
   }[];
 }
 
@@ -87,6 +88,9 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Filter students to only show those in 6-week assessment phase
+  const filteredStudents = data?.students.filter((s) => s.phase === '6-week' || !s.phase) ?? [];
 
   if (loadError) return <ScreenError onRetry={load} />;
   if (!data) return <ScreenLoader />;
@@ -113,7 +117,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
           <View style={styles.statCard}>
             <Feather name="users" size={16} color={colors.mutedText} />
             <Text style={styles.statValue}>{data.stats.total}</Text>
-            <Text style={typography.caption}>Total Students</Text>
+            <Text style={typography.caption}>Assigned Students</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="check-circle" size={16} color="#22C55E" />
@@ -134,7 +138,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
         <Text style={typography.h3}>Student Assessments</Text>
         <View style={styles.studentsGrid}>
-          {data.students.map((s) => (
+          {filteredStudents.map((s) => (
             <View key={s.id} style={styles.studentCard}>
                 <View style={styles.studentHeaderRow}>
                   <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{s.initial}</Text></View>

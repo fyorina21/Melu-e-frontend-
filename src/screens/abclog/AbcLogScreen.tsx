@@ -113,8 +113,10 @@ export default function AbcLogScreen({ navigation }: Props) {
   useEffect(() => {
     getStudentOptions()
       .then(({ data: opts }) => {
-        setStudentOptions(opts);
-        if (opts.length > 0) setStudentId((prev) => prev || opts[0].id);
+        // Filter to only show students in Active phase
+        const activeStudents = opts.filter((s: StudentOption) => s.phase === 'Active' || s.phase === 'active');
+        setStudentOptions(activeStudents);
+        if (activeStudents.length > 0) setStudentId((prev) => prev || activeStudents[0].id);
       })
       .catch(() => {});
   }, []);

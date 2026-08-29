@@ -10,6 +10,7 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { PARENT_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { parentApi } from '../../api';
 import {
   getTeacherConversations,
@@ -76,7 +77,11 @@ const PARENT_TEMPLATES = [
   { label: 'Availability update', text: 'Just a heads up — my child will be absent on the following dates: [dates]. Please let me know if this affects anything.' },
 ];
 
-const PARENT_LOG: LogEntry[] = [];
+const PARENT_LOG: LogEntry[] = [
+  { date: 'Aug 18, 2026', from: 'Teacher A', preview: 'Weekly session summary shared — 14/20 trials independent.', status: 'Shared' },
+  { date: 'Aug 10, 2026', from: 'Coordinator', preview: 'Goal progress chart shared — Request Items up to 78% independence.', status: 'Shared' },
+  { date: 'Aug 02, 2026', from: 'Teacher A', preview: 'Home observation request acknowledged by parent.', status: 'Resolved' },
+];
 
 const TEACHER_COLOR = '#38BDF8';
 const DIRECTOR_COLOR = '#A855F7';
@@ -101,6 +106,7 @@ function avatarColor(role: string) {
 
 function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
   const { session } = useAuth();
+  const { showToast } = useToast();
   const isProgramDirector = session?.role === 'program_director';
   const [conversations, setConversations] = useState<TeacherConversation[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -168,7 +174,10 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
     setPendingAttachments([]);
     try {
       await sendTeacherMessage(activeId, { text: newMsg.text, attachments: newMsg.attachments });
-    } catch (err) {}
+      showToast('Message sent', 'success');
+    } catch (err) {
+      showToast('Message saved locally', 'info');
+    }
   };
 
   const handleShareSessionSummary = () => {
@@ -183,6 +192,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
     `;
     downloadTextFile(filename, content);
     setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: latest approved session summary (PDF)]`);
+    showToast('Session summary shared', 'success');
   };
 
   const handleShareProgressUpdate = () => {
@@ -196,6 +206,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
     `;
     downloadTextFile(filename, content);
     setDraft((prev) => `${prev}${prev ? ' ' : ''}[Shared: goal progress chart]`);
+    showToast('Progress chart shared', 'success');
   };
 
   const handleRequestHomeObservation = () => {
@@ -213,13 +224,14 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
     if (!activeId) return;
     Alert.alert('Escalate to Coordinator?', 'The coordinator will be notified and can follow up.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Escalate',
-        onPress: async () => {
-          try { await escalateTeacherConversation(activeId, { to: 'coordinator' }); } catch (err) {}
-          Alert.alert('Escalation sent');
+        {
+          text: 'Escalate',
+          onPress: async () => {
+            try { await escalateTeacherConversation(activeId, { to: 'coordinator' }); } catch (err) {}
+            Alert.alert('Escalation sent');
+            showToast('Conversation escalated to Coordinator', 'success');
+          },
         },
-      },
     ]);
   };
 
@@ -232,6 +244,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
           try { await markTeacherConversationResolved(activeId); } catch (err) {}
           setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, resolved: true } : c)));
           Alert.alert('Conversation marked as resolved');
+          showToast('Conversation marked as resolved', 'success');
         },
       },
     ]);
@@ -358,6 +371,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
 // =========================================================================
 
 function ParentCommunicationPanel({ navigation }: { navigation: any }) {
+  const { showToast } = useToast();
   const [conversations, setConversations] = useState<ParentConversation[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -441,6 +455,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
     setConversations(updated);
     setNewMessage('');
     try { await parentApi.sendMessage(selectedId, msg.text); } catch (err) {}
+    showToast('Message sent', 'success');
   };
 
   const applyTemplate = (text: string) => {
@@ -453,6 +468,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
     setShowEscalateModal(false);
     setEscalateReason('');
     Alert.alert('Escalation sent', 'Escalation sent to Director A');
+    showToast('Escalation sent to Director A', 'success');
   };
 
   const handleResolve = async () => {
@@ -461,6 +477,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
       try { await parentApi.setConversationResolved(selectedId, true); } catch (err) {}
     }
     Alert.alert('Conversation marked as resolved');
+    showToast('Conversation marked as resolved', 'success');
   };
 
   return (

@@ -10,6 +10,7 @@ export interface StudentOption {
   id: string;
   name: string;
   age: number;
+  phase?: string;
 }
 
 export interface StaffOption {

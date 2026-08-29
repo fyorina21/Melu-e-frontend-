@@ -232,7 +232,27 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <Feather name="chevron-down" size={16} color="#475569" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.uploadBtn}>
+          <TouchableOpacity
+            style={styles.uploadBtn}
+            onPress={() => {
+              Alert.alert(
+                'Upload Template Schema',
+                'Select a template format to import for ' + selectedForm,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Import Standard JSON Template',
+                    onPress: () => {
+                      Alert.alert(
+                        'Template Imported',
+                        `Standard institutional template schema loaded successfully for ${selectedForm}.`
+                      );
+                    },
+                  },
+                ]
+              );
+            }}
+          >
             <Feather name="upload" size={14} color="#334155" />
             <Text style={styles.uploadBtnText}>Upload Template</Text>
           </TouchableOpacity>

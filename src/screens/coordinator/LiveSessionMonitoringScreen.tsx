@@ -111,7 +111,7 @@ const ALERT_TYPES = ['Urgent', 'FYI', 'Check-in'];
 const MOCK_GOALS = ['Identify Colors', 'Request Items', 'Follow 2-Step Instructions', 'Match Objects'];
 const MOCK_TRIAL_BREAKDOWN: Record<string, number> = { FP: 5, PP: 4, G: 3, '+': 6 };
 const TRIAL_COLORS: Record<string, string> = {
-  FP: '#60A5FA',
+  FP: colors.primaryYellowDark,
   PP: '#C084FC',
   G: '#FCD34D',
   '+': '#4ADE80',
@@ -559,9 +559,9 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
   );
 }
 
-const SKY = '#38BDF8';
+const SKY = colors.primaryYellowDark;
 const DARK = '#FFFFFF';
-const DARK_TEXT = '#1F2937';
+const DARK_TEXT = colors.navyText;
 const PANEL = '#F3F4F6';
 
 const styles = StyleSheet.create({
@@ -715,7 +715,7 @@ const styles = StyleSheet.create({
   emptyState: { flexBasis: '100%', alignItems: 'center', paddingVertical: 64 },
   emptyText: { color: '#6B7280', fontSize: 14 },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  overlay: { flex: 1, backgroundColor: 'rgba(26,34,51,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   modalSheet: {
     width: '100%',
     maxWidth: 520,

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,7 +20,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import StudentSessionCard from './components/StudentSessionCard';
-import BehaviorIncidentModal, {
+import BehaviorIncidentModal from './components/BehaviorIncidentModal';
+import type {
   IncidentPayload,
 } from './components/BehaviorIncidentModal';
 import {
@@ -69,6 +71,10 @@ export default function SessionDataCollectionScreen({
   const [isRunning, setIsRunning] = useState(isTimerRunning());
   const [incidentModal, setIncidentModal] =
     useState<IncidentModalState | null>(null);
+  const [localIncidents, setLocalIncidents] = useState<IncidentPayload[]>([]);
+
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
 
   const loadRoster = useCallback(async () => {
     try {
@@ -194,6 +200,17 @@ export default function SessionDataCollectionScreen({
       // Demo/offline fallback: incident recorded locally
     }
 
+    // Track incident locally for session summary
+    const student = session?.students.find(
+      (s) => s.id === incidentModal?.studentId
+    );
+    const fullIncident = {
+      ...incidentData,
+      studentName: student?.name ?? 'Unknown Student',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setLocalIncidents((prev) => [...prev, fullIncident]);
+
     setIncidentModal(null);
     showToast('Behavior incident logged successfully', 'success');
   };
@@ -214,8 +231,13 @@ export default function SessionDataCollectionScreen({
     } catch (err) {
       // Continue with local swap if backend is unavailable.
     }
+    // Swap the order of the two students locally so the change is visible.
+    setSession((prev) =>
+      prev
+        ? { ...prev, students: [...prev.students].reverse() }
+        : prev
+    );
     showToast('Students swapped successfully', 'success');
-    await loadRoster();
   };
 
   const handleActivate = (studentId: string) => {
@@ -251,6 +273,7 @@ export default function SessionDataCollectionScreen({
   const handleSessionSummary = () => {
     navigation?.navigate?.('SessionSummary', {
       sessionId,
+      localIncidents,
     });
   };
 
@@ -263,6 +286,11 @@ export default function SessionDataCollectionScreen({
   ) {
     return <ScreenLoader />;
   }
+
+  const activeStudentId =
+    session.students.find((s) => s.active)?.id ??
+    session.students[0]?.id ??
+    '';
 
   const minutes = String(
     Math.floor(secondsRemaining / 60)
@@ -326,7 +354,82 @@ export default function SessionDataCollectionScreen({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.studentsRow}>
+        <View style={styles.assessmentPanel}>
+          <Text style={styles.assessmentPanelTitle}>
+            Assessment Types
+          </Text>
+          <View style={styles.assessmentChips}>
+            <TouchableOpacity
+              style={styles.assessmentChip}
+              onPress={() =>
+                navigation?.navigate?.('SkillsAssessment', {
+                  studentId: activeStudentId,
+                })
+              }
+            >
+              <Text style={styles.assessmentChipText}>Skills</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.assessmentChip}
+              onPress={() =>
+                navigation?.navigate?.('BehaviorAssessment', {
+                  studentId: activeStudentId,
+                })
+              }
+            >
+              <Text style={styles.assessmentChipText}>Behavior</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.assessmentChip}
+              onPress={() =>
+                navigation?.navigate?.('PreferenceAssessment', {
+                  studentId: activeStudentId,
+                })
+              }
+            >
+              <Text style={styles.assessmentChipText}>Preference</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.assessmentChip}
+              onPress={() =>
+                navigation?.navigate?.('SensoryAssessment', {
+                  studentId: activeStudentId,
+                })
+              }
+            >
+              <Text style={styles.assessmentChipText}>Sensory</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.assessmentChip}
+              onPress={() =>
+                navigation?.navigate?.('AbllsNeedMap', {
+                  studentId: activeStudentId,
+                })
+              }
+            >
+              <Text style={styles.assessmentChipText}>ABLLS</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.assessmentChip, styles.assessmentChipAccent]}
+              onPress={() =>
+                navigation?.navigate?.('SocialSkillsAssessment', {
+                  studentId: activeStudentId,
+                })
+              }
+            >
+              <Text
+                style={[
+                  styles.assessmentChipText,
+                  styles.assessmentChipTextAccent,
+                ]}
+              >
+                Social Skills Questionnaire
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.studentsRow, isLandscape && styles.studentsRowLandscape]}>
           {session.students.map((student) => (
             <TouchableOpacity
               key={student.id}
@@ -362,7 +465,7 @@ export default function SessionDataCollectionScreen({
                                     ...s,
                                     trials: (
                                       s.trials || []
-                                    ).slice(1),
+                                    ).slice(0, -1),
                                   }
                                 : s
                           ),
@@ -464,10 +567,62 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
 
-  studentsRow: {
+  assessmentPanel: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  assessmentPanelTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.mutedText,
+    marginBottom: spacing.md,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  assessmentChips: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+
+  assessmentChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bgApp,
+  },
+
+  assessmentChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+
+  assessmentChipAccent: {
+    borderColor: colors.primaryYellowDark,
+    backgroundColor: colors.primaryYellow,
+  },
+
+  assessmentChipTextAccent: {
+    color: colors.navyText,
+  },
+
+  studentsRow: {
+    flexDirection: 'column',
     gap: spacing.md,
     width: '100%',
+  },
+
+  studentsRowLandscape: {
+    flexDirection: 'row',
   },
 
   studentCardWrapper: {

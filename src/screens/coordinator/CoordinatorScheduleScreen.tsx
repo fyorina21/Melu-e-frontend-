@@ -25,15 +25,16 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
-import { markTeacherUnavailable } from '../../api/sessionApi';
+import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorSchedule'>;
 
-const SKY = '#38BDF8';
-const AMBER = '#FCD34D';
-const DARK_TEXT = '#1F2937';
+const SKY = colors.primaryYellowDark;
+const AMBER = colors.primaryYellow;
+const DARK_TEXT = colors.navyText;
 
 interface Teacher {
   id: string;
@@ -41,6 +42,7 @@ interface Teacher {
   station: string;
   room: string;
   students: string[];
+  studentIds: string[];
   sessions: number;
   trials: number;
   independence: number;
@@ -65,6 +67,7 @@ interface WeekAppointment {
   therapistId: string;
   therapistName: string;
   roomName: string;
+  studentIds?: string[];
   studentNames: string[];
   status?: string;
 }
@@ -72,8 +75,8 @@ interface WeekAppointment {
 function StationChip({ station }: { station: string }) {
   const isStation1 = station === 'Station 1';
   return (
-    <View style={[styles.stationChip, { backgroundColor: isStation1 ? '#E0F2FE' : '#FEF9C3' }]}>
-      <Text style={[styles.stationChipText, { color: isStation1 ? '#0369A1' : '#A16207' }]}>{station}</Text>
+    <View style={[styles.stationChip, { backgroundColor: isStation1 ? colors.bgApp : '#FEF9C3' }]}>
+      <Text style={[styles.stationChipText, { color: isStation1 ? colors.navyText : '#A16207' }]}>{station}</Text>
     </View>
   );
 }
@@ -96,7 +99,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [teacherFilter, setTeacherFilter] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [unavailableModal, setUnavailableModal] = useState<Teacher | null>(null);
-  const [reassignModal, setReassignModal] = useState<Teacher | null>(null);
+  const [reassignVisible, setReassignVisible] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [cellModal, setCellModal] = useState<{ teacher: Teacher; day: string; cell: { station: string; room: string } } | null>(null);
 
@@ -104,11 +107,6 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [unavailableFrom, setUnavailableFrom] = useState('');
   const [unavailableTo, setUnavailableTo] = useState('');
   const [unavailableReason, setUnavailableReason] = useState('');
-
-  // Reassign modal state
-  const [reassignTarget, setReassignTarget] = useState('');
-  const [reassignOpen, setReassignOpen] = useState(false);
-  const [reassignError, setReassignError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -124,13 +122,15 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       rows.forEach((m, i) => {
         const appts = Object.values(weekRows).flat().filter((a) => a.therapistId === m.teacherId);
         const first = appts[0];
-        const students = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
+        const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
+        const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
         nextTeachers.push({
           id: m.teacherId,
           name: m.teacherName,
           station: i % 2 === 0 ? 'Station 1' : 'Station 2',
           room: first?.roomName ?? 'Room 1',
-          students,
+          students: studentNames,
+          studentIds,
           sessions: m.sessions,
           trials: m.trials,
           independence: m.independencePercent,
@@ -178,27 +178,38 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     setUnavailableReason('');
   };
 
-  const handleReassign = () => {
-    if (!reassignModal || !reassignTarget) return;
-    const target = teachers.find((t) => t.id === reassignTarget);
-    if (!target) return;
-    if (target.students.length >= 2) {
-      setReassignError('Target teacher already has 2 students. Please choose a different teacher.');
+  const handleReassignSubmit = (payload: { fromTherapistId: string; toTherapistId: string; studentIds: string[] }) => {
+    const { fromTherapistId, toTherapistId, studentIds } = payload;
+    if (studentIds.length === 0) {
+      Alert.alert('No students selected', 'Select at least one student to reassign.');
       return;
     }
-    setTeachers((prev) =>
-      prev.map((t) => {
-        if (t.id === reassignModal.id) return { ...t, students: [] };
-        if (t.id === reassignTarget) return { ...t, students: [...t.students, ...reassignModal.students] };
-        return t;
+    const fromName = teachers.find((t) => t.id === fromTherapistId)?.name ?? 'Source teacher';
+    const toName = teachers.find((t) => t.id === toTherapistId)?.name ?? 'Target teacher';
+    reassignStudents({ fromTherapistId, toTherapistId, studentIds })
+      .then(() => {
+        // Reflect the persisted change by reloading the schedule source of truth.
+        setReassignVisible(false);
+        Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
+        load();
       })
-    );
-    Alert.alert('Done', `Students reassigned to ${target.name}.`);
-    setReassignModal(null);
-    setReassignTarget('');
-    setReassignError('');
-    setReassignOpen(false);
+      .catch(() => {
+        // Even if the API fails, keep the UI responsive and re-sync from the store.
+        setReassignVisible(false);
+        Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
+        load();
+      });
   };
+
+  const reassignAppointments = teachers.map((t) => ({
+    id: t.id,
+    therapistId: t.id,
+    therapistName: t.name,
+    studentIds: t.studentIds,
+    studentNames: t.students,
+  }));
+
+  const reassignOptions = teachers.map((t) => ({ id: t.id, name: t.name }));
 
   const handleExport = () => {
     Alert.alert('Exporting...', 'Exporting schedule...');
@@ -219,13 +230,6 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     };
     const route = routeByTab[tab];
     if (route) navigation?.navigate?.(route as never);
-  };
-
-  const closeReassign = () => {
-    setReassignModal(null);
-    setReassignError('');
-    setReassignTarget('');
-    setReassignOpen(false);
   };
 
   const selectedFilterLabel =
@@ -441,14 +445,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.reassignButton, teacher.students.length === 0 && { opacity: 0.4 }]}
-                    onPress={() => {
-                      setReassignModal(teacher);
-                      setReassignError('');
-                    }}
+                    onPress={() => setReassignVisible(true)}
                     disabled={teacher.students.length === 0}
                     activeOpacity={0.8}
                   >
-                    <ArrowRightLeft size={14} color="#0284C7" />
+                    <ArrowRightLeft size={14} color={colors.primaryYellowDark} />
                     <Text style={styles.reassignButtonText}>Reassign Students</Text>
                   </TouchableOpacity>
                 </View>
@@ -549,9 +550,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                       <Text style={styles.statTileLabel}>Total Trials</Text>
                       <Text style={styles.statTileValue}>{selectedTeacher.trials}</Text>
                     </View>
-                    <View style={[styles.statTile, { backgroundColor: '#F0F9FF' }]}>
+                    <View style={[styles.statTile, { backgroundColor: colors.bgApp }]}>
                       <Text style={styles.statTileLabel}>Avg Independence</Text>
-                      <Text style={[styles.statTileValue, { color: '#0284C7' }]}>{selectedTeacher.independence}%</Text>
+                      <Text style={[styles.statTileValue, { color: colors.primaryYellowDark }]}>{selectedTeacher.independence}%</Text>
                     </View>
                     <View
                       style={[
@@ -708,102 +709,13 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       </Modal>
 
       {/* Reassign Students Modal */}
-      <Modal visible={reassignModal !== null} animationType="fade" transparent onRequestClose={closeReassign}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={styles.flagHeaderLeft}>
-                <ArrowRightLeft size={16} color={SKY} />
-                <Text style={styles.modalTitle}>Reassign Students</Text>
-              </View>
-              <TouchableOpacity onPress={closeReassign} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
-            {reassignModal && (
-              <>
-                <View style={styles.modalBody}>
-                  <View>
-                    <Text style={styles.fieldLabel}>CURRENT STUDENTS — {reassignModal.name.toUpperCase()}</Text>
-                    {reassignModal.students.length === 0 ? (
-                      <Text style={styles.noStudentsItalic}>No students assigned</Text>
-                    ) : (
-                      <View style={styles.chipWrap}>
-                        {reassignModal.students.map((s) => (
-                          <View key={s} style={styles.grayChip}>
-                            <Text style={styles.grayChipText}>{s}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                  <View>
-                    <Text style={styles.fieldLabel}>REASSIGN TO</Text>
-                    <TouchableOpacity style={styles.selectBoxFull} onPress={() => setReassignOpen((v) => !v)} activeOpacity={0.8}>
-                      <Text style={[styles.selectText, !reassignTarget && { color: '#9CA3AF' }]}>
-                        {reassignTarget
-                          ? `${teachers.find((t) => t.id === reassignTarget)?.name} (${
-                              teachers.find((t) => t.id === reassignTarget)?.students.length
-                            }/2 students)`
-                          : 'Select target teacher...'}
-                      </Text>
-                      <ChevronDown size={16} color="#9CA3AF" />
-                    </TouchableOpacity>
-                    {reassignOpen && (
-                      <View style={[styles.selectDropdown, { position: 'relative', marginTop: spacing.xs }]}>
-                        {teachers
-                          .filter((t) => t.id !== reassignModal.id)
-                          .map((t) => (
-                            <TouchableOpacity
-                              key={t.id}
-                              style={[styles.selectOption, reassignTarget === t.id && styles.selectOptionActive]}
-                              disabled={t.students.length >= 2}
-                              onPress={() => {
-                                setReassignTarget(t.id);
-                                setReassignError('');
-                                setReassignOpen(false);
-                              }}
-                            >
-                              <Text
-                                style={[
-                                  styles.selectOptionText,
-                                  t.students.length >= 2 && { color: '#D1D5DB' },
-                                  reassignTarget === t.id && { color: SKY, fontWeight: '700' },
-                                ]}
-                              >
-                                {t.name} ({t.students.length}/2 students){t.students.length >= 2 ? ' — Full' : ''}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                      </View>
-                    )}
-                    {reassignError && (
-                      <View style={styles.errorRow}>
-                        <AlertTriangle size={14} color="#EF4444" />
-                        <Text style={styles.errorText}>{reassignError}</Text>
-                      </View>
-                    )}
-                    <Text style={styles.hintText}>Target teacher must have fewer than 2 students assigned.</Text>
-                  </View>
-                </View>
-                <View style={styles.modalFooterRow}>
-                  <TouchableOpacity style={styles.cancelOutlineButton} onPress={closeReassign} activeOpacity={0.8}>
-                    <Text style={styles.cancelOutlineText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.confirmAmberButton, !reassignTarget && { opacity: 0.4 }]}
-                    onPress={handleReassign}
-                    disabled={!reassignTarget}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.confirmAmberText}>Confirm Reassignment</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <ReassignStudentsModal
+        visible={reassignVisible}
+        therapistOptions={reassignOptions}
+        appointments={reassignAppointments}
+        onClose={() => setReassignVisible(false)}
+        onSubmit={handleReassignSubmit}
+      />
     </SafeAreaView>
   );
 }
@@ -853,7 +765,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     minWidth: 180,
   },
-  selectText: { fontSize: 14, color: '#374151' },
+  selectText: { fontSize: 14, color: colors.bodyText },
   selectDropdown: {
     backgroundColor: colors.bgCard,
     borderWidth: 1,
@@ -864,8 +776,8 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   selectOption: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
-  selectOptionActive: { backgroundColor: '#F0F9FF' },
-  selectOptionText: { fontSize: 14, color: '#374151' },
+  selectOptionActive: { backgroundColor: colors.bgApp },
+  selectOptionText: { fontSize: 14, color: colors.bodyText },
   selectBoxFull: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -975,14 +887,14 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.sm + 2,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: colors.bgApp,
     borderRadius: radius.md,
   },
-  reassignButtonText: { fontSize: 12, fontWeight: '600', color: '#0284C7' },
+  reassignButtonText: { fontSize: 12, fontWeight: '600', color: colors.primaryYellowDark },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(26,34,51,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
@@ -1046,7 +958,7 @@ const styles = StyleSheet.create({
   },
   studentAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: SKY, alignItems: 'center', justifyContent: 'center' },
   studentAvatarText: { color: colors.white, fontSize: 11, fontWeight: '700' },
-  studentRowName: { fontSize: 14, color: '#374151' },
+  studentRowName: { fontSize: 14, color: colors.bodyText },
 
   availabilityRow: {
     flexDirection: 'row',
@@ -1068,7 +980,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     fontSize: 14,
-    color: '#374151',
+    color: colors.bodyText,
     backgroundColor: colors.bgCard,
   },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },

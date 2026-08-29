@@ -9,7 +9,8 @@ export type StatusType =
   | 'notStarted'
   | 'pending'
   | 'revision'
-  | 'approved';
+  | 'approved'
+  | 'draft';
 
 interface StatusPillProps {
   status: StatusType;
@@ -23,6 +24,7 @@ const STATUS_MAP: Record<StatusType, { bg: string; text: string; label: string }
   pending: { bg: colors.statusPendingBg, text: colors.statusPendingText, label: 'Pending' },
   revision: { bg: colors.statusRevisionBg, text: colors.statusRevisionText, label: 'Revision Required' },
   approved: { bg: colors.statusApprovedBg, text: colors.statusApprovedText, label: 'Approved' },
+  draft: { bg: '#F1F5F9', text: '#475569', label: 'Draft' },
 };
 
 export default function StatusPill({ status, label }: StatusPillProps) {

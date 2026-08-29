@@ -20,6 +20,7 @@ import SensoryAssessmentScreen from '../screens/assessments/SensoryAssessmentScr
 import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScreen';
 import TeacherNotificationsScreen from '../screens/notifications/TeacherNotificationsScreen';
 import StudentProfileScreen from '../screens/session/StudentProfileScreen';
+import SocialSkillsAssessmentScreen from '../screens/assessments/SocialSkillsAssessmentScreen';
 // MR-39 Appointment & Session Management is now built as
 // AppointmentFormModal, reached from the Scheduling Calendar (MR-38) -
 // it doesn't need its own stack route since it's a modal, not a screen.
@@ -40,6 +41,7 @@ export default function SessionStack() {
       {/* <Stack.Screen name="Attendance" component={AttendanceScreen} /> */}
       <Stack.Screen name="GoalMasteryCheck" component={GoalMasteryCheckScreen} />
       <Stack.Screen name="SessionSummary" component={SessionSummaryScreen} />
+      <Stack.Screen name="SocialSkillsAssessment" component={SocialSkillsAssessmentScreen} />
       <Stack.Screen name="SkillsAssessment" component={SkillsAssessmentScreen} />
       <Stack.Screen name="AbllsNeedMap" component={AbllsNeedAnalysisMapScreen} />
       <Stack.Screen name="BehaviorAssessment" component={BehaviorAssessmentScreen} />

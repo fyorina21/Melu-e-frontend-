@@ -22,6 +22,7 @@ import type {
 } from './db';
 import { seed, type DemoConversation, type DemoMessage } from './seed';
 import { mockDb } from './db';
+import { reassignStudentsInStore, getWeekData, resolveTherapistName } from '../../stores/scheduleStore';
 import { ApiError } from '../http/errors';
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -845,6 +846,25 @@ export const MOCK_ROUTES: MockRoute[] = [
       if (!removed) throw notFound(requiredParam(ctx, 'id'));
     },
   },
+  // Coordinator / Operational Management: reassign students between therapists
+  {
+    method: 'POST',
+    pattern: '/schedule/reassign',
+    handler: (ctx) => {
+      const { fromTherapistId, toTherapistId, studentIds } = bodyAs<{
+        fromTherapistId: string;
+        toTherapistId: string;
+        studentIds: string[];
+      }>(ctx);
+      if (!fromTherapistId || !toTherapistId) throw new ApiError('fromTherapistId and toTherapistId are required', 422);
+      // Persist the move across every day of the week so the schedule store
+      // and the Operational Management grid stay in sync.
+      for (let day = 0; day < 7; day++) {
+        reassignStudentsInStore(day, fromTherapistId, toTherapistId, studentIds ?? []);
+      }
+      return { status: 'ok' as const, fromTherapistId, toTherapistId, moved: studentIds?.length ?? 0 };
+    },
+  },
   // ---- Auth Me ----
   {
     method: 'GET',
@@ -1058,6 +1078,23 @@ export const MOCK_ROUTES: MockRoute[] = [
     pattern: '/sessions/:id/roster',
     handler: (ctx) => {
       const id = requiredParam(ctx, 'id');
+      const allTrials = mockDb.all('trials') as Array<{
+        studentGoalId: string;
+        promptLabel?: string | null;
+        loggedAt?: string;
+      }>;
+      const trialsForGoal = (goalId: string) =>
+        allTrials
+          .filter((t) => t.studentGoalId === goalId)
+          .map((t) => ({
+            promptLevel: t.promptLabel || 'G',
+            timestamp:
+              t.loggedAt ||
+              new Date().toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+          }));
       return {
         sessionId: id,
         stationName: 'Station 1 — Basic Skills',
@@ -1074,7 +1111,7 @@ export const MOCK_ROUTES: MockRoute[] = [
               { id: 'goal-1', name: 'Identify Colors', category: 'Cognitive' },
               { id: 'goal-2', name: 'Goal 2', category: '' },
             ],
-            trials: [],
+            trials: trialsForGoal('goal-1').concat(trialsForGoal('goal-2')),
           },
           {
             id: 'student-b',
@@ -1086,7 +1123,7 @@ export const MOCK_ROUTES: MockRoute[] = [
               { id: 'goal-3', name: 'Request Items', category: 'Expressive Language' },
               { id: 'goal-4', name: 'Goal 2', category: '' },
             ],
-            trials: [],
+            trials: trialsForGoal('goal-3').concat(trialsForGoal('goal-4')),
           },
         ],
       };
@@ -1096,24 +1133,30 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/sessions/:id/students/:studentId/incidents',
     handler: (ctx) => {
+      const body = bodyAs<{
+        antecedent?: string;
+        behavior?: string;
+        consequence?: string;
+        additionalNotes?: string;
+        location?: string;
+      }>(ctx);
       const incident: MockIncident = {
         id: newId('inc'),
         studentId: requiredParam(ctx, 'studentId'),
         sessionId: requiredParam(ctx, 'id'),
         date: new Date().toLocaleDateString(),
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        location: '',
-        behavior: '',
+        location: body.location || '',
+        behavior: body.behavior || '',
         behaviorDefinition: '',
         frequency: '',
         intensity: '',
         category: '',
-        antecedent: '',
-        consequence: '',
-        notes: '',
+        antecedent: body.antecedent || '',
+        consequence: body.consequence || '',
+        notes: body.additionalNotes || '',
         recordedBy: 'Teacher',
         createdAt: new Date().toISOString(),
-        ...bodyAs<Partial<MockIncident>>(ctx),
       };
       mockDb.insert('incidents', incident);
       return incident;
@@ -1135,15 +1178,17 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: (ctx) => {
       const sid = requiredParam(ctx, 'sid');
       const gid = requiredParam(ctx, 'gid');
+      const body = bodyAs<{ promptLevel?: string; timestamp?: string; stepId?: string }>(ctx);
+      const promptLevel = (body.promptLevel || 'G').toUpperCase();
       const trial: Trial = {
         id: newId('tr'),
         outcome: 'correct',
-        promptLabel: 'G',
-        promptLevelId: 'pl-3',
+        promptLabel: promptLevel as any,
+        promptLevelId: promptLevel,
         studentGoalId: gid,
-        studentGoalStepId: null,
+        studentGoalStepId: body.stepId ? (body.stepId as any) : null,
         clientEventId: newId('evt'),
-        loggedAt: new Date().toISOString(),
+        loggedAt: body.timestamp || new Date().toISOString(),
       };
       mockDb.insert('trials', trial);
       return { trial };
@@ -1269,9 +1314,47 @@ export const MOCK_ROUTES: MockRoute[] = [
         },
       ];
 
-      const incidents = [
-        { time: '9:12 AM', behavior: 'Tantrum', studentName: 'Student A' },
-      ];
+      const nameById = (sid: string) =>
+        (mockDb.all('students') as Array<{ id: string; name?: string }>).find(
+          (s) => s.id === sid
+        )?.name || sid;
+      const recordedIncidents = (
+        mockDb.all('incidents') as Array<{
+          sessionId?: string;
+          studentId: string;
+          time: string;
+          behavior: string;
+          antecedent: string;
+          consequence: string;
+          location: string;
+          notes: string;
+        }>
+      )
+        .filter((i) => i.sessionId === id)
+        .map((i) => ({
+          time: i.time,
+          behavior: i.behavior || 'Unspecified behavior',
+          studentName: nameById(i.studentId),
+          antecedent: i.antecedent,
+          consequence: i.consequence,
+          location: i.location,
+          notes: i.notes,
+        }));
+
+      const incidents =
+        recordedIncidents.length > 0
+          ? recordedIncidents
+          : [
+              {
+                time: '9:12 AM',
+                behavior: 'Tantrum',
+                studentName: 'Student A',
+                antecedent: '',
+                consequence: '',
+                location: '',
+                notes: '',
+              },
+            ];
 
       if (summary) {
         return {
@@ -1294,6 +1377,7 @@ export const MOCK_ROUTES: MockRoute[] = [
         endTime: '9:30 AM',
         durationMinutes: 30,
         notes: '',
+        status: 'pending_review',
         students,
         incidents,
       };
@@ -1760,18 +1844,34 @@ export const MOCK_ROUTES: MockRoute[] = [
   },
   {
     method: 'POST',
+    pattern: '/coordinator/summaries/bulk-approve',
+    handler: (ctx) => {
+      const { summaryIds } = bodyAs<{ summaryIds: string[] }>(ctx);
+      (summaryIds ?? []).forEach((id) => mockDb.updateById('sessionSummaries', id, { status: 'approved' }));
+      return { status: 'ok' as const, updated: summaryIds?.length ?? 0 };
+    },
+  },
+  {
+    method: 'POST',
     pattern: '/coordinator/summaries/:id/approve',
-    handler: (ctx) => mockDb.updateById('sessionSummaries', requiredParam(ctx, 'id'), { status: 'approved' }),
+    handler: (ctx) => {
+      const updated = mockDb.updateById('sessionSummaries', requiredParam(ctx, 'id'), { status: 'approved' });
+      if (!updated) throw notFound(requiredParam(ctx, 'id'));
+      return summaryDisplayRow(updated as MockSessionSummary);
+    },
   },
   {
     method: 'POST',
     pattern: '/coordinator/summaries/:id/request-changes',
-    handler: (ctx) => ({ status: 'revision_requested' as const }),
-  },
-  {
-    method: 'POST',
-    pattern: '/coordinator/summaries/bulk-approve',
-    handler: (ctx) => ({ status: 'ok' as const }),
+    handler: (ctx) => {
+      const { reason } = bodyAs<{ section?: string; reason?: string }>(ctx);
+      const updated = mockDb.updateById('sessionSummaries', requiredParam(ctx, 'id'), {
+        status: 'revised_required',
+        notes: reason ? `${mockDb.findById('sessionSummaries', requiredParam(ctx, 'id'))?.notes ?? ''}\n\nCoordinator revision request: ${reason}` : undefined,
+      });
+      if (!updated) throw notFound(requiredParam(ctx, 'id'));
+      return summaryDisplayRow(updated as MockSessionSummary);
+    },
   },
   {
     method: 'GET',
@@ -2743,8 +2843,8 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: () =>
       mockDb
         .all('students')
-        .filter((s) => s.status !== 'paused')
-        .map((s) => ({ id: s.id, name: s.fullName, age: ageOf(s) })),
+        .filter((s) => s.status !== 'paused' && s.phase === 'active')
+        .map((s) => ({ id: s.id, name: s.fullName, age: ageOf(s), phase: s.phase })),
   },
   {
     method: 'GET',
@@ -2874,11 +2974,15 @@ function summaryDisplayRow(s: MockSessionSummary) {
     sessionId: s.sessionId,
     teacherName: s.teacher,
     stationName: s.station,
+    roomName: '',
     date: new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     bodyPreview: s.notes,
     status: s.status === 'pending_review' ? 'Pending' : s.status === 'approved' ? 'Approved' : 'Revision Required',
     studentNames: s.studentIds.map(studentNameFor),
     independencePercent: s.independencePercent,
+    trialsTotal: s.trialsTotal,
+    trialsCorrect: s.trialsCorrect,
+    incidentCount: s.incidentCount,
   };
 }
 
@@ -3063,17 +3167,20 @@ function buildActiveSessions() {
 }
 
 function buildTeacherMetrics() {
-  const staffTeachers = mockDb.all('staffMembers').filter((s) => s.role === 'teacher');
-  // Fall back to the provisioned login accounts when no staff rows exist yet.
-  const source: Array<{ id: string; name: string }> = staffTeachers.length
-    ? staffTeachers
-    : mockDb
-        .all('users')
-        .filter((u) => u.role === 'teacher' || u.role === 'coordinator')
-        .map((u) => ({ id: u.id, name: u.name }));
-  return source.map((t, i) => ({
-    teacherId: t.id,
-    teacherName: t.name,
+  // Derive the teacher roster from the live schedule store so the Operational
+  // Management grid and the reassignment flow share the same therapist ids as
+  // the scheduled appointments.
+  const week = getWeekData();
+  const therapistIds = Array.from(
+    new Set(Object.values(week).flat().map((a) => a.therapistId).filter(Boolean))
+  );
+  if (therapistIds.length === 0) {
+    const staffTeachers = mockDb.all('staffMembers').filter((s) => s.role === 'teacher');
+    therapistIds.push(...staffTeachers.map((s) => s.id));
+  }
+  return therapistIds.map((id, i) => ({
+    teacherId: id,
+    teacherName: resolveTherapistName(id),
     sessions: 6 - (i % 6),
     trials: Math.max(20, 124 - i * 22),
     independencePercent: Math.max(30, 68 - i * 6),
@@ -3312,20 +3419,30 @@ function buildAttendanceRoster() {
 /** MR-35 Daily Notes list + stats in the display shape the screen renders. */
 function buildDailyNotes() {
   const notes = mockDb.all('sessionNotes');
-  const records = notes.map((n) => ({
-    id: n.id,
-    date: n.submittedAt
-      ? new Date(n.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    students: [studentNameFor(n.studentId)],
-    station: 'Station 1',
-    room: 'Sunrise Room',
-    status:
-      n.status === 'approved' ? ('Approved' as const)
-      : n.status === 'revised' ? ('Revision Required' as const)
-      : n.draft ? ('Draft' as const)
-      : ('Pending' as const),
-  }));
+  const records = notes.map((n) => {
+    const status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft' =
+      n.status === 'approved' ? 'Approved'
+      : n.status === 'revised' ? 'Revision Required'
+      : n.draft ? 'Draft'
+      : 'Pending';
+    const coordinatorFeedback =
+      status === 'Approved'
+        ? 'Great documentation. Approved — keep up the consistent trial logging across both stations.'
+        : status === 'Revision Required'
+        ? 'Please revise the session notes for this block. Missing behavior data — include the antecedent, behavior, and consequence for the observed incident, and correct the trial counts to match the data collection sheet.'
+        : '';
+    return {
+      id: n.id,
+      date: n.submittedAt
+        ? new Date(n.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      students: [studentNameFor(n.studentId)],
+      station: 'Station 1',
+      room: 'Sunrise Room',
+      status,
+      coordinatorFeedback,
+    };
+  });
   const trials = mockDb.all('trials');
   const sessions = mockDb.all('sessionSummaries');
   const independentCount = trials.filter((t) => t.outcome === 'correct').length;
@@ -3375,9 +3492,12 @@ function buildAssessmentDashboard() {
     return { status: progress > 0 ? 'In Progress' : 'Not Started', progress };
   };
 
-  const list = students.map((s) => {
+  const list = students.map((s, idx) => {
     const ablls = rowFor(s.id, 'skills');
     const behavior = rowFor(s.id, 'behavior');
+    // Demo phase assignment: students beyond the first three have already
+    // completed the 6-week assessment window and moved to the active phase.
+    const phase: '6-week' | 'active' = idx < 3 ? '6-week' : 'active';
     return {
       id: s.id,
       name: s.fullName,
@@ -3386,14 +3506,18 @@ function buildAssessmentDashboard() {
       program: s.programType === 'ABA' ? 'Regular Program' : 'Pooled-Out',
       therapist: teacherName,
       lastAssessment: '—',
+      phase,
       score: Math.round((ablls.progress + behavior.progress) / 2),
       ablls,
       behavior,
     };
   });
 
-  const completed = list.filter((x) => x.ablls.status === 'Completed' && x.behavior.status === 'Completed').length;
-  const notStarted = list.filter((x) => x.ablls.status === 'Not Started' && x.behavior.status === 'Not Started').length;
+  // Only students currently in the 6-week assessment phase are shown.
+  const sixWeek = list.filter((x) => x.phase === '6-week');
+
+  const completed = sixWeek.filter((x) => x.ablls.status === 'Completed' && x.behavior.status === 'Completed').length;
+  const notStarted = sixWeek.filter((x) => x.ablls.status === 'Not Started' && x.behavior.status === 'Not Started').length;
 
   const start = new Date();
   start.setDate(start.getDate() - start.getDay() - 7);
@@ -3405,12 +3529,12 @@ function buildAssessmentDashboard() {
   return {
     periodLabel,
     stats: {
-      total: list.length,
+      total: sixWeek.length,
       completed,
-      inProgress: list.length - completed - notStarted,
+      inProgress: sixWeek.length - completed - notStarted,
       notStarted,
     },
-    students: list,
+    students: sixWeek,
   };
 }
 

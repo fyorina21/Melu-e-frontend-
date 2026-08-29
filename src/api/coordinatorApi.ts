@@ -55,7 +55,7 @@ export const getStudentProfile = (studentId: string) =>
 export const updateStudentProfile = (studentId: string, payload: Payload) =>
   client.patch(`/coordinator/students/${studentId}/profile`, payload);
 
-// MR-42: Therapist Workload Dashboard
+// Therapist Workload Dashboard
 export const getWorkloadDashboard = () => client.get('/coordinator/teachers/workload');
 export const getWorkloadTrend = () => client.get('/coordinator/teachers/workload/trend');
 

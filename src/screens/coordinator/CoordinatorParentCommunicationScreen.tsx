@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
   messagesScroll: { flex: 1 },
   messagesContent: { padding: spacing.lg, gap: spacing.sm },
   messageBubble: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, maxWidth: '75%', alignSelf: 'flex-start' },
-  messageBubbleMine: { backgroundColor: '#DBEAFE', alignSelf: 'flex-end' },
+  messageBubbleMine: { backgroundColor: colors.bgApp, alignSelf: 'flex-end' },
   pendingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   pendingChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.primaryYellowDark, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4, backgroundColor: colors.statusPendingBg },
   pendingChipText: { fontSize: 10, fontWeight: '600', color: colors.navyText, maxWidth: 160 },

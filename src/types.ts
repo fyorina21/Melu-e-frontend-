@@ -86,10 +86,23 @@ export interface SessionRoster {
   students: Student[];
 }
 
+export interface IncidentPayload {
+  antecedent: string;
+  behavior: string;
+  consequence: string;
+  additionalNotes: string;
+  studentId?: string;
+  studentName?: string;
+  time?: string;
+}
+
 export interface SessionIncident {
   time: string;
   behavior: string;
   studentName: string;
+  antecedent?: string;
+  consequence?: string;
+  additionalNotes?: string;
 }
 
 export interface SessionSummaryStudent {
@@ -104,6 +117,7 @@ export interface SessionSummary {
   startTime: string;
   endTime: string;
   durationMinutes: number;
+  status?: string;
   students: SessionSummaryStudent[];
   incidents: SessionIncident[];
 }
@@ -126,7 +140,8 @@ export type SessionStackParamList = {
   SchedulingCalendar: undefined;
   Attendance: { sessionId?: string } | undefined;
   GoalMasteryCheck: { studentId: string; goalId: string };
-  SessionSummary: { sessionId: string };
+  SessionSummary: { sessionId: string; localIncidents?: IncidentPayload[] };
+  SocialSkillsAssessment: { studentId: string };
   TeacherParentCommunication: undefined;
   ParentCommunication: undefined;
   Notifications: undefined;

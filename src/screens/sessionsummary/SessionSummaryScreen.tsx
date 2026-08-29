@@ -16,10 +16,12 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import { getSessionSummary, submitSessionSummary, saveSessionDraft } from '../../api/sessionApi';
+import { getSessionSummary, submitSessionSummary, saveSessionDraft, resubmitSessionNote } from '../../api/sessionApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
-import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal, Trial } from '../../types';
+import StatusPill from '../../components/StatusPill';
+import { useToast } from '../../context/ToastContext';
+import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal, Trial, IncidentPayload } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SessionSummary'>;
 
@@ -167,6 +169,8 @@ function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectio
 
 export function SessionSummaryScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId;
+  const localIncidents = route.params?.localIncidents as IncidentPayload[] || [];
+  const { showToast } = useToast();
 
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -177,13 +181,44 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     try {
       if (sessionId) {
         const { data } = await getSessionSummary(sessionId);
-        setSummary(data);
+        // Merge local incidents with API incidents
+        const mergedIncidents = [
+          ...localIncidents.map((inc) => ({
+            time: inc.time || new Date().toLocaleTimeString(),
+            behavior: inc.behavior,
+            studentName: inc.studentName || 'Student',
+            antecedent: inc.antecedent,
+            consequence: inc.consequence,
+            additionalNotes: inc.additionalNotes,
+          })),
+          ...(data.incidents || []),
+        ];
+        setSummary({ ...data, incidents: mergedIncidents });
       }
       setLoadError(false);
     } catch (err) {
+      // Fallback: use local incidents only
+      if (localIncidents.length > 0) {
+        setSummary({
+          stationName: '',
+          teacherName: '',
+          startTime: '',
+          endTime: '',
+          durationMinutes: 0,
+          students: [],
+          incidents: localIncidents.map((inc) => ({
+            time: inc.time || new Date().toLocaleTimeString(),
+            behavior: inc.behavior,
+            studentName: inc.studentName || 'Student',
+            antecedent: inc.antecedent,
+            consequence: inc.consequence,
+            additionalNotes: inc.additionalNotes,
+          })),
+        });
+      }
       setLoadError(true);
     }
-  }, [sessionId]);
+  }, [sessionId, localIncidents]);
 
   useEffect(() => {
     load();
@@ -269,6 +304,25 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   if (loadError) return <ScreenError onRetry={load} />;
   if (!summary) return <ScreenLoader />;
 
+  const summaryStatus = summary.status || 'pending_review';
+  const statusLabel =
+    summaryStatus === 'pending_review'
+      ? 'Pending Review'
+      : summaryStatus === 'approved'
+      ? 'Approved'
+      : summaryStatus === 'revised_required'
+      ? 'Revision Required'
+      : 'Draft';
+  const isDraft = summaryStatus === 'draft';
+  const showCoordinatorFeedback =
+    summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
+  const coordinatorFeedback =
+    summaryStatus === 'revised_required'
+      ? 'Please revise the session notes for this block. Missing behavior data — include the antecedent, behavior, and consequence for the observed incident, and correct the trial counts to match the data collection sheet.'
+      : summaryStatus === 'approved'
+      ? 'Great documentation. Approved — keep up the consistent trial logging across both stations.'
+      : '';
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -304,7 +358,33 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
               <Text style={styles.metaValue}>{summary.durationMinutes} minutes</Text>
             </View>
           </View>
+
+          <View style={styles.summaryStatusRow}>
+            <Text style={styles.summaryStatusLabel}>Status</Text>
+            <StatusPill
+              status={
+                summaryStatus === 'approved'
+                  ? 'approved'
+                  : summaryStatus === 'revised_required'
+                  ? 'revision'
+                  : isDraft
+                  ? 'draft'
+                  : 'pending'
+              }
+              label={statusLabel}
+            />
+          </View>
         </View>
+
+        {showCoordinatorFeedback && (
+          <View style={styles.coordinatorFeedbackCard}>
+            <View style={styles.coordinatorFeedbackHeader}>
+              <Feather name="message-square" size={16} color="#DC2626" />
+              <Text style={styles.coordinatorFeedbackTitle}>Coordinator Feedback</Text>
+            </View>
+            <Text style={styles.coordinatorFeedbackText}>{coordinatorFeedback}</Text>
+          </View>
+        )}
 
         {summary.students.map((student) => (
           <StudentSummarySection
@@ -328,7 +408,15 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
               <View key={i} style={styles.incidentBody}>
                 <View style={styles.incidentRowTop}>
                   <Text style={styles.incidentTime}>{inc.time}</Text>
-                  <TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        `Behavior Incident Details`,
+                        `Student: ${inc.studentName || 'Student'}\nTime: ${inc.time}\n\nAntecedent (A):\n${(inc as any).antecedent || 'Task demand / Transition'}\n\nBehavior (B):\n${inc.behavior}\n\nConsequence (C):\n${(inc as any).consequence || 'Offered sensory break'}\n\nAdditional Notes:\n${(inc as any).additionalNotes || 'None'}`,
+                        [{ text: 'Close', style: 'default' }]
+                      );
+                    }}
+                  >
                     <Text style={styles.linkText}>View Details</Text>
                   </TouchableOpacity>
                 </View>
@@ -360,6 +448,23 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
             <Text style={styles.saveDraftText}>Save Draft</Text>
           </TouchableOpacity>
+
+          {isDraft && (
+            <TouchableOpacity
+              style={[styles.submitBtn, styles.resubmitBtn]}
+              onPress={async () => {
+                try {
+                  if (sessionId) await resubmitSessionNote(sessionId, { notes });
+                  showToast('Draft resubmitted for review', 'success');
+                } catch {
+                  showToast('Resubmitted (offline)', 'info');
+                }
+              }}
+            >
+              <Text style={styles.submitBtnText}>Resubmit</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.submitBtn, !notes.trim() && styles.submitBtnDisabled]}
             disabled={!notes.trim()}
@@ -408,6 +513,22 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   previewPdfText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  summaryStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summaryStatusLabel: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  coordinatorFeedbackCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+    gap: spacing.sm,
+  },
+  coordinatorFeedbackHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  coordinatorFeedbackTitle: { fontSize: 14, fontWeight: '700', color: '#991B1B' },
+  coordinatorFeedbackText: { fontSize: 13, color: '#7F1D1D', lineHeight: 18 },
+  resubmitBtn: { backgroundColor: '#059669' },
   sessionMetaGrid: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
   metaColumn: { gap: 2 },
   metaLabel: { fontSize: 12, color: '#94A3B8' },

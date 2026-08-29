@@ -34,6 +34,7 @@ export interface SeededStudent {
   programType: string;
   therapyGroup: string;
   status: string;
+  phase?: string;
   headshotUrl: string | null;
   currentFocusStudentGoalId: string | null;
   goals: Array<{ id: string; name: string; status: string; progressPercent: number }>;
@@ -120,18 +121,18 @@ export interface SeedShape {
 
 export const seed: SeedShape = {
   students: [
-    { id: 'student-a', fullName: 'Aiden Rivera', firstName: 'Aiden', lastName: 'Rivera', dateOfBirth: '2018-03-15', age: 8, programType: 'ABA', therapyGroup: 'Sunrise', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [
+    { id: 'student-a', fullName: 'Aiden Rivera', firstName: 'Aiden', lastName: 'Rivera', dateOfBirth: '2018-03-15', age: 8, programType: 'ABA', therapyGroup: 'Sunrise', status: 'active', phase: 'active', headshotUrl: null, currentFocusStudentGoalId: null,goals: [
       { id: 'goal-1', name: 'Identify Colors', status: 'active', progressPercent: 45 },
       { id: 'goal-2', name: 'Follow 2-Step Commands', status: 'active', progressPercent: 70 },
     ] },
-    { id: 'student-b', fullName: 'Maya Chen', firstName: 'Maya', lastName: 'Chen', dateOfBirth: '2019-07-22', age: 7, programType: 'PECS', therapyGroup: 'Horizon', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [
+    { id: 'student-b', fullName: 'Maya Chen', firstName: 'Maya', lastName: 'Chen', dateOfBirth: '2019-07-22', age: 7, programType: 'PECS', therapyGroup: 'Horizon', status: 'active', phase: 'active', headshotUrl: null, currentFocusStudentGoalId: null,goals: [
       { id: 'goal-3', name: 'Request Items', status: 'active', progressPercent: 60 },
       { id: 'goal-4', name: 'Hand Washing Steps', status: 'active', progressPercent: 30 },
     ] },
-    { id: 'student-c', fullName: 'Liam Okafor', firstName: 'Liam', lastName: 'Okafor', dateOfBirth: '2017-11-10', age: 8, programType: 'ABA', therapyGroup: 'Sunrise', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [
+    { id: 'student-c', fullName: 'Liam Okafor', firstName: 'Liam', lastName: 'Okafor', dateOfBirth: '2017-11-10', age: 8, programType: 'ABA', therapyGroup: 'Sunrise', status: 'active', phase: 'active', headshotUrl: null, currentFocusStudentGoalId: null,goals: [
       { id: 'goal-5', name: 'Turn Taking', status: 'active', progressPercent: 55 },
     ] },
-    { id: 'student-d', fullName: 'Sofia Patel', firstName: 'Sofia', lastName: 'Patel', dateOfBirth: '2018-06-03', age: 8, programType: 'ABA', therapyGroup: 'Horizon', status: 'active', headshotUrl: null, currentFocusStudentGoalId: null, goals: [] },
+    { id: 'student-d', fullName: 'Sofia Patel', firstName: 'Sofia', lastName: 'Patel', dateOfBirth: '2018-06-03', age: 8, programType: 'ABA', therapyGroup: 'Horizon', status: 'active', phase: '6-week', headshotUrl: null, currentFocusStudentGoalId: null,goals: [] },
   ] satisfies SeededStudent[],
 
   promptLevels: [
@@ -179,7 +180,88 @@ export const seed: SeedShape = {
 
   sessionNotes: [] satisfies MockSeedNote[],
 
-  sessionSummaries: [] satisfies MockSeedSummary[],
+  sessionSummaries: [
+    {
+      id: 'sum-1',
+      sessionId: 'sess-1',
+      studentIds: ['student-a', 'student-b'],
+      station: 'Station 1 (Basic Skills)',
+      teacher: 'Rosa Delgado',
+      startedAt: '2026-08-24T09:00:00Z',
+      endedAt: '2026-08-24T10:30:00Z',
+      status: 'pending_review',
+      trialsTotal: 24,
+      trialsCorrect: 17,
+      independencePercent: 71,
+      notes: 'Aiden completed 12 trials on Identify Colors with mostly gestural prompts. Maya worked on Request Items; needed minimal physical prompts. Both remained engaged for the full block.',
+      incidentCount: 0,
+      createdAt: '2026-08-24T10:35:00Z',
+    },
+    {
+      id: 'sum-2',
+      sessionId: 'sess-2',
+      studentIds: ['student-c'],
+      station: 'Station 2 (Advanced Skills)',
+      teacher: 'Jared Cruz',
+      startedAt: '2026-08-25T11:00:00Z',
+      endedAt: '2026-08-25T12:30:00Z',
+      status: 'pending_review',
+      trialsTotal: 18,
+      trialsCorrect: 11,
+      independencePercent: 61,
+      notes: 'Liam practiced Turn Taking across 18 trials. Prompt levels trending toward independence but two instances of non-compliance required redirection.',
+      incidentCount: 1,
+      createdAt: '2026-08-25T12:35:00Z',
+    },
+    {
+      id: 'sum-3',
+      sessionId: 'sess-3',
+      studentIds: ['student-b', 'student-d'],
+      station: 'Station 1 (Basic Skills)',
+      teacher: 'Jeah Torres',
+      startedAt: '2026-08-26T09:00:00Z',
+      endedAt: '2026-08-26T10:30:00Z',
+      status: 'pending_review',
+      trialsTotal: 30,
+      trialsCorrect: 22,
+      independencePercent: 73,
+      notes: 'Maya advanced on Hand Washing Steps to 30% independence. Sofia observed peer modeling and imitated 4 of 6 targeted actions.',
+      incidentCount: 0,
+      createdAt: '2026-08-26T10:35:00Z',
+    },
+    {
+      id: 'sum-4',
+      sessionId: 'sess-4',
+      studentIds: ['student-a'],
+      station: 'Station 2 (Advanced Skills)',
+      teacher: 'Rosa Delgado',
+      startedAt: '2026-08-22T11:00:00Z',
+      endedAt: '2026-08-22T12:30:00Z',
+      status: 'approved',
+      trialsTotal: 20,
+      trialsCorrect: 15,
+      independencePercent: 75,
+      notes: 'Aiden generalized Identify Colors to new materials. Approved by coordinator.',
+      incidentCount: 0,
+      createdAt: '2026-08-22T12:35:00Z',
+    },
+    {
+      id: 'sum-5',
+      sessionId: 'sess-5',
+      studentIds: ['student-c'],
+      station: 'Station 1 (Basic Skills)',
+      teacher: 'Jared Cruz',
+      startedAt: '2026-08-20T09:00:00Z',
+      endedAt: '2026-08-20T10:30:00Z',
+      status: 'revised_required',
+      trialsTotal: 14,
+      trialsCorrect: 9,
+      independencePercent: 64,
+      notes: 'Please re-submit with the trial log attached and clarify prompt levels used for Turn Taking.',
+      incidentCount: 0,
+      createdAt: '2026-08-20T10:35:00Z',
+    },
+  ] satisfies MockSeedSummary[],
 
   goalBank: [] satisfies MockSeedGoal[],
 

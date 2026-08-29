@@ -16,6 +16,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { saveSensoryAssessment } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
+import ExportPreviewModal from '../../components/ExportPreviewModal';
 
 export type EngagementLevel = 'Independent' | 'Partial Physical Prompt' | 'Full Physical Prompt' | 'Not Applicable';
 export type ResponseReaction = 'Enjoyed' | 'Neutral' | 'Refused' | 'Not Observed';
@@ -64,6 +65,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
 
   const [assessmentDate, setAssessmentDate] = useState('08/21/2026');
   const [activities, setActivities] = useState<SensoryActivityItem[]>(INITIAL_ACTIVITIES);
+  const [showExport, setShowExport] = useState(false);
 
   // Custom Activity Modal state
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -355,7 +357,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
 
         {/* Footer Actions */}
         <View style={styles.footerRow}>
-          <TouchableOpacity style={styles.printBtn}>
+          <TouchableOpacity style={styles.printBtn} onPress={() => setShowExport(true)}>
             <Feather name="printer" size={16} color="#334155" />
             <Text style={styles.printBtnText}>Print / Export</Text>
           </TouchableOpacity>
@@ -367,6 +369,36 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Export Preview Modal */}
+      <ExportPreviewModal
+        visible={showExport}
+        filename="sensory_assessment_report.txt"
+        title={`Sensory Assessment — Student ID: ${studentId}`}
+        content={[
+          "MELU'E FOUNDATION FOR AUTISM & SPECIAL NEEDS",
+          'SENSORY ENGAGEMENT & REACTION ASSESSMENT REPORT',
+          '================================================================',
+          `STUDENT ID: ${studentId}`,
+          `ASSESSMENT DATE: ${assessmentDate}`,
+          `SCORED ACTIVITIES: ${scoredCount} / ${totalActivities} (${progressPercent}%)`,
+          '----------------------------------------------------------------',
+          '',
+          ...activities.map(
+            (a, idx) =>
+              `${idx + 1}. ${a.name}\n   Engagement: ${a.engagementLevel || 'Not Specified'}\n   Reaction: ${a.responseReaction || 'Not Observed'}\n   Remarks: ${a.remark || 'None'}\n`
+          ),
+          '----------------------------------------------------------------',
+          'SUMMARY METRICS:',
+          `Independent: ${countEngagement('Independent')}`,
+          `Partial Physical: ${countEngagement('Partial Physical Prompt')}`,
+          `Full Physical: ${countEngagement('Full Physical Prompt')}`,
+          `Enjoyed: ${countReaction('Enjoyed')}`,
+          `Neutral: ${countReaction('Neutral')}`,
+          `Refused: ${countReaction('Refused')}`,
+        ].join('\n')}
+        onClose={() => setShowExport(false)}
+      />
 
       {/* Add Custom Activity Modal */}
       <Modal visible={isModalVisible} transparent animationType="fade">
