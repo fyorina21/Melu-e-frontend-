@@ -131,6 +131,7 @@ export default function AbcDropdownListsScreen({
   const [editType, setEditType] = useState('');
   const [editDefinition, setEditDefinition] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [editStatus, setEditStatus] = useState<'Active' | 'Inactive'>('Active');
   const [editCategoryDropdownOpen, setEditCategoryDropdownOpen] = useState(false);
 
   const startEdit = (item: AbcItem) => {
@@ -139,12 +140,29 @@ export default function AbcDropdownListsScreen({
     setEditType(item.type ?? '');
     setEditDefinition(item.definition ?? '');
     setEditCategory(item.category ?? '');
+    setEditStatus(item.status);
     setEditCategoryDropdownOpen(false);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditCategoryDropdownOpen(false);
+  };
+
+  const toggleItemStatus = (tab: ListTab, id: string) => {
+    const updater = (prev: AbcItem[]) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, status: (item.status === 'Active' ? 'Inactive' : 'Active') as 'Active' | 'Inactive' }
+          : item
+      );
+
+    if (tab === 'Behaviors') setBehaviors(updater);
+    else if (tab === 'Antecedents') setAntecedents(updater);
+    else if (tab === 'Consequences') setConsequences(updater);
+    else if (tab === 'Locations') setLocations(updater);
+
+    showToast('Status toggled — press Save Changes to persist', 'info');
   };
 
   // Generic inline Add State (Antecedents / Consequences / Locations tabs)
@@ -194,6 +212,7 @@ export default function AbcDropdownListsScreen({
           ? {
               ...i,
               name: editName.trim(),
+              status: editStatus,
               ...(i.type !== undefined ? { type: editType.trim() } : {}),
               ...(i.definition !== undefined
                 ? { definition: editDefinition.trim() }
@@ -381,9 +400,14 @@ export default function AbcDropdownListsScreen({
                       )}
                     </View>
                     <View style={{ flex: 2 }}>
-                      <View style={styles.statusActiveBadge}>
-                        <Text style={styles.statusActiveText}>{item.status}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                      >
+                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {editStatus}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
                       <TouchableOpacity onPress={() => commitEdit(behaviors, setBehaviors)} style={{ marginRight: 10 }}>
@@ -400,11 +424,27 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellText, { flex: 4 }]}>{item.definition}</Text>
                     <Text style={[styles.cellText, { flex: 2 }]}>{item.category}</Text>
                     <View style={{ flex: 2 }}>
-                      <View style={styles.statusActiveBadge}>
-                        <Text style={styles.statusActiveText}>{item.status}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => toggleItemStatus('Behaviors', item.id)}
+                      >
+                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {item.status}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => toggleItemStatus('Behaviors', item.id)}
+                        accessibilityLabel="Toggle Active Status"
+                      >
+                        <Feather
+                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
+                          size={18}
+                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
+                        />
+                      </TouchableOpacity>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
@@ -473,10 +513,13 @@ export default function AbcDropdownListsScreen({
                     </View>
                   </View>
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity onPress={handleSaveNewBehavior} style={{ marginRight: 10 }}>
-                      <Feather name="check" size={16} color="#94A3B8" />
+                    <TouchableOpacity
+                      style={{ marginRight: 10 }}
+                      onPress={handleSaveNewBehavior}
+                    >
+                      <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleCancelAddBehavior}>
+                    <TouchableOpacity onPress={() => setIsAddingBehavior(false)}>
                       <Feather name="x" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
@@ -504,9 +547,14 @@ export default function AbcDropdownListsScreen({
                       <TextInput style={styles.tableInput} value={editType} onChangeText={setEditType} placeholder="Type" placeholderTextColor="#94A3B8" />
                     </View>
                     <View style={{ flex: 2 }}>
-                      <View style={styles.statusActiveBadge}>
-                        <Text style={styles.statusActiveText}>{item.status}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                      >
+                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {editStatus}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(antecedents, setAntecedents)}>
@@ -522,11 +570,27 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellTextBold, { flex: 4 }]}>{item.name}</Text>
                     <Text style={[styles.cellText, { flex: 3 }]}>{item.type}</Text>
                     <View style={{ flex: 2 }}>
-                      <View style={styles.statusActiveBadge}>
-                        <Text style={styles.statusActiveText}>{item.status}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => toggleItemStatus('Antecedents', item.id)}
+                      >
+                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {item.status}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => toggleItemStatus('Antecedents', item.id)}
+                        accessibilityLabel="Toggle Active Status"
+                      >
+                        <Feather
+                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
+                          size={18}
+                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
+                        />
+                      </TouchableOpacity>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
@@ -578,9 +642,14 @@ export default function AbcDropdownListsScreen({
                       <TextInput style={styles.tableInput} value={editType} onChangeText={setEditType} placeholder="Type" placeholderTextColor="#94A3B8" />
                     </View>
                     <View style={{ flex: 2 }}>
-                      <View style={styles.statusActiveBadge}>
-                        <Text style={styles.statusActiveText}>{item.status}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                      >
+                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {editStatus}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(consequences, setConsequences)}>
@@ -596,11 +665,27 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellTextBold, { flex: 4 }]}>{item.name}</Text>
                     <Text style={[styles.cellText, { flex: 3 }]}>{item.type}</Text>
                     <View style={{ flex: 2 }}>
-                      <View style={styles.statusActiveBadge}>
-                        <Text style={styles.statusActiveText}>{item.status}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => toggleItemStatus('Consequences', item.id)}
+                      >
+                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {item.status}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => toggleItemStatus('Consequences', item.id)}
+                        accessibilityLabel="Toggle Active Status"
+                      >
+                        <Feather
+                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
+                          size={18}
+                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
+                        />
+                      </TouchableOpacity>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
@@ -648,13 +733,14 @@ export default function AbcDropdownListsScreen({
                       <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
                     </View>
                     <View style={{ flex: 2 }}>
-                      {item.status === 'Active' ? (
-                        <View style={styles.statusActiveBadge}>
-                          <Text style={styles.statusActiveText}>Active</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.statusInactiveText}>Inactive</Text>
-                      )}
+                      <TouchableOpacity
+                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                      >
+                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {editStatus}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(locations, setLocations)}>
@@ -669,15 +755,27 @@ export default function AbcDropdownListsScreen({
                   <View key={item.id} style={styles.tableRow}>
                     <Text style={[styles.cellTextBold, { flex: 5 }]}>{item.name}</Text>
                     <View style={{ flex: 2 }}>
-                      {item.status === 'Active' ? (
-                        <View style={styles.statusActiveBadge}>
-                          <Text style={styles.statusActiveText}>Active</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.statusInactiveText}>Inactive</Text>
-                      )}
+                      <TouchableOpacity
+                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        onPress={() => toggleItemStatus('Locations', item.id)}
+                      >
+                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                          {item.status}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => toggleItemStatus('Locations', item.id)}
+                        accessibilityLabel="Toggle Active Status"
+                      >
+                        <Feather
+                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
+                          size={18}
+                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
+                        />
+                      </TouchableOpacity>
                       <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
@@ -845,9 +943,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
   },
   statusActiveText: { fontSize: 12, color: '#16A34A', fontWeight: '600' },
-  statusInactiveText: { fontSize: 13, color: '#64748B' },
+  statusInactiveBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  statusInactiveText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
 
   actionsCol: {
     flex: 2,
