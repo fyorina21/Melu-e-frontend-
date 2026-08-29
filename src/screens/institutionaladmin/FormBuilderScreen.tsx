@@ -19,9 +19,16 @@ import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
 import ScreenLoader from '../../components/ScreenLoader';
+import { useToast } from '../../context/ToastContext';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
-const FORMS = ['Enrollment Wizard', 'IUP Form', 'ABLLS Assessment Form'];
+const FORMS = [
+  'Enrollment Wizard',
+  'IUP Form',
+  'ABLLS Assessment Form',
+  'Social Skills Questionnaire',
+  'Behavior Incident Form',
+];
 const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Checkbox', 'Radio', 'TextArea', 'File'];
 
 interface FormField {
@@ -41,6 +48,7 @@ interface HistoryEntry {
 }
 
 export default function FormBuilderScreen({ navigation }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
+  const { showToast } = useToast();
   const [selectedForm, setSelectedForm] = useState<string>(FORMS[0]);
   const [fields, setFields] = useState<FormField[]>([]);
   const [isDefault, setIsDefault] = useState<boolean>(true);
@@ -97,6 +105,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
     setFields((prev) => prev.map((f) => (f.id === id ? { ...f, required: !f.required } : f)));
     setIsDefault(false);
+    showToast('Field requirement updated — click Save to persist', 'info');
   };
 
   const toggleVisible = (id: string) => {
@@ -115,37 +124,30 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
     setFields((prev) => prev.map((f) => (f.id === id ? { ...f, visible: !f.visible } : f)));
     setIsDefault(false);
+    showToast('Field visibility toggled — click Save to persist', 'info');
   };
 
   const handleDeleteField = (id: string) => {
     const fieldObj = fields.find((f) => f.id === id);
-    Alert.alert('Delete Field', 'Are you sure you want to delete this field?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          if (fieldObj) {
-            const today = new Date().toISOString().split('T')[0];
-            const newHistoryEntry: HistoryEntry = {
-              date: today,
-              user: 'Admin A',
-              field: fieldObj.label,
-              oldValue: fieldObj.type,
-              newValue: 'Deleted',
-            };
-            setHistory((prev) => [newHistoryEntry, ...prev]);
-          }
-          setFields((prev) => prev.filter((f) => f.id !== id));
-          setIsDefault(false);
-        },
-      },
-    ]);
+    if (fieldObj) {
+      const today = new Date().toISOString().split('T')[0];
+      const newHistoryEntry: HistoryEntry = {
+        date: today,
+        user: 'Admin A',
+        field: fieldObj.label,
+        oldValue: fieldObj.type,
+        newValue: 'Deleted',
+      };
+      setHistory((prev) => [newHistoryEntry, ...prev]);
+    }
+    setFields((prev) => prev.filter((f) => f.id !== id));
+    setIsDefault(false);
+    showToast('Field deleted — click Save to persist', 'info');
   };
 
   const handleConfirmAddField = () => {
     if (!newFieldLabel.trim()) {
-      Alert.alert('Error', 'Please enter a field label.');
+      showToast('Please enter a field label', 'error');
       return;
     }
 
@@ -176,35 +178,31 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setNewFieldLabel('');
     setNewFieldRequired(false);
     setShowAddFieldBox(false);
+    showToast(`Added field "${trimmedLabel}" — click Save to persist`, 'success');
   };
 
   const handleSave = async () => {
     if (fields.length === 0) {
-      Alert.alert('Error', 'At least one field is required.');
+      showToast('At least one field is required', 'error');
       return;
     }
     try {
       await saveFormConfig(selectedForm, { fields, history });
       await load();
-    } catch (err) {}
-    Alert.alert('Success', 'Configuration saved successfully.');
+      showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
+    } catch (err) {
+      showToast('Failed to save form configuration', 'error');
+    }
   };
 
-  const handleReset = () => {
-    Alert.alert('Reset to Default', 'This will discard all customizations.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reset',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await resetFormToDefault(selectedForm);
-          } catch (err) {}
-
-          await load();
-        },
-      },
-    ]);
+  const handleReset = async () => {
+    try {
+      await resetFormToDefault(selectedForm);
+      await load();
+      showToast(`Reset ${selectedForm} to default template`, 'info');
+    } catch (err) {
+      showToast('Failed to reset form', 'error');
+    }
   };
 
   return (

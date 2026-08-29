@@ -2553,13 +2553,59 @@ export const MOCK_ROUTES: MockRoute[] = [
       const name = requiredParam(ctx, 'formName');
       const saved = mockDb.all('adminConfigs').find((c) => c.id === `form:${name}`);
       if (saved) return saved.value;
-      return {
-        fields: [
+
+      let defaultFields: Array<{ id: string; type: string; label: string; required: boolean; visible: boolean; options?: string[] }> = [];
+
+      if (name.includes('Enrollment')) {
+        defaultFields = [
           { id: 'f1', type: 'Text', label: 'Full Name', required: true, visible: true },
           { id: 'f2', type: 'Date', label: 'Date of Birth', required: true, visible: true },
-          { id: 'f3', type: 'Dropdown', label: 'Program Type', required: true, visible: true },
-          { id: 'f4', type: 'Text Area', label: 'Notes', required: false, visible: true },
-        ],
+          { id: 'f3', type: 'Dropdown', label: 'Program Type', required: true, visible: true, options: ['ABA', 'Speech Therapy', 'Occupational Therapy'] },
+          { id: 'f4', type: 'Text', label: 'Parent / Guardian Name', required: true, visible: true },
+          { id: 'f5', type: 'Text', label: 'Parent Phone', required: true, visible: true },
+          { id: 'f6', type: 'Text', label: 'Parent Email', required: true, visible: true },
+          { id: 'f7', type: 'TextArea', label: 'Medical Notes & Allergies', required: false, visible: true },
+          { id: 'f8', type: 'Checkbox', label: 'Transportation Required', required: false, visible: true },
+          { id: 'f9', type: 'Text', label: 'Emergency Contact', required: false, visible: true },
+        ];
+      } else if (name.includes('IUP')) {
+        defaultFields = [
+          { id: 'i1', type: 'Text', label: 'Student Name', required: true, visible: true },
+          { id: 'i2', type: 'Dropdown', label: 'Target Skill Domain', required: true, visible: true, options: ['Language & Communication', 'Social Interaction', 'Adaptive & Self-Care', 'Motor Skills', 'Cognitive'] },
+          { id: 'i3', type: 'Number', label: 'Baseline Mastery (%)', required: true, visible: true },
+          { id: 'i4', type: 'TextArea', label: 'Target Objective', required: true, visible: true },
+          { id: 'i5', type: 'Dropdown', label: 'Service Setting', required: false, visible: true, options: ['Individual 1:1', 'Small Group', 'General Classroom', 'Community'] },
+          { id: 'i6', type: 'TextArea', label: 'Special Accommodations', required: false, visible: true },
+          { id: 'i7', type: 'Checkbox', label: 'Requires Assistive Technology', required: false, visible: true },
+        ];
+      } else if (name.includes('ABLLS') || name.includes('Skills')) {
+        defaultFields = [
+          { id: 'a1', type: 'Date', label: 'Assessment Date', required: true, visible: true },
+          { id: 'a2', type: 'Text', label: 'Assessor Name', required: true, visible: true },
+          { id: 'a3', type: 'Number', label: 'Receptive Language Score', required: true, visible: true },
+          { id: 'a4', type: 'Number', label: 'Vocal Imitation Score', required: true, visible: true },
+          { id: 'a5', type: 'TextArea', label: 'Clinical Recommendations', required: false, visible: true },
+          { id: 'a6', type: 'Checkbox', label: 'Eligible for Direct Therapy', required: false, visible: true },
+        ];
+      } else if (name.includes('Social')) {
+        defaultFields = [
+          { id: 's1', type: 'Text', label: 'Student Name', required: true, visible: true },
+          { id: 's2', type: 'Dropdown', label: 'Peer Interaction Level', required: true, visible: true, options: ['High', 'Moderate', 'Emerging', 'Minimal'] },
+          { id: 's3', type: 'Dropdown', label: 'Turn-Taking Ability', required: true, visible: true, options: ['Consistently', 'With Prompts', 'Needs Full Support'] },
+          { id: 's4', type: 'TextArea', label: 'Social Engagement Notes', required: false, visible: true },
+          { id: 's5', type: 'Checkbox', label: 'Participates in Group Activities', required: false, visible: true },
+        ];
+      } else {
+        defaultFields = [
+          { id: 'b1', type: 'Dropdown', label: 'Antecedent', required: true, visible: true, options: ['Task Demand', 'Transition', 'Peer Interaction', 'Denied Access'] },
+          { id: 'b2', type: 'TextArea', label: 'Observed Behavior', required: true, visible: true },
+          { id: 'b3', type: 'Dropdown', label: 'Consequence', required: true, visible: true, options: ['Redirected', 'Break Provided', 'Ignored'] },
+          { id: 'b4', type: 'TextArea', label: 'Incident Notes', required: false, visible: true },
+        ];
+      }
+
+      return {
+        fields: defaultFields,
         isDefault: true,
         history: [],
       };

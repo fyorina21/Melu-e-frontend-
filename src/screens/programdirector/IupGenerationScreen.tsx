@@ -29,6 +29,7 @@ import {
   finalizeIup,
   getGoalBank,
 } from '../../api/programDirectorApi';
+import DynamicFormFields from '../../components/DynamicFormFields';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 interface GoalBankItem {
@@ -83,6 +84,7 @@ export default function IupGenerationScreen({
   const [crisisProtocol, setCrisisProtocol] = useState('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
   const [accommodations, setAccommodations] = useState('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
   const [reviewCycle, setReviewCycle] = useState('6 Weeks');
+  const [customIupValues, setCustomIupValues] = useState<Record<string, any>>({});
 
   // Dropdown Selector State
   const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
@@ -763,6 +765,20 @@ export default function IupGenerationScreen({
                   ))}
                 </View>
               </View>
+
+              <DynamicFormFields
+                formName="IUP Form"
+                values={customIupValues}
+                onChange={(key, val) => setCustomIupValues((prev) => ({ ...prev, [key]: val }))}
+                excludeStandardLabels={[
+                  'Student Name',
+                  'Target Skill Domain',
+                  'Baseline Mastery (%)',
+                  'Target Objective',
+                  'Environmental Accommodations & Visual Supports',
+                  'Crisis De-escalation Protocol',
+                ]}
+              />
             </View>
           </View>
         )}

@@ -12,6 +12,7 @@ import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
 import { getStaffOptions, getStudentOptions, type StaffOption, type StudentOption } from '../../api/optionsApi';
 import { createStudentEnrollment } from '../../api/coordinatorApi';
+import DynamicFormFields from '../../components/DynamicFormFields';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Documents', 'Assign Therapist', 'Review'];
@@ -92,6 +93,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const { showToast } = useToast();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<WizardState>(INITIAL_STATE);
+  const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [therapists, setTherapists] = useState<StaffOption[]>([]);
   const [existingStudents, setExistingStudents] = useState<StudentOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -266,6 +268,23 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             <Text style={typography.h3}>Medical Information</Text>
             <Field label="Diagnosis" value={form.diagnosis} onChangeText={(t) => set('diagnosis', t)} />
             <Field label="Medical Notes" value={form.medicalNotes} onChangeText={(t) => set('medicalNotes', t)} multiline />
+
+            <DynamicFormFields
+              formName="Enrollment Wizard"
+              values={customValues}
+              onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+              excludeStandardLabels={[
+                'Full Name',
+                'Date of Birth',
+                'Gender',
+                'Program Type',
+                'Parent / Guardian Name',
+                'Parent Phone',
+                'Parent Email',
+                'Diagnosis',
+                'Medical Notes',
+              ]}
+            />
           </View>
         )}
 
@@ -323,6 +342,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               ['Therapist', form.therapist],
               ['Documents', form.documents.length ? form.documents.join(', ') : 'None'],
               ['Uploaded Files', form.files.length ? `${form.files.length} file(s)` : 'None'],
+              ...Object.entries(customValues).filter(([_, v]) => v !== '' && v !== undefined && v !== false).map(([k, v]) => [
+                k,
+                typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v),
+              ]),
             ].map(([label, value]) => (
               <View key={label} style={styles.reviewRow}>
                 <Text style={typography.label}>{label}</Text>

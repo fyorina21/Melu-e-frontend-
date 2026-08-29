@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getSkillsAssessment, saveSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import DynamicFormFields from '../../components/DynamicFormFields';
 import type { SessionStackParamList } from '../../types';
 
 type Score = 0 | 1 | 2 | 'NA';
@@ -140,6 +141,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const [activeDomain, setActiveDomain] = useState(0);
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [customFields, setCustomFields] = useState<Record<string, any>>({});
 
   const load = useCallback(async () => {
     try {
@@ -327,6 +329,13 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
               />
             </View>
           ))}
+
+          <DynamicFormFields
+            formName="ABLLS Assessment Form"
+            values={customFields}
+            onChange={(key, val) => setCustomFields((prev) => ({ ...prev, [key]: val }))}
+            excludeStandardLabels={['Assessment Date', 'Assessor Name']}
+          />
         </ScrollView>
 
         {/* Bottom Action Bar — sits at the bottom of the flex column, always tappable */}

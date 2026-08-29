@@ -15,6 +15,7 @@ import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import DynamicFormFields from '../../components/DynamicFormFields';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SocialSkillsAssessment'>;
@@ -51,6 +52,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
   const studentId = route.params?.studentId ?? 'student-a';
   const { showToast } = useToast();
   const [scores, setScores] = useState<Record<string, Score>>({});
+  const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
 
   const answered = Object.keys(scores).length;
@@ -141,6 +143,13 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
             </View>
           </View>
         ))}
+
+        <DynamicFormFields
+          formName="Social Skills Questionnaire"
+          values={customValues}
+          onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+          excludeStandardLabels={['Student Name']}
+        />
 
         <TouchableOpacity
           style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
