@@ -172,6 +172,11 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                   <Text style={styles.launchBtnTextLight}>Sensory →</Text>
                 </TouchableOpacity>
               </View>
+              <View style={styles.studentBtnRow}>
+                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#D97706' }]} onPress={() => navigation?.navigate?.('SocialSkillsAssessment', { studentId: s.id })}>
+                  <Text style={styles.launchBtnTextLight}>Social Skills Questionnaire →</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>
