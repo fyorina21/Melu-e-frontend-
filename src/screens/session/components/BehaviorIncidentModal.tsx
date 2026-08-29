@@ -37,7 +37,6 @@ const DEFAULT_ANTECEDENT_OPTIONS = [
   'Change in routine',
   'Loud noise',
   'Waiting',
-  'Other',
 ];
 
 const DEFAULT_CONSEQUENCE_OPTIONS = [
@@ -47,7 +46,6 @@ const DEFAULT_CONSEQUENCE_OPTIONS = [
   'Provided replacement behavior',
   'Removed from situation',
   'Discussed with student',
-  'Other',
 ];
 
 export default function BehaviorIncidentModal({
@@ -58,13 +56,8 @@ export default function BehaviorIncidentModal({
   onSave,
 }: BehaviorIncidentModalProps) {
   const [antecedent, setAntecedent] = useState('');
-  const [otherAntecedent, setOtherAntecedent] = useState('');
-
   const [behavior, setBehavior] = useState('');
-
   const [consequence, setConsequence] = useState('');
-  const [otherConsequence, setOtherConsequence] = useState('');
-
   const [additionalNotes, setAdditionalNotes] = useState('');
 
   const [showAntecedentDropdown, setShowAntecedentDropdown] = useState(false);
@@ -81,12 +74,12 @@ export default function BehaviorIncidentModal({
     try {
       const { data } = await getAbcLists();
       if (Array.isArray(data.Antecedents)) {
-        const opts = data.Antecedents.map((a: { name: string }) => a.name).filter(Boolean);
-        if (opts.length > 0) setAntecedentOptions(['Other', ...opts]);
+        const opts = data.Antecedents.map((a: { name: string }) => a.name).filter((n: string) => n && n !== 'Other');
+        if (opts.length > 0) setAntecedentOptions(opts);
       }
       if (Array.isArray(data.Consequences)) {
-        const opts = data.Consequences.map((c: { name: string }) => c.name).filter(Boolean);
-        if (opts.length > 0) setConsequenceOptions(['Other', ...opts]);
+        const opts = data.Consequences.map((c: { name: string }) => c.name).filter((n: string) => n && n !== 'Other');
+        if (opts.length > 0) setConsequenceOptions(opts);
       }
     } catch (err) {
       // Use defaults if API fails
@@ -101,14 +94,12 @@ export default function BehaviorIncidentModal({
 
   const isFormDirty =
     antecedent !== '' ||
-    otherAntecedent !== '' ||
     behavior !== '' ||
     consequence !== '' ||
-    otherConsequence !== '' ||
     additionalNotes !== '';
 
-  const finalAntecedent = antecedent === 'Other' ? otherAntecedent.trim() : antecedent.trim();
-  const finalConsequence = consequence === 'Other' ? otherConsequence.trim() : consequence.trim();
+  const finalAntecedent = antecedent.trim();
+  const finalConsequence = consequence.trim();
 
   const isValid =
     finalAntecedent !== '' &&
@@ -117,10 +108,8 @@ export default function BehaviorIncidentModal({
 
   const resetForm = () => {
     setAntecedent('');
-    setOtherAntecedent('');
     setBehavior('');
     setConsequence('');
-    setOtherConsequence('');
     setAdditionalNotes('');
     setShowAntecedentDropdown(false);
     setShowConsequenceDropdown(false);
@@ -229,7 +218,6 @@ export default function BehaviorIncidentModal({
                       ]}
                       onPress={() => {
                         setAntecedent(item);
-                        if (item !== 'Other') setOtherAntecedent('');
                         setShowAntecedentDropdown(false);
                       }}
                     >
@@ -237,16 +225,6 @@ export default function BehaviorIncidentModal({
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
-
-              {antecedent === 'Other' && (
-                <TextInput
-                  style={styles.specifyInput}
-                  placeholder="Please specify..."
-                  placeholderTextColor="#94A3B8"
-                  value={otherAntecedent}
-                  onChangeText={setOtherAntecedent}
-                />
               )}
             </View>
 
@@ -308,7 +286,6 @@ export default function BehaviorIncidentModal({
                       ]}
                       onPress={() => {
                         setConsequence(item);
-                        if (item !== 'Other') setOtherConsequence('');
                         setShowConsequenceDropdown(false);
                       }}
                     >
@@ -316,16 +293,6 @@ export default function BehaviorIncidentModal({
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
-
-              {consequence === 'Other' && (
-                <TextInput
-                  style={styles.specifyInput}
-                  placeholder="Please specify..."
-                  placeholderTextColor="#94A3B8"
-                  value={otherConsequence}
-                  onChangeText={setOtherConsequence}
-                />
               )}
             </View>
 
