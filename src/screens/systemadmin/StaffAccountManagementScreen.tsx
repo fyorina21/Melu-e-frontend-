@@ -695,11 +695,15 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
 
   const handleToggleActive = async (s: StaffMember) => {
     const next = !s.active;
+    // Optimistic UI update
+    setStaff((prev) => (prev ? prev.map((item) => (item.id === s.id ? { ...item, active: next } : item)) : prev));
     try {
       await toggleStaffActive(s.id, next);
       showToast(`Account ${next ? 'activated' : 'deactivated'} successfully`, 'success');
-    } catch (err) {}
-    load();
+    } catch (err) {
+      showToast('Failed to update status', 'error');
+    }
+    await load();
   };
 
   const handleDelete = (s: StaffMember) => {

@@ -2451,12 +2451,33 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'POST',
     pattern: '/sysadmin/staff/:id/status',
-    handler: (ctx) => mockDb.updateById('staffMembers', requiredParam(ctx, 'id'), bodyAs<any>(ctx)),
+    handler: (ctx) => {
+      const id = requiredParam(ctx, 'id');
+      const body = bodyAs<{ active?: boolean; status?: 'active' | 'inactive' }>(ctx);
+      const nextStatus: 'active' | 'inactive' =
+        body.status ?? (body.active !== undefined ? (body.active ? 'active' : 'inactive') : 'active');
+      const updated = mockDb.updateById('staffMembers', id, { status: nextStatus });
+      return updated ? staffDisplayRow(updated) : { status: 'ok' as const };
+    },
   },
   {
     method: 'POST',
     pattern: '/sysadmin/staff/bulk',
-    handler: () => ({ status: 'ok' as const }),
+    handler: (ctx) => {
+      const body = bodyAs<{ staffIds?: string[]; action?: string }>(ctx);
+      const action = body.action?.toLowerCase() || '';
+      const targetStatus: 'active' | 'inactive' = action.includes('deact') ? 'inactive' : 'active';
+      if (Array.isArray(body.staffIds)) {
+        for (const sid of body.staffIds) {
+          if (action.includes('delete')) {
+            mockDb.removeById('staffMembers', sid);
+          } else {
+            mockDb.updateById('staffMembers', sid, { status: targetStatus });
+          }
+        }
+      }
+      return { status: 'ok' as const };
+    },
   },
   {
     method: 'GET',
