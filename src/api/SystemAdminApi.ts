@@ -6,7 +6,7 @@ export const getStaffAccounts = (params: QueryParams) => client.get('/sysadmin/s
 export const createStaffAccount = (payload: Payload) => client.post('/sysadmin/staff', payload);
 export const updateStaffAccount = (staffId: string, payload: Payload) => client.patch(`/sysadmin/staff/${staffId}`, payload);
 export const deleteStaffAccount = (staffId: string) => client.delete(`/sysadmin/staff/${staffId}`);
-export const resetStaffPassword = (staffId: string) => client.post(`/sysadmin/staff/${staffId}/reset-password`);
+export const resetStaffPassword = (staffId: string, newPassword?: string) => client.post(`/sysadmin/staff/${staffId}/reset-password`, { newPassword });
 export const toggleStaffActive = (staffId: string, active: boolean) => client.post(`/sysadmin/staff/${staffId}/status`, { active });
 export const bulkStaffAction = (staffIds: string[], action: string) => client.post('/sysadmin/staff/bulk', { staffIds, action });
 

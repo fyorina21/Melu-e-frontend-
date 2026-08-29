@@ -176,6 +176,145 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
   );
 }
 
+interface ResetPasswordModalProps {
+  visible: boolean;
+  staff: StaffMember | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function ResetPasswordModal({ visible, staff, onClose, onSuccess }: ResetPasswordModalProps) {
+  const { showToast } = useToast();
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setNewPassword('');
+    setShowPassword(false);
+  }, [staff, visible]);
+
+  if (!staff) return null;
+
+  const handleQuickReset = async () => {
+    try {
+      setSaving(true);
+      await resetStaffPassword(staff.id, 'demo1234');
+      showToast(`Password for ${staff.name} reset to "demo1234"`, 'success');
+      onSuccess();
+      onClose();
+    } catch (err) {
+      showToast('Failed to reset password', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCustomReset = async () => {
+    if (!newPassword.trim()) {
+      showToast('Please enter a new password', 'error');
+      return;
+    }
+    try {
+      setSaving(true);
+      await resetStaffPassword(staff.id, newPassword.trim());
+      showToast(`Password updated for ${staff.name} (${staff.email})`, 'success');
+      onSuccess();
+      onClose();
+    } catch (err) {
+      showToast('Failed to update password', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={[styles.modalSheet, { maxWidth: 440, width: '100%', alignSelf: 'center' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs }}>
+            <View style={{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' }}>
+              <Feather name="key" size={18} color="#D97706" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={typography.h2}>Manage Credentials</Text>
+              <Text style={typography.caption}>{staff.name} · {staff.email}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Feather name="x" size={20} color={colors.mutedText} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ backgroundColor: colors.bgApp, padding: spacing.md, borderRadius: radius.md, gap: 4, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={[typography.caption, { fontWeight: '700', color: colors.navyText }]}>Account Details</Text>
+            <Text style={typography.caption}>Login Email: <Text style={{ fontWeight: '600', color: colors.navyText }}>{staff.email}</Text></Text>
+            <Text style={typography.caption}>Role(s): <Text style={{ fontWeight: '600', color: colors.navyText }}>{staff.roles.join(', ')}</Text></Text>
+            <Text style={typography.caption}>Status: <Text style={{ fontWeight: '600', color: staff.active ? '#16A34A' : '#DC2626' }}>{staff.active ? 'Active' : 'Inactive'}</Text></Text>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={typography.label}>Set New Password</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.textInput, { flex: 1 }]}
+                placeholder="Enter new custom password"
+                placeholderTextColor={colors.mutedText}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={styles.passwordEyeBtn} onPress={() => setShowPassword((p) => !p)}>
+                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={colors.navyText} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.fieldHintText}>
+              Updating password will change this staff member's login credentials immediately.
+            </Text>
+          </View>
+
+          <View style={{ gap: spacing.sm, marginTop: spacing.xs }}>
+            <TouchableOpacity
+              style={[styles.saveBtn, { alignItems: 'center', paddingVertical: spacing.md }]}
+              onPress={handleCustomReset}
+              disabled={saving}
+            >
+              <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save New Password'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: spacing.xs,
+                borderWidth: 1,
+                borderColor: '#F59E0B',
+                backgroundColor: '#FEF3C7',
+                borderRadius: radius.md,
+                paddingVertical: spacing.md,
+              }}
+              onPress={handleQuickReset}
+              disabled={saving}
+            >
+              <Feather name="refresh-cw" size={14} color="#B45309" />
+              <Text style={{ fontWeight: '700', color: '#B45309', fontSize: 13 }}>Reset to Default ("demo1234")</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.cancelBtn, { alignItems: 'center', paddingVertical: spacing.sm }]}
+              onPress={onClose}
+              disabled={saving}
+            >
+              <Text style={styles.cancelBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 interface TeacherLinkingPanelProps {
   teacher: StaffMember;
   onClose: () => void;
@@ -515,6 +654,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formTarget, setFormTarget] = useState<StaffMember | null | undefined>(undefined);
+  const [credentialTarget, setCredentialTarget] = useState<StaffMember | null>(null);
   const [linkTarget, setLinkTarget] = useState<StaffMember | null>(null);
 
   const load = useCallback(async () => {
@@ -551,27 +691,6 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       showToast('Failed to save staff account', 'error');
     }
     setFormTarget(undefined);
-  };
-
-  const handleResetPassword = (s: StaffMember) => {
-    Alert.alert(
-      'Reset Staff Password',
-      `Reset login password for ${s.name} (${s.email}) to default password "demo1234"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset Password',
-          onPress: async () => {
-            try {
-              await resetStaffPassword(s.id);
-              showToast(`Password for ${s.name} reset to "demo1234"`, 'success');
-            } catch (err) {
-              showToast('Failed to reset password', 'error');
-            }
-          },
-        },
-      ]
-    );
   };
 
   const handleToggleActive = async (s: StaffMember) => {
@@ -659,16 +778,36 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
             </View>
             <StatusPill status={s.active ? 'approved' : 'revision'} label={s.active ? 'Active' : 'Inactive'} />
             <View style={styles.rowActions}>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setFormTarget(s)}><Feather name="edit-2" size={14} color={colors.navyText} /></TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                accessibilityLabel="Edit staff member"
+                onPress={() => setFormTarget(s)}
+              >
+                <Feather name="edit-2" size={14} color={colors.navyText} />
+              </TouchableOpacity>
               {s.roles.includes('Teacher') && (
-                <TouchableOpacity style={[styles.iconBtn, linkTarget?.id === s.id && styles.iconBtnActive]} onPress={() => setLinkTarget(linkTarget?.id === s.id ? null : s)}>
+                <TouchableOpacity
+                  style={[styles.iconBtn, linkTarget?.id === s.id && styles.iconBtnActive]}
+                  accessibilityLabel="Link teacher to students"
+                  onPress={() => setLinkTarget(linkTarget?.id === s.id ? null : s)}
+                >
                   <Feather name="link-2" size={14} color={colors.navyText} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={styles.iconBtn} onPress={() => handleResetPassword(s)}><Feather name="key" size={14} color={colors.navyText} /></TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                accessibilityLabel="Manage credentials and password"
+                onPress={() => setCredentialTarget(s)}
+              >
+                <Feather name="key" size={14} color="#D97706" />
+              </TouchableOpacity>
               
               {/* Toggle switch icon: Green (Active/On) vs Red (Inactive/Off) */}
-              <TouchableOpacity style={styles.iconBtn} onPress={() => handleToggleActive(s)}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                accessibilityLabel="Toggle active status"
+                onPress={() => handleToggleActive(s)}
+              >
                 <Feather 
                   name={s.active ? 'toggle-right' : 'toggle-left'} 
                   size={18} 
@@ -676,7 +815,13 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
                 />
               </TouchableOpacity>
               
-              <TouchableOpacity style={styles.iconBtn} onPress={() => handleDelete(s)}><Feather name="trash-2" size={14} color={colors.statusRevisionText} /></TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                accessibilityLabel="Delete staff account"
+                onPress={() => handleDelete(s)}
+              >
+                <Feather name="trash-2" size={14} color={colors.statusRevisionText} />
+              </TouchableOpacity>
             </View>
           </View>
         ))}
@@ -684,6 +829,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       </ScrollView>
 
       <StaffFormModal visible={formTarget !== undefined} staff={formTarget} onClose={() => setFormTarget(undefined)} onSave={handleSave} />
+      <ResetPasswordModal visible={credentialTarget !== null} staff={credentialTarget} onClose={() => setCredentialTarget(null)} onSuccess={load} />
     </SafeAreaView>
   );
 }
