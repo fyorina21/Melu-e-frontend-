@@ -3457,6 +3457,7 @@ function upsertIup(studentId: string, status: MockIup['status'], ctx: MockHandle
     return mockDb.updateById('iups', existing.id, {
       status,
       goals: goals.length ? goals : existing.goals,
+      customFields: (body.customFields as Record<string, unknown>) ?? (existing as any).customFields ?? {},
       updatedAt: now,
     });
   }
@@ -3467,11 +3468,12 @@ function upsertIup(studentId: string, status: MockIup['status'], ctx: MockHandle
     createdAt: now,
     updatedAt: now,
     goals,
+    customFields: (body.customFields as Record<string, unknown>) ?? {},
     interventionStrategies: [],
     reinforcementStrategies: [],
     antecedentManipulations: [],
   };
-  mockDb.insert('iups', iup);
+  mockDb.insert('iups', iup as any);
   return iup;
 }
 

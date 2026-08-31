@@ -282,6 +282,16 @@ export default function IupGenerationScreen({
       `• Accommodations: ${accommodations}`,
       `• Crisis & De-escalation Protocol: ${crisisProtocol}`,
       `• Clinical Review Cycle: ${reviewCycle}`,
+      ...(Object.keys(customIupValues).length > 0
+        ? [
+            '',
+            '----------------------------------------------------------------',
+            '4. ADDITIONAL INSTITUTIONAL FIELDS',
+            ...Object.entries(customIupValues).map(
+              ([k, v]) => `• ${k}: ${typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v || '—')}`
+            ),
+          ]
+        : []),
       '================================================================',
     ];
     return lines.join('\n');
@@ -949,6 +959,20 @@ export default function IupGenerationScreen({
                 <Text style={styles.previewLabel}>Crisis Protocol:</Text>
                 <Text style={styles.previewText}>{crisisProtocol}</Text>
               </View>
+
+              {Object.keys(customIupValues).length > 0 && (
+                <View style={styles.previewCard}>
+                  <Text style={styles.previewSectionTitle}>Additional Institutional Fields</Text>
+                  {Object.entries(customIupValues).map(([k, v]) => (
+                    <View key={k} style={{ marginBottom: 4 }}>
+                      <Text style={styles.previewLabel}>{k}:</Text>
+                      <Text style={styles.previewText}>
+                        {typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v || '—')}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </ScrollView>
 
             <View style={styles.previewFooter}>

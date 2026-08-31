@@ -91,6 +91,7 @@ export interface MockIup {
   createdAt: string;
   updatedAt: string;
   goals: string[];
+  customFields?: Record<string, unknown>;
   interventionStrategies: string[];
   reinforcementStrategies: string[];
   antecedentManipulations: string[];
