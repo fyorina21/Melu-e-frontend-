@@ -21,7 +21,17 @@ interface ResolvedRoute {
 }
 
 function splitSegments(path: string): string[] {
-  return path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  const clean = path.split('?')[0].replace(/^\/+|\/+$/g, '');
+  return clean
+    .split('/')
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
 }
 
 function decodeQuery(params: Record<string, unknown> = {}): Record<string, string | undefined> {
@@ -43,8 +53,9 @@ function resolveRoute(method: HttpMethod, path: string): ResolvedRoute | null {
     let matched = true;
     for (let i = 0; i < pattern.length; i++) {
       const p = pattern[i];
-      if (p.startsWith(':')) params[p.slice(1)] = segments[i];
-      else if (p !== segments[i]) {
+      if (p.startsWith(':')) {
+        params[p.slice(1)] = segments[i];
+      } else if (p.toLowerCase() !== segments[i].toLowerCase()) {
         matched = false;
         break;
       }

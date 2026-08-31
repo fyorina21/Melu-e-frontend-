@@ -20,6 +20,7 @@ import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useToast } from '../../context/ToastContext';
+import DynamicFormFields from '../../components/DynamicFormFields';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
 const FORMS = [
@@ -30,6 +31,7 @@ const FORMS = [
   'Behavior Incident Form',
 ];
 const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Checkbox', 'Radio', 'TextArea', 'File'];
+const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
 
 interface FormField {
   id: string;
@@ -37,6 +39,8 @@ interface FormField {
   label: string;
   required: boolean;
   visible: boolean;
+  options?: string[];
+  section?: string;
 }
 
 interface HistoryEntry {
@@ -63,10 +67,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [newFieldType, setNewFieldType] = useState<string>('Text');
   const [showTypeModal, setShowTypeModal] = useState<boolean>(false);
   const [newFieldLabel, setNewFieldLabel] = useState<string>('');
+  const [newFieldOptions, setNewFieldOptions] = useState<string>('');
   const [newFieldRequired, setNewFieldRequired] = useState<boolean>(false);
+  const [newFieldSection, setNewFieldSection] = useState<string>('Student Info');
 
   // Preview Modal State
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
+  const [previewFormValues, setPreviewFormValues] = useState<Record<string, any>>({});
 
   const load = useCallback(async () => {
     try {
@@ -145,6 +152,31 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     showToast('Field deleted — click Save to persist', 'info');
   };
 
+  const inferSection = (label: string): string => {
+    const l = label.toLowerCase();
+    if (l.includes('parent') || l.includes('guardian') || l.includes('mother') || l.includes('father') || l.includes('emergency') || l.includes('family') || l.includes('contact')) {
+      return 'Parent Info';
+    }
+    if (l.includes('medical') || l.includes('allerg') || l.includes('doctor') || l.includes('health') || l.includes('insurance') || l.includes('medication') || l.includes('diet') || l.includes('hospital') || l.includes('physician')) {
+      return 'Medical Info';
+    }
+    return 'Student Info';
+  };
+
+  const cycleSection = (id: string) => {
+    setFields((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const current = f.section || inferSection(f.label);
+        const nextIdx = (ENROLLMENT_SECTIONS.indexOf(current) + 1) % ENROLLMENT_SECTIONS.length;
+        const nextSection = ENROLLMENT_SECTIONS[nextIdx];
+        return { ...f, section: nextSection };
+      })
+    );
+    setIsDefault(false);
+    showToast('Target section updated — click Save to persist', 'info');
+  };
+
   const handleConfirmAddField = () => {
     if (!newFieldLabel.trim()) {
       showToast('Please enter a field label', 'error');
@@ -152,12 +184,22 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     }
 
     const trimmedLabel = newFieldLabel.trim();
+    const parsedOptions =
+      newFieldType === 'Dropdown' || newFieldType === 'Radio'
+        ? newFieldOptions
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+
     const newEntry: FormField = {
       id: `f-${Date.now()}`,
       type: newFieldType,
       label: trimmedLabel,
       required: newFieldRequired,
       visible: true,
+      section: selectedForm === 'Enrollment Wizard' ? newFieldSection : undefined,
+      ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
     };
 
     setFields((prev) => [...prev, newEntry]);
@@ -170,15 +212,16 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       user: 'Admin A',
       field: trimmedLabel,
       oldValue: 'None',
-      newValue: 'Added',
+      newValue: `Added (${newFieldType} - ${newFieldSection})`,
     };
     setHistory((prev) => [newHistoryEntry, ...prev]);
 
     // Reset inline box state
     setNewFieldLabel('');
+    setNewFieldOptions('');
     setNewFieldRequired(false);
     setShowAddFieldBox(false);
-    showToast(`Added field "${trimmedLabel}" — click Save to persist`, 'success');
+    showToast(`Added field "${trimmedLabel}" to ${newFieldSection} — click Save to persist`, 'success');
   };
 
   const handleSave = async () => {
@@ -187,7 +230,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       return;
     }
     try {
-      await saveFormConfig(selectedForm, { fields, history });
+      await saveFormConfig(selectedForm, { fields, history, isDefault: false });
       await load();
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
     } catch (err) {
@@ -274,7 +317,27 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 <Text style={styles.typeBadgeText}>{field.type}</Text>
               </View>
 
-              <Text style={styles.fieldLabelText}>{field.label}</Text>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={styles.fieldLabelText}>
+                    {field.label} {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
+                  </Text>
+                  {selectedForm === 'Enrollment Wizard' && (
+                    <TouchableOpacity
+                      style={styles.sectionPill}
+                      onPress={() => cycleSection(field.id)}
+                    >
+                      <Feather name="folder" size={10} color="#0284C7" />
+                      <Text style={styles.sectionPillText}>{field.section || inferSection(field.label)}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {field.options && field.options.length > 0 && (
+                  <Text style={styles.fieldOptionsText} numberOfLines={1}>
+                    Options: {field.options.join(', ')}
+                  </Text>
+                )}
+              </View>
 
               <View style={styles.rowRightControls}>
                 <Text style={styles.controlLabel}>Required</Text>
@@ -287,7 +350,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 />
 
                 <TouchableOpacity onPress={() => toggleVisible(field.id)} style={styles.iconBtn}>
-                  <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color="#94A3B8" />
+                  <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color={field.visible ? '#0284C7' : '#94A3B8'} />
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={() => handleDeleteField(field.id)} style={styles.iconBtn}>
@@ -304,56 +367,98 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               <Text style={styles.addBtnText}>Add New Field</Text>
             </TouchableOpacity>
           ) : (
-            <View style={styles.inlineAddBox}>
-              <View style={styles.inlineFieldCol}>
-                <Text style={styles.inlineFieldLabel}>Field Type</Text>
-                <TouchableOpacity
-                  style={styles.inlineTypeDropdown}
-                  onPress={() => setShowTypeModal(true)}
-                >
-                  <Text style={styles.inlineTypeDropdownText}>{newFieldType}</Text>
-                  <Feather name="chevron-down" size={14} color="#64748B" />
+            <View style={styles.inlineAddContainer}>
+              <View style={styles.inlineAddRow}>
+                <View style={styles.inlineFieldCol}>
+                  <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                  <TouchableOpacity
+                    style={styles.inlineTypeDropdown}
+                    onPress={() => setShowTypeModal(true)}
+                  >
+                    <Text style={styles.inlineTypeDropdownText}>{newFieldType}</Text>
+                    <Feather name="chevron-down" size={14} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={[styles.inlineFieldCol, { flex: 2 }]}>
+                  <Text style={styles.inlineFieldLabel}>Label</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="Field label..."
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldLabel}
+                    onChangeText={(val: string) => setNewFieldLabel(val)}
+                  />
+                </View>
+
+                <View style={styles.inlineToggleCol}>
+                  <Text style={styles.inlineFieldLabel}>Required</Text>
+                  <Switch
+                    value={newFieldRequired}
+                    onValueChange={(val: boolean) => setNewFieldRequired(val)}
+                    trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                    thumbColor="#FFFFFF"
+                    style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                  />
+                </View>
+              </View>
+
+              {selectedForm === 'Enrollment Wizard' && (
+                <View style={styles.inlineSectionRow}>
+                  <Text style={styles.inlineFieldLabel}>Target Tab / Section</Text>
+                  <View style={styles.sectionChipRow}>
+                    {ENROLLMENT_SECTIONS.map((sec) => (
+                      <TouchableOpacity
+                        key={sec}
+                        style={[styles.sectionChip, newFieldSection === sec && styles.sectionChipActive]}
+                        onPress={() => setNewFieldSection(sec)}
+                      >
+                        <Text style={[styles.sectionChipText, newFieldSection === sec && styles.sectionChipTextActive]}>
+                          {sec}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {(newFieldType === 'Dropdown' || newFieldType === 'Radio') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldLabel}>Options (comma-separated)</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Low, Medium, High"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldOptions}
+                    onChangeText={(val: string) => setNewFieldOptions(val)}
+                  />
+                </View>
+              )}
+
+              <View style={styles.inlineButtonRow}>
+                <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
+                  <Text style={styles.confirmAddBtnText}>Add Field</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.cancelAddBtn} onPress={() => setShowAddFieldBox(false)}>
+                  <Text style={styles.cancelAddBtnText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={[styles.inlineFieldCol, { flex: 2 }]}>
-                <Text style={styles.inlineFieldLabel}>Label</Text>
-                <TextInput
-                  style={styles.inlineTextInput}
-                  placeholder="Field label..."
-                  placeholderTextColor="#94A3B8"
-                  value={newFieldLabel}
-                  onChangeText={(val: string) => setNewFieldLabel(val)}
-                />
-              </View>
-
-              <View style={styles.inlineToggleCol}>
-                <Text style={styles.inlineFieldLabel}>Required</Text>
-                <Switch
-                  value={newFieldRequired}
-                  onValueChange={(val: boolean) => setNewFieldRequired(val)}
-                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
-                  thumbColor="#FFFFFF"
-                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                />
-              </View>
-
-              <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
-                <Text style={styles.confirmAddBtnText}>Add Field</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.cancelAddBtn} onPress={() => setShowAddFieldBox(false)}>
-                <Text style={styles.cancelAddBtnText}>Cancel</Text>
-              </TouchableOpacity>
             </View>
           )}
         </View>
 
         {/* Action Buttons Row */}
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.previewBtn} onPress={() => setShowPreviewModal(true)}>
+          <TouchableOpacity
+            style={styles.previewBtn}
+            onPress={() => {
+              setPreviewFormValues({});
+              setShowPreviewModal(true);
+            }}
+          >
             <Feather name="eye" size={15} color="#0F172A" />
-            <Text style={styles.previewBtnText}>Preview Form</Text>
+            <Text style={styles.previewBtnText}>Preview Live Form</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
@@ -438,33 +543,32 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
         </TouchableOpacity>
       </Modal>
 
-      {/* Form Preview Modal */}
+      {/* Form Preview Modal — Live Interactive Dynamic Form */}
       <Modal visible={showPreviewModal} transparent animationType="fade" onRequestClose={() => setShowPreviewModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Form Preview — {selectedForm}</Text>
+              <View>
+                <Text style={styles.modalTitle}>Live Form Preview — {selectedForm}</Text>
+                <Text style={styles.modalSubtitle}>Interactive preview of active fields & toggles</Text>
+              </View>
               <TouchableOpacity onPress={() => setShowPreviewModal(false)}>
                 <Feather name="x" size={18} color="#64748B" />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {fields.filter(f => f.visible).map((f) => (
-                <View key={f.id} style={styles.previewFieldGroup}>
-                  <Text style={styles.previewLabel}>
-                    {f.label} {f.required && <Text style={{ color: '#EF4444' }}>*</Text>}
-                  </Text>
-                  <View style={styles.previewInputDummy}>
-                    <Text style={styles.previewInputDummyText}>{f.type} field</Text>
-                  </View>
-                </View>
-              ))}
+              <DynamicFormFields
+                formName={selectedForm}
+                initialFields={fields}
+                values={previewFormValues}
+                onChange={(key, val) => setPreviewFormValues((prev) => ({ ...prev, [key]: val }))}
+              />
             </ScrollView>
 
             <View style={styles.modalFooter}>
               <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowPreviewModal(false)}>
-                <Text style={styles.closeModalBtnText}>Close</Text>
+                <Text style={styles.closeModalBtnText}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -551,7 +655,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   typeBadgeText: { fontSize: 11, fontWeight: '600', color: '#0284C7' },
-  fieldLabelText: { fontSize: 14, fontWeight: '600', color: '#1E293B', flex: 1 },
+  fieldLabelText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  fieldOptionsText: { fontSize: 11, color: '#64748B', marginTop: 2 },
   rowRightControls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   controlLabel: { fontSize: 12, color: '#64748B' },
   iconBtn: { padding: 4 },
@@ -564,16 +669,72 @@ const styles = StyleSheet.create({
   },
   addBtnText: { fontSize: 13, fontWeight: '600', color: '#0284C7' },
 
-  inlineAddBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  inlineAddContainer: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#BAE6FD',
     borderRadius: 8,
     padding: 12,
     marginTop: 6,
+    gap: 10,
+  },
+  inlineAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  inlineOptionsRow: {
+    gap: 4,
+  },
+  inlineSectionRow: {
+    gap: 6,
+  },
+  sectionChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  sectionChip: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#FFFFFF',
+  },
+  sectionChipActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  sectionChipText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  sectionChipTextActive: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+  sectionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sectionPillText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  inlineButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-start',
   },
   inlineFieldCol: { gap: 4 },
   inlineFieldLabel: { fontSize: 11, fontWeight: '600', color: '#475569' },
@@ -605,20 +766,18 @@ const styles = StyleSheet.create({
   confirmAddBtn: {
     backgroundColor: '#FACC15',
     borderRadius: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     height: 32,
     justifyContent: 'center',
-    marginTop: 14,
   },
   confirmAddBtnText: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   cancelAddBtn: {
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     height: 32,
     justifyContent: 'center',
-    marginTop: 14,
     backgroundColor: '#FFFFFF',
   },
   cancelAddBtnText: { fontSize: 12, color: '#475569' },
@@ -729,6 +888,7 @@ const styles = StyleSheet.create({
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  modalSubtitle: { fontSize: 12, color: '#64748B', marginTop: 2 },
   modalBody: { gap: 12 },
   previewFieldGroup: { gap: 4, marginBottom: 12 },
   previewLabel: { fontSize: 13, fontWeight: '600', color: '#334155' },

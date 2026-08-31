@@ -1900,6 +1900,7 @@ export const MOCK_ROUTES: MockRoute[] = [
         diagnosis?: string;
         medicalNotes?: string;
         documents?: string[];
+        customFields?: Record<string, any>;
       }>(ctx);
       const student = {
         id: newId('stu'),
@@ -1917,6 +1918,7 @@ export const MOCK_ROUTES: MockRoute[] = [
         diagnosis: p.diagnosis ?? '',
         medicalNotes: p.medicalNotes ?? '',
         documents: p.documents ?? [],
+        customFields: p.customFields ?? {},
         goals: [],
       };
       mockDb.insert('students', student as any);
@@ -2550,17 +2552,24 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'GET',
     pattern: '/admin/forms/:formName',
     handler: (ctx) => {
-      const name = requiredParam(ctx, 'formName');
-      const saved = mockDb.all('adminConfigs').find((c) => c.id === `form:${name}`);
-      if (saved) return saved.value;
+      const name = decodeURIComponent(requiredParam(ctx, 'formName')).trim();
+      const saved = mockDb.all('adminConfigs').find(
+        (c) => c.id === `form:${name}` || c.id.toLowerCase() === `form:${name.toLowerCase()}`
+      );
+      if (saved) {
+        if (name.toLowerCase().includes('enrollment') && Array.isArray((saved.value as any)?.fields)) {
+          const fields = (saved.value as any).fields.filter((f: any) => f.label !== 'Program Type' && f.id !== 'f3');
+          return { ...(saved.value as any), fields };
+        }
+        return saved.value;
+      }
 
       let defaultFields: Array<{ id: string; type: string; label: string; required: boolean; visible: boolean; options?: string[] }> = [];
 
-      if (name.includes('Enrollment')) {
+      if (name.toLowerCase().includes('enrollment')) {
         defaultFields = [
           { id: 'f1', type: 'Text', label: 'Full Name', required: true, visible: true },
           { id: 'f2', type: 'Date', label: 'Date of Birth', required: true, visible: true },
-          { id: 'f3', type: 'Dropdown', label: 'Program Type', required: true, visible: true, options: ['ABA', 'Speech Therapy', 'Occupational Therapy'] },
           { id: 'f4', type: 'Text', label: 'Parent / Guardian Name', required: true, visible: true },
           { id: 'f5', type: 'Text', label: 'Parent Phone', required: true, visible: true },
           { id: 'f6', type: 'Text', label: 'Parent Email', required: true, visible: true },
@@ -2568,7 +2577,7 @@ export const MOCK_ROUTES: MockRoute[] = [
           { id: 'f8', type: 'Checkbox', label: 'Transportation Required', required: false, visible: true },
           { id: 'f9', type: 'Text', label: 'Emergency Contact', required: false, visible: true },
         ];
-      } else if (name.includes('IUP')) {
+      } else if (name.toLowerCase().includes('iup')) {
         defaultFields = [
           { id: 'i1', type: 'Text', label: 'Student Name', required: true, visible: true },
           { id: 'i2', type: 'Dropdown', label: 'Target Skill Domain', required: true, visible: true, options: ['Language & Communication', 'Social Interaction', 'Adaptive & Self-Care', 'Motor Skills', 'Cognitive'] },
@@ -2578,7 +2587,7 @@ export const MOCK_ROUTES: MockRoute[] = [
           { id: 'i6', type: 'TextArea', label: 'Special Accommodations', required: false, visible: true },
           { id: 'i7', type: 'Checkbox', label: 'Requires Assistive Technology', required: false, visible: true },
         ];
-      } else if (name.includes('ABLLS') || name.includes('Skills')) {
+      } else if (name.toLowerCase().includes('ablls') || name.toLowerCase().includes('skills')) {
         defaultFields = [
           { id: 'a1', type: 'Date', label: 'Assessment Date', required: true, visible: true },
           { id: 'a2', type: 'Text', label: 'Assessor Name', required: true, visible: true },
@@ -2587,7 +2596,7 @@ export const MOCK_ROUTES: MockRoute[] = [
           { id: 'a5', type: 'TextArea', label: 'Clinical Recommendations', required: false, visible: true },
           { id: 'a6', type: 'Checkbox', label: 'Eligible for Direct Therapy', required: false, visible: true },
         ];
-      } else if (name.includes('Social')) {
+      } else if (name.toLowerCase().includes('social')) {
         defaultFields = [
           { id: 's1', type: 'Text', label: 'Student Name', required: true, visible: true },
           { id: 's2', type: 'Dropdown', label: 'Peer Interaction Level', required: true, visible: true, options: ['High', 'Moderate', 'Emerging', 'Minimal'] },
@@ -2615,11 +2624,13 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/admin/forms/:formName',
     handler: (ctx) => {
-      const name = requiredParam(ctx, 'formName');
+      const name = decodeURIComponent(requiredParam(ctx, 'formName')).trim();
       const value = bodyAs<Record<string, unknown>>(ctx);
-      const existing = mockDb.all('adminConfigs').find((c) => c.id === `form:${name}`);
+      const existing = mockDb.all('adminConfigs').find(
+        (c) => c.id === `form:${name}` || c.id.toLowerCase() === `form:${name.toLowerCase()}`
+      );
       if (existing) {
-        mockDb.updateById('adminConfigs', `form:${name}`, { value });
+        mockDb.updateById('adminConfigs', existing.id, { value });
       } else {
         mockDb.insert('adminConfigs', { id: `form:${name}`, value });
       }
@@ -2630,8 +2641,13 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/admin/forms/:formName/reset',
     handler: (ctx) => {
-      const name = requiredParam(ctx, 'formName');
-      mockDb.removeById('adminConfigs', `form:${name}`);
+      const name = decodeURIComponent(requiredParam(ctx, 'formName')).trim();
+      const existing = mockDb.all('adminConfigs').find(
+        (c) => c.id === `form:${name}` || c.id.toLowerCase() === `form:${name.toLowerCase()}`
+      );
+      if (existing) {
+        mockDb.removeById('adminConfigs', existing.id);
+      }
       return { status: 'ok' as const };
     },
   },
@@ -3625,9 +3641,8 @@ function buildAssessmentDashboard() {
   const list = students.map((s, idx) => {
     const ablls = rowFor(s.id, 'skills');
     const behavior = rowFor(s.id, 'behavior');
-    // Demo phase assignment: students beyond the first three have already
-    // completed the 6-week assessment window and moved to the active phase.
-    const phase: '6-week' | 'active' = idx < 3 ? '6-week' : 'active';
+    const hasAssessment = rows.some((r) => r.studentId === s.id);
+    const phase: '6-week' | 'active' = (idx < 3 || hasAssessment || s.status === 'assessment') ? '6-week' : 'active';
     return {
       id: s.id,
       name: s.fullName,

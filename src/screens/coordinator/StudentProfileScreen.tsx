@@ -30,6 +30,7 @@ export interface StudentProfileData {
   headshotUrl: string | null;
   currentFocusStudentGoalId: string | null;
   goals: StudentGoal[];
+  customFields?: Record<string, any>;
 }
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentProfile'>;
@@ -132,6 +133,18 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           <InfoRow label="Therapy Group" value={profile.therapyGroup} />
           <InfoRow label="Status" value={profile.status === 'active' ? 'Active' : profile.status} />
         </Section>
+
+        {profile.customFields && Object.keys(profile.customFields).length > 0 && (
+          <Section icon="layers" title="Institutional & Custom Information">
+            {Object.entries(profile.customFields).map(([k, v]) => (
+              <InfoRow
+                key={k}
+                label={k}
+                value={typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v || '—')}
+              />
+            ))}
+          </Section>
+        )}
 
         <Section icon="bar-chart-2" title="Goals">
           {profile.goals.length === 0 && <Text style={typography.caption}>No goals defined yet.</Text>}

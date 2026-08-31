@@ -12,12 +12,14 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getAbcLists } from '../../../api/institutionalAdminApi';
+import DynamicFormFields from '../../../components/DynamicFormFields';
 
 export interface IncidentPayload {
   antecedent: string;
   behavior: string;
   consequence: string;
   additionalNotes: string;
+  customFields?: Record<string, any>;
 }
 
 interface BehaviorIncidentModalProps {
@@ -59,6 +61,7 @@ export default function BehaviorIncidentModal({
   const [behavior, setBehavior] = useState('');
   const [consequence, setConsequence] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
+  const [customFields, setCustomFields] = useState<Record<string, any>>({});
 
   const [showAntecedentDropdown, setShowAntecedentDropdown] = useState(false);
   const [showConsequenceDropdown, setShowConsequenceDropdown] = useState(false);
@@ -96,7 +99,8 @@ export default function BehaviorIncidentModal({
     antecedent !== '' ||
     behavior !== '' ||
     consequence !== '' ||
-    additionalNotes !== '';
+    additionalNotes !== '' ||
+    Object.keys(customFields).length > 0;
 
   const finalAntecedent = antecedent.trim();
   const finalConsequence = consequence.trim();
@@ -111,6 +115,7 @@ export default function BehaviorIncidentModal({
     setBehavior('');
     setConsequence('');
     setAdditionalNotes('');
+    setCustomFields({});
     setShowAntecedentDropdown(false);
     setShowConsequenceDropdown(false);
     setShowDiscardConfirmation(false);
@@ -138,6 +143,7 @@ export default function BehaviorIncidentModal({
       behavior: behavior.trim(),
       consequence: finalConsequence,
       additionalNotes: additionalNotes.trim(),
+      customFields,
     });
     resetForm();
   };
@@ -309,6 +315,14 @@ export default function BehaviorIncidentModal({
                 onChangeText={setAdditionalNotes}
               />
             </View>
+
+            {/* Dynamic Custom Fields from Institutional Admin */}
+            <DynamicFormFields
+              formName="Behavior Incident Form"
+              values={customFields}
+              onChange={(key, val) => setCustomFields((prev) => ({ ...prev, [key]: val }))}
+              excludeStandardLabels={['Antecedent', 'Observed Behavior', 'Behavior', 'Consequence', 'Incident Notes', 'Additional Notes']}
+            />
           </ScrollView>
 
           {/* Footer Buttons */}

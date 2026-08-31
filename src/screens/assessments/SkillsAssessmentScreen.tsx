@@ -195,7 +195,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   const handleSaveDraft = async () => {
     try {
-      await saveSkillsAssessment(studentId, { scores, notes });
+      await saveSkillsAssessment(studentId, { scores, notes, customFields });
       showToast(`${studentName} ABLLS assessment draft saved.`, 'success');
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');

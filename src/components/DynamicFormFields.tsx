@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, radius, spacing } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { getFormConfig } from '../api/institutionalAdminApi';
@@ -12,6 +13,7 @@ export interface DynamicFormField {
   required: boolean;
   visible: boolean;
   options?: string[];
+  section?: string;
 }
 
 interface DynamicFormFieldsProps {
@@ -19,6 +21,10 @@ interface DynamicFormFieldsProps {
   values: Record<string, any>;
   onChange: (fieldIdOrLabel: string, value: any) => void;
   excludeStandardLabels?: string[];
+  onValidationChange?: (isValid: boolean, missingRequiredLabels: string[]) => void;
+  initialFields?: DynamicFormField[];
+  showSectionHeader?: boolean;
+  section?: string;
 }
 
 export default function DynamicFormFields({
@@ -26,39 +32,153 @@ export default function DynamicFormFields({
   values,
   onChange,
   excludeStandardLabels = [],
+  onValidationChange,
+  initialFields,
+  showSectionHeader = false,
+  section,
 }: DynamicFormFieldsProps) {
-  const [fields, setFields] = useState<DynamicFormField[]>([]);
+  const [fields, setFields] = useState<DynamicFormField[]>(initialFields || []);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!initialFields);
 
   useEffect(() => {
+    if (initialFields) {
+      setFields(initialFields.filter((f) => f.visible !== false));
+      setLoading(false);
+      return;
+    }
     let mounted = true;
+    setLoading(true);
     getFormConfig(formName)
       .then(({ data }) => {
         if (mounted && Array.isArray(data?.fields)) {
           setFields(data.fields.filter((f: DynamicFormField) => f.visible !== false));
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
     return () => {
       mounted = false;
     };
-  }, [formName]);
+  }, [formName, initialFields]);
 
-  const customFields = fields.filter(
-    (f) => !excludeStandardLabels.some((l) => l.toLowerCase() === f.label.toLowerCase())
-  );
+  const customFields = fields.filter((f) => {
+    if (excludeStandardLabels.some((l) => l.toLowerCase() === f.label.toLowerCase())) {
+      return false;
+    }
+    if (section) {
+      if (f.section) {
+        return f.section.toLowerCase().trim() === section.toLowerCase().trim();
+      }
+      // Smart keyword fallback when no explicit section was selected
+      const normLabel = f.label.toLowerCase();
+      const normSec = section.toLowerCase();
+      if (normSec.includes('parent')) {
+        return (
+          normLabel.includes('parent') ||
+          normLabel.includes('guardian') ||
+          normLabel.includes('mother') ||
+          normLabel.includes('father') ||
+          normLabel.includes('emergency') ||
+          normLabel.includes('family') ||
+          normLabel.includes('contact')
+        );
+      }
+      if (normSec.includes('medical')) {
+        return (
+          normLabel.includes('medical') ||
+          normLabel.includes('allerg') ||
+          normLabel.includes('doctor') ||
+          normLabel.includes('health') ||
+          normLabel.includes('insurance') ||
+          normLabel.includes('medication') ||
+          normLabel.includes('hospital') ||
+          normLabel.includes('physician') ||
+          normLabel.includes('diet')
+        );
+      }
+      if (normSec.includes('student')) {
+        const isParent =
+          normLabel.includes('parent') ||
+          normLabel.includes('guardian') ||
+          normLabel.includes('mother') ||
+          normLabel.includes('father') ||
+          normLabel.includes('emergency') ||
+          normLabel.includes('family') ||
+          normLabel.includes('contact');
+        const isMed =
+          normLabel.includes('medical') ||
+          normLabel.includes('allerg') ||
+          normLabel.includes('doctor') ||
+          normLabel.includes('health') ||
+          normLabel.includes('insurance') ||
+          normLabel.includes('medication') ||
+          normLabel.includes('hospital') ||
+          normLabel.includes('physician') ||
+          normLabel.includes('diet');
+        return !isParent && !isMed;
+      }
+    }
+    return true;
+  });
+
+  // Validate required fields
+  useEffect(() => {
+    if (!onValidationChange) return;
+    const missing: string[] = [];
+    customFields.forEach((field) => {
+      if (field.required) {
+        const val = values[field.id] ?? values[field.label];
+        if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
+          missing.push(field.label);
+        }
+      }
+    });
+    onValidationChange(missing.length === 0, missing);
+  }, [customFields, values, onValidationChange]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingBox}>
+        <ActivityIndicator size="small" color={colors.primaryYellowDark} />
+        <Text style={styles.loadingText}>Loading fields...</Text>
+      </View>
+    );
+  }
 
   if (customFields.length === 0) return null;
 
+  const handlePickFile = async (fieldId: string, fieldLabel: string) => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        const file = res.assets[0];
+        onChange(fieldId, file.name);
+        onChange(fieldLabel, file.name);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Feather name="layers" size={14} color={colors.primaryYellowDark} />
-        <Text style={styles.sectionTitle}>Custom Fields ({formName})</Text>
-      </View>
+      {showSectionHeader && (
+        <View style={styles.headerRow}>
+          <Feather name="layers" size={14} color={colors.primaryYellowDark} />
+          <Text style={styles.sectionTitle}>Additional Fields ({formName})</Text>
+        </View>
+      )}
 
       {customFields.map((field) => {
         const val = values[field.id] ?? values[field.label] ?? '';
+        const fieldOptions = Array.isArray(field.options) && field.options.length > 0
+          ? field.options
+          : (typeof field.options === 'string' && (field.options as string).length > 0
+              ? (field.options as string).split(',').map((s) => s.trim()).filter(Boolean)
+              : ['Option 1', 'Option 2', 'Option 3']);
 
         if (field.type === 'TextArea') {
           return (
@@ -82,7 +202,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'Checkbox' || field.type === 'Radio') {
+        if (field.type === 'Checkbox') {
           const isChecked = Boolean(val);
           return (
             <TouchableOpacity
@@ -105,8 +225,67 @@ export default function DynamicFormFields({
           );
         }
 
+        if (field.type === 'Radio') {
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <View style={styles.radioGroup}>
+                {fieldOptions.map((opt) => {
+                  const isSelected = val === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.radioChip, isSelected && styles.radioChipSelected]}
+                      onPress={() => {
+                        onChange(field.id, opt);
+                        onChange(field.label, opt);
+                      }}
+                    >
+                      <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
+                        {isSelected && <View style={styles.radioInnerDot} />}
+                      </View>
+                      <Text style={[styles.radioChipText, isSelected && styles.radioChipTextSelected]}>
+                        {opt}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        }
+
+        if (field.type === 'File') {
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <View style={styles.fileUploadRow}>
+                <TouchableOpacity
+                  style={styles.fileUploadBtn}
+                  onPress={() => handlePickFile(field.id, field.label)}
+                >
+                  <Feather name="upload" size={14} color={colors.navyText} />
+                  <Text style={styles.fileUploadBtnText}>
+                    {val ? 'Replace File' : 'Choose File'}
+                  </Text>
+                </TouchableOpacity>
+                {val ? (
+                  <Text style={styles.fileNameText} numberOfLines={1}>
+                    {String(val)}
+                  </Text>
+                ) : (
+                  <Text style={styles.noFileText}>No file chosen</Text>
+                )}
+              </View>
+            </View>
+          );
+        }
+
         if (field.type === 'Dropdown') {
-          const defaultOpts = field.options && field.options.length > 0 ? field.options : ['Standard', 'High Priority', 'Requires Review', 'Completed'];
           const isOpen = openDropdownId === field.id;
 
           return (
@@ -127,7 +306,7 @@ export default function DynamicFormFields({
 
               {isOpen && (
                 <View style={styles.dropdownMenu}>
-                  {defaultOpts.map((opt) => (
+                  {fieldOptions.map((opt) => (
                     <TouchableOpacity
                       key={opt}
                       style={[styles.dropdownItem, val === opt && styles.dropdownItemActive]}
@@ -148,7 +327,7 @@ export default function DynamicFormFields({
           );
         }
 
-        // Standard Text, Number, Date, File input
+        // Standard Text, Number, Date input
         return (
           <View key={field.id} style={styles.field}>
             <Text style={typography.label}>
@@ -157,7 +336,7 @@ export default function DynamicFormFields({
             <TextInput
               style={styles.input}
               value={String(val)}
-              placeholder={`Enter ${field.label.toLowerCase()}...`}
+              placeholder={field.type === 'Date' ? 'YYYY-MM-DD' : `Enter ${field.label.toLowerCase()}...`}
               placeholderTextColor={colors.mutedText}
               keyboardType={field.type === 'Number' ? 'numeric' : 'default'}
               onChangeText={(text) => {
@@ -173,14 +352,18 @@ export default function DynamicFormFields({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: radius.md,
+  loadingBox: {
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: spacing.sm,
-    marginVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: colors.mutedText,
+  },
+  container: {
+    gap: spacing.md,
   },
   headerRow: {
     flexDirection: 'row',
@@ -241,6 +424,82 @@ const styles = StyleSheet.create({
     color: colors.navyText,
     fontWeight: '500',
   },
+  radioGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  radioChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  radioChipSelected: {
+    borderColor: colors.primaryYellowDark,
+    backgroundColor: '#FEF9C3',
+  },
+  radioCircle: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCircleSelected: {
+    borderColor: colors.primaryYellowDark,
+  },
+  radioInnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primaryYellowDark,
+  },
+  radioChipText: {
+    fontSize: 13,
+    color: colors.navyText,
+  },
+  radioChipTextSelected: {
+    fontWeight: '600',
+    color: '#854D0E',
+  },
+  fileUploadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  fileUploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 6,
+  },
+  fileUploadBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+  fileNameText: {
+    fontSize: 13,
+    color: '#0284C7',
+    flex: 1,
+  },
+  noFileText: {
+    fontSize: 12,
+    color: colors.mutedText,
+    fontStyle: 'italic',
+  },
   dropdownBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -295,3 +554,4 @@ const styles = StyleSheet.create({
     color: '#92400E',
   },
 });
+

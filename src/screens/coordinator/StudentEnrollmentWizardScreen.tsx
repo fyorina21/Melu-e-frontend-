@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import DobPicker from '../../components/DobPicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -15,20 +13,13 @@ import { createStudentEnrollment } from '../../api/coordinatorApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
-const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Documents', 'Assign Therapist', 'Review'];
+const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'];
 
 const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
 const GENDERS = ['Female', 'Male', 'Other'];
-const DOC_TYPES = ['Birth Certificate', 'Medical Reports', 'Assessment Reports', 'Referral Letter', 'Insurance Documents'];
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DOB_PLACEHOLDER = new Date(2018, 0, 1);
-
-interface UploadedFile {
-  id: string;
-  docType: string;
-  name: string;
-}
 
 interface WizardState {
   name: string;
@@ -41,8 +32,6 @@ interface WizardState {
   diagnosis: string;
   medicalNotes: string;
   therapist: string;
-  documents: string[];
-  files: UploadedFile[];
 }
 
 const INITIAL_STATE: WizardState = {
@@ -56,8 +45,6 @@ const INITIAL_STATE: WizardState = {
   diagnosis: '',
   medicalNotes: '',
   therapist: '',
-  documents: [],
-  files: [],
 };
 
 type Props = NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentEnrollmentWizard'>;
@@ -161,8 +148,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       parentEmail: form.parentEmail.trim(),
       diagnosis: form.diagnosis.trim(),
       medicalNotes: form.medicalNotes.trim(),
-      documents: form.documents,
+      documents: [],
       assignedTherapist: form.therapist,
+      customFields: customValues,
     };
     try {
       await createStudentEnrollment(payload);
@@ -187,34 +175,6 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     }
     submitEnrollment();
   };
-
-  const toggleDoc = (doc: string) =>
-    set('documents', form.documents.includes(doc) ? form.documents.filter((d) => d !== doc) : [...form.documents, doc]);
-
-  const addFile = (file: UploadedFile) => set('files', [...form.files, file]);
-  const removeFile = (id: string) => set('files', form.files.filter((f) => f.id !== id));
-
-  const handleUploadImage = async (docType: string) => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      showToast('Allow photo library access to attach images', 'error');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      addFile({ id: `local-${Date.now()}`, docType, name: asset.fileName || `${docType} (image)` });
-    }
-  };
-
-  const handleUploadDocument = async (docType: string) => {
-    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', '*/*'], copyToCacheDirectory: true });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    addFile({ id: `local-${Date.now()}`, docType, name: asset.name || `${docType} (file)` });
-  };
-
-  const docFiles = (docType: string) => form.files.filter((f) => f.docType === docType);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -251,6 +211,20 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             </View>
             <View style={styles.field}><Text style={typography.label}>Gender</Text><Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} /></View>
             <View style={styles.field}><Text style={typography.label}>Program</Text><Chips options={PROGRAMS} value={form.program} onChange={(v) => set('program', v)} /></View>
+
+            <DynamicFormFields
+              formName="Enrollment Wizard"
+              section="Student Info"
+              values={customValues}
+              onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+              excludeStandardLabels={[
+                'Full Name',
+                'Date of Birth',
+                'Gender',
+                'Program',
+                'Program Type',
+              ]}
+            />
           </View>
         )}
 
@@ -260,6 +234,18 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             <Field label="Parent / Guardian Name" value={form.parentName} onChangeText={(t) => set('parentName', t)} />
             <Field label="Phone" value={form.parentPhone} onChangeText={(t) => set('parentPhone', t)} keyboardType="phone-pad" />
             <Field label="Email" value={form.parentEmail} onChangeText={(t) => set('parentEmail', t)} keyboardType="email-address" />
+
+            <DynamicFormFields
+              formName="Enrollment Wizard"
+              section="Parent Info"
+              values={customValues}
+              onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+              excludeStandardLabels={[
+                'Parent / Guardian Name',
+                'Parent Phone',
+                'Parent Email',
+              ]}
+            />
           </View>
         )}
 
@@ -271,16 +257,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
             <DynamicFormFields
               formName="Enrollment Wizard"
+              section="Medical Info"
               values={customValues}
               onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
               excludeStandardLabels={[
-                'Full Name',
-                'Date of Birth',
-                'Gender',
-                'Program Type',
-                'Parent / Guardian Name',
-                'Parent Phone',
-                'Parent Email',
                 'Diagnosis',
                 'Medical Notes',
               ]}
@@ -290,48 +270,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
         {step === 3 && (
           <View style={styles.card}>
-            <Text style={typography.h3}>Documents</Text>
-            <Text style={typography.caption}>Check the documents you have, then upload the actual files (image or PDF).</Text>
-            {DOC_TYPES.map((doc) => (
-              <View key={doc} style={styles.docBlock}>
-                <TouchableOpacity style={styles.docRow} onPress={() => toggleDoc(doc)}>
-                  <View style={[styles.checkbox, form.documents.includes(doc) && styles.checkboxChecked]}>
-                    {form.documents.includes(doc) && <Feather name="check" size={12} color={colors.navyText} />}
-                  </View>
-                  <Text style={typography.body}>{doc}</Text>
-                </TouchableOpacity>
-                <View style={styles.uploadActions}>
-                  <TouchableOpacity style={styles.uploadBtn} onPress={() => handleUploadImage(doc)}>
-                    <Feather name="image" size={13} color={colors.navyText} />
-                    <Text style={styles.uploadBtnText}>Photo</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.uploadBtn} onPress={() => handleUploadDocument(doc)}>
-                    <Feather name="file-text" size={13} color={colors.navyText} />
-                    <Text style={styles.uploadBtnText}>PDF</Text>
-                  </TouchableOpacity>
-                </View>
-                {docFiles(doc).map((f) => (
-                  <View key={f.id} style={styles.uploadedRow}>
-                    <Feather name="paperclip" size={13} color={colors.statusCompletedText} />
-                    <Text style={[typography.body, { flex: 1 }]} numberOfLines={1}>{f.name}</Text>
-                    <TouchableOpacity onPress={() => removeFile(f.id)}>
-                      <Feather name="x" size={14} color={colors.statusRevisionText} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {step === 4 && (
-          <View style={styles.card}>
             <Text style={typography.h3}>Assign Therapist</Text>
             <View style={styles.field}><Text style={typography.label}>Therapist</Text>{therapistNames.length ? <Chips options={therapistNames} value={form.therapist} onChange={(v) => set('therapist', v)} /> : <Text style={typography.caption}>No therapists available.</Text>}</View>
           </View>
         )}
 
-        {step === 5 && (
+        {step === 4 && (
           <View style={styles.card}>
             <Text style={typography.h3}>Review & Submit</Text>
             {[
@@ -340,8 +284,6 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               ['Parent', `${form.parentName} · ${form.parentPhone} · ${form.parentEmail}`],
               ['Diagnosis', form.diagnosis || 'n/a'],
               ['Therapist', form.therapist],
-              ['Documents', form.documents.length ? form.documents.join(', ') : 'None'],
-              ['Uploaded Files', form.files.length ? `${form.files.length} file(s)` : 'None'],
               ...Object.entries(customValues).filter(([_, v]) => v !== '' && v !== undefined && v !== false).map(([k, v]) => [
                 k,
                 typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v),

@@ -189,6 +189,7 @@ export default function IupGenerationScreen({
         crisisProtocol,
         accommodations,
         reviewCycle,
+        customFields: customIupValues,
       });
       setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       Alert.alert('Draft Saved', 'The IUP draft has been saved successfully to the IUP Library.');
@@ -221,6 +222,7 @@ export default function IupGenerationScreen({
                 crisisProtocol,
                 accommodations,
                 reviewCycle,
+                customFields: customIupValues,
               });
               Alert.alert(
                 'IUP Finalized & Activated',
