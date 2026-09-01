@@ -518,8 +518,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
 
             <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.gridColumnsContainer}>
               {summaryData.map((domain) => {
-                // Stacked ascending from bottom (A1) to top (A7) as on authentic paper sheets
-                const ascendingItems = [...domain.items];
+                // Stacked ascending from bottom (A1 at bottom floor) to top (A7 at peak)
+                const ascendingItems = [...domain.items].reverse();
 
                 return (
                   <View key={domain.code} style={styles.towerColumn}>
@@ -1093,7 +1093,7 @@ const styles = StyleSheet.create({
   gridColumnsContainer: {
     flexDirection: 'row',
     gap: 16,
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     paddingVertical: 8,
   },
   towerColumn: {
