@@ -56,6 +56,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     domain: string;
     description: string;
     score: Score;
+    options?: string[];
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -125,10 +126,28 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
   const priorityNames = new Set(priorityAreas.map((p) => p.name));
   const rows = summaryData.map((d) => ({ ...d, isPriority: priorityNames.has(d.name) }));
 
-  // Compute cell fill count (out of 4 cells) based on score
-  const getFilledCells = (score: Score): number => {
-    if (score === 2) return 4;
-    if (score === 1) return 2;
+  // Compute maximum cell columns for each skill item based on its option count (e.g. 2-level vs 4-level)
+  const getMaxCellsForItem = (item: { options?: string[]; maxCells?: number }): number => {
+    if (item.maxCells) return item.maxCells;
+    if (item.options && Array.isArray(item.options) && item.options.length > 0) {
+      const nonNA = item.options.filter(
+        (o) => o.trim().toUpperCase() !== 'N/A' && o.trim().toUpperCase() !== 'NA'
+      );
+      if (nonNA.length <= 2) return 2;
+      if (nonNA.length === 3) return 4;
+      if (nonNA.length >= 4) return Math.min(4, nonNA.length);
+      return nonNA.length;
+    }
+    return 4;
+  };
+
+  // Compute cell fill count based on item's configured max level and score
+  const getFilledCells = (item: { score: Score; options?: string[]; maxCells?: number }): number => {
+    const maxCells = getMaxCellsForItem(item);
+    if (item.score === 2) return maxCells;
+    if (item.score === 1) {
+      return maxCells === 2 ? 1 : 2;
+    }
     return 0;
   };
 
@@ -142,14 +161,13 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
         const reversedItems = [...domain.items].reverse();
         const rowsHtml = reversedItems
           .map((item) => {
-            const filledCount = getFilledCells(item.score);
-            const cellsHtml = [0, 1, 2, 3]
-              .map((cIdx) => {
-                const isFilled = cIdx < filledCount;
-                const bg = isFilled ? (item.score === 2 ? '#16A34A' : '#EAB308') : item.score === 'NA' ? '#E2E8F0' : '#FFFFFF';
-                return `<span class="cell" style="background-color: ${bg}; border: 1px solid #475569;"></span>`;
-              })
-              .join('');
+            const maxCells = getMaxCellsForItem(item);
+            const filledCount = getFilledCells(item);
+            const cellsHtml = Array.from({ length: maxCells }, (_, cIdx) => {
+              const isFilled = cIdx < filledCount;
+              const bg = isFilled ? (item.score === 2 ? '#16A34A' : '#EAB308') : item.score === 'NA' ? '#E2E8F0' : '#FFFFFF';
+              return `<span class="cell" style="background-color: ${bg}; border: 1.5px solid #475569;"></span>`;
+            }).join('');
             return `
               <div class="tower-row">
                 <span class="item-label">${item.id}</span>
@@ -414,10 +432,11 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                       <Text style={styles.towerTopCount}>{domain.items.length} items</Text>
                     </View>
 
-                    {/* Skill Floors (Tower of 4-cell rows) */}
+                    {/* Skill Floors (Tower of dynamic cell rows) */}
                     <View style={styles.towerStackBox}>
                       {ascendingItems.map((item) => {
-                        const filledCount = getFilledCells(item.score);
+                        const maxCells = getMaxCellsForItem(item);
+                        const filledCount = getFilledCells(item);
 
                         return (
                           <TouchableOpacity
@@ -452,9 +471,9 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                               <Text style={styles.floorItemCode}>{item.id}</Text>
                             </View>
 
-                            {/* 4 Cells / Floors */}
+                            {/* Cells / Floors based on configured level count */}
                             <View style={styles.fourCellsWrapper}>
-                              {[0, 1, 2, 3].map((cellIdx) => {
+                              {Array.from({ length: maxCells }, (_, cellIdx) => {
                                 const isFilled = cellIdx < filledCount;
                                 const isNA = item.score === 'NA';
                                 const cellBg = isFilled
@@ -530,7 +549,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                 {/* Grid items in this domain */}
                 <View style={styles.domainItemsGrid}>
                   {domain.items.map((item) => {
-                    const filled = getFilledCells(item.score);
+                    const maxCells = getMaxCellsForItem(item);
+                    const filled = getFilledCells(item);
                     return (
                       <TouchableOpacity
                         key={item.id}
@@ -541,6 +561,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                             domain: domain.name,
                             description: item.description,
                             score: item.score,
+                            options: item.options,
                           })
                         }
                       >
@@ -558,17 +579,15 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                         <Text style={styles.cardTileDesc} numberOfLines={2}>
                           {item.description}
                         </Text>
-
-                        {/* 4 mini floor cells */}
                         <View style={styles.cardTileCells}>
-                          {[0, 1, 2, 3].map((c) => (
+                          {Array.from({ length: maxCells }, (_, cIdx) => (
                             <View
-                              key={c}
+                              key={cIdx}
                               style={[
                                 styles.cardMiniCell,
                                 {
                                   backgroundColor:
-                                    c < filled
+                                    cIdx < filled
                                       ? item.score === 2
                                         ? '#16A34A'
                                         : '#EAB308'
@@ -743,32 +762,35 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                 </View>
               </View>
 
-              {/* 4 Cells representation */}
+              {/* Progress Tracker representation */}
               <View style={styles.inspectorCellsBox}>
-                <Text style={styles.inspectorCellsLabel}>4-Floor Progress Tracker:</Text>
+                <Text style={styles.inspectorCellsLabel}>
+                  {selectedItem ? `${getMaxCellsForItem(selectedItem)}-Floor Progress Tracker:` : 'Progress Tracker:'}
+                </Text>
                 <View style={styles.inspectorCellsRow}>
-                  {[1, 2, 3, 4].map((c) => {
-                    const filled = getFilledCells(selectedItem?.score ?? 'NA');
-                    const isF = c <= filled;
-                    return (
-                      <View key={c} style={styles.inspectorCellUnit}>
-                        <View
-                          style={[
-                            styles.inspectorCellBlock,
-                            {
-                              backgroundColor: isF
-                                ? selectedItem?.score === 2
-                                  ? '#16A34A'
-                                  : '#EAB308'
-                                : '#F8FAFC',
-                              borderColor: '#334155',
-                            },
-                          ]}
-                        />
-                        <Text style={styles.inspectorCellSub}>Floor {c}</Text>
-                      </View>
-                    );
-                  })}
+                  {selectedItem &&
+                    Array.from({ length: getMaxCellsForItem(selectedItem) }, (_, cIdx) => {
+                      const filled = getFilledCells(selectedItem);
+                      const isF = cIdx < filled;
+                      return (
+                        <View key={cIdx} style={styles.inspectorCellUnit}>
+                          <View
+                            style={[
+                              styles.inspectorCellBlock,
+                              {
+                                backgroundColor: isF
+                                  ? selectedItem.score === 2
+                                    ? '#16A34A'
+                                    : '#EAB308'
+                                  : '#F8FAFC',
+                                borderColor: '#334155',
+                              },
+                            ]}
+                          />
+                          <Text style={styles.inspectorCellSub}>Floor {cIdx + 1}</Text>
+                        </View>
+                      );
+                    })}
                 </View>
               </View>
             </View>
@@ -980,9 +1002,11 @@ const styles = StyleSheet.create({
     gap: 16,
     alignItems: 'flex-end',
     paddingVertical: 8,
+    paddingLeft: 8,
+    paddingRight: 64,
   },
   towerColumn: {
-    width: 168,
+    width: 176,
     backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
     borderColor: '#94A3B8',
@@ -1013,22 +1037,23 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#475569',
     borderRadius: 4,
-    padding: 4,
-    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    gap: 3,
   },
   skillFloorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 2,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     borderRadius: 4,
   },
   floorLabelBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    width: 36,
+    gap: 4,
+    width: 32,
   },
   floorIndicatorDot: {
     width: 6,
@@ -1043,9 +1068,12 @@ const styles = StyleSheet.create({
   fourCellsWrapper: {
     flexDirection: 'row',
     gap: 2,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginRight: 4,
   },
   cellBox: {
-    width: 25,
+    width: 24,
     height: 18,
     borderWidth: 1.5,
     borderRadius: 2,
