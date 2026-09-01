@@ -2564,7 +2564,7 @@ export const MOCK_ROUTES: MockRoute[] = [
         return saved.value;
       }
 
-      let defaultFields: Array<{ id: string; type: string; label: string; required: boolean; visible: boolean; options?: string[] }> = [];
+      let defaultFields: Array<{ id: string; type: string; label: string; required: boolean; visible: boolean; options?: string[]; section?: string }> = [];
 
       if (name.toLowerCase().includes('enrollment')) {
         defaultFields = [
@@ -2589,12 +2589,85 @@ export const MOCK_ROUTES: MockRoute[] = [
         ];
       } else if (name.toLowerCase().includes('ablls') || name.toLowerCase().includes('skills')) {
         defaultFields = [
-          { id: 'a1', type: 'Date', label: 'Assessment Date', required: true, visible: true },
-          { id: 'a2', type: 'Text', label: 'Assessor Name', required: true, visible: true },
-          { id: 'a3', type: 'Number', label: 'Receptive Language Score', required: true, visible: true },
-          { id: 'a4', type: 'Number', label: 'Vocal Imitation Score', required: true, visible: true },
-          { id: 'a5', type: 'TextArea', label: 'Clinical Recommendations', required: false, visible: true },
-          { id: 'a6', type: 'Checkbox', label: 'Eligible for Direct Therapy', required: false, visible: true },
+          // Visual Performance (A)
+          { id: 'A1', type: 'Radio', label: 'A1: Matches identical objects', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'A2', type: 'Radio', label: 'A2: Matches identical pictures to objects', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'A3', type: 'Radio', label: 'A3: Matches non-identical pictures', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'A4', type: 'Radio', label: 'A4: Sorts by color and shape', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'A5', type: 'Radio', label: 'A5: Completes simple puzzle (4 pieces)', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'A6', type: 'Radio', label: 'A6: Matches shapes (circle, square, triangle)', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'A7', type: 'Radio', label: 'A7: Selects named object from array of 3', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Motor Imitation (B)
+          { id: 'B1', type: 'Radio', label: 'B1: Gross motor imitation', required: true, visible: true, section: 'Motor Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'B2', type: 'Radio', label: 'B2: Fine motor imitation', required: true, visible: true, section: 'Motor Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'B3', type: 'Radio', label: 'B3: Imitation with objects', required: true, visible: true, section: 'Motor Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'B4', type: 'Radio', label: 'B4: Sequential imitation', required: true, visible: true, section: 'Motor Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Vocal Imitation (C)
+          { id: 'C1', type: 'Radio', label: 'C1: Imitation of vowel sounds', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'C2', type: 'Radio', label: 'C2: Imitation of consonant sounds', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'C3', type: 'Radio', label: 'C3: Imitation of words', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'C4', type: 'Radio', label: 'C4: Imitation of phrases', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'C5', type: 'Radio', label: 'C5: Imitation of pitch and tone', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'C6', type: 'Radio', label: 'C6: Imitation of volume', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'C7', type: 'Radio', label: 'C7: Imitation of multi-syllables', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Receptive Language (D)
+          { id: 'D1', type: 'Radio', label: 'D1: Responds to own name', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D2', type: 'Radio', label: 'D2: Follows simple commands', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D3', type: 'Radio', label: 'D3: Identifies body parts', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D4', type: 'Radio', label: 'D4: Answers yes/no questions', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D5', type: 'Radio', label: 'D5: Identifies common objects', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D6', type: 'Radio', label: 'D6: Identifies familiar people', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D7', type: 'Radio', label: 'D7: Follows 2-step instructions', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'D8', type: 'Radio', label: 'D8: Selects item by function/feature', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Requesting (E)
+          { id: 'E1', type: 'Radio', label: 'E1: Requests preferred item', required: true, visible: true, section: 'Requesting (Mands)', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'E2', type: 'Radio', label: 'E2: Requests missing item', required: true, visible: true, section: 'Requesting (Mands)', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'E3', type: 'Radio', label: 'E3: Requests help', required: true, visible: true, section: 'Requesting (Mands)', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'E4', type: 'Radio', label: 'E4: Requests information', required: true, visible: true, section: 'Requesting (Mands)', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'E5', type: 'Radio', label: 'E5: Requests attention from peers', required: true, visible: true, section: 'Requesting (Mands)', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'E6', type: 'Radio', label: 'E6: Requests removal of aversive item', required: true, visible: true, section: 'Requesting (Mands)', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Play and Leisure (F)
+          { id: 'F1', type: 'Radio', label: 'F1: Plays independently', required: true, visible: true, section: 'Play and Leisure', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'F2', type: 'Radio', label: 'F2: Engages in parallel play', required: true, visible: true, section: 'Play and Leisure', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'F3', type: 'Radio', label: 'F3: Turns taking with peers', required: true, visible: true, section: 'Play and Leisure', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'F4', type: 'Radio', label: 'F4: Initiates play with peers', required: true, visible: true, section: 'Play and Leisure', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'F5', type: 'Radio', label: 'F5: Cooperative toy/board games', required: true, visible: true, section: 'Play and Leisure', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'F6', type: 'Radio', label: 'F6: Pretend / symbolic play', required: true, visible: true, section: 'Play and Leisure', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Social Interaction (G)
+          { id: 'G1', type: 'Radio', label: 'G1: Responds to greetings', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'G2', type: 'Radio', label: 'G2: Initiates greetings', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'G3', type: 'Radio', label: 'G3: Shares attention', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'G4', type: 'Radio', label: 'G4: Engages in group activities', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'G5', type: 'Radio', label: 'G5: Maintains eye contact', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'G6', type: 'Radio', label: 'G6: Recognizes facial expressions', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'G7', type: 'Radio', label: 'G7: Shares items with peers', required: true, visible: true, section: 'Social Interaction', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Writing (H)
+          { id: 'H1', type: 'Radio', label: 'H1: Holds writing tool', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'H2', type: 'Radio', label: 'H2: Draws linear marks', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'H3', type: 'Radio', label: 'H3: Traces shapes & letters', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'H4', type: 'Radio', label: 'H4: Copies letters & numbers', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'H5', type: 'Radio', label: 'H5: Writes own name', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'H6', type: 'Radio', label: 'H6: Prints words from dictation', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Dressing (I)
+          { id: 'I1', type: 'Radio', label: 'I1: Pulls off shoes and socks', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'I2', type: 'Radio', label: 'I2: Pulls up pants', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'I3', type: 'Radio', label: 'I3: Puts on shirt / jacket', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'I4', type: 'Radio', label: 'I4: Operates zipper', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'I5', type: 'Radio', label: 'I5: Buttons large buttons', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'I6', type: 'Radio', label: 'I6: Snaps fasteners', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+          { id: 'I7', type: 'Radio', label: 'I7: Ties or fastens footwear', required: true, visible: true, section: 'Dressing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+
+          // Custom Institutional Fields
+          { id: 'ab_rec', type: 'TextArea', label: 'Clinical Recommendations', required: false, visible: true, section: 'General' },
+          { id: 'ab_elig', type: 'Checkbox', label: 'Eligible for Direct Therapy', required: false, visible: true, section: 'General' },
         ];
       } else if (name.toLowerCase().includes('social')) {
         defaultFields = [

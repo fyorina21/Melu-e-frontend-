@@ -17,21 +17,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getSkillsAssessment, saveSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import { getFormConfig } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
+import { DEFAULT_ABLLS_DOMAINS, buildAbllsDomainsFromConfig, type AbllsDomainDef } from './abllsConfigHelper';
 import type { SessionStackParamList } from '../../types';
 
 type Score = 0 | 1 | 2 | 'NA';
 const SCORES: Score[] = [0, 1, 2, 'NA'];
-
-interface AbllsItem {
-  id: string;
-  description: string;
-}
-
-interface AbllsDomain {
-  name: string;
-  items: AbllsItem[];
-}
 
 const SCORE_COLOR: Record<Score, string> = {
   0: '#EF4444',
@@ -47,84 +39,6 @@ const SCORE_LABEL: Record<Score, string> = {
   NA: 'N/A',
 };
 
-const ABLLS_DOMAINS: AbllsDomain[] = [
-  {
-    name: 'Visual Performance',
-    items: [
-      { id: 'A1', description: 'Matches identical objects' },
-      { id: 'A2', description: 'Matches identical pictures to objects' },
-      { id: 'A3', description: 'Matches non-identical pictures' },
-      { id: 'A4', description: 'Sorts by color and shape' },
-      { id: 'A5', description: 'Completes simple puzzle (4 pieces)' },
-      { id: 'A6', description: 'Matches shapes (circle, square, triangle)' },
-      { id: 'A7', description: 'Selects named object from array of 3' },
-    ],
-  },
-  {
-    name: 'Motor Imitation',
-    items: [
-      { id: 'B1', description: 'Gross motor imitation' },
-      { id: 'B2', description: 'Fine motor imitation' },
-      { id: 'B3', description: 'Imitation with objects' },
-      { id: 'B4', description: 'Sequential imitation' },
-    ],
-  },
-  {
-    name: 'Vocal Imitation',
-    items: [
-      { id: 'C1', description: 'Imitation of vowel sounds' },
-      { id: 'C2', description: 'Imitation of consonant sounds' },
-      { id: 'C3', description: 'Imitation of words' },
-      { id: 'C4', description: 'Imitation of phrases' },
-    ],
-  },
-  {
-    name: 'Receptive Language',
-    items: [
-      { id: 'D1', description: 'Responds to own name' },
-      { id: 'D2', description: 'Follows simple commands' },
-      { id: 'D3', description: 'Identifies body parts' },
-      { id: 'D4', description: 'Answers yes/no questions' },
-    ],
-  },
-  {
-    name: 'Requesting',
-    items: [
-      { id: 'E1', description: 'Requests preferred item' },
-      { id: 'E2', description: 'Requests missing item' },
-      { id: 'E3', description: 'Requests help' },
-      { id: 'E4', description: 'Requests information' },
-    ],
-  },
-  {
-    name: 'Play and Leisure',
-    items: [
-      { id: 'F1', description: 'Plays independently' },
-      { id: 'F2', description: 'Engages in parallel play' },
-      { id: 'F3', description: 'Turns taking with peers' },
-      { id: 'F4', description: 'Initiates play with peers' },
-    ],
-  },
-  {
-    name: 'Social Interaction',
-    items: [
-      { id: 'G1', description: 'Responds to greetings' },
-      { id: 'G2', description: 'Initiates greetings' },
-      { id: 'G3', description: 'Shares attention' },
-      { id: 'G4', description: 'Engages in group activities' },
-    ],
-  },
-  {
-    name: 'Writing',
-    items: [
-      { id: 'H1', description: 'Holds writing tool' },
-      { id: 'H2', description: 'Traces lines and shapes' },
-      { id: 'H3', description: 'Writes letters' },
-      { id: 'H4', description: 'Writes name' },
-    ],
-  },
-];
-
 type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
 
 interface StudentProfile {
@@ -139,6 +53,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeDomain, setActiveDomain] = useState(0);
+  const [domains, setDomains] = useState<AbllsDomainDef[]>(DEFAULT_ABLLS_DOMAINS);
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
@@ -149,6 +64,14 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       setProfile(res);
     } catch (err) {
       setProfile(null);
+    }
+    try {
+      const { data: cfg } = await getFormConfig('ABLLS Assessment Form');
+      if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+        setDomains(buildAbllsDomainsFromConfig(cfg.fields));
+      }
+    } catch (err) {
+      setDomains(DEFAULT_ABLLS_DOMAINS);
     }
     try {
       const { data: saved } = await getSkillsAssessment(studentId);
@@ -166,7 +89,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const totalItems = ABLLS_DOMAINS.reduce((sum, d) => sum + d.items.length, 0);
+  const totalItems = domains.reduce((sum, d) => sum + d.items.length, 0);
   const totalAnswered = Object.keys(scores).length;
 
   useEffect(() => {
@@ -182,12 +105,12 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   if (loading) return <ScreenLoader />;
 
-  const domain = ABLLS_DOMAINS[activeDomain];
+  const domain = domains[activeDomain] || domains[0];
   const studentName = profile?.fullName || 'Student A';
   const studentInitials = studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase();
 
-  const domainTotalItems = domain.items.length;
-  const domainAnswered = domain.items.filter((i) => scores[i.id] !== undefined).length;
+  const domainTotalItems = domain?.items?.length ?? 0;
+  const domainAnswered = (domain?.items ?? []).filter((i) => scores[i.id] !== undefined).length;
   const domainProgress = domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
 
   const setScore = (itemId: string, score: Score) =>
@@ -253,7 +176,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
           style={styles.tabsScroll}
           contentContainerStyle={styles.tabsRow}
         >
-          {ABLLS_DOMAINS.map((d, idx) => (
+          {domains.map((d, idx) => (
             <TouchableOpacity
               key={d.name}
               style={[styles.tab, activeDomain === idx && styles.tabActive]}

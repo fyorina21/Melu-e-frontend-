@@ -32,6 +32,24 @@ const FORMS = [
 ];
 const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Checkbox', 'Radio', 'TextArea', 'File'];
 const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
+const ABLLS_SECTIONS = [
+  'Visual Performance',
+  'Motor Imitation',
+  'Vocal Imitation',
+  'Receptive Language',
+  'Requesting (Mands)',
+  'Play and Leisure',
+  'Social Interaction',
+  'Writing',
+  'Dressing',
+  'General',
+];
+
+const getSectionsForForm = (formName: string): string[] => {
+  if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
+  if (formName === 'ABLLS Assessment Form') return ABLLS_SECTIONS;
+  return [];
+};
 
 interface FormField {
   id: string;
@@ -164,17 +182,20 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   };
 
   const cycleSection = (id: string) => {
+    const sections = getSectionsForForm(selectedForm);
+    if (sections.length === 0) return;
     setFields((prev) =>
       prev.map((f) => {
         if (f.id !== id) return f;
-        const current = f.section || inferSection(f.label);
-        const nextIdx = (ENROLLMENT_SECTIONS.indexOf(current) + 1) % ENROLLMENT_SECTIONS.length;
-        const nextSection = ENROLLMENT_SECTIONS[nextIdx];
+        const current = f.section || (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
+        const curIdx = sections.indexOf(current);
+        const nextIdx = curIdx >= 0 ? (curIdx + 1) % sections.length : 0;
+        const nextSection = sections[nextIdx];
         return { ...f, section: nextSection };
       })
     );
     setIsDefault(false);
-    showToast('Target section updated — click Save to persist', 'info');
+    showToast('Domain / Target section updated — click Save to persist', 'info');
   };
 
   const handleConfirmAddField = () => {
@@ -192,13 +213,16 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             .filter(Boolean)
         : undefined;
 
+    const applicableSections = getSectionsForForm(selectedForm);
+    const targetSection = applicableSections.length > 0 ? newFieldSection : undefined;
+
     const newEntry: FormField = {
       id: `f-${Date.now()}`,
       type: newFieldType,
       label: trimmedLabel,
       required: newFieldRequired,
       visible: true,
-      section: selectedForm === 'Enrollment Wizard' ? newFieldSection : undefined,
+      section: targetSection,
       ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
     };
 
@@ -212,7 +236,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       user: 'Admin A',
       field: trimmedLabel,
       oldValue: 'None',
-      newValue: `Added (${newFieldType} - ${newFieldSection})`,
+      newValue: `Added (${newFieldType}${targetSection ? ` - ${targetSection}` : ''})`,
     };
     setHistory((prev) => [newHistoryEntry, ...prev]);
 
@@ -322,13 +346,15 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   <Text style={styles.fieldLabelText}>
                     {field.label} {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
                   </Text>
-                  {selectedForm === 'Enrollment Wizard' && (
+                  {getSectionsForForm(selectedForm).length > 0 && (
                     <TouchableOpacity
                       style={styles.sectionPill}
                       onPress={() => cycleSection(field.id)}
                     >
                       <Feather name="folder" size={10} color="#0284C7" />
-                      <Text style={styles.sectionPillText}>{field.section || inferSection(field.label)}</Text>
+                      <Text style={styles.sectionPillText}>
+                        {field.section || (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General')}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -403,11 +429,11 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 </View>
               </View>
 
-              {selectedForm === 'Enrollment Wizard' && (
+              {getSectionsForForm(selectedForm).length > 0 && (
                 <View style={styles.inlineSectionRow}>
-                  <Text style={styles.inlineFieldLabel}>Target Tab / Section</Text>
+                  <Text style={styles.inlineFieldLabel}>Target Domain / Section</Text>
                   <View style={styles.sectionChipRow}>
-                    {ENROLLMENT_SECTIONS.map((sec) => (
+                    {getSectionsForForm(selectedForm).map((sec) => (
                       <TouchableOpacity
                         key={sec}
                         style={[styles.sectionChip, newFieldSection === sec && styles.sectionChipActive]}
