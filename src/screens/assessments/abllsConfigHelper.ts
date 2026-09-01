@@ -2,6 +2,7 @@ export interface AbllsItemDef {
   id: string;
   description: string;
   maxCells?: number;
+  options?: string[];
 }
 
 export interface AbllsDomainDef {
@@ -126,7 +127,7 @@ export const DEFAULT_ABLLS_DOMAINS: AbllsDomainDef[] = [
 ];
 
 export function buildAbllsDomainsFromConfig(
-  fields?: Array<{ id: string; label: string; visible?: boolean; section?: string }>
+  fields?: Array<{ id: string; label: string; visible?: boolean; section?: string; options?: string[] }>
 ): AbllsDomainDef[] {
   if (!fields || !Array.isArray(fields) || fields.length === 0) {
     return DEFAULT_ABLLS_DOMAINS;
@@ -157,6 +158,7 @@ export function buildAbllsDomainsFromConfig(
       domainMap.get(domainName)!.push({
         id: itemId,
         description,
+        options: f.options,
       });
     }
   });

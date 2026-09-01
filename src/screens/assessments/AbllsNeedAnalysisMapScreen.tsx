@@ -95,6 +95,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     const items = d.items.map((it) => ({
       id: it.id,
       description: it.description,
+      options: it.options,
       score: scores[it.id] ?? ('NA' as Score),
     }));
     const c0 = items.filter((i) => i.score === 0).length;

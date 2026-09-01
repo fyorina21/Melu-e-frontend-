@@ -39,6 +39,21 @@ const SCORE_LABEL: Record<Score, string> = {
   NA: 'N/A',
 };
 
+function parseScoreFromOption(opt: string, optIndex: number, totalOptions: number): Score {
+  const trimmed = opt.trim();
+  if (trimmed.toUpperCase() === 'N/A' || trimmed.toUpperCase() === 'NA') return 'NA';
+  const numMatch = trimmed.match(/^(\d+)/);
+  if (numMatch) {
+    const n = parseInt(numMatch[1], 10);
+    if (n === 0) return 0;
+    if (n === 1) return totalOptions <= 3 ? 2 : 1;
+    if (n >= 2) return 2;
+  }
+  if (trimmed.toLowerCase().includes('pass') || trimmed.toLowerCase().includes('mastered') || trimmed.toLowerCase().includes('yes')) return 2;
+  if (trimmed.toLowerCase().includes('emerging') || trimmed.toLowerCase().includes('prompted') || trimmed.toLowerCase().includes('developing')) return 1;
+  return 0;
+}
+
 type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
 
 interface StudentProfile {
@@ -215,15 +230,21 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
               {/* Score Selector Options */}
               <View style={styles.scoreRow}>
-                {SCORES.map((s) => {
+                {(item.options && item.options.length > 0
+                  ? item.options
+                  : ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A']
+                ).map((opt, oIdx, arr) => {
+                  const s = parseScoreFromOption(opt, oIdx, arr.length);
                   const selected = scores[item.id] === s;
+                  const color = s === 2 ? '#16A34A' : s === 1 ? '#EAB308' : s === 'NA' ? '#94A3B8' : '#EF4444';
+
                   return (
                     <TouchableOpacity
-                      key={String(s)}
+                      key={`${item.id}-${opt}`}
                       style={[
                         styles.scoreBtn,
-                        { borderColor: SCORE_COLOR[s] },
-                        selected && { backgroundColor: SCORE_COLOR[s] },
+                        { borderColor: color },
+                        selected && { backgroundColor: color },
                       ]}
                       onPress={() => setScore(item.id, s)}
                       activeOpacity={0.7}
@@ -231,11 +252,11 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
                       <Text
                         style={[
                           styles.scoreBtnText,
-                          { color: SCORE_COLOR[s] },
+                          { color: selected ? '#FFFFFF' : color },
                           selected && styles.scoreBtnTextActive,
                         ]}
                       >
-                        {s === 'NA' ? 'N/A' : SCORE_LABEL[s]}
+                        {opt}
                       </Text>
                     </TouchableOpacity>
                   );

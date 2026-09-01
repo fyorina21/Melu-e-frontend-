@@ -51,6 +51,13 @@ const getSectionsForForm = (formName: string): string[] => {
   return [];
 };
 
+const SCORE_SCALE_PRESETS = [
+  { label: '3-Level (0, 1, 2, N/A)', short: '3-Level', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+  { label: '2-Level (0, 1, N/A)', short: '2-Level', options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'] },
+  { label: '4-Level (0, 1, 2, 3, N/A)', short: '4-Level', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'] },
+  { label: 'Pass / Fail', short: 'Pass/Fail', options: ['Fail', 'Emerging', 'Pass', 'N/A'] },
+];
+
 interface FormField {
   id: string;
   type: string;
@@ -88,6 +95,15 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [newFieldOptions, setNewFieldOptions] = useState<string>('');
   const [newFieldRequired, setNewFieldRequired] = useState<boolean>(false);
   const [newFieldSection, setNewFieldSection] = useState<string>('Student Info');
+
+  // Edit Existing Field Modal State
+  const [editingField, setEditingField] = useState<FormField | null>(null);
+  const [editLabel, setEditLabel] = useState<string>('');
+  const [editType, setEditType] = useState<string>('Text');
+  const [showEditTypeModal, setShowEditTypeModal] = useState<boolean>(false);
+  const [editOptions, setEditOptions] = useState<string>('');
+  const [editRequired, setEditRequired] = useState<boolean>(false);
+  const [editSection, setEditSection] = useState<string>('General');
 
   // Preview Modal State
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
@@ -248,6 +264,74 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     showToast(`Added field "${trimmedLabel}" to ${newFieldSection} — click Save to persist`, 'success');
   };
 
+  const openEditModal = (field: FormField) => {
+    setEditingField(field);
+    setEditLabel(field.label);
+    setEditType(field.type);
+    setEditOptions(field.options ? field.options.join(', ') : '');
+    setEditRequired(field.required);
+    setEditSection(field.section || (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General'));
+  };
+
+  const handleSaveEditField = () => {
+    if (!editingField) return;
+    if (!editLabel.trim()) {
+      showToast('Field label cannot be empty', 'error');
+      return;
+    }
+    const trimmedLabel = editLabel.trim();
+    const parsedOptions =
+      editType === 'Dropdown' || editType === 'Radio'
+        ? editOptions
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+
+    setFields((prev) =>
+      prev.map((f) =>
+        f.id === editingField.id
+          ? {
+              ...f,
+              label: trimmedLabel,
+              type: editType,
+              required: editRequired,
+              section: editSection,
+              options: parsedOptions,
+            }
+          : f
+      )
+    );
+
+    const today = new Date().toISOString().split('T')[0];
+    const newHistoryEntry: HistoryEntry = {
+      date: today,
+      user: 'Admin A',
+      field: trimmedLabel,
+      oldValue: `${editingField.label} (${editingField.options?.join('/') || 'None'})`,
+      newValue: `Updated (${editType} - ${parsedOptions?.join('/') || 'None'})`,
+    };
+    setHistory((prev) => [newHistoryEntry, ...prev]);
+
+    setEditingField(null);
+    setIsDefault(false);
+    showToast('Field configuration updated — click Save to persist', 'success');
+  };
+
+  const applyBulkAbllsPreset = (presetOptions: string[]) => {
+    setFields((prev) =>
+      prev.map((f) => {
+        // If it's a domain skill (Radio or has code like A1, B1, etc.)
+        if (f.type === 'Radio' || (f.section && f.section !== 'General') || f.id.match(/^[A-I]\d+$/)) {
+          return { ...f, options: presetOptions };
+        }
+        return f;
+      })
+    );
+    setIsDefault(false);
+    showToast('Applied scoring preset to all ABLLS items — click Save to persist', 'success');
+  };
+
   const handleSave = async () => {
     if (fields.length === 0) {
       showToast('At least one field is required', 'error');
@@ -335,6 +419,27 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
         <View style={styles.canvasContainer}>
           <Text style={styles.canvasHeader}>FORM CANVAS — {selectedForm.toUpperCase()}</Text>
 
+          {/* Quick Scoring Scale Presets for ABLLS */}
+          {selectedForm === 'ABLLS Assessment Form' && (
+            <View style={styles.abllsPresetBar}>
+              <View style={styles.abllsPresetHeader}>
+                <Feather name="sliders" size={14} color="#0369A1" />
+                <Text style={styles.abllsPresetTitle}>Apply Scoring Scale Preset to All ABLLS Skill Items:</Text>
+              </View>
+              <View style={styles.presetButtonsRow}>
+                {SCORE_SCALE_PRESETS.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.label}
+                    style={styles.presetBtn}
+                    onPress={() => applyBulkAbllsPreset(preset.options)}
+                  >
+                    <Text style={styles.presetBtnText}>{preset.short}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
           {fields.map((field) => (
             <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
               <View style={styles.typeBadge}>
@@ -374,6 +479,10 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   thumbColor="#FFFFFF"
                   style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
                 />
+
+                <TouchableOpacity onPress={() => openEditModal(field)} style={styles.iconBtn}>
+                  <Feather name="edit-2" size={15} color="#0284C7" />
+                </TouchableOpacity>
 
                 <TouchableOpacity onPress={() => toggleVisible(field.id)} style={styles.iconBtn}>
                   <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color={field.visible ? '#0284C7' : '#94A3B8'} />
@@ -450,10 +559,23 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
               {(newFieldType === 'Dropdown' || newFieldType === 'Radio') && (
                 <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldLabel}>Options (comma-separated)</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={styles.inlineFieldLabel}>Options (comma-separated)</Text>
+                    <View style={styles.presetChipsRow}>
+                      {SCORE_SCALE_PRESETS.map((p) => (
+                        <TouchableOpacity
+                          key={p.short}
+                          style={styles.presetChip}
+                          onPress={() => setNewFieldOptions(p.options.join(', '))}
+                        >
+                          <Text style={styles.presetChipText}>{p.short}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
                   <TextInput
                     style={styles.inlineTextInput}
-                    placeholder="e.g. Low, Medium, High"
+                    placeholder="e.g. 0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A"
                     placeholderTextColor="#94A3B8"
                     value={newFieldOptions}
                     onChangeText={(val: string) => setNewFieldOptions(val)}
@@ -600,6 +722,141 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
           </View>
         </View>
       </Modal>
+
+      {/* Edit Field Modal */}
+      <Modal visible={editingField !== null} transparent animationType="fade" onRequestClose={() => setEditingField(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Edit Field / Options</Text>
+                <Text style={styles.modalSubtitle}>Customize label, scoring options, and requirement</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditingField(null)}>
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Field Label */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>Field Label & Description</Text>
+                <TextInput
+                  style={styles.inlineTextInput}
+                  value={editLabel}
+                  onChangeText={(val) => setEditLabel(val)}
+                  placeholder="e.g. A1: Matches identical objects"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+
+              {/* Field Type & Domain */}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={[styles.editFormGroup, { flex: 1 }]}>
+                  <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                  <TouchableOpacity
+                    style={styles.inlineTypeDropdown}
+                    onPress={() => setShowEditTypeModal(true)}
+                  >
+                    <Text style={styles.inlineTypeDropdownText}>{editType}</Text>
+                    <Feather name="chevron-down" size={14} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                {getSectionsForForm(selectedForm).length > 0 && (
+                  <View style={[styles.editFormGroup, { flex: 1.5 }]}>
+                    <Text style={styles.inlineFieldLabel}>Domain / Section</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 2 }}>
+                      <View style={styles.sectionChipRow}>
+                        {getSectionsForForm(selectedForm).map((sec) => (
+                          <TouchableOpacity
+                            key={sec}
+                            style={[styles.sectionChip, editSection === sec && styles.sectionChipActive]}
+                            onPress={() => setEditSection(sec)}
+                          >
+                            <Text style={[styles.sectionChipText, editSection === sec && styles.sectionChipTextActive]}>
+                              {sec}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {/* Options Input with Presets */}
+              {(editType === 'Dropdown' || editType === 'Radio') && (
+                <View style={styles.editFormGroup}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={styles.inlineFieldLabel}>Scoring Options (comma-separated)</Text>
+                    <View style={styles.presetChipsRow}>
+                      {SCORE_SCALE_PRESETS.map((p) => (
+                        <TouchableOpacity
+                          key={p.short}
+                          style={styles.presetChip}
+                          onPress={() => setEditOptions(p.options.join(', '))}
+                        >
+                          <Text style={styles.presetChipText}>{p.short}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <TextInput
+                    style={[styles.inlineTextInput, { height: 40 }]}
+                    value={editOptions}
+                    onChangeText={(val) => setEditOptions(val)}
+                    placeholder="e.g. 0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              )}
+
+              {/* Required Switch */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={styles.inlineFieldLabel}>Mark as Required Field</Text>
+                <Switch
+                  value={editRequired}
+                  onValueChange={(v) => setEditRequired(v)}
+                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.inlineButtonRow}>
+              <TouchableOpacity style={styles.confirmAddBtn} onPress={handleSaveEditField}>
+                <Text style={styles.confirmAddBtnText}>Save Field Changes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelAddBtn} onPress={() => setEditingField(null)}>
+                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Select Field Type Modal for Edit */}
+      <Modal visible={showEditTypeModal} transparent animationType="fade" onRequestClose={() => setShowEditTypeModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowEditTypeModal(false)}>
+          <View style={styles.dropdownModalBox}>
+            {FIELD_TYPES.map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.dropdownOption, editType === type && styles.dropdownOptionActive]}
+                onPress={() => {
+                  setEditType(type);
+                  setShowEditTypeModal(false);
+                }}
+              >
+                <Text style={[styles.dropdownOptionText, editType === type && styles.dropdownOptionTextActive]}>
+                  {type}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -659,6 +916,66 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   canvasHeader: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, marginBottom: 4 },
+
+  abllsPresetBar: {
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 8,
+    padding: 10,
+    gap: 8,
+    marginBottom: 6,
+  },
+  abllsPresetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  abllsPresetTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  presetButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  presetBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#0284C7',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  presetBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  presetChipsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  presetChip: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  presetChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  editFormGroup: {
+    gap: 4,
+    marginBottom: 8,
+  },
 
   fieldRow: {
     flexDirection: 'row',
