@@ -45,7 +45,7 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'AbllsNeedMap'>;
 type ViewMode = 'grid' | 'cards' | 'summary';
 
 export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props) {
-  const { studentId } = route.params;
+  const studentId = route?.params?.studentId || 'stu-1';
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [domains, setDomains] = useState<AbllsDomainDef[]>(DEFAULT_ABLLS_DOMAINS);

@@ -1630,20 +1630,44 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'GET',
     pattern: '/teacher/students/:studentId/assessments/:type',
-    handler: (ctx) => ({ studentId: requiredParam(ctx, 'studentId'), type: requiredParam(ctx, 'type'), data: {} }),
+    handler: (ctx) => {
+      const sid = requiredParam(ctx, 'studentId');
+      const type = requiredParam(ctx, 'type');
+      const saved = mockDb
+        .all('assessments')
+        .slice()
+        .reverse()
+        .find((a) => (a.studentId === sid || (!sid && a.studentId === 'stu-1')) && a.type === type);
+      return saved ?? { studentId: sid, type, data: {} };
+    },
   },
   {
     method: 'POST',
     pattern: '/teacher/students/:studentId/assessments/:type',
     handler: (ctx) => {
-      const sid = requiredParam(ctx, 'studentId');
+      const sid = requiredParam(ctx, 'studentId') || 'stu-1';
       const type = requiredParam(ctx, 'type');
+      const payload = bodyAs<Record<string, unknown>>(ctx);
+      const targetStatus = (payload.status as any) || 'in_progress';
+      const existing = mockDb
+        .all('assessments')
+        .find((a) => a.studentId === sid && a.type === type);
+
+      if (existing) {
+        mockDb.updateById('assessments', existing.id, {
+          data: payload,
+          status: targetStatus,
+          updatedAt: new Date().toISOString(),
+        });
+        return { ...existing, data: payload, status: targetStatus };
+      }
+
       const assessment: MockAssessment = {
         id: newId('assess'),
         studentId: sid,
         type: type as 'skills' | 'behavior' | 'preference' | 'sensory',
-        status: 'in_progress',
-        data: bodyAs<Record<string, unknown>>(ctx),
+        status: targetStatus,
+        data: payload,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

@@ -63,7 +63,7 @@ interface StudentProfile {
 }
 
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
-  const { studentId } = route.params;
+  const studentId = route?.params?.studentId || 'stu-1';
   const { showToast } = useToast();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,9 +90,14 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     }
     try {
       const { data: saved } = await getSkillsAssessment(studentId);
-      const savedData = (saved?.data ?? {}) as { scores?: Record<string, Score>; notes?: Record<string, string> };
+      const savedData = (saved?.data ?? {}) as {
+        scores?: Record<string, Score>;
+        notes?: Record<string, string>;
+        customFields?: Record<string, any>;
+      };
       if (savedData.scores) setScores(savedData.scores);
       if (savedData.notes) setNotes(savedData.notes);
+      if (savedData.customFields) setCustomFields(savedData.customFields);
     } catch (err) {
       setScores({});
       setNotes({});
@@ -111,12 +116,12 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      saveSkillsAssessment(studentId, { scores, notes }).catch(() => {});
+      saveSkillsAssessment(studentId, { scores, notes, customFields }).catch(() => {});
     }, 900);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [scores, notes, studentId, totalAnswered]);
+  }, [scores, notes, customFields, studentId, totalAnswered]);
 
   if (loading) return <ScreenLoader />;
 
@@ -134,13 +139,18 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const handleSaveDraft = async () => {
     try {
       await saveSkillsAssessment(studentId, { scores, notes, customFields });
-      showToast(`${studentName} ABLLS assessment draft saved.`, 'success');
+      showToast(`${studentName} ABLLS assessment saved successfully.`, 'success');
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');
     }
   };
 
-  const openNeedMap = () => navigation?.navigate?.('AbllsNeedMap', { studentId });
+  const openNeedMap = async () => {
+    try {
+      await saveSkillsAssessment(studentId, { scores, notes, customFields });
+    } catch (err) {}
+    navigation?.navigate?.('AbllsNeedMap', { studentId });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
