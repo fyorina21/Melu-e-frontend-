@@ -301,17 +301,17 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             .legend-row { display: flex; align-items: center; gap: 8px; }
             .sample-box { width: 14px; height: 14px; border: 1px solid #0f172a; display: inline-block; }
             
-            .grid-container { display: flex; gap: 12px; overflow-x: auto; align-items: flex-end; padding: 16px 0; border: 1px solid #cbd5e1; background: #f8fafc; }
-            .tower-col { display: flex; flex-direction: column; align-items: center; min-width: 90px; }
-            .tower-body { display: flex; flex-direction: column; gap: 2px; border: 1px solid #0f172a; padding: 4px; background: #fff; width: 100%; box-sizing: border-box; }
-            .tower-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-            .item-label { font-size: 9px; font-weight: 700; color: #0f172a; width: 22px; }
-            .cells-wrapper { display: flex; gap: 1px; }
-            .cell { width: 12px; height: 10px; display: inline-block; box-sizing: border-box; }
-            .tower-footer { text-align: center; margin-top: 6px; font-size: 10px; font-weight: 700; width: 100%; word-break: break-word; }
-            .domain-code { font-size: 12px; font-weight: 800; }
-            .domain-title { font-size: 9px; color: #334155; line-height: 1.1; margin: 2px 0; }
-            .domain-pct { font-size: 9px; color: #16a34a; }
+            .grid-container { display: flex; gap: 16px; overflow-x: auto; align-items: flex-end; padding: 20px; border: 1.5px solid #cbd5e1; background: #f8fafc; }
+            .tower-col { display: flex; flex-direction: column; align-items: center; min-width: 140px; }
+            .tower-body { display: flex; flex-direction: column; gap: 4px; border: 1.5px solid #0f172a; padding: 6px; background: #fff; width: 100%; box-sizing: border-box; }
+            .tower-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+            .item-label { font-size: 11px; font-weight: 800; color: #0f172a; width: 30px; }
+            .cells-wrapper { display: flex; gap: 2px; }
+            .cell { width: 18px; height: 14px; display: inline-block; box-sizing: border-box; }
+            .tower-footer { text-align: center; margin-top: 8px; font-size: 11px; font-weight: 700; width: 100%; word-break: break-word; }
+            .domain-code { font-size: 15px; font-weight: 900; }
+            .domain-title { font-size: 11px; color: #334155; line-height: 1.2; margin: 3px 0; }
+            .domain-pct { font-size: 11px; color: #16a34a; font-weight: 800; }
 
             .summary-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
             .summary-table th, .summary-table td { border: 1px solid #cbd5e1; padding: 6px 10px; text-align: left; }
@@ -1092,102 +1092,104 @@ const styles = StyleSheet.create({
   },
   gridColumnsContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 16,
     alignItems: 'flex-start',
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   towerColumn: {
-    width: 105,
+    width: 168,
     backgroundColor: '#F8FAFC',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#94A3B8',
-    borderRadius: 6,
-    padding: 4,
+    borderRadius: 8,
+    padding: 8,
   },
   towerTopTag: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
+    borderBottomWidth: 1.5,
     borderBottomColor: '#CBD5E1',
-    paddingBottom: 4,
-    marginBottom: 4,
+    paddingBottom: 6,
+    marginBottom: 6,
   },
   towerTopCode: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '900',
     color: '#0F172A',
   },
   towerTopCount: {
-    fontSize: 9,
+    fontSize: 11,
     color: '#64748B',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   towerStackBox: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#64748B',
-    padding: 2,
-    gap: 2,
+    borderWidth: 1.5,
+    borderColor: '#475569',
+    borderRadius: 4,
+    padding: 4,
+    gap: 4,
   },
   skillFloorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 1,
-    paddingHorizontal: 2,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    borderRadius: 4,
   },
   floorLabelBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    width: 28,
+    gap: 5,
+    width: 36,
   },
   floorIndicatorDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   floorItemCode: {
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
     color: '#0F172A',
   },
   fourCellsWrapper: {
     flexDirection: 'row',
-    gap: 1,
+    gap: 2,
   },
   cellBox: {
-    width: 13,
-    height: 12,
-    borderWidth: 1,
-    borderRadius: 1,
+    width: 25,
+    height: 18,
+    borderWidth: 1.5,
+    borderRadius: 2,
   },
   towerBottomBox: {
-    marginTop: 6,
+    marginTop: 8,
     alignItems: 'center',
-    gap: 4,
-    paddingTop: 4,
-    borderTopWidth: 1,
+    gap: 6,
+    paddingTop: 6,
+    borderTopWidth: 1.5,
     borderTopColor: '#CBD5E1',
   },
   towerBottomTitle: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#1E293B',
     textAlign: 'center',
-    lineHeight: 12,
+    lineHeight: 15,
   },
   towerMasteryPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   pillGreen: { backgroundColor: '#DCFCE7' },
   pillYellow: { backgroundColor: '#FEF9C3' },
   pillRed: { backgroundColor: '#FEE2E2' },
   towerMasteryText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     color: '#0F172A',
   },
