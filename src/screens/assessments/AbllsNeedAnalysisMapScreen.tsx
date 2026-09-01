@@ -209,8 +209,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             .tower-body { display: flex; flex-direction: column; gap: 4px; border: 1.5px solid #0f172a; padding: 6px; background: #fff; width: 100%; box-sizing: border-box; }
             .tower-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
             .item-label { font-size: 11px; font-weight: 800; color: #0f172a; width: 30px; }
-            .cells-wrapper { display: flex; gap: 2px; }
-            .cell { width: 18px; height: 14px; display: inline-block; box-sizing: border-box; }
+            .cells-wrapper { display: flex; gap: 2px; flex: 1; margin-left: 4px; }
+            .cell { flex: 1; height: 14px; display: inline-block; box-sizing: border-box; }
             .tower-footer { text-align: center; margin-top: 8px; font-size: 11px; font-weight: 700; width: 100%; word-break: break-word; }
             .domain-code { font-size: 15px; font-weight: 900; }
             .domain-title { font-size: 11px; color: #334155; line-height: 1.2; margin: 3px 0; }
@@ -1066,14 +1066,15 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   fourCellsWrapper: {
+    flex: 1,
     flexDirection: 'row',
     gap: 2,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginRight: 4,
+    marginLeft: 6,
+    marginRight: 2,
   },
   cellBox: {
-    width: 24,
+    flex: 1,
     height: 18,
     borderWidth: 1.5,
     borderRadius: 2,
