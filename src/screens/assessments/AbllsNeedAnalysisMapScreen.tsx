@@ -10,30 +10,26 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
+import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { openPrintWindow } from '../../utils/webExport';
-import { getSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import { getSkillsAssessment, saveSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
-import { DEFAULT_ABLLS_DOMAINS, buildAbllsDomainsFromConfig, type AbllsDomainDef } from './abllsConfigHelper';
+import {
+  DEFAULT_ABLLS_DOMAINS,
+  buildAbllsDomainsFromConfig,
+  getItemScoreOptions,
+  saveStorageAssessment,
+  loadStorageAssessment,
+  SCORE_COLOR,
+  SCORE_LABEL,
+  type AbllsDomainDef,
+  type Score,
+} from './abllsConfigHelper';
 import type { SessionStackParamList } from '../../types';
-
-type Score = 0 | 1 | 2 | 'NA';
-
-const SCORE_COLOR: Record<Score, string> = {
-  0: '#EF4444', // Red - Not Demonstrated
-  1: '#EAB308', // Yellow - Emerging
-  2: '#16A34A', // Green - Mastered
-  NA: '#94A3B8', // Grey - N/A
-};
-
-const SCORE_LABEL: Record<Score, string> = {
-  0: '0 — Not Demonstrated',
-  1: '1 — Emerging',
-  2: '2 — Mastered',
-  NA: 'N/A',
-};
 
 interface StudentProfile {
   id: string;
@@ -45,11 +41,27 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'AbllsNeedMap'>;
 type ViewMode = 'grid' | 'cards' | 'summary';
 
 export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props) {
-  const studentId = route?.params?.studentId || 'stu-1';
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
+  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && studentId) {
+      try {
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
+    }
+  }, [studentId]);
+
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [domains, setDomains] = useState<AbllsDomainDef[]>(DEFAULT_ABLLS_DOMAINS);
   const [scores, setScores] = useState<Record<string, Score>>({});
+  const [savedNotes, setSavedNotes] = useState<Record<string, string>>({});
+  const [savedCustomFields, setSavedCustomFields] = useState<Record<string, any>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedItem, setSelectedItem] = useState<{
     id: string;
@@ -76,17 +88,76 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     }
     try {
       const { data: saved } = await getSkillsAssessment(studentId);
-      const savedData = (saved?.data ?? {}) as { scores?: Record<string, Score> };
-      setScores(savedData.scores ?? {});
+      const savedData = (saved?.data ?? saved ?? {}) as {
+        scores?: Record<string, Score>;
+        notes?: Record<string, string>;
+        customFields?: Record<string, any>;
+      };
+      const apiScores = savedData.scores ?? (saved as any)?.scores ?? {};
+      const localData = loadStorageAssessment(studentId);
+      const mergedScores: Record<string, Score> = { ...apiScores, ...(localData?.scores ?? {}) };
+      const mergedNotes = { ...(savedData.notes ?? {}), ...(localData?.notes ?? {}) };
+      const mergedCustomFields = { ...(savedData.customFields ?? {}), ...(localData?.customFields ?? {}) };
+      setScores(mergedScores);
+      if (Object.keys(mergedNotes).length > 0) setSavedNotes(mergedNotes);
+      if (Object.keys(mergedCustomFields).length > 0) setSavedCustomFields(mergedCustomFields);
     } catch (err) {
-      setScores({});
+      const localData = loadStorageAssessment(studentId);
+      if (localData?.scores) setScores(localData.scores);
+      else setScores({});
     }
     setLoading(false);
   }, [studentId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const handleUpdateItemScore = async (itemId: string, newScore: Score) => {
+    const updatedScores: Record<string, Score> = { ...scores, [itemId]: newScore };
+    setScores(updatedScores);
+    if (selectedItem && selectedItem.id === itemId) {
+      setSelectedItem((prev) => (prev ? { ...prev, score: newScore } : null));
+    }
+    saveStorageAssessment(studentId, {
+      scores: updatedScores,
+      notes: savedNotes,
+      customFields: savedCustomFields,
+    });
+    try {
+      await saveSkillsAssessment(studentId, {
+        scores: updatedScores,
+        notes: savedNotes,
+        customFields: savedCustomFields,
+      });
+      showToast(`${itemId} score updated to ${SCORE_LABEL[newScore]}`, 'success');
+    } catch {
+      showToast('Failed to save updated score', 'error');
+    }
+  };
+
+  const handleSaveAll = async () => {
+    setSaving(true);
+    saveStorageAssessment(studentId, {
+      scores,
+      notes: savedNotes,
+      customFields: savedCustomFields,
+    });
+    try {
+      await saveSkillsAssessment(studentId, {
+        scores,
+        notes: savedNotes,
+        customFields: savedCustomFields,
+      });
+      showToast('ABLLS assessment map saved successfully.', 'success');
+    } catch {
+      showToast('Failed to save assessment', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) return <ScreenLoader />;
 
@@ -131,24 +202,32 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     if (item.maxCells) return item.maxCells;
     if (item.options && Array.isArray(item.options) && item.options.length > 0) {
       const nonNA = item.options.filter(
-        (o) => o.trim().toUpperCase() !== 'N/A' && o.trim().toUpperCase() !== 'NA'
+        (o) => o.trim().toUpperCase() !== 'N/A' && o.trim().toUpperCase() !== 'NA' && !o.toLowerCase().includes('not assessed')
       );
-      if (nonNA.length <= 2) return 2;
-      if (nonNA.length === 3) return 4;
-      if (nonNA.length >= 4) return Math.min(4, nonNA.length);
-      return nonNA.length;
+      if (nonNA.length === 2) return 2;
+      const numbers = nonNA
+        .map((o) => {
+          const m = o.trim().match(/^(\d+)/);
+          return m ? parseInt(m[1], 10) : null;
+        })
+        .filter((n): n is number => n !== null);
+      if (numbers.length > 0) {
+        const maxNum = Math.max(...numbers);
+        if (maxNum <= 2) return 4;
+        return Math.max(4, maxNum);
+      }
+      return 4;
     }
     return 4;
   };
 
-  // Compute cell fill count based on item's configured max level and score
-  const getFilledCells = (item: { score: Score; options?: string[]; maxCells?: number }): number => {
-    const maxCells = getMaxCellsForItem(item);
-    if (item.score === 2) return maxCells;
-    if (item.score === 1) {
-      return maxCells === 2 ? 1 : 2;
-    }
-    return 0;
+  // Each number from left to right occupies the graph cells from left to right respectively
+  const getFilledCells = (item: { score: Score | number; options?: string[]; maxCells?: number }): number => {
+    if (item.score === 'NA' || item.score === undefined || item.score === null) return 0;
+    if (item.score === 0) return 1;
+    const num = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
+    if (isNaN(num) || num <= 0) return 0;
+    return num;
   };
 
   const handleExport = () => {
@@ -163,9 +242,11 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
           .map((item) => {
             const maxCells = getMaxCellsForItem(item);
             const filledCount = getFilledCells(item);
+            const scoreNum = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
+            const cellColor = item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
             const cellsHtml = Array.from({ length: maxCells }, (_, cIdx) => {
               const isFilled = cIdx < filledCount;
-              const bg = isFilled ? (item.score === 2 ? '#16A34A' : '#EAB308') : item.score === 'NA' ? '#E2E8F0' : '#FFFFFF';
+              const bg = isFilled ? cellColor : item.score === 'NA' ? '#E2E8F0' : '#FFFFFF';
               return `<span class="cell" style="background-color: ${bg}; border: 1.5px solid #475569;"></span>`;
             }).join('');
             return `
@@ -297,6 +378,14 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             <Text style={styles.backBtnText}>Back to Skills Assessment</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={[styles.saveHeaderBtn, saving && { opacity: 0.7 }]}
+            onPress={handleSaveAll}
+            disabled={saving}
+          >
+            <Feather name="save" size={14} color="#FFFFFF" />
+            <Text style={styles.saveHeaderBtnText}>{saving ? 'Saving...' : 'Save Assessment'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.exportHeaderBtn} onPress={handleExport}>
             <Feather name="printer" size={14} color="#0F172A" />
             <Text style={styles.exportHeaderBtnText}>Print / Export Sheet</Text>
@@ -336,30 +425,30 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
               <View style={styles.legendCellSample}>
                 <View style={[styles.miniCell, { backgroundColor: '#16A34A' }]} />
                 <View style={[styles.miniCell, { backgroundColor: '#16A34A' }]} />
-                <View style={[styles.miniCell, { backgroundColor: '#16A34A' }]} />
-                <View style={[styles.miniCell, { backgroundColor: '#16A34A' }]} />
+                <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
+                <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
               </View>
-              <Text style={styles.legendLabel}>Score 2 &middot; Mastered (4 Cells)</Text>
+              <Text style={styles.legendLabel}>Score 2 &middot; (2 Cells)</Text>
             </View>
 
             <View style={styles.legendRow}>
               <View style={styles.legendCellSample}>
                 <View style={[styles.miniCell, { backgroundColor: '#EAB308' }]} />
-                <View style={[styles.miniCell, { backgroundColor: '#EAB308' }]} />
+                <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
                 <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
                 <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
               </View>
-              <Text style={styles.legendLabel}>Score 1 &middot; Emerging (2 Cells)</Text>
+              <Text style={styles.legendLabel}>Score 1 &middot; (1 Cell)</Text>
             </View>
 
             <View style={styles.legendRow}>
               <View style={styles.legendCellSample}>
-                <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
+                <View style={[styles.miniCell, { backgroundColor: '#EF4444' }]} />
                 <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
                 <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
                 <View style={[styles.miniCell, { backgroundColor: '#FFFFFF' }]} />
               </View>
-              <Text style={styles.legendLabel}>Score 0 &middot; Not Demonstrated (0 Cells)</Text>
+              <Text style={styles.legendLabel}>Score 0 &middot; (1 Red Cell)</Text>
             </View>
 
             <View style={styles.legendRow}>
@@ -476,10 +565,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                               {Array.from({ length: maxCells }, (_, cellIdx) => {
                                 const isFilled = cellIdx < filledCount;
                                 const isNA = item.score === 'NA';
+                                const scoreNum = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
+                                const cellColor = item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
                                 const cellBg = isFilled
-                                  ? item.score === 2
-                                    ? '#16A34A'
-                                    : '#EAB308'
+                                  ? cellColor
                                   : isNA
                                   ? '#E2E8F0'
                                   : '#FFFFFF';
@@ -580,24 +669,29 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                           {item.description}
                         </Text>
                         <View style={styles.cardTileCells}>
-                          {Array.from({ length: maxCells }, (_, cIdx) => (
-                            <View
-                              key={cIdx}
-                              style={[
-                                styles.cardMiniCell,
-                                {
-                                  backgroundColor:
-                                    cIdx < filled
-                                      ? item.score === 2
-                                        ? '#16A34A'
-                                        : '#EAB308'
-                                      : item.score === 'NA'
-                                      ? '#E2E8F0'
-                                      : '#FFFFFF',
-                                },
-                              ]}
-                            />
-                          ))}
+                          {Array.from({ length: maxCells }, (_, cIdx) => {
+                            const isFilled = cIdx < filled;
+                            const isNA = item.score === 'NA';
+                            const scoreNum = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
+                            const cellColor = item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
+                            return (
+                              <View
+                                key={cIdx}
+                                style={[
+                                  styles.cardMiniCell,
+                                  {
+                                    backgroundColor:
+                                      isFilled
+                                        ? cellColor
+                                        : isNA
+                                        ? '#E2E8F0'
+                                        : '#FFFFFF',
+                                    borderColor: '#64748B',
+                                  },
+                                ]}
+                              />
+                            );
+                          })}
                         </View>
                       </TouchableOpacity>
                     );
@@ -762,32 +856,64 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                 </View>
               </View>
 
+              {/* Interactive Score Selector */}
+              <Text style={styles.inspectorScoreSelectorTitle}>Change Score / Mastery Level:</Text>
+              <View style={styles.inspectorScoreBtnRow}>
+                {getItemScoreOptions(selectedItem || undefined).map((opt) => {
+                  const sVal = opt.score;
+                  const isCur = selectedItem?.score === sVal;
+                  const c = opt.color;
+                  return (
+                    <TouchableOpacity
+                      key={opt.label}
+                      style={[
+                        styles.inspectorQuickScoreBtn,
+                        { borderColor: c },
+                        isCur && { backgroundColor: c },
+                      ]}
+                      onPress={() => {
+                        if (selectedItem) {
+                          handleUpdateItemScore(selectedItem.id, sVal);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.inspectorQuickScoreBtnText,
+                          { color: isCur ? '#FFFFFF' : c },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               {/* Progress Tracker representation */}
               <View style={styles.inspectorCellsBox}>
                 <Text style={styles.inspectorCellsLabel}>
-                  {selectedItem ? `${getMaxCellsForItem(selectedItem)}-Floor Progress Tracker:` : 'Progress Tracker:'}
+                  {selectedItem ? `${getMaxCellsForItem(selectedItem)}-Cell Progress Tracker:` : 'Progress Tracker:'}
                 </Text>
                 <View style={styles.inspectorCellsRow}>
                   {selectedItem &&
                     Array.from({ length: getMaxCellsForItem(selectedItem) }, (_, cIdx) => {
                       const filled = getFilledCells(selectedItem);
                       const isF = cIdx < filled;
+                      const scoreNum = typeof selectedItem.score === 'number' ? selectedItem.score : parseInt(String(selectedItem.score), 10);
+                      const cellColor = selectedItem.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
                       return (
                         <View key={cIdx} style={styles.inspectorCellUnit}>
                           <View
                             style={[
                               styles.inspectorCellBlock,
                               {
-                                backgroundColor: isF
-                                  ? selectedItem.score === 2
-                                    ? '#16A34A'
-                                    : '#EAB308'
-                                  : '#F8FAFC',
+                                backgroundColor: isF ? cellColor : '#F8FAFC',
                                 borderColor: '#334155',
                               },
                             ]}
                           />
-                          <Text style={styles.inspectorCellSub}>Floor {cIdx + 1}</Text>
+                          <Text style={styles.inspectorCellSub}>Cell {cIdx + 1}</Text>
                         </View>
                       );
                     })}
@@ -1501,6 +1627,47 @@ const styles = StyleSheet.create({
   inspectorCloseBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
+    fontWeight: '700',
+  },
+  saveHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#2563EB',
+    marginRight: 8,
+  },
+  saveHeaderBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  inspectorScoreSelectorTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginTop: 14,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  inspectorScoreBtnRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  inspectorQuickScoreBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+  },
+  inspectorQuickScoreBtnText: {
+    fontSize: 12,
     fontWeight: '700',
   },
 });
