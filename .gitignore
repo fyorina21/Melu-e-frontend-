@@ -7,3 +7,7 @@ web-build/
 # local docs
 SCREENS_WORKFLOW.md
 *.docx
+
+scratch/
+*.jpg
+
