@@ -1631,13 +1631,14 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'GET',
     pattern: '/teacher/students/:studentId/assessments/:type',
     handler: (ctx) => {
-      const sid = requiredParam(ctx, 'studentId');
+      let sid = requiredParam(ctx, 'studentId');
+      if (sid === 'stu-1') sid = 'student-a';
       const type = requiredParam(ctx, 'type');
       const saved = mockDb
         .all('assessments')
         .slice()
         .reverse()
-        .find((a) => (a.studentId === sid || (!sid && a.studentId === 'stu-1')) && a.type === type);
+        .find((a) => (a.studentId === sid || (!sid && a.studentId === 'student-a')) && a.type === type);
       return saved ?? { studentId: sid, type, data: {} };
     },
   },
@@ -1645,7 +1646,8 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/teacher/students/:studentId/assessments/:type',
     handler: (ctx) => {
-      const sid = requiredParam(ctx, 'studentId') || 'stu-1';
+      let sid = requiredParam(ctx, 'studentId') || 'student-a';
+      if (sid === 'stu-1') sid = 'student-a';
       const type = requiredParam(ctx, 'type');
       const payload = bodyAs<Record<string, unknown>>(ctx);
       const targetStatus = (payload.status as any) || 'in_progress';
@@ -1654,12 +1656,20 @@ export const MOCK_ROUTES: MockRoute[] = [
         .find((a) => a.studentId === sid && a.type === type);
 
       if (existing) {
+        const mergedPayload = {
+          ...((existing.data as Record<string, unknown>) ?? {}),
+          ...payload,
+          scores: {
+            ...(((existing.data as Record<string, unknown>)?.scores as Record<string, unknown>) ?? {}),
+            ...((payload.scores as Record<string, unknown>) ?? {}),
+          },
+        };
         mockDb.updateById('assessments', existing.id, {
-          data: payload,
+          data: mergedPayload,
           status: targetStatus,
           updatedAt: new Date().toISOString(),
         });
-        return { ...existing, data: payload, status: targetStatus };
+        return { ...existing, data: mergedPayload, status: targetStatus };
       }
 
       const assessment: MockAssessment = {
@@ -1679,8 +1689,9 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'GET',
     pattern: '/teacher/students/:studentId/profile',
     handler: (ctx) => {
-      const id = requiredParam(ctx, 'studentId');
-      const student = mockDb.findById('students', id);
+      let id = requiredParam(ctx, 'studentId');
+      if (id === 'stu-1') id = 'student-a';
+      const student = mockDb.findById('students', id) ?? mockDb.all('students')[0];
       return student ?? null;
     },
   },
