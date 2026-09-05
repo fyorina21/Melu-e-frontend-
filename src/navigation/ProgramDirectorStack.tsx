@@ -12,6 +12,7 @@ import GraphChartViewScreen from '../screens/programdirector/GraphChartViewScree
 import GoalMasteryApprovalScreen from '../screens/director/GoalMasteryApprovalScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
+import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 
@@ -28,7 +29,7 @@ export default function ProgramDirectorStack() {
       <Stack.Screen name="PdParentCommunication" component={ParentCommunicationScreen} />
       <Stack.Screen name="GraphChartView" component={GraphChartViewScreen} />
       <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen} />
-      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentDashboardScreen as never} />
+      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen as never} />
     </Stack.Navigator>
   );
 }

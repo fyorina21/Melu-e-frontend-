@@ -33,25 +33,38 @@ const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
   [ROLES.PARENT]: ParentStack,
 };
 
-/** Recursively walks nested navigation state to find the active leaf screen name. */
-function getActiveRouteName(
+/** Recursively walks nested navigation state to find the active leaf screen name and route. */
+function getActiveRoute(
   state: NavigationState | PartialState<NavigationState> | undefined,
-): string | undefined {
+): { name: string; params?: Record<string, any> } | undefined {
   if (!state || state.routes == null) return undefined;
   const index = state.index ?? state.routes.length - 1;
   const route = state.routes[index];
   if (route?.state) {
-    return getActiveRouteName(route.state as NavigationState);
+    return getActiveRoute(route.state as NavigationState);
   }
-  return route?.name;
+  return route as { name: string; params?: Record<string, any> } | undefined;
+}
+
+function getActiveRouteName(
+  state: NavigationState | PartialState<NavigationState> | undefined,
+): string | undefined {
+  return getActiveRoute(state)?.name;
 }
 
 /** Push the current screen name into the browser URL bar (web only). */
 function syncUrlToScreen(state: NavigationState | undefined): void {
   if (Platform.OS !== 'web' || !state) return;
-  const name = getActiveRouteName(state);
-  if (name) {
-    window.history.replaceState(null, '', `/${name}`);
+  const route = getActiveRoute(state);
+  if (route?.name) {
+    const sid = route.params?.studentId;
+    if (sid && typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('last_assessment_student_id', sid);
+      } catch {}
+    }
+    const query = sid ? `?studentId=${encodeURIComponent(sid)}` : '';
+    window.history.replaceState(null, '', `/${route.name}${query}`);
   }
 }
 
@@ -110,7 +123,12 @@ export default function RootNavigator() {
 
     const nav = navRef.current;
     try {
-      nav.navigate(target);
+      const searchParams = new URLSearchParams(window.location.search);
+      const sid =
+        searchParams.get('studentId') ||
+        (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null) ||
+        'student-a';
+      nav.navigate(target, { studentId: sid });
     } catch {
       // Unknown route name — fall through and reset the URL below.
     }
