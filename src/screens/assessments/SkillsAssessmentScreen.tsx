@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
@@ -19,40 +20,18 @@ import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getSkillsAssessment, saveSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
-import { DEFAULT_ABLLS_DOMAINS, buildAbllsDomainsFromConfig, type AbllsDomainDef } from './abllsConfigHelper';
+import {
+  DEFAULT_ABLLS_DOMAINS,
+  buildAbllsDomainsFromConfig,
+  getItemScoreOptions,
+  saveStorageAssessment,
+  loadStorageAssessment,
+  SCORE_COLOR,
+  SCORE_LABEL,
+  type AbllsDomainDef,
+  type Score,
+} from './abllsConfigHelper';
 import type { SessionStackParamList } from '../../types';
-
-type Score = 0 | 1 | 2 | 'NA';
-const SCORES: Score[] = [0, 1, 2, 'NA'];
-
-const SCORE_COLOR: Record<Score, string> = {
-  0: '#EF4444',
-  1: '#EAB308',
-  2: '#22C55E',
-  NA: '#94A3B8',
-};
-
-const SCORE_LABEL: Record<Score, string> = {
-  0: '0 — Not Demonstrated',
-  1: '1 — Emerging',
-  2: '2 — Mastered',
-  NA: 'N/A',
-};
-
-function parseScoreFromOption(opt: string, optIndex: number, totalOptions: number): Score {
-  const trimmed = opt.trim();
-  if (trimmed.toUpperCase() === 'N/A' || trimmed.toUpperCase() === 'NA') return 'NA';
-  const numMatch = trimmed.match(/^(\d+)/);
-  if (numMatch) {
-    const n = parseInt(numMatch[1], 10);
-    if (n === 0) return 0;
-    if (n === 1) return totalOptions <= 3 ? 2 : 1;
-    if (n >= 2) return 2;
-  }
-  if (trimmed.toLowerCase().includes('pass') || trimmed.toLowerCase().includes('mastered') || trimmed.toLowerCase().includes('yes')) return 2;
-  if (trimmed.toLowerCase().includes('emerging') || trimmed.toLowerCase().includes('prompted') || trimmed.toLowerCase().includes('developing')) return 1;
-  return 0;
-}
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
 
@@ -63,7 +42,19 @@ interface StudentProfile {
 }
 
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
-  const studentId = route?.params?.studentId || 'stu-1';
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
+  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && studentId) {
+      try {
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
+    }
+  }, [studentId]);
+
   const { showToast } = useToast();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,22 +81,34 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     }
     try {
       const { data: saved } = await getSkillsAssessment(studentId);
-      const savedData = (saved?.data ?? {}) as {
+      const savedData = (saved?.data ?? saved ?? {}) as {
         scores?: Record<string, Score>;
         notes?: Record<string, string>;
         customFields?: Record<string, any>;
       };
-      if (savedData.scores) setScores(savedData.scores);
-      if (savedData.notes) setNotes(savedData.notes);
-      if (savedData.customFields) setCustomFields(savedData.customFields);
+      const apiScores = savedData.scores ?? (saved as any)?.scores ?? {};
+      const localData = loadStorageAssessment(studentId);
+      const mergedScores = { ...apiScores, ...(localData?.scores ?? {}) };
+      const mergedNotes = { ...(savedData.notes ?? {}), ...(localData?.notes ?? {}) };
+      const mergedCustomFields = { ...(savedData.customFields ?? {}), ...(localData?.customFields ?? {}) };
+      setScores(mergedScores);
+      if (Object.keys(mergedNotes).length > 0) setNotes(mergedNotes);
+      if (Object.keys(mergedCustomFields).length > 0) setCustomFields(mergedCustomFields);
     } catch (err) {
-      setScores({});
-      setNotes({});
+      const localData = loadStorageAssessment(studentId);
+      if (localData?.scores) setScores(localData.scores);
+      else setScores({});
+      if (localData?.notes) setNotes(localData.notes);
+      else setNotes({});
     }
     setLoading(false);
   }, [studentId]);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -116,8 +119,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
+      saveStorageAssessment(studentId, { scores, notes, customFields });
       saveSkillsAssessment(studentId, { scores, notes, customFields }).catch(() => {});
-    }, 900);
+    }, 400);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
@@ -133,11 +137,22 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const domainAnswered = (domain?.items ?? []).filter((i) => scores[i.id] !== undefined).length;
   const domainProgress = domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
 
-  const setScore = (itemId: string, score: Score) =>
-    setScores((prev) => ({ ...prev, [itemId]: score }));
+  const setScore = (itemId: string, score: Score) => {
+    const updated = { ...scores, [itemId]: score };
+    setScores(updated);
+    saveStorageAssessment(studentId, { scores: updated, notes, customFields });
+    saveSkillsAssessment(studentId, { scores: updated, notes, customFields }).catch(() => {});
+  };
+
+  const handleNotesChange = (itemId: string, text: string) => {
+    const updatedNotes = { ...notes, [itemId]: text };
+    setNotes(updatedNotes);
+    saveStorageAssessment(studentId, { scores, notes: updatedNotes, customFields });
+  };
 
   const handleSaveDraft = async () => {
     try {
+      saveStorageAssessment(studentId, { scores, notes, customFields });
       await saveSkillsAssessment(studentId, { scores, notes, customFields });
       showToast(`${studentName} ABLLS assessment saved successfully.`, 'success');
     } catch (err) {
@@ -146,6 +161,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   };
 
   const openNeedMap = async () => {
+    saveStorageAssessment(studentId, { scores, notes, customFields });
     try {
       await saveSkillsAssessment(studentId, { scores, notes, customFields });
     } catch (err) {}
@@ -183,16 +199,6 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
           </View>
         </View>
 
-        {/* Key / Legend */}
-        <View style={styles.keyRow}>
-          <Text style={styles.keyLabel}>KEY:</Text>
-          {SCORES.map((s) => (
-            <View key={String(s)} style={styles.keyItem}>
-              <View style={[styles.keyDot, { backgroundColor: SCORE_COLOR[s] }]} />
-              <Text style={styles.keyText}>{SCORE_LABEL[s]}</Text>
-            </View>
-          ))}
-        </View>
 
         {/* Domain Tabs Navigation */}
         <ScrollView
@@ -238,19 +244,16 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
                 <Text style={styles.itemDescription}>{item.description}</Text>
               </View>
 
-              {/* Score Selector Options */}
+              {/* Score Selector Options — Numbers only; N/A omitted if only 2 options */}
               <View style={styles.scoreRow}>
-                {(item.options && item.options.length > 0
-                  ? item.options
-                  : ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A']
-                ).map((opt, oIdx, arr) => {
-                  const s = parseScoreFromOption(opt, oIdx, arr.length);
+                {getItemScoreOptions(item).map((opt) => {
+                  const s = opt.score;
                   const selected = scores[item.id] === s;
-                  const color = s === 2 ? '#16A34A' : s === 1 ? '#EAB308' : s === 'NA' ? '#94A3B8' : '#EF4444';
+                  const color = opt.color;
 
                   return (
                     <TouchableOpacity
-                      key={`${item.id}-${opt}`}
+                      key={`${item.id}-${opt.label}`}
                       style={[
                         styles.scoreBtn,
                         { borderColor: color },
@@ -266,7 +269,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
                           selected && styles.scoreBtnTextActive,
                         ]}
                       >
-                        {opt}
+                        {opt.label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -279,7 +282,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
                 placeholder="Add notes..."
                 placeholderTextColor="#94A3B8"
                 value={notes[item.id] || ''}
-                onChangeText={(t) => setNotes((prev) => ({ ...prev, [item.id]: t }))}
+                onChangeText={(t) => handleNotesChange(item.id, t)}
               />
             </View>
           ))}
@@ -521,15 +524,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   scoreBtn: {
-    borderWidth: 1,
-    borderRadius: 20,
+    borderWidth: 1.5,
+    borderRadius: 8,
+    minWidth: 44,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 6,
     backgroundColor: '#FFFFFF',
   },
   scoreBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
   },
   scoreBtnTextActive: {
     color: '#FFFFFF',
