@@ -172,3 +172,174 @@ export function buildAbllsDomainsFromConfig(
     };
   });
 }
+
+export type Score = 0 | 1 | 2 | 3 | 4 | 'NA';
+
+export const SCORE_COLOR: Record<Score, string> = {
+  0: '#EF4444',
+  1: '#EAB308',
+  2: '#16A34A',
+  3: '#16A34A',
+  4: '#16A34A',
+  NA: '#94A3B8',
+};
+
+export const SCORE_LABEL: Record<Score, string> = {
+  0: '0',
+  1: '1',
+  2: '2',
+  3: '3',
+  4: '4',
+  NA: 'N/A',
+};
+
+export interface FormattedScoreOption {
+  label: string;
+  score: Score;
+  color: string;
+}
+
+export function getItemScoreOptions(item?: { options?: string[]; maxCells?: number }): FormattedScoreOption[] {
+  const raw = item?.options && Array.isArray(item.options) && item.options.length > 0
+    ? item.options
+    : ['0', '1', '2', 'N/A'];
+
+  const nonNaList = raw.filter((opt) => {
+    const t = String(opt).trim().toUpperCase();
+    return t !== 'N/A' && t !== 'NA' && !t.includes('NOT ASSESSED');
+  });
+
+  // If options are 2 only (e.g. 2 numbers like [0, 1] or raw length 2 or maxCells === 2)
+  const isTwoOptions = nonNaList.length === 2 || raw.length === 2 || (item?.maxCells === 2 && nonNaList.length <= 2);
+
+  const result: FormattedScoreOption[] = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const opt = raw[i];
+    const trimmed = String(opt).trim();
+    const isNA = trimmed.toUpperCase() === 'N/A' || trimmed.toUpperCase() === 'NA' || trimmed.toLowerCase().includes('not assessed');
+
+    if (isNA) {
+      // "and if the options are 2 only remove the N/A"
+      if (isTwoOptions) {
+        continue;
+      }
+      result.push({
+        label: 'N/A',
+        score: 'NA',
+        color: '#94A3B8',
+      });
+      continue;
+    }
+
+    const numMatch = trimmed.match(/^(\d+)/);
+    if (numMatch) {
+      const n = parseInt(numMatch[1], 10);
+      const scoreVal = (n >= 0 ? n : 0) as Score;
+      const color = n === 0 ? '#EF4444' : n === 1 ? '#EAB308' : '#16A34A';
+      result.push({
+        label: String(n),
+        score: scoreVal,
+        color,
+      });
+    } else {
+      if (trimmed.toLowerCase().includes('pass') || trimmed.toLowerCase().includes('mastered') || trimmed.toLowerCase().includes('yes')) {
+        result.push({ label: '1', score: 1, color: '#16A34A' });
+      } else {
+        result.push({ label: '0', score: 0, color: '#EF4444' });
+      }
+    }
+  }
+
+  return result;
+}
+
+export function parseScoreFromOption(opt: string): Score {
+  const trimmed = String(opt).trim();
+  if (trimmed.toUpperCase() === 'N/A' || trimmed.toUpperCase() === 'NA' || trimmed.toLowerCase().includes('not assessed')) return 'NA';
+  const numMatch = trimmed.match(/^(\d+)/);
+  if (numMatch) {
+    const n = parseInt(numMatch[1], 10);
+    return (n >= 0 ? n : 0) as Score;
+  }
+  if (trimmed.toLowerCase().includes('pass') || trimmed.toLowerCase().includes('mastered') || trimmed.toLowerCase().includes('yes')) return 1;
+  return 0;
+}
+
+const STORAGE_PREFIX = 'melue_skills_assessment_';
+
+export function saveStorageAssessment(
+  studentId: string,
+  payload: { scores: Record<string, Score>; notes?: Record<string, string>; customFields?: Record<string, any> }
+) {
+  if (typeof localStorage === 'undefined' || !studentId) return;
+  try {
+    const key = `${STORAGE_PREFIX}${studentId}`;
+    const existingRaw = localStorage.getItem(key);
+    const existing = existingRaw ? JSON.parse(existingRaw) : {};
+    const merged = {
+      ...existing,
+      ...payload,
+      scores: {
+        ...(existing.scores || {}),
+        ...(payload.scores || {}),
+      },
+      notes: {
+        ...(existing.notes || {}),
+        ...(payload.notes || {}),
+      },
+      customFields: {
+        ...(existing.customFields || {}),
+        ...(payload.customFields || {}),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch {}
+}
+
+export function loadStorageAssessment(studentId: string): {
+  scores?: Record<string, Score>;
+  notes?: Record<string, string>;
+  customFields?: Record<string, any>;
+} | null {
+  if (typeof localStorage === 'undefined' || !studentId) return null;
+  try {
+    const key = `${STORAGE_PREFIX}${studentId}`;
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export const getMaxCellsForItem = (item: { options?: string[]; maxCells?: number }): number => {
+  if (item.maxCells) return item.maxCells;
+  if (item.options && Array.isArray(item.options) && item.options.length > 0) {
+    const nonNA = item.options.filter(
+      (o) => o.trim().toUpperCase() !== 'N/A' && o.trim().toUpperCase() !== 'NA' && !o.toLowerCase().includes('not assessed')
+    );
+    if (nonNA.length === 2) return 2;
+    const numbers = nonNA
+      .map((o) => {
+        const m = o.trim().match(/^(\d+)/);
+        return m ? parseInt(m[1], 10) : null;
+      })
+      .filter((n): n is number => n !== null);
+    if (numbers.length > 0) {
+      const maxNum = Math.max(...numbers);
+      if (maxNum <= 2) return 4;
+      return Math.max(4, maxNum);
+    }
+  }
+  return 4;
+};
+
+export const getFilledCells = (item: { score: Score | number; options?: string[]; maxCells?: number }): number => {
+  if (item.score === 'NA' || item.score === undefined || item.score === null) return 0;
+  if (item.score === 0) return 1;
+  const num = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
+  if (isNaN(num) || num <= 0) return 0;
+  return num;
+};
+
