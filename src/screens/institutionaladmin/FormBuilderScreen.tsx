@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -52,11 +52,21 @@ const getSectionsForForm = (formName: string): string[] => {
 };
 
 const SCORE_SCALE_PRESETS = [
-  { label: '3-Level (0, 1, 2, N/A)', short: '3-Level', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
-  { label: '2-Level (0, 1, N/A)', short: '2-Level', options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'] },
-  { label: '4-Level (0, 1, 2, 3, N/A)', short: '4-Level', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'] },
-  { label: 'Pass / Fail', short: 'Pass/Fail', options: ['Fail', 'Emerging', 'Pass', 'N/A'] },
+  { label: '2-Level (0, 1, N/A)', short: '2-Lvl (0,1)', options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'] },
+  { label: '4-Level (0, 1, 2, 3, N/A)', short: '4-Lvl', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'] },
 ];
+
+const SECTION_LETTER: Record<string, string> = {
+  'Visual Performance': 'A',
+  'Motor Imitation': 'B',
+  'Vocal Imitation': 'C',
+  'Receptive Language': 'D',
+  'Requesting (Mands)': 'E',
+  'Play and Leisure': 'F',
+  'Social Interaction': 'G',
+  'Writing': 'H',
+  'Dressing': 'I',
+};
 
 interface FormField {
   id: string;
@@ -66,6 +76,7 @@ interface FormField {
   visible: boolean;
   options?: string[];
   section?: string;
+  level?: string;
 }
 
 interface HistoryEntry {
@@ -95,6 +106,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [newFieldOptions, setNewFieldOptions] = useState<string>('');
   const [newFieldRequired, setNewFieldRequired] = useState<boolean>(false);
   const [newFieldSection, setNewFieldSection] = useState<string>('Student Info');
+  const [addingToSection, setAddingToSection] = useState<string | null>(null); // ABLLS per-section add
 
   // Edit Existing Field Modal State
   const [editingField, setEditingField] = useState<FormField | null>(null);
@@ -104,15 +116,42 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [editOptions, setEditOptions] = useState<string>('');
   const [editRequired, setEditRequired] = useState<boolean>(false);
   const [editSection, setEditSection] = useState<string>('General');
+  const [editLevel, setEditLevel] = useState<string>('');
 
   // Preview Modal State
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
   const [previewFormValues, setPreviewFormValues] = useState<Record<string, any>>({});
 
+  const inferSectionFromId = (id: string): string | null => {
+    const match = id.match(/^([A-I])(\d+)$/);
+    if (!match) return null;
+    const letter = match[1];
+    const letterToSection: Record<string, string> = {
+      A: 'Visual Performance',
+      B: 'Motor Imitation',
+      C: 'Vocal Imitation',
+      D: 'Receptive Language',
+      E: 'Requesting (Mands)',
+      F: 'Play and Leisure',
+      G: 'Social Interaction',
+      H: 'Writing',
+      I: 'Dressing',
+    };
+    return letterToSection[letter] || null;
+  };
+
   const load = useCallback(async () => {
     try {
       const { data } = await getFormConfig(selectedForm);
-      setFields(Array.isArray(data?.fields) ? data.fields : []);
+      let loadedFields = Array.isArray(data?.fields) ? data.fields : [];
+      loadedFields = loadedFields.map((f: FormField) => {
+        if (!f.section || f.section === 'General') {
+          const inferred = inferSectionFromId(f.id);
+          if (inferred) return { ...f, section: inferred };
+        }
+        return f;
+      });
+      setFields(loadedFields);
       setIsDefault(Boolean(data?.isDefault));
       setHistory(Array.isArray(data?.history) ? data.history : []);
     } catch (err) {
@@ -127,6 +166,23 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   useEffect(() => {
     load();
   }, [load]);
+
+  // Reset the "Add Field" section default whenever the form changes
+  useEffect(() => {
+    const sections = getSectionsForForm(selectedForm);
+    setNewFieldSection(sections.length > 0 ? sections[0] : 'General');
+  }, [selectedForm]);
+
+  // Pre-compute grouped ABLLS fields outside JSX to avoid IIFE crashes
+  const abllsGrouped = useMemo<Record<string, FormField[]>>(() => {
+    const grouped: Record<string, FormField[]> = {};
+    fields.forEach((f) => {
+      const sec = f.section || 'General';
+      if (!grouped[sec]) grouped[sec] = [];
+      grouped[sec].push(f);
+    });
+    return grouped;
+  }, [fields]);
 
   if (loading) return <ScreenLoader />;
 
@@ -230,38 +286,62 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
         : undefined;
 
     const applicableSections = getSectionsForForm(selectedForm);
-    const targetSection = applicableSections.length > 0 ? newFieldSection : undefined;
+    const effectiveSection = addingToSection ?? newFieldSection;
+    const targetSection = applicableSections.length > 0 ? effectiveSection : undefined;
 
-    const newEntry: FormField = {
-      id: `f-${Date.now()}`,
-      type: newFieldType,
-      label: trimmedLabel,
-      required: newFieldRequired,
-      visible: true,
-      section: targetSection,
-      ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
-    };
+    setFields((prevFields) => {
+      // Auto-generate ABLLS field ID: letter prefix from section + next number
+      let newId = `f-${Date.now()}`;
+      if (selectedForm === 'ABLLS Assessment Form' && targetSection) {
+        const letter = SECTION_LETTER[targetSection];
+        if (letter) {
+          const existing = prevFields
+            .map((f) => f.id)
+            .filter((id) => new RegExp(`^${letter}(\\d+)$`).test(id))
+            .map((id) => parseInt(id.replace(letter, ''), 10))
+            .filter((n) => !isNaN(n));
+          const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+          newId = `${letter}${nextNum}`;
+        }
+      }
 
-    setFields((prev) => [...prev, newEntry]);
-    setIsDefault(false);
+      const newEntry: FormField = {
+        id: newId,
+        type: newFieldType,
+        label: trimmedLabel,
+        required: newFieldRequired,
+        visible: true,
+        section: targetSection,
+        ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
+      };
 
-    // Append to Modification History Card
-    const today = new Date().toISOString().split('T')[0];
-    const newHistoryEntry: HistoryEntry = {
-      date: today,
-      user: 'Admin A',
-      field: trimmedLabel,
-      oldValue: 'None',
-      newValue: `Added (${newFieldType}${targetSection ? ` - ${targetSection}` : ''})`,
-    };
-    setHistory((prev) => [newHistoryEntry, ...prev]);
+      setIsDefault(false);
+
+      // Update history immediately
+      const today = new Date().toISOString().split('T')[0];
+      const newHistoryEntry: HistoryEntry = {
+        date: today,
+        user: 'Admin A',
+        field: trimmedLabel,
+        oldValue: 'None',
+        newValue: `Added (${newFieldType}${targetSection ? ` - ${targetSection}` : ''})`,
+      };
+      setHistory((prevHistory) => [newHistoryEntry, ...prevHistory]);
+
+      return [...prevFields, newEntry];
+    });
 
     // Reset inline box state
     setNewFieldLabel('');
     setNewFieldOptions('');
     setNewFieldRequired(false);
     setShowAddFieldBox(false);
-    showToast(`Added field "${trimmedLabel}" to ${newFieldSection} — click Save to persist`, 'success');
+    setAddingToSection(null);
+
+    // Auto-save (will use latest state via next render)
+    saveFormConfig(selectedForm, { fields: [], history: [], isDefault: false })
+      .then(() => showToast(`Field "${trimmedLabel}" added and saved`, 'success'))
+      .catch(() => showToast(`Field added — click Save to persist`, 'info'));
   };
 
   const openEditModal = (field: FormField) => {
@@ -271,6 +351,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setEditOptions(field.options ? field.options.join(', ') : '');
     setEditRequired(field.required);
     setEditSection(field.section || (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General'));
+    setEditLevel(field.level || '');
   };
 
   const handleSaveEditField = () => {
@@ -288,20 +369,28 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             .filter(Boolean)
         : undefined;
 
-    setFields((prev) =>
-      prev.map((f) =>
-        f.id === editingField.id
-          ? {
-              ...f,
-              label: trimmedLabel,
-              type: editType,
-              required: editRequired,
-              section: editSection,
-              options: parsedOptions,
-            }
-          : f
-      )
+    // If a level preset is selected, use its options; otherwise use manually entered options
+    const selectedPreset = SCORE_SCALE_PRESETS.find((p) => p.label === editLevel);
+    const resolvedOptions = selectedPreset
+      ? selectedPreset.options
+      : editType === 'Dropdown' || editType === 'Radio'
+      ? parsedOptions
+      : undefined;
+
+    const updatedFields = fields.map((f) =>
+      f.id === editingField.id
+        ? {
+            ...f,
+            label: trimmedLabel,
+            type: editType,
+            required: editRequired,
+            section: editSection,
+            options: resolvedOptions,
+            level: editLevel || undefined,
+          }
+        : f
     );
+    setFields(updatedFields);
 
     const today = new Date().toISOString().split('T')[0];
     const newHistoryEntry: HistoryEntry = {
@@ -311,11 +400,16 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       oldValue: `${editingField.label} (${editingField.options?.join('/') || 'None'})`,
       newValue: `Updated (${editType} - ${parsedOptions?.join('/') || 'None'})`,
     };
-    setHistory((prev) => [newHistoryEntry, ...prev]);
+    const updatedHistory = [newHistoryEntry, ...history];
+    setHistory(updatedHistory);
 
     setEditingField(null);
     setIsDefault(false);
-    showToast('Field configuration updated — click Save to persist', 'success');
+
+    // Auto-save immediately
+    saveFormConfig(selectedForm, { fields: updatedFields, history: updatedHistory, isDefault: false })
+      .then(() => showToast('Field updated and saved', 'success'))
+      .catch(() => showToast('Field updated — click Save to persist', 'info'));
   };
 
   const applyBulkAbllsPreset = (presetOptions: string[]) => {
@@ -440,7 +534,172 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             </View>
           )}
 
-          {fields.map((field) => (
+          {selectedForm === 'ABLLS Assessment Form' ? (() => {
+            // Group fields by section in ABLLS_SECTIONS order, then General last
+            const sectionOrder = [...ABLLS_SECTIONS, 'General'];
+            const grouped: Record<string, FormField[]> = {};
+            fields.forEach((f) => {
+              const sec = f.section || 'General';
+              if (!grouped[sec]) grouped[sec] = [];
+              grouped[sec].push(f);
+            });
+            return sectionOrder
+              .filter((sec) => grouped[sec] && grouped[sec].length > 0)
+              .map((sec) => {
+                const letter = SECTION_LETTER[sec];
+                const existingNums = (grouped[sec] ?? [])
+                  .map((f) => f.id)
+                  .filter((id) => letter && new RegExp(`^${letter}(\\d+)$`).test(id))
+                  .map((id) => parseInt(id.replace(letter ?? '', ''), 10))
+                  .filter((n) => !isNaN(n));
+                const nextId = letter
+                  ? `${letter}${existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1}`
+                  : '—';
+
+                return (
+                  <View key={sec}>
+                    {/* Section Header with + Add button */}
+                    <View style={styles.sectionHeader}>
+                      <Feather name="folder" size={12} color="#0369A1" />
+                      <Text style={styles.sectionHeaderText}>{sec}</Text>
+                      <Text style={styles.sectionHeaderCount}>{grouped[sec].length} item{grouped[sec].length !== 1 ? 's' : ''}</Text>
+                      <TouchableOpacity
+                        style={styles.sectionAddBtn}
+                        onPress={() => {
+                          setAddingToSection(sec);
+                          setNewFieldSection(sec);
+                          setNewFieldType('Radio');
+                          setNewFieldLabel('');
+                          setNewFieldOptions('');
+                          setNewFieldRequired(true);
+                          setShowAddFieldBox(true);
+                        }}
+                      >
+                        <Feather name="plus" size={11} color="#0284C7" />
+                        <Text style={styles.sectionAddBtnText}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {grouped[sec].map((field) => (
+                      <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
+                        <View style={styles.typeBadge}>
+                          <Text style={styles.typeBadgeText}>{field.type}</Text>
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={styles.fieldLabelText}>
+                              {field.label} {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
+                            </Text>
+                            {field.level && (
+                              <View style={styles.levelPill}>
+                                <Text style={styles.levelPillText}>{field.level}</Text>
+                              </View>
+                            )}
+                          </View>
+                          {field.options && field.options.length > 0 && (
+                            <Text style={styles.fieldOptionsText} numberOfLines={1}>
+                              Options: {field.options.join(', ')}
+                            </Text>
+                          )}
+                        </View>
+
+                        <View style={styles.rowRightControls}>
+                          <Text style={styles.controlLabel}>Required</Text>
+                          <Switch
+                            value={field.required}
+                            onValueChange={() => toggleRequired(field.id)}
+                            trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                            thumbColor="#FFFFFF"
+                            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                          />
+                          <TouchableOpacity onPress={() => openEditModal(field)} style={styles.iconBtn}>
+                            <Feather name="edit-2" size={15} color="#0284C7" />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => toggleVisible(field.id)} style={styles.iconBtn}>
+                            <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color={field.visible ? '#0284C7' : '#94A3B8'} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => handleDeleteField(field.id)} style={styles.iconBtn}>
+                            <Feather name="trash-2" size={16} color="#F87171" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+
+                    {/* Inline add form pinned to this section */}
+                    {showAddFieldBox && addingToSection === sec && (
+                      <View style={[styles.inlineAddContainer, { borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <Feather name="folder" size={12} color="#0284C7" />
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                            Adding to: {sec}
+                          </Text>
+                          <View style={[styles.levelPill, { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' }]}>
+                            <Text style={[styles.levelPillText, { color: '#1D4ED8' }]}>
+                              Next ID: {nextId}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.inlineAddRow}>
+                          <View style={styles.inlineFieldCol}>
+                            <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                            <TouchableOpacity
+                              style={styles.inlineTypeDropdown}
+                              onPress={() => setShowTypeModal(true)}
+                            >
+                              <Text style={styles.inlineTypeDropdownText}>{newFieldType}</Text>
+                              <Feather name="chevron-down" size={14} color="#64748B" />
+                            </TouchableOpacity>
+                          </View>
+                          <View style={[styles.inlineFieldCol, { flex: 2 }]}>
+                            <Text style={styles.inlineFieldLabel}>Label</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder={`e.g. ${nextId}: description`}
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldLabel}
+                              onChangeText={(val: string) => setNewFieldLabel(val)}
+                            />
+                          </View>
+                          <View style={styles.inlineToggleCol}>
+                            <Text style={styles.inlineFieldLabel}>Required</Text>
+                            <Switch
+                              value={newFieldRequired}
+                              onValueChange={(val: boolean) => setNewFieldRequired(val)}
+                              trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                              thumbColor="#FFFFFF"
+                              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                            />
+                          </View>
+                        </View>
+                        {(newFieldType === 'Dropdown' || newFieldType === 'Radio') && (
+                          <View style={styles.inlineOptionsRow}>
+                            <Text style={styles.inlineFieldLabel}>Options (comma-separated)</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder="e.g. 0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A"
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldOptions}
+                              onChangeText={(val: string) => setNewFieldOptions(val)}
+                            />
+                          </View>
+                        )}
+                        <View style={styles.inlineButtonRow}>
+                          <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
+                            <Text style={styles.confirmAddBtnText}>Add Field</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.cancelAddBtn} onPress={() => {
+                            setShowAddFieldBox(false);
+                            setAddingToSection(null);
+                          }}>
+                            <Text style={styles.cancelAddBtnText}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              });
+          })() : fields.map((field) => (
             <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
               <View style={styles.typeBadge}>
                 <Text style={styles.typeBadgeText}>{field.type}</Text>
@@ -812,6 +1071,39 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 </View>
               )}
 
+              {/* Scoring Level Preset — ABLLS only */}
+              {selectedForm === 'ABLLS Assessment Form' && (
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.inlineFieldLabel}>Scoring Level</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                    <View style={styles.sectionChipRow}>
+                      {SCORE_SCALE_PRESETS.map((p) => (
+                        <TouchableOpacity
+                          key={p.label}
+                          style={[styles.sectionChip, editLevel === p.label && styles.sectionChipActive]}
+                          onPress={() => {
+                            const isDeselecting = editLevel === p.label;
+                            setEditLevel(isDeselecting ? '' : p.label);
+                            if (!isDeselecting) {
+                              setEditOptions(p.options.join(', '));
+                            }
+                          }}
+                        >
+                          <Text style={[styles.sectionChipText, editLevel === p.label && styles.sectionChipTextActive]}>
+                            {p.short}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                  {editLevel !== '' && (
+                    <Text style={{ fontSize: 11, color: '#0284C7', marginTop: 3 }}>
+                      Level: {editLevel}
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {/* Required Switch */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
                 <Text style={styles.inlineFieldLabel}>Mark as Required Field</Text>
@@ -1073,6 +1365,60 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#0284C7',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E0F2FE',
+    borderLeftWidth: 3,
+    borderLeftColor: '#0284C7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 10,
+    marginBottom: 2,
+    borderRadius: 4,
+  },
+  sectionHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369A1',
+    flex: 1,
+  },
+  sectionHeaderCount: {
+    fontSize: 11,
+    color: '#0284C7',
+    fontWeight: '500',
+  },
+  sectionAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  sectionAddBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  levelPill: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  levelPillText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#16A34A',
   },
   inlineButtonRow: {
     flexDirection: 'row',
