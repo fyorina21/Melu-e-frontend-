@@ -60,17 +60,20 @@ function AssignmentEditorModal({
 
   useEffect(() => {
     setSelected(assignedIds || []);
+    setStudentSearch('');
   }, [assignedIds, visible]);
 
   const toggle = (id: string) =>
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= CAPACITY) return prev; // block adding beyond limit
+      return [...prev, id];
+    });
 
   const overCapacity = selected.length > CAPACITY;
   const filteredStudents = students.filter((s) =>
-      String(s.name || '').toLowerCase().includes(studentSearch.toLowerCase())
-    );
+    String(s.name || '').toLowerCase().includes(studentSearch.toLowerCase())
+  );
 
   if (!block) return null;
 
@@ -90,37 +93,56 @@ function AssignmentEditorModal({
             </View>
           </View>
 
-          <View style={styles.modalSearchRow}>
+          <View style={styles.modalSearchRow} onStartShouldSetResponder={() => true}>
             <Feather name="search" size={14} color={colors.mutedText} />
             <TextInput
               style={styles.modalSearchInput}
-              placeholder="Search students..."
+              placeholder="Search students by name..."
               placeholderTextColor={colors.mutedText}
               value={studentSearch}
-              onChangeText={setStudentSearch}
+              onChangeText={(text) => setStudentSearch(text)}
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="off"
-              textContentType="none"
-              importantForAutofill="no"
             />
           </View>
 
-          <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="always">
+            {filteredStudents.length === 0 && (
+              <Text style={styles.emptyListText}>No students found.</Text>
+            )}
             {filteredStudents.map((s) => {
               const isChecked = selected.includes(s.id);
+              const atCapacity = selected.length >= CAPACITY;
+              const isDisabled = !isChecked && atCapacity;
+              const sAny = s as any;
+              const status: string = sAny.status || 'Active';
+              const subtitle = sAny.program ? (status + ' · ' + sAny.program) : status;
               return (
                 <TouchableOpacity
                   key={s.id}
-                  style={[styles.studentRow, isChecked && styles.studentRowSelected]}
+                  style={[styles.studentDropdownItem, isChecked && styles.studentDropdownItemActive, isDisabled && { opacity: 0.35 }]}
                   onPress={() => toggle(s.id)}
+                  activeOpacity={isDisabled ? 1 : 0.7}
                 >
-                  <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
-                    {isChecked && <Feather name="check" size={12} color={colors.navyText} />}
+                  <View style={[styles.studentAvatar, isChecked && styles.studentAvatarActive]}>
+                    <Text style={styles.studentAvatarText}>{(s.name || 'S').charAt(0).toUpperCase()}</Text>
                   </View>
-                  <Text style={[styles.studentRowText, isChecked && styles.studentRowTextActive]}>
-                    {s.name}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.studentDropdownName, isChecked && styles.studentDropdownNameActive]}>
+                      {s.name}
+                    </Text>
+                    <Text style={styles.studentDropdownSub}>{subtitle}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, status === 'Active' ? styles.statusActive : styles.statusPending]}>
+                    <Text style={[styles.statusBadgeText, status === 'Active' ? styles.statusActiveText : styles.statusPendingText]}>
+                      {status}
+                    </Text>
+                  </View>
+                  {isChecked && (
+                    <View style={styles.checkmarkBadge}>
+                      <Feather name="check" size={12} color={colors.navyText} />
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -574,7 +596,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.bgApp,
   },
-  modalSearchInput: { flex: 1, paddingVertical: spacing.sm, fontSize: 13, color: colors.navyText },
+  modalSearchInput: { flex: 1, paddingVertical: spacing.sm, fontSize: 13, color: colors.navyText, minHeight: 36, outlineWidth: 0 } as any,
   studentRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -601,7 +623,46 @@ const styles = StyleSheet.create({
   cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   cancelBtnText: { fontWeight: '600', color: colors.navyText },
   saveBtn: { flex: 2, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-  saveBtnDisabled: { opacity: 0.4 },
+    saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { fontWeight: '700', color: colors.navyText },
-});
 
+  /* IUP-style student dropdown rows */
+  emptyListText: { padding: 12, fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
+  studentDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  studentDropdownItemActive: { backgroundColor: '#FEF9C3' },
+  studentAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FCD34D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  studentAvatarActive: { backgroundColor: '#FDE047' },
+  studentAvatarText: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  studentDropdownName: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  studentDropdownNameActive: { fontWeight: '700' },
+  studentDropdownSub: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 },
+  statusBadgeText: { fontSize: 10, fontWeight: '700' },
+  statusActive: { backgroundColor: '#DCFCE7' },
+  statusActiveText: { fontSize: 10, fontWeight: '700', color: '#166534' },
+  statusPending: { backgroundColor: '#FEF3C7' },
+  statusPendingText: { fontSize: 10, fontWeight: '700', color: '#B45309' },
+  checkmarkBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FCD34D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

@@ -911,13 +911,13 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'GET',
     pattern: '/director/schedule',
     handler: (ctx) => {
-      const tId = ctx.query.teacherId;
+      const tId = ctx.query.teacherId as string | undefined;
       const assignments = mockDb.all('assignments');
-      const teacher = tId ? mockDb.findById('users', tId) : null;
+      const teacher = tId ? mockDb.all('staffMembers').find((s) => s.id === tId) : null;
       const teacherName = teacher ? teacher.name : 'Teacher';
       const scheduleBlocks = [
-        { id: 'b1', teacherName, stationName: 'Station 1 (Basic Skills)', startTime: '9:00 AM', endTime: '10:30 AM', studentIds: assignments.filter((a) => a.teacherId === tId && a.blockId === 'b1').flatMap((a) => a.studentIds) },
-        { id: 'b2', teacherName, stationName: 'Station 2 (Advanced Skills)', startTime: '11:00 AM', endTime: '12:30 PM', studentIds: assignments.filter((a) => a.teacherId === tId && a.blockId === 'b2').flatMap((a) => a.studentIds) }
+        { id: 'b1', teacherName, stationName: 'Station 1 (Basic Skills)', startTime: '9:00 AM', endTime: '10:30 AM', studentIds: assignments.filter((a) => a.blockId === 'b1' && (!tId || a.teacherId === tId)).flatMap((a) => a.studentIds as string[]) },
+        { id: 'b2', teacherName, stationName: 'Station 2 (Advanced Skills)', startTime: '11:00 AM', endTime: '12:30 PM', studentIds: assignments.filter((a) => a.blockId === 'b2' && (!tId || a.teacherId === tId)).flatMap((a) => a.studentIds as string[]) },
       ];
       return scheduleBlocks;
     },
@@ -927,18 +927,19 @@ export const MOCK_ROUTES: MockRoute[] = [
     pattern: '/director/schedule/assignments',
     handler: (ctx) => {
       const { blockId, studentIds, teacherId } = bodyAs<{ blockId: string; studentIds: string[]; teacherId?: string }>(ctx);
-      const existing = mockDb.all('assignments').find((a) => a.blockId === blockId);
+      const tId = teacherId ?? '';
+      const existing = mockDb.all('assignments').find((a) => a.blockId === blockId && a.teacherId === tId);
       if (existing) {
         mockDb.updateById('assignments', existing.id, { studentIds });
       } else {
         mockDb.insert('assignments', {
           id: newId('asn'),
-          teacherId: teacherId ?? 's1',
+          teacherId: tId,
           studentIds,
           blockId,
-          stationId: 'stn-1',
+          stationId: blockId === 'b1' ? 'stn-1' : 'stn-2',
           scheduledDate: new Date().toISOString(),
-          status: 'confirmed'
+          status: 'confirmed',
         });
       }
       return { status: 'ok' };
@@ -3125,8 +3126,15 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: () =>
       mockDb
         .all('students')
-        .filter((s) => s.status !== 'paused' && s.phase === 'active')
-        .map((s) => ({ id: s.id, name: s.fullName, age: ageOf(s), phase: s.phase })),
+        .filter((s) => s.status !== 'paused')
+        .map((s) => ({
+          id: s.id,
+          name: s.fullName,
+          age: ageOf(s),
+          phase: s.phase,
+          status: (s.status ?? 'active') === 'active' ? 'Active' : s.status,
+          program: s.programType ?? '',
+        })),
   },
   {
     method: 'GET',

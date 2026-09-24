@@ -14,7 +14,7 @@ const Stack = createNativeStackNavigator<SystemAdminStackParamList>();
 
 export default function SystemAdminStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="FormBuilder">
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="StaffAccountManagement">
       <Stack.Screen name="FormBuilder" component={FormBuilderScreen} />
       <Stack.Screen name="StaffAccountManagement" component={StaffAccountManagementScreen} />
       <Stack.Screen name="RoleManagement" component={RoleManagementScreen} />
