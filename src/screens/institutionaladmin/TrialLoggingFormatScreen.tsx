@@ -1,117 +1,140 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Switch, SafeAreaView, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  SafeAreaView,
+  Switch,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, spacing } from '../../theme/colors';
+import { colors, spacing, radius } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import type { InstitutionalAdminStackParamList } from '../../types';
-import type { PromptLevel } from '../../api/resources/types';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getTrialLoggingConfig, saveTrialLoggingConfig } from '../../api/institutionalAdminApi';
 import { useToast } from '../../context/ToastContext';
+import { getPromptLevels, setPromptLevels, getTrialConfig } from '../../stores/promptLevelsStore';
 
 type Props = NativeStackScreenProps<InstitutionalAdminStackParamList, 'TrialLoggingFormat'>;
 
-interface MasteryCriteria {
-  percentage: number;
-  consecutiveSessions: number;
+interface LevelItem {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+  status: 'Active';
 }
 
-interface TrialLoggingConfig {
-  promptLevels: PromptLevel[];
-  trialStreamLayout: 'grid' | 'stream' | 'compact';
-  masteryCriteria: MasteryCriteria;
-}
-
-const SWATCH_COLORS = ['#E5484D', '#F5A623', '#30A46C', '#0091FF', '#8E4EC6', '#64748B'];
-
-const LAYOUT_OPTIONS: Array<{ value: TrialLoggingConfig['trialStreamLayout']; label: string; hint: string }> = [
-  { value: 'grid', label: 'Grid', hint: 'Prompt buttons in a fixed row' },
-  { value: 'stream', label: 'Stream', hint: 'Chronological trial feed' },
-  { value: 'compact', label: 'Compact', hint: 'Dense counters for high-volume sessions' },
-];
-
-const DEFAULT_CONFIG: TrialLoggingConfig = {
-  promptLevels: [
-    { id: 'pl-1', label: 'FP', color: '#E5484D', displayOrder: 1, isActive: true },
-    { id: 'pl-2', label: 'PP', color: '#F5A623', displayOrder: 2, isActive: true },
-    { id: 'pl-3', label: 'G', color: '#30A46C', displayOrder: 3, isActive: true },
-    { id: 'pl-4', label: '+', color: '#0091FF', displayOrder: 4, isActive: true },
-  ],
-  trialStreamLayout: 'grid',
-  masteryCriteria: { percentage: 80, consecutiveSessions: 3 },
-};
+const COLOR_SWATCHES = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6'];
 
 export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const { showToast } = useToast();
-  const [promptLevels, setPromptLevels] = useState<PromptLevel[]>(DEFAULT_CONFIG.promptLevels);
-  const [layout, setLayout] = useState<TrialLoggingConfig['trialStreamLayout']>(DEFAULT_CONFIG.trialStreamLayout);
-  const [mastery, setMastery] = useState<MasteryCriteria>(DEFAULT_CONFIG.masteryCriteria);
-  const [saving, setSaving] = useState(false);
+  const configInit = getTrialConfig();
+  const [levels, setLevels] = useState<LevelItem[]>(() => getPromptLevels());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBuf, setEditBuf] = useState({ name: '', color: '', order: 0 });
+  const [addingLevel, setAddingLevel] = useState(false);
+  const [newLevel, setNewLevel] = useState({ name: '', color: '#6366F1', order: 5 });
+  const [layout, setLayout] = useState<'Horizontal' | 'Vertical' | 'Card Grid'>('Horizontal');
+  const [streamCount, setStreamCount] = useState(configInit.streamCount);
+  const [consecutive, setConsecutive] = useState(configInit.consecutive);
+  const [independence, setIndependence] = useState(80);
+  const [autoSuggest, setAutoSuggest] = useState(true);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const { data } = await getTrialLoggingConfig();
-      if (data) {
-        const cfg = data as Partial<TrialLoggingConfig>;
-        if (cfg.promptLevels?.length) setPromptLevels(cfg.promptLevels);
-        if (cfg.trialStreamLayout) setLayout(cfg.trialStreamLayout);
-        if (cfg.masteryCriteria) setMastery(cfg.masteryCriteria);
-      }
-    } catch (err) {
-      // Retain defaults on fallback
+  const startEdit = (lv: LevelItem) => {
+    setEditingId(lv.id);
+    setEditBuf({ name: lv.name, color: lv.color, order: lv.order });
+  };
+  const saveEdit = (id: string) => {
+    if (!editBuf.name.trim()) {
+      showToast('Every prompt level needs a name', 'error');
+      return;
     }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const updateLevel = (id: string, patch: Partial<PromptLevel>) => {
-    setPromptLevels((prev) => prev.map((pl) => (pl.id === id ? { ...pl, ...patch } : pl)));
+    const orderTaken = levels.some((l) => l.id !== id && l.order === editBuf.order);
+    if (orderTaken) {
+      showToast(`Order ${editBuf.order} is already in use. Each prompt level needs a unique order number.`, 'error');
+      return;
+    }
+    const next = levels.map((l) => (l.id === id ? { ...l, ...editBuf } : l));
+    setLevels(next);
+    setPromptLevels(next, consecutive, streamCount);
+    setEditingId(null);
+  };
+  const deleteLevel = (id: string) => {
+    const next = levels.filter((l) => l.id !== id);
+    setLevels(next);
+    setPromptLevels(next, consecutive, streamCount);
+    setDeleteConfirmId(null);
+  };
+  const addLevel = () => {
+    if (!newLevel.name.trim()) {
+      showToast('Every prompt level needs a name', 'error');
+      return;
+    }
+    const orderTaken = levels.some((l) => l.order === newLevel.order);
+    if (orderTaken) {
+      showToast(`Order ${newLevel.order} is already in use. Each prompt level needs a unique order number.`, 'error');
+      return;
+    }
+    const next: LevelItem[] = [...levels, { id: String(Date.now()), ...newLevel, status: 'Active' }];
+    setLevels(next);
+    setPromptLevels(next, consecutive, streamCount);
+    setNewLevel({ name: '', color: '#6366F1', order: levels.length + 2 });
+    setAddingLevel(false);
   };
 
-  const moveLevel = (index: number, dir: -1 | 1) => {
-    setPromptLevels((prev) => {
-      const target = index + dir;
-      if (target < 0 || target >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next.map((pl, i) => ({ ...pl, displayOrder: i + 1 }));
-    });
-  };
+  const renderSwatches = (selected: string, onSelect: (c: string) => void) => (
+    <View style={styles.swatchRow}>
+      {COLOR_SWATCHES.map((c) => (
+        <TouchableOpacity
+          key={c}
+          onPress={() => onSelect(c)}
+          style={[
+            styles.swatch,
+            { backgroundColor: c },
+            selected === c ? styles.swatchSelected : styles.swatchUnselected,
+          ]}
+        />
+      ))}
+    </View>
+  );
 
-  const handleSave = async () => {
-    if (promptLevels.some((pl) => !pl.label.trim())) {
-      showToast('Every prompt level needs a label', 'error');
-      return;
+  const renderEditActions = (id: string) => {
+    if (deleteConfirmId === id) {
+      return (
+        <View style={styles.deleteConfirmRow}>
+          <Text style={styles.deleteConfirmText}>Delete?</Text>
+          <TouchableOpacity onPress={() => deleteLevel(id)} style={styles.deleteBtn}>
+            <Feather name="check" size={14} color={colors.white} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setDeleteConfirmId(null)} style={styles.cancelBtn}>
+            <Feather name="x" size={14} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+      );
     }
-    if (mastery.percentage < 1 || mastery.percentage > 100) {
-      showToast('Mastery percentage must be 1–100', 'error');
-      return;
-    }
-    if (mastery.consecutiveSessions < 1 || mastery.consecutiveSessions > 10) {
-      showToast('Consecutive sessions must be 1–10', 'error');
-      return;
-    }
-    setSaving(true);
-    try {
-      await saveTrialLoggingConfig({
-        promptLevels: promptLevels.map((pl, i) => ({ ...pl, label: pl.label.trim(), displayOrder: i + 1 })),
-        trialStreamLayout: layout,
-        masteryCriteria: mastery,
-      } as never);
-      showToast('Trial logging format saved successfully', 'success');
-    } catch (err) {
-      showToast('Failed to save trial logging format', 'error');
-    } finally {
-      setSaving(false);
-    }
+    return (
+      <View style={styles.actionRow}>
+        <TouchableOpacity onPress={() => startEdit(levels.find((l) => l.id === id)!)} style={styles.actionBtn}>
+          <Feather name="edit-3" size={14} color={colors.navyText} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setDeleteConfirmId(id)} style={[styles.actionBtn, styles.deleteBtn]}>
+          <Feather name="trash-2" size={14} color={colors.white} />
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Trial Logging" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
             <Feather name="arrow-left" size={16} color="#334155" />
@@ -120,118 +143,216 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Trial Logging Format</Text>
             <Text style={styles.subtitle}>
-              SCR-ADMIN-002 · Configure prompt levels, button colors, trial stream layout and mastery criteria
+              SCR-ADMIN-002 · Configure prompt levels, trial layout, and mastery criteria
             </Text>
           </View>
         </View>
 
-        {/* Card 1: Prompt Levels & Button Colors */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Prompt Levels</Text>
-          <Text style={styles.cardHint}>Labels and button colors shown on the session data collection screen</Text>
-          <View style={[styles.levelRow, styles.levelHeaderRow]}>
-            <Text style={[styles.colLabel, { flex: 2 }]}>LABEL</Text>
-            <Text style={[styles.colLabel, { flex: 5 }]}>BUTTON COLOR</Text>
-            <Text style={[styles.colLabel, { flex: 2 }]}>ACTIVE</Text>
-            <Text style={[styles.colLabel, { flex: 2 }]}>ORDER</Text>
+        {/* Prompt Level Table */}
+        <View style={styles.tableContainer}>
+          <View style={styles.tableHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Text style={styles.tableHeaderText}>Prompt Levels</Text>
+            </View>
+            <TouchableOpacity onPress={() => setAddingLevel(true)} style={styles.addBtn}>
+              <Feather name="plus" size={14} color="#0284C7" />
+              <Text style={styles.addBtnText}>Add Prompt Level</Text>
+            </TouchableOpacity>
           </View>
-          {promptLevels.map((pl, i) => (
-            <View key={pl.id} style={styles.levelRow}>
-              <TextInput
-                style={[styles.labelInput, { flex: 2 }]}
-                value={pl.label}
-                onChangeText={(text) => updateLevel(pl.id, { label: text } as Partial<PromptLevel>)}
-                maxLength={3}
-              />
-              <View style={[{ flex: 5 }, styles.swatchRow]}>
-                {SWATCH_COLORS.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    testID={`swatch-${pl.id}-${c}`}
-                    style={[styles.swatch, pl.color === c && styles.swatchSelected]}
-                    onPress={() => updateLevel(pl.id, { color: c })}
-                  >
-                    {pl.color === c && <Feather name="check" size={12} color={colors.white} />}
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={{ flex: 2, alignItems: 'center' }}>
-                <Switch
-                  value={pl.isActive !== false}
-                  onValueChange={(v) => updateLevel(pl.id, { isActive: v })}
-                  trackColor={{ true: '#0284C7', false: '#CBD5E1' }}
+          <View style={styles.tableHead}>
+            <Text style={[styles.tableColHeader, { flex: 1 }]}>NAME</Text>
+            <Text style={[styles.tableColHeader, { flex: 1 }]}>COLOR</Text>
+            <Text style={[styles.tableColHeader, { flex: 1 }]}>ORDER</Text>
+            <Text style={[styles.tableColHeader, { flex: 1 }]}>STATUS</Text>
+            <Text style={[styles.tableColHeader, { flex: 1 }]}>ACTIONS</Text>
+          </View>
+          {levels.map((lv) => (
+            <View key={lv.id} style={styles.tableRow}>
+              {editingId === lv.id ? (
+                <>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <TextInput
+                      value={editBuf.name}
+                      onChangeText={(e) => setEditBuf((b) => ({ ...b, name: e }))}
+                      style={styles.inlineInput}
+                    />
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    {renderSwatches(editBuf.color, (c) => setEditBuf((b) => ({ ...b, color: c })))}
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <TextInput
+                      value={String(editBuf.order)}
+                      onChangeText={(e) => setEditBuf((b) => ({ ...b, order: Number(e) }))}
+                      style={[styles.inlineInput, { width: 60 }]}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <View style={[styles.badge, styles.badgeActive]}>
+                      <Text style={styles.badgeText}>Active</Text>
+                    </View>
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity onPress={() => saveEdit(lv.id)} style={styles.actionBtn}>
+                      <Feather name="check" size={14} color={colors.white} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setEditingId(null)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
+                      <Feather name="x" size={14} color={colors.white} />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <Text style={styles.cellText}>{lv.name}</Text>
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <View style={[styles.colorDot, { backgroundColor: lv.color }]} />
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <Text style={styles.cellText}>{lv.order}</Text>
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <View style={[styles.badge, styles.badgeActive]}>
+                      <Text style={styles.badgeText}>Active</Text>
+                    </View>
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    {renderEditActions(lv.id)}
+                  </View>
+                </>
+              )}
+            </View>
+          ))}
+          {addingLevel && (
+            <View style={[styles.tableRow, styles.addingRow]}>
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <TextInput
+                  value={newLevel.name}
+                  onChangeText={(e) => setNewLevel((n) => ({ ...n, name: e }))}
+                  placeholder="Name"
+                  style={styles.inlineInput}
                 />
               </View>
-              <View style={[{ flex: 2 }, styles.orderRow]}>
-                <TouchableOpacity
-                  style={[styles.orderBtn, i === 0 && styles.orderBtnDisabled]}
-                  disabled={i === 0}
-                  onPress={() => moveLevel(i, -1)}
-                >
-                  <Feather name="chevron-up" size={14} color={i === 0 ? '#94A3B8' : '#334155'} />
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                {renderSwatches(newLevel.color, (c) => setNewLevel((n) => ({ ...n, color: c })))}
+              </View>
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <TextInput
+                  value={String(newLevel.order)}
+                  onChangeText={(e) => setNewLevel((n) => ({ ...n, order: Number(e) }))}
+                  style={[styles.inlineInput, { width: 60 }]}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <View style={[styles.badge, styles.badgeActive]}>
+                  <Text style={styles.badgeText}>Active</Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity onPress={addLevel} style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}>
+                  <Feather name="check" size={14} color={colors.white} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.orderBtn, i === promptLevels.length - 1 && styles.orderBtnDisabled]}
-                  disabled={i === promptLevels.length - 1}
-                  onPress={() => moveLevel(i, 1)}
-                >
-                  <Feather name="chevron-down" size={14} color={i === promptLevels.length - 1 ? '#94A3B8' : '#334155'} />
+                <TouchableOpacity onPress={() => setAddingLevel(false)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
+                  <Feather name="x" size={14} color={colors.white} />
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
+          )}
         </View>
 
-        {/* Card 2: Trial Stream Layout */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Trial Stream Layout</Text>
-          <Text style={styles.cardHint}>How recorded trials are displayed during a live session</Text>
-          {LAYOUT_OPTIONS.map((opt) => (
-            <TouchableOpacity key={opt.value} style={styles.layoutOption} onPress={() => setLayout(opt.value)}>
-              <View style={[styles.radioOuter, layout === opt.value && styles.radioOuterActive]}>
-                {layout === opt.value && <View style={styles.radioInner} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.bodyBold}>{opt.label}</Text>
-                <Text style={styles.layoutHint}>{opt.hint}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+        {/* Live Preview */}
+        <View style={styles.previewContainer}>
+          <Text style={styles.previewLabel}>Live Preview</Text>
+          <View style={styles.previewButtons}>
+            {levels
+              .slice()
+              .sort((a, b) => a.order - b.order)
+              .map((lv) => (
+                <TouchableOpacity key={lv.id} style={[styles.previewBtn, { backgroundColor: lv.color }]}>
+                  <Text style={styles.previewBtnText}>{lv.name}</Text>
+                </TouchableOpacity>
+              ))}
+          </View>
         </View>
 
-        {/* Card 3: Mastery Criteria */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mastery Criteria</Text>
-          <Text style={styles.cardHint}>Default targets applied when goals do not define their own criteria</Text>
-          <View style={styles.criteriaRow}>
-            <View style={styles.criteriaField}>
-              <Text style={styles.fieldLabel}>Success rate (%)</Text>
-              <TextInput
-                style={styles.numberInput}
-                value={String(mastery.percentage)}
-                onChangeText={(t) => setMastery((m) => ({ ...m, percentage: Number(t.replace(/[^0-9]/g, '')) || 0 }))}
-                keyboardType="number-pad"
-              />
+        {/* Trial Stream Layout & Mastery Criteria */}
+        <View style={styles.twoCol}>
+          {/* Trial Stream Layout */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Trial Stream Layout</Text>
+            <View style={{ flexDirection: 'column', gap: 8 }}>
+              {(['Horizontal', 'Vertical', 'Card Grid'] as const).map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  style={styles.radioRow}
+                  onPress={() => setLayout(opt)}
+                >
+                  <View style={[styles.radioOuter, layout === opt && styles.radioOuterActive]}>
+                    {layout === opt && <View style={styles.radioInner} />}
+                  </View>
+                  <Text style={styles.radioLabel}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-            <View style={styles.criteriaField}>
-              <Text style={styles.fieldLabel}>Consecutive sessions</Text>
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.fieldLabel}>Trial Stream Count (3–20)</Text>
               <TextInput
+                value={String(streamCount)}
+                onChangeText={(e) => setStreamCount(Number(e))}
                 style={styles.numberInput}
-                value={String(mastery.consecutiveSessions)}
-                onChangeText={(t) => setMastery((m) => ({ ...m, consecutiveSessions: Number(t.replace(/[^0-9]/g, '')) || 0 }))}
-                keyboardType="number-pad"
+                keyboardType="numeric"
               />
             </View>
           </View>
-          <Text style={styles.layoutHint}>
-            e.g. A goal is mastered at {mastery.percentage}% success across {mastery.consecutiveSessions} consecutive sessions.
-          </Text>
+
+          {/* Mastery Criteria */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Mastery Criteria</Text>
+            <View style={{ flexDirection: 'column', gap: 12 }}>
+              <View>
+                <Text style={styles.fieldLabel}>Consecutive Trials</Text>
+                <TextInput
+                  value={String(consecutive)}
+                  onChangeText={(e) => setConsecutive(Number(e))}
+                  style={styles.numberInput}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View>
+                <Text style={styles.fieldLabel}>Independence % Threshold</Text>
+                <TextInput
+                  value={String(independence)}
+                  onChangeText={(e) => setIndependence(Number(e))}
+                  style={styles.numberInput}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.fieldLabel}>Auto-Suggestion</Text>
+                <Switch
+                  value={autoSuggest}
+                  onValueChange={() => setAutoSuggest((v) => !v)}
+                  trackColor={{ true: '#0284C7', false: '#CBD5E1' }}
+                />
+                <Text style={styles.fieldHint}>{autoSuggest ? 'On' : 'Off'}</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* Save */}
-        <TouchableOpacity style={[styles.saveBtn, saving && styles.saveBtnDisabled]} onPress={handleSave} disabled={saving}>
-          <Feather name="save" size={14} color="#0F172A" />
-          <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Configuration'}</Text>
+        <TouchableOpacity
+          style={styles.saveBtn}
+          onPress={() => {
+            setPromptLevels(levels, consecutive, streamCount);
+            showToast('Trial logging format saved successfully', 'success');
+          }}
+        >
+          <Feather name="save" size={15} color={colors.navyText} />
+          <Text style={styles.saveBtnText}>Save Configuration</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -240,7 +361,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: 60 },
+  content: { padding: spacing.lg, gap: 24, paddingBottom: 60 },
 
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingTop: 4 },
@@ -248,100 +369,145 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.h2 },
   subtitle: { ...typography.caption, marginTop: 2 },
 
-  card: {
-    backgroundColor: colors.bgCard,
+  /* Table */
+  tableContainer: {
+    borderColor: colors.border,
+    borderWidth: 1,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.sm,
+    overflow: 'hidden',
   },
-  cardTitle: { ...typography.h3 },
-  cardHint: { ...typography.caption, marginBottom: spacing.xs },
-
-  levelHeaderRow: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.xs },
-  levelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
-  colLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5 },
-  labelInput: {
+  tableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderText: { fontSize: 14, fontWeight: '600', color: '#1A2233' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  addBtnText: { color: '#0284C7', fontSize: 13, fontWeight: '600' },
+  tableHead: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingVertical: 6,
+  },
+  tableColHeader: { fontSize: 10, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, textAlign: 'center' },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingHorizontal: 8 },
+  addingRow: { backgroundColor: 'rgba(34,197,94,0.06)' },
+  cellText: { fontSize: 14, fontWeight: '600', color: '#1A2233', textAlign: 'center' },
+  inlineInput: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
+    borderColor: '#D1D5DB',
+    borderRadius: 6,
     backgroundColor: '#F8FAFC',
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 6,
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
     textAlign: 'center',
   },
-  swatchRow: { flexDirection: 'row', gap: 6 },
-  swatch: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  swatchSelected: { borderColor: '#0F172A' },
-  orderRow: { flexDirection: 'row', gap: 4, justifyContent: 'center' },
-  orderBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#F8FAFC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orderBtnDisabled: { opacity: 0.4 },
 
-  layoutOption: {
-    flexDirection: 'row',
+  /* Swatches */
+  swatchRow: { flexDirection: 'row', gap: 6 },
+  swatch: { width: 20, height: 20, borderRadius: 10, borderWidth: 2 },
+  swatchSelected: { borderColor: '#1A2233', transform: [{ scale: 1.1 }] },
+  swatchUnselected: { borderColor: 'transparent' },
+
+  /* Badge */
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'center' },
+  badgeActive: { backgroundColor: '#DBEAFE' },
+  badgeText: { fontSize: 11, fontWeight: '700', color: '#2563EB' },
+
+  /* Actions */
+  actionRow: { flexDirection: 'row', gap: 6 },
+  actionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
   },
-  radioOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#94A3B8',
+  deleteBtn: { backgroundColor: '#EF4444' },
+  cancelBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6B7280',
+  },
+  deleteConfirmRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deleteConfirmText: { color: '#DC2626', fontSize: 12, fontWeight: '600' },
+  colorDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB' },
+
+  /* Live Preview */
+  previewContainer: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#F9FAFB',
+  },
+  previewLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' },
+  previewButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  previewBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  previewBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+
+  /* Two Column */
+  twoCol: { flexDirection: 'row', gap: 16 },
+  card: {
+    flex: 1,
+    backgroundColor: colors.bgCard,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  cardTitle: { ...typography.h3 },
+  radioRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#9CA3AF', alignItems: 'center', justifyContent: 'center' },
   radioOuterActive: { borderColor: '#0284C7' },
   radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#0284C7' },
-  layoutHint: { ...typography.caption },
-
-  criteriaRow: { flexDirection: 'row', gap: spacing.lg },
-  criteriaField: { flex: 1, gap: 6 },
+  radioLabel: { fontSize: 13, color: '#374151' },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: '#334155' },
+  fieldHint: { fontSize: 12, color: '#9CA3AF' },
   numberInput: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
     backgroundColor: '#F8FAFC',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     fontSize: 13,
     color: '#0F172A',
     fontWeight: '500',
+    width: 60,
   },
 
+  /* Save Button */
   saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#FACC15',
+    backgroundColor: colors.primaryYellow,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 8,
     gap: 8,
   },
-  saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
 });

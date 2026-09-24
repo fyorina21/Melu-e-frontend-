@@ -12,6 +12,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { useToast } from '../../context/ToastContext';
+import { getTeacherStudentProfile, saveSocialSkillsAssessment, getSocialSkillsAssessment } from '../../api/teacherExtrasApi';
+import { useEffect } from 'react';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -54,8 +56,20 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
 
   const answered = Object.keys(scores).length;
+  useEffect(() => {
+    getTeacherStudentProfile(studentId).then(res => {
+      if (res?.data) setProfile(res.data);
+    }).catch(() => {});
+    getSocialSkillsAssessment(studentId).then(res => {
+      if (res?.data?.data) {
+        if (res.data.data.scores) setScores(res.data.data.scores);
+        if (res.data.data.customValues) setCustomValues(res.data.data.customValues);
+      }
+    }).catch(() => {});
+  }, [studentId]);
   const totalScore = Object.values(scores).reduce<number>((a, b) => a + b, 0);
   const maxScore = QUESTIONS.length * 3;
   const percent = maxScore ? Math.round((totalScore / maxScore) * 100) : 0;
@@ -73,8 +87,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
     }
     setSaving(true);
     try {
-      // Demo: persist locally; wire to backend when endpoint is available.
-      await new Promise((r) => setTimeout(r, 300));
+      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent });
       showToast(`Social Skills Questionnaire saved (${percent}%)`, 'success');
       navigation?.goBack?.();
     } catch (err) {
@@ -98,7 +111,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
         </TouchableOpacity>
         <Text style={typography.h1}>Social Skills Questionnaire</Text>
         <Text style={typography.body}>
-          Student: {studentId === 'student-b' ? 'Student B' : 'Student A'}
+          Student: {profile?.fullName || 'Student'}
         </Text>
       </View>
 

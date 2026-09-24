@@ -129,10 +129,20 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     }
   };
 
-  if (loadError) return <ScreenError onRetry={load} />;
-  if (!data) return <ScreenLoader />;
+if (loadError) return <ScreenError onRetry={load} />;
+   if (!data) return <ScreenLoader />;
 
-  const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
+   if (!data.studentName) {
+     return (
+       <SafeAreaView style={styles.safe}>
+         <View style={styles.emptyContainer}>
+           <Text style={styles.emptyText}>No student found for this goal mastery check.</Text>
+         </View>
+       </SafeAreaView>
+     );
+   }
+
+   const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -520,6 +530,8 @@ const styles = StyleSheet.create({
   submitBtn: { backgroundColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' },
   submitBtnActive: { backgroundColor: '#FACC15' },
   submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-  submitBtnTextActive: { color: '#1E293B' },
-});
+submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+   submitBtnTextActive: { color: '#1E293B' },
+   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+ });

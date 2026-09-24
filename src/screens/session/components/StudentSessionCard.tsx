@@ -6,6 +6,7 @@ import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
 import PromptEntryRow from './PromptEntryRow';
 import type { Student, Goal } from '../../../types';
+import { getPromptLevelOrder, getTrialConfig } from '../../../stores/promptLevelsStore';
 
 const TRIAL_ICON_COLOR: Record<string, string> = {
   INDEPENDENT: '#6fe99c',
@@ -30,7 +31,7 @@ interface StudentSessionCardProps {
     studentId: string,
     goalId: string | undefined
   ) => void;
-  onUndo: () => void;
+  onUndo: (goalId: string | undefined) => void;
   onActivate: (studentId: string) => void;
   onViewGoalProgress: (
     studentId: string,
@@ -57,9 +58,13 @@ export default function StudentSessionCard({
   const isTaskAnalysis =
     activeGoal?.goalType === 'task_analysis';
 
-  const trials = student.trials || [];
+  // Deduplicate trials by ID to prevent any UI duplication symptoms
+  const uniqueTrials = Array.from(new Map((student.trials || []).filter((t) => t.studentGoalId === activeGoal?.id).map((t) => [t.id, t])).values());
+  const trials = uniqueTrials;
 
-  const displayedTrials = trials.slice(-5);
+  const orderMap = getPromptLevelOrder();
+  const { consecutive } = getTrialConfig();
+  const displayedTrials = [...trials.slice(-5)];
   const trialCount = displayedTrials.length;
 
   const handlePromptBarPress = () => {
@@ -116,33 +121,35 @@ export default function StudentSessionCard({
       </View>
 
       <View style={styles.goalTabs}>
-        {(student.goals || []).map((goal, idx) => (
-          <TouchableOpacity
-            key={goal.id}
-            style={[
-              styles.goalTab,
-              idx === activeGoalIndex &&
-                isActive &&
-                styles.goalTabActive,
-            ]}
-            disabled={!isActive}
-            onPress={() => setActiveGoalIndex(idx)}
-          >
-            <Text
+        {[0, 1].map((idx) => {
+          const goal = student.goals?.[idx];
+          const isGoalTabActive =
+            idx === activeGoalIndex && isActive;
+          return (
+            <TouchableOpacity
+              key={goal?.id ?? `goal-slot-${idx}`}
               style={[
-                styles.goalTabText,
-                idx === activeGoalIndex &&
-                  isActive &&
-                  styles.goalTabTextActive,
+                styles.goalTab,
+                isGoalTabActive && styles.goalTabActive,
               ]}
+              disabled={!isActive}
+              onPress={() => setActiveGoalIndex(idx)}
             >
-              Goal {idx + 1}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.goalTabText,
+                  isGoalTabActive &&
+                    styles.goalTabTextActive,
+                ]}
+              >
+                Goal {idx + 1}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {activeGoal && (
+      {activeGoal ? (
         <View style={styles.goalDetail}>
           <View style={styles.goalDetailHeaderRow}>
             <Text style={typography.bodyBold}>
@@ -180,7 +187,20 @@ export default function StudentSessionCard({
           >
           </TouchableOpacity>
         </View>
+      ) : (
+        <View style={styles.goalDetail}>
+          <Text
+            style={[
+              typography.body,
+              { color: colors.mutedText },
+            ]}
+          >
+            No goal assigned
+          </Text>
+        </View>
       )}
+
+
 
       {isTaskAnalysis ? (
         <TaskAnalysisStepList
@@ -205,9 +225,10 @@ export default function StudentSessionCard({
             </Text>
 
             {isActive && (
-              <TouchableOpacity onPress={onUndo}>
+              <TouchableOpacity onPress={() => onUndo(activeGoal?.id)} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Feather name="refresh-ccw" size={12} color={colors.bodyText} style={{ marginRight: 4 }} />
                 <Text style={styles.undoText}>
-                  ↺ Undo
+                  Undo
                 </Text>
               </TouchableOpacity>
             )}

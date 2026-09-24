@@ -34,6 +34,11 @@ export const getSensoryAssessment = (studentId: string) =>
 export const saveSensoryAssessment = (studentId: string, payload: Record<string, unknown>) =>
   client.post(`/teacher/students/${studentId}/assessments/sensory`, payload);
 
+export const getSocialSkillsAssessment = (studentId: string) =>
+  client.get(`/teacher/students//assessments/social-skills`);
+export const saveSocialSkillsAssessment = (studentId: string, payload: Record<string, unknown>) =>
+  client.post(`/teacher/students//assessments/social-skills`, payload);
+
 export const getTeacherStudentProfile = (studentId: string) =>
   client.get(`/teacher/students/${studentId}/profile`);
 

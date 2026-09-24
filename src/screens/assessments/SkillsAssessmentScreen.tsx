@@ -155,6 +155,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       saveStorageAssessment(studentId, { scores, notes, customFields });
       await saveSkillsAssessment(studentId, { scores, notes, customFields });
       showToast(`${studentName} ABLLS assessment saved successfully.`, 'success');
+      navigation?.navigate?.('AssessmentSummaryReport' as never);
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');
     }
@@ -292,6 +293,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
             values={customFields}
             onChange={(key, val) => setCustomFields((prev) => ({ ...prev, [key]: val }))}
             excludeStandardLabels={['Assessment Date', 'Assessor Name']}
+            section="General"
           />
         </ScrollView>
 

@@ -43,8 +43,24 @@ export interface AuthSession {
 export type PromptLevel = 'FP' | 'PP' | 'G' | 'INDEPENDENT';
 
 export interface Trial {
+  id?: string;
   promptLevel: string;
   timestamp: string;
+  sessionId?: string;
+  studentGoalId?: string;
+}
+
+export interface FormField {
+  id: string;
+  type: string;
+  label: string;
+  required: boolean;
+  visible: boolean;
+  options?: string[];
+  section?: string;
+  level?: string;
+  placeholder?: string;
+  helpText?: string;
 }
 
 export interface TaskAnalysisStep {
@@ -127,6 +143,7 @@ export interface SessionSummary {
 export type SessionStackParamList = {
   TeacherDashboard: undefined;
   AssessmentDashboard: undefined;
+  AssessmentSummaryReport: undefined;
   SkillsAssessment: { studentId: string };
   AbllsNeedMap: { studentId: string };
   BehaviorAssessment: { studentId: string };
@@ -134,7 +151,7 @@ export type SessionStackParamList = {
   SensoryAssessment: { studentId: string };
   AbcLog: undefined;
   SessionDataCollection: { sessionId?: string } | undefined;
-  DailyNotes: undefined;
+  DailyNotes: { studentId?: string };
   SessionNoteEditor: { sessionId: string; mode: 'view' | 'edit' };
   GoalProgress: { studentId: string; goalId: string };
   SchedulingCalendar: undefined;
@@ -183,7 +200,7 @@ export type ProgramDirectorStackParamList = {
   GoalBankManagement: undefined;
   GoalMasteryApproval: undefined;
   PdParentCommunication: undefined;
-  GraphChartView: undefined;
+  GraphChartView: { studentId?: string; goalIds?: string[] } | undefined;
   StudentEnrollmentWizard: undefined;
   AssessmentSummaryReport: undefined;
 };
@@ -200,14 +217,21 @@ export type InstitutionalAdminStackParamList = {
   WorkingHoursConfig: undefined;
   SchoolSettingsConfig: undefined;
   ClinicalCategoriesConfig: undefined;
+  BehaviorAssessment?: { studentId?: string };
+  PreferenceAssessment?: { studentId?: string };
+  SensoryAssessment?: { studentId?: string };
 };
 
 export type SystemAdminStackParamList = {
   AdminPanelOverview: { panel?: 'clinical' | 'system' } | undefined;
+  FormBuilder: undefined;
   StaffAccountManagement: undefined;
   RoleManagement: undefined;
   PermissionConfiguration: undefined;
   AuditLog: undefined;
+  BehaviorAssessment?: { studentId?: string };
+  PreferenceAssessment?: { studentId?: string };
+  SensoryAssessment?: { studentId?: string };
 };
 
 export type ParentStackParamList = {

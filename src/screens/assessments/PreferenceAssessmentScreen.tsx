@@ -14,7 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { savePreferenceAssessment } from '../../api/teacherExtrasApi';
+import { savePreferenceAssessment, getPreferenceAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
@@ -28,6 +28,8 @@ interface StimulusItem {
   frequency: number;
   durationSeconds: number;
   notes: string;
+  engaged?: 'Engaged' | 'Did Not Engage';
+  approached?: 'Approached' | 'Did Not Approach';
 }
 
 const CATEGORIES = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement'];
@@ -54,12 +56,31 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'Sensory Time' | 'Circle Time' | 'Play Time'>('Sensory Time');
   const [items, setItems] = useState<StimulusItem[]>(INITIAL_ITEMS);
+  const [profile, setProfile] = useState<any>(null);
 
   // Modal State
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('Visual');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
+        if (profileRes?.data) setProfile(profileRes.data);
+        const res = await getPreferenceAssessment(studentId);
+        const savedData = res?.data?.data;
+        if (savedData && savedData.items && savedData.items.length > 0) {
+          setItems(savedData.items);
+        }
+        if (savedData && savedData.sessionTab) {
+          setActiveTab(savedData.sessionTab);
+        }
+      } catch (err) {}
+    };
+    loadData();
+  }, [studentId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -96,9 +117,9 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i)));
   };
 
-  const updateNotes = (id: string, notes: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i)));
-  };
+  const updateNotes = (id: string, notes: string) => { setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i))); };
+  const updateEngaged = (id: string, val: 'Engaged' | 'Did Not Engage') => { setItems(prev => prev.map(i => i.id === id ? { ...i, engaged: val } : i)); };
+  const updateApproached = (id: string, val: 'Approached' | 'Did Not Approach') => { setItems(prev => prev.map(i => i.id === id ? { ...i, approached: val } : i)); };
 
   const handleExport = () => {
     const title = 'Preference Assessment Report';
@@ -185,6 +206,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     try {
       await savePreferenceAssessment(studentId, { items, sessionTab: activeTab, status });
       showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
+      navigation?.navigate?.('AssessmentSummaryReport' as never);
     } catch {
       showToast('Failed to save assessment data', 'error');
     }
@@ -207,8 +229,8 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
           <Text style={styles.headerSubtitle}>ABA Therapy Management</Text>
         </View>
         <View style={styles.studentBadge}>
-          <Text style={styles.studentName}>Student A</Text>
-          <Text style={styles.studentAge}>Age 6</Text>
+          <Text style={styles.studentName}>{profile?.fullName || 'Student'}</Text>
+          <Text style={styles.studentAge}>Age {profile?.age || '?'}</Text>
         </View>
       </View>
 
@@ -275,6 +297,38 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
               <View style={styles.metricColCompact}>
                 <Text style={styles.metricLabel}>COUNT</Text>
                 <Text style={styles.displayVal}>{item.frequency}</Text>
+              </View>
+
+              <View style={radioStyles.col}>
+                <Text style={styles.metricLabel}>ENGAGEMENT</Text>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Engaged')}>
+                  <View style={[radioStyles.radioCircle, item.engaged === 'Engaged' && radioStyles.radioCircleSelected]}>
+                    {item.engaged === 'Engaged' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Engaged</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Did Not Engage')}>
+                  <View style={[radioStyles.radioCircle, item.engaged === 'Did Not Engage' && radioStyles.radioCircleSelected]}>
+                    {item.engaged === 'Did Not Engage' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Did Not Engage</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={radioStyles.col}>
+                <Text style={styles.metricLabel}>APPROACH</Text>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Approached')}>
+                  <View style={[radioStyles.radioCircle, item.approached === 'Approached' && radioStyles.radioCircleSelected]}>
+                    {item.approached === 'Approached' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Approached</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Did Not Approach')}>
+                  <View style={[radioStyles.radioCircle, item.approached === 'Did Not Approach' && radioStyles.radioCircleSelected]}>
+                    {item.approached === 'Did Not Approach' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Did Not Approach</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.notesCol}>
@@ -572,3 +626,4 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
 });
+const radioStyles = StyleSheet.create({ col: { gap: 6, minWidth: 120 }, radioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }, radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#94A3B8', alignItems: 'center', justifyContent: 'center' }, radioCircleSelected: { borderColor: '#0284C7' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284C7' }, radioText: { fontSize: 13, color: '#334155' } });

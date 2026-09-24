@@ -38,7 +38,7 @@ interface ScheduleBlock {
   studentIds: string[];
 }
 
-const CAPACITY = 6;
+const CAPACITY = 2;
 
 function AssignmentEditorModal({
   visible,
@@ -69,8 +69,8 @@ function AssignmentEditorModal({
 
   const overCapacity = selected.length > CAPACITY;
   const filteredStudents = students.filter((s) =>
-    s.name.toLowerCase().includes(studentSearch.toLowerCase())
-  );
+      String(s.name || '').toLowerCase().includes(studentSearch.toLowerCase())
+    );
 
   if (!block) return null;
 
@@ -98,10 +98,15 @@ function AssignmentEditorModal({
               placeholderTextColor={colors.mutedText}
               value={studentSearch}
               onChangeText={setStudentSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              textContentType="none"
+              importantForAutofill="no"
             />
           </View>
 
-          <ScrollView style={{ maxHeight: 300 }}>
+          <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
             {filteredStudents.map((s) => {
               const isChecked = selected.includes(s.id);
               return (
@@ -193,7 +198,7 @@ export default function DirectorSchedulingScreen({
 
   const handleSaveAssignment = async (blockId: string, studentIds: string[]) => {
     try {
-      await saveAssignment({ blockId, studentIds });
+      await saveAssignment({ blockId, studentIds, teacherId });
       await load();
     } catch {}
     setEditorTarget(null);
@@ -270,7 +275,7 @@ export default function DirectorSchedulingScreen({
                   onChangeText={setSearchTeacher}
                 />
               </View>
-              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {filteredTeachers.map((t) => {
                   const isSelected = t.id === teacherId;
                   return (

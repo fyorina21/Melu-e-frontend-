@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,9 @@ import type {
 } from './components/BehaviorIncidentModal';
 import {
   getSessionRoster,
+  startSession,
   logTrial,
+  undoLastTrial,
   recordIncident,
   swapStudents,
 } from '../../api/sessionApi';
@@ -76,13 +78,27 @@ export default function SessionDataCollectionScreen({
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  const loadRoster = useCallback(async () => {
+  const loadRoster = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
+
+      // Start the session on the backend so the mock DB records the true startedAt time!
+      await startSession(sessionId).catch(() => {});
 
       const { data } = await getSessionRoster(sessionId);
 
-      setSession(data);
+      setSession((prev) => {
+        if (prev) {
+          const activeStudentId = prev.students.find(s => s.active)?.id;
+          if (activeStudentId) {
+            data.students = data.students.map((s: any) => ({
+              ...s,
+              active: s.id === activeStudentId
+            }));
+          }
+        }
+        return data;
+      });
 
       startSessionTimer(
         sessionId,
@@ -92,10 +108,12 @@ export default function SessionDataCollectionScreen({
       setSecondsRemaining(remainingSeconds());
       setIsRunning(isTimerRunning());
     } catch (err) {
-      setSession(null);
-      setLoadError(true);
+      if (!silent) {
+        setSession(null);
+        setLoadError(true);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [sessionId]);
 
@@ -124,24 +142,30 @@ export default function SessionDataCollectionScreen({
     setIsRunning(isTimerRunning());
   };
 
+  const isLogging = useRef(false);
+
   const handleSelectPromptLevel = async (
     studentId: string,
     goalId: string | undefined,
     level: string,
     stepId?: string
   ) => {
+    if (isLogging.current) return;
+    isLogging.current = true;
     try {
       await logTrial(sessionId, studentId, goalId ?? '', {
         promptLevel: level,
         stepId,
       });
       showToast('Trial logged successfully', 'success');
-      await loadRoster();
+      await loadRoster(true);
     } catch (err) {
       Alert.alert(
         'Sync failed',
         'Trial saved locally, will retry when online.'
       );
+    } finally {
+      isLogging.current = false;
     }
   };
 
@@ -277,23 +301,54 @@ export default function SessionDataCollectionScreen({
     });
   };
 
-  if (loadError) return <ScreenError onRetry={loadRoster} />;
+if (loadError) return <ScreenError onRetry={loadRoster} />;
 
-  if (
-    loading ||
-    !session ||
-    secondsRemaining === null
-  ) {
-    return <ScreenLoader />;
-  }
+   if (
+     loading ||
+     !session ||
+     secondsRemaining === null
+   ) {
+     return <ScreenLoader />;
+   }
 
-  const minutes = String(
-    Math.floor(secondsRemaining / 60)
-  ).padStart(2, '0');
+   if (session.students.length === 0) {
+     return (
+       <SafeAreaView style={styles.safe}>
+         <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
-  const seconds = String(
-    secondsRemaining % 60
-  ).padStart(2, '0');
+         <View style={styles.header}>
+           <View>
+             <Text style={typography.h1}>Today's Session</Text>
+             <Text style={typography.body}>
+               {session.teacherName} • {session.stationName} •{' '}
+               {session.roomName}
+             </Text>
+           </View>
+         </View>
+
+         <ScrollView contentContainerStyle={styles.scrollContent}>
+           <Text style={[typography.h2, styles.studentsHeading]}>Students</Text>
+           <View style={styles.emptyContainer}>
+             <View style={styles.emptyIconCircle}>
+               <Feather name="users" size={26} color={colors.mutedText} />
+             </View>
+             <Text style={styles.emptyTitle}>No student assigned yet</Text>
+             <Text style={styles.emptyText}>
+               A student appears here once their assessment is completed and an IUP goal has been assigned.
+             </Text>
+           </View>
+         </ScrollView>
+       </SafeAreaView>
+     );
+   }
+
+   const minutes = String(
+     Math.floor(secondsRemaining / 60)
+   ).padStart(2, '0');
+
+   const seconds = String(
+     secondsRemaining % 60
+   ).padStart(2, '0');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -359,9 +414,7 @@ export default function SessionDataCollectionScreen({
             >
               <StudentSessionCard
                 student={student}
-                onSelectPromptLevel={
-                  handleSelectPromptLevel
-                }
+                onSelectPromptLevel={handleSelectPromptLevel}
                 onRecordIncident={
                   handleOpenIncidentModal
                 }
@@ -373,25 +426,14 @@ export default function SessionDataCollectionScreen({
                 onViewProfile={
                   handleViewProfile
                 }
-                onUndo={() => {
-                  setSession((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          students: prev.students.map(
-                            (s) =>
-                              s.id === student.id
-                                ? {
-                                    ...s,
-                                    trials: (
-                                      s.trials || []
-                                    ).slice(0, -1),
-                                  }
-                                : s
-                          ),
-                        }
-                      : prev
-                  );
+                onUndo={async (goalId) => {
+                  if (!goalId) return;
+                  try {
+                    await undoLastTrial(sessionId, student.id, goalId);
+                    await loadRoster(true);
+                  } catch (err) {
+                    console.error('Failed to undo trial', err);
+                  }
                 }}
               />
             </TouchableOpacity>
@@ -532,8 +574,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  primaryBtnText: {
-    fontWeight: '700',
-    color: colors.navyText,
-  },
-});
+primaryBtnText: {
+     fontWeight: '700',
+     color: colors.navyText,
+   },
+   emptyContainer: {
+     justifyContent: 'center',
+     alignItems: 'center',
+     padding: spacing.xl,
+     gap: spacing.sm,
+     backgroundColor: colors.bgCard,
+     borderRadius: radius.lg,
+     borderWidth: 1,
+     borderColor: colors.border,
+   },
+   studentsHeading: { marginBottom: spacing.md },
+   emptyIconCircle: {
+     width: 56,
+     height: 56,
+     borderRadius: 28,
+     backgroundColor: colors.bgApp,
+     alignItems: 'center',
+     justifyContent: 'center',
+     marginBottom: spacing.xs,
+   },
+   emptyTitle: {
+     fontSize: 18,
+     fontWeight: '700',
+     color: colors.navyText,
+     textAlign: 'center',
+   },
+   emptyText: {
+     fontSize: 14,
+     color: colors.mutedText,
+     textAlign: 'center',
+     lineHeight: 20,
+   },
+ });

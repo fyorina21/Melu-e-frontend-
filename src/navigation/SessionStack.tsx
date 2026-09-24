@@ -4,6 +4,7 @@ import type { SessionStackParamList } from '../types';
 
 import TeacherDashboardScreen from '../screens/teacherdashboard/TeacherDashboardScreen';
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
+import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 import AbcLogScreen from '../screens/abclog/AbcLogScreen';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
 import DailyNotesScreen from '../screens/dailynotes/DailyNotesScreen';
@@ -32,6 +33,7 @@ export default function SessionStack() {
     <Stack.Navigator initialRouteName="TeacherDashboard" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TeacherDashboard" component={TeacherDashboardScreen} />
       <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen} />
+      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen} />
       <Stack.Screen name="AbcLog" component={AbcLogScreen} />
       <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen} />
       <Stack.Screen name="DailyNotes" component={DailyNotesScreen} />

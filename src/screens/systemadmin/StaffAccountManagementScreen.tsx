@@ -355,16 +355,27 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
   const loadAssignments = useCallback(async () => {
     try {
       const { data } = await getDirectorSchedule({ teacherId: teacher.id });
-      const mapped = data.map((b: any) => {
-        const parsedStation: LinkStation = b.stationName.includes('Station 2') ? '2' : '1';
-        return {
-          teacherId: teacher.id,
-          teacherName: teacher.name,
-          station: parsedStation,
-          room: (b.id === 'b1' ? 1 : 2) as LinkRoom,
-          students: b.studentIds || [],
-        };
-      });
+      const mapped = data
+        .filter((b: any) => (b.studentIds || []).length > 0)
+        .map((b: any) => {
+          const match = String(b.id).match(/^b(\d)_(\d)$/);
+          let s = '1';
+          let r = 1;
+          if (match) {
+            s = match[1];
+            r = parseInt(match[2], 10);
+          } else {
+            s = b.stationName.includes('Station 2') ? '2' : '1';
+            r = b.id === 'b1' ? 1 : 2;
+          }
+          return {
+            teacherId: teacher.id,
+            teacherName: teacher.name,
+            station: s as LinkStation,
+            room: r as LinkRoom,
+            students: b.studentIds || [],
+          };
+        });
       setAssignments(mapped);
     } catch (err) {
       console.warn('Failed to load assignments:', err);
@@ -416,7 +427,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
     if (!selectedForAssign.length) return;
 
     const newStudents = [...assignedStudentIds, ...selectedForAssign];
-    const blockId = room === 1 ? 'b1' : 'b2';
+    const blockId = 'b' + station + '_' + room;
 
     try {
       await saveAssignment({ blockId, studentIds: newStudents, teacherId: teacher.id });
@@ -442,7 +453,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
     if (!selectedForRemove.length) return;
 
     const remainingStudents = assignedStudentIds.filter((id) => !selectedForRemove.includes(id));
-    const blockId = room === 1 ? 'b1' : 'b2';
+    const blockId = 'b' + station + '_' + room;
 
     try {
       await saveAssignment({ blockId, studentIds: remainingStudents, teacherId: teacher.id });
@@ -462,8 +473,11 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
   if (students === null) return <ScreenLoader />;
 
   return (
-    <View style={styles.linkingCard}>
-      <View style={styles.linkingHeader}>
+    <Modal visible={true} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={[styles.modalSheet, { maxHeight: '90%', flex: 1, padding: 0 }]}>
+          <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+            <View style={styles.linkingHeader}>
         <View style={{ flex: 1 }}>
           <Text style={typography.h2}>Teacher-Student Linking</Text>
           <Text style={typography.caption}>{teacher.name} — assign students to a station &amp; room (max {TEACHER_CAPACITY} per room).</Text>
@@ -526,7 +540,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
             ))}
           </ScrollView>
 
-          <View style={styles.panelList}>
+          <ScrollView style={styles.panelList} nestedScrollEnabled={true}>
             {availableStudents.length === 0 ? (
               <Text style={styles.emptyText}>No available students</Text>
             ) : (
@@ -549,7 +563,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
                 );
               })
             )}
-          </View>
+          </ScrollView>
 
           <TouchableOpacity
             style={[styles.primaryBtn, selectedForAssign.length > 0 && styles.primaryBtnActive]}
@@ -570,7 +584,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
             <Text style={typography.caption}>{assignedStudentIds.length}/{TEACHER_CAPACITY}</Text>
           </View>
 
-          <View style={[styles.panelList, styles.panelListAssigned]}>
+          <ScrollView style={[styles.panelList, styles.panelListAssigned]} nestedScrollEnabled={true}>
             {assignedStudentIds.length === 0 ? (
               <View style={styles.emptyState}>
                 <Feather name="users" size={40} color={colors.border} />
@@ -596,7 +610,7 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
                 );
               })
             )}
-          </View>
+          </ScrollView>
 
           <TouchableOpacity
             style={[styles.removeBtn, selectedForRemove.length > 0 && styles.removeBtnActive]}
@@ -642,8 +656,25 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
           </View>
         </View>
       </Modal>
+
+      {/* Main Modal Footer */}
+      <View style={[styles.modalFooter, { marginTop: 16 }]}>
+        <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+          <Text style={styles.cancelBtnText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.saveBtn} onPress={async () => {
+          if (selectedForAssign.length > 0) await handleAssign();
+          if (selectedForRemove.length > 0) await handleRemoveConfirm();
+          onClose();
+        }}>
+          <Text style={styles.saveBtnText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+      </ScrollView>
     </View>
-  );
+  </View>
+</Modal>
+);
 }
 
 export default function StaffAccountManagementScreen({ navigation }: NativeStackScreenProps<SystemAdminStackParamList, 'StaffAccountManagement'>) {
@@ -748,7 +779,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       </View>
 
       <View style={styles.filtersRow}>
-        <TextInput style={styles.searchInput} placeholder="Search by name or email..." placeholderTextColor={colors.mutedText} value={search} onChangeText={setSearch} />
+        <TextInput style={styles.searchInput} placeholder="Search by name or email..." placeholderTextColor={colors.mutedText} value={search} onChangeText={setSearch} autoCapitalize="none" autoCorrect={false} autoComplete="off" textContentType="none" importantForAutofill="no" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {['All', ...ROLE_OPTIONS].map((r) => (
             <TouchableOpacity key={r} style={[styles.filterChip, roleFilter === r && styles.filterChipActive]} onPress={() => setRoleFilter(r)}>

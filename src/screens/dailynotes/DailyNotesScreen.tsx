@@ -11,12 +11,14 @@ import {
 } from 'react-native';
 import ScreenLoader from '../../components/ScreenLoader';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import StatusPill from '../../components/StatusPill';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getDailyNotes, getWeeklySummary, resubmitSessionNote } from '../../api/sessionApi';
+import { getTeacherDashboard, getBehaviorAssessment } from '../../api/teacherExtrasApi';
 import { downloadTextFile } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
@@ -47,10 +49,83 @@ interface WeeklySummaryData {
   avgIndependenceThisWeek: number;
 }
 
+interface BehaviorRecord {
+  id: string;
+  behavior: string;
+  frequency: string;
+  duration: string;
+  intensity: 'Low' | 'Medium' | 'High';
+  trigger: string;
+  consequence: string;
+}
+
+interface BehaviorAssessmentData {
+  massAnswers?: Record<string, string>;
+  fastAnswers?: Record<string, boolean>;
+  records?: BehaviorRecord[];
+  draftRecord?: BehaviorRecord;
+  status?: string;
+}
+
 const DATE_OPTIONS = ['This Week', 'Last Week', 'This Month'];
 const STATUS_OPTIONS = ['All Statuses', 'Approved', 'Pending', 'Draft', 'Revision Required'];
 
-export default function DailyNotesScreen({ navigation }: Props) {
+const LIKERT_SCORE: Record<string, number> = {
+  Never: 0,
+  'Almost Never': 1,
+  Seldom: 2,
+  'Half the Time': 3,
+  Usually: 4,
+  'Almost Always': 5,
+  Always: 6,
+};
+
+const MASS_FUNCTIONS: Record<string, 'Sensory' | 'Escape' | 'Attention' | 'Tangible'> = {
+  M1: 'Sensory', M2: 'Escape', M3: 'Attention', M4: 'Tangible',
+  M5: 'Sensory', M6: 'Escape', M7: 'Attention', M8: 'Tangible',
+  M9: 'Escape', M10: 'Sensory', M11: 'Attention', M12: 'Tangible',
+};
+
+const FAST_CATEGORIES: Record<string, 'Social - Positive' | 'Social - Negative' | 'Automatic - Positive' | 'Automatic - Negative'> = {
+  F1: 'Social - Positive', F2: 'Social - Negative', F3: 'Automatic - Positive', F4: 'Automatic - Negative',
+  F5: 'Automatic - Positive', F6: 'Social - Negative', F7: 'Social - Positive', F8: 'Social - Positive',
+};
+
+// True only when the shared record actually holds data worth showing.
+function hasBehaviorData(a: BehaviorAssessmentData | null): boolean {
+  if (!a) return false;
+  return (
+    Object.keys(a.massAnswers ?? {}).some((k) => !!a.massAnswers?.[k]) ||
+    Object.keys(a.fastAnswers ?? {}).some((k) => a.fastAnswers?.[k] !== undefined) ||
+    (a.records?.length ?? 0) > 0 ||
+    Boolean(a.draftRecord && (a.draftRecord.frequency?.trim() || a.draftRecord.trigger?.trim() || a.draftRecord.duration?.trim()))
+  );
+}
+
+function getMassFunction(answers: Record<string, string>): string {
+  const totals: Record<string, number> = { Sensory: 0, Escape: 0, Attention: 0, Tangible: 0 };
+  Object.entries(answers).forEach(([id, val]) => {
+    const fn = MASS_FUNCTIONS[id];
+    if (fn && val) totals[fn] += LIKERT_SCORE[val] ?? 0;
+  });
+  return Object.keys(totals).reduce((max, k) => (totals[k] > totals[max] ? k : max), 'Sensory');
+}
+
+function getFastCategory(answers: Record<string, boolean>): string {
+  const totals: Record<string, number> = {
+    'Social - Positive': 0,
+    'Social - Negative': 0,
+    'Automatic - Positive': 0,
+    'Automatic - Negative': 0,
+  };
+  Object.entries(answers).forEach(([id, val]) => {
+    const cat = FAST_CATEGORIES[id];
+    if (cat && val === true) totals[cat] += 1;
+  });
+  return Object.keys(totals).reduce((max, k) => (totals[k] > totals[max] ? k : max), 'Social - Positive');
+}
+
+export default function DailyNotesScreen({ navigation, route }: Props) {
   const { session } = useAuth();
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
@@ -65,33 +140,128 @@ export default function DailyNotesScreen({ navigation }: Props) {
   });
   const [feedbackTarget, setFeedbackTarget] = useState<NoteRecord | null>(null);
 
+  // Behavior Assessment (shared with the BehaviorAssessment screen)
+  const routeSid = route?.params?.studentId;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const initialStudentId = routeSid || localSid || undefined;
+
+  const [studentId, setStudentId] = useState<string | undefined>(initialStudentId);
+  const [behaviorAssessment, setBehaviorAssessment] = useState<BehaviorAssessmentData | null>(null);
+  const [studentOptions, setStudentOptions] = useState<{ id: string; name: string; initial: string }[]>([]);
+
   // Dropdown states
   const [dateFilter, setDateFilter] = useState('This Month');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
-  const [openDropdown, setOpenDropdown] = useState<'date' | 'status' | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<'date' | 'status' | 'student' | null>(null);
+
+  useEffect(() => {
+    if (route?.params?.studentId && route.params.studentId !== studentId) {
+      setStudentId(route.params.studentId);
+    }
+  }, [route?.params?.studentId]);
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && studentId) {
+      try {
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
+    }
+  }, [studentId]);
 
   const load = useCallback(async () => {
     try {
-      const [notesRes, summaryRes] = await Promise.all([
+      const [notesRes, summaryRes, dashboardRes] = await Promise.all([
         getDailyNotes({}),
         getWeeklySummary({}),
+        getTeacherDashboard(),
       ]);
       setRecords(notesRes.data.records);
       setStats(notesRes.data.stats);
       setSummary(summaryRes.data);
+      const students = (dashboardRes.data.students ?? []).map((s: any) => ({
+        id: s.id,
+        name: s.name ?? s.fullName ?? s.id,
+        initial: (s.name ?? s.fullName ?? '?').charAt(0),
+      }));
+      setStudentOptions(students);
+      setStudentId((current) => current || routeSid || localSid || students[0]?.id);
     } catch {
       // API error — show empty state
       setRecords([]);
       setStats({ sessionsCompleted: 0, totalTrials: 0, avgIndependence: 0, reviewsPending: 0 });
       setSummary(null);
+      setStudentOptions([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [routeSid, localSid]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Pull the shared Behavior Assessment for the selected student so this screen
+  // always shows the latest saved data (never a separate copy).
+  const fetchBehavior = useCallback(async () => {
+    if (!studentId) {
+      setBehaviorAssessment(null);
+      return;
+    }
+    try {
+      const res = await getBehaviorAssessment(studentId);
+      const raw = res.data;
+      const innerData = (raw?.data && typeof raw.data === 'object' ? raw.data : raw) as BehaviorAssessmentData;
+      const status = raw?.status ?? innerData?.status;
+
+      let localData: any = null;
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const stored = localStorage.getItem(`behavior_assessment_${studentId}`);
+          if (stored) localData = JSON.parse(stored);
+        } catch {}
+      }
+
+      const mergedMass = { ...(localData?.massAnswers ?? {}), ...(innerData?.massAnswers ?? {}) };
+      const mergedFast = { ...(localData?.fastAnswers ?? {}), ...(innerData?.fastAnswers ?? {}) };
+      const mergedRecords = (innerData?.records && innerData.records.length > 0)
+        ? innerData.records
+        : (localData?.records ?? []);
+      const draftRecord = innerData?.draftRecord ?? localData?.draftRecord;
+      const finalStatus = status || localData?.status || 'in_progress';
+
+      setBehaviorAssessment({
+        ...innerData,
+        massAnswers: mergedMass,
+        fastAnswers: mergedFast,
+        records: mergedRecords,
+        draftRecord,
+        status: finalStatus,
+      });
+    } catch {
+      let localData: any = null;
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const stored = localStorage.getItem(`behavior_assessment_${studentId}`);
+          if (stored) localData = JSON.parse(stored);
+        } catch {}
+      }
+      if (localData && hasBehaviorData(localData)) {
+        setBehaviorAssessment(localData);
+      } else {
+        setBehaviorAssessment(null);
+      }
+    }
+  }, [studentId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBehavior();
+    }, [fetchBehavior])
+  );
+
+  useEffect(() => {
+    fetchBehavior();
+  }, [fetchBehavior]);
 
   if (loading) return <ScreenLoader />;
 
@@ -264,6 +434,156 @@ export default function DailyNotesScreen({ navigation }: Props) {
                   </TouchableOpacity>
                 ))}
               </View>
+            )}
+          </View>
+
+          {/* Student Selector Dropdown */}
+          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'student' ? 1001 : 1 }]}>
+            <TouchableOpacity
+              style={[
+                styles.dropdownTrigger,
+                openDropdown === 'student' && styles.dropdownTriggerActive,
+              ]}
+              onPress={() => setOpenDropdown(openDropdown === 'student' ? null : 'student')}
+            >
+              <Text style={styles.dropdownTriggerText}>
+                {studentOptions.find((o) => o.id === studentId)?.name ?? 'Select Student'}
+              </Text>
+              <Feather name="chevron-down" size={14} color="#64748B" />
+            </TouchableOpacity>
+
+            {openDropdown === 'student' && (
+              <View style={styles.dropdownMenu}>
+                {studentOptions.length === 0 ? (
+                  <Text style={styles.dropdownOptionText}>No students available</Text>
+                ) : (
+                  studentOptions.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={[
+                        styles.dropdownOption,
+                        studentId === opt.id && styles.dropdownOptionSelected,
+                      ]}
+                      onPress={() => {
+                        setStudentId(opt.id);
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownOptionText,
+                          studentId === opt.id && styles.dropdownOptionTextSelected,
+                        ]}
+                      >
+                        {opt.name} ({opt.initial})
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Behavior Assessment Card */}
+        <View style={styles.behaviorAssessmentCard}>
+          <View style={styles.behaviorAssessmentHeader}>
+            <Text style={styles.behaviorAssessmentTitle}>Behavior Assessment</Text>
+            {studentId && (
+              <TouchableOpacity
+                style={styles.behaviorAssessmentClose}
+                onPress={() => setStudentId(undefined)}
+              >
+                <Feather name="x" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.behaviorAssessmentContent}>
+            {!studentId ? (
+              <Text style={styles.behaviorAssessmentEmpty}>
+                Select a student to view their behavior assessment.
+              </Text>
+            ) : !hasBehaviorData(behaviorAssessment) ? (
+              <Text style={styles.behaviorAssessmentEmpty}>
+                No behavior assessment recorded yet.
+              </Text>
+            ) : (
+              <>
+                <View style={styles.behaviorAssessmentStatsRow}>
+                  <Text style={styles.behaviorAssessmentSubtype}>
+                    {Object.keys(behaviorAssessment?.massAnswers ?? {}).length} MASS answered
+                  </Text>
+                  <Text style={styles.behaviorAssessmentSubtype}>
+                    {Object.values(behaviorAssessment?.fastAnswers ?? {}).filter(Boolean).length} FAST yes
+                  </Text>
+                  <Text style={styles.behaviorAssessmentSubtype}>
+                    {behaviorAssessment?.records?.length ?? 0} ABC incidents
+                  </Text>
+                  {behaviorAssessment?.status === 'submitted' ? (
+                    <Text style={[styles.behaviorAssessmentSubtype, { color: '#0284C7', fontWeight: '600' }]}>
+                      Submitted for review
+                    </Text>
+                  ) : (
+                    <Text style={[styles.behaviorAssessmentSubtype, { color: '#D97706', fontWeight: '600' }]}>
+                      Draft
+                    </Text>
+                  )}
+                </View>
+
+                {Object.keys(behaviorAssessment?.massAnswers ?? {}).length > 0 && (
+                  <View style={styles.behaviorAssessmentNote}>
+                    <Text style={styles.behaviorAssessmentNoteLabel}>MASS identified function</Text>
+                    <Text style={styles.behaviorAssessmentNoteText}>
+                      {getMassFunction(behaviorAssessment?.massAnswers ?? {})}
+                    </Text>
+                  </View>
+                )}
+
+                {Object.keys(behaviorAssessment?.fastAnswers ?? {}).length > 0 && (
+                  <View style={styles.behaviorAssessmentNote}>
+                    <Text style={styles.behaviorAssessmentNoteLabel}>FAST identified category</Text>
+                    <Text style={styles.behaviorAssessmentNoteText}>
+                      {getFastCategory(behaviorAssessment?.fastAnswers ?? {})}
+                    </Text>
+                  </View>
+                )}
+
+                {(behaviorAssessment?.records?.length ?? 0) > 0 && (
+                  <View style={styles.behaviorAssessmentNote}>
+                    <Text style={styles.behaviorAssessmentNoteLabel}>ABC records</Text>
+                    {behaviorAssessment?.records?.map((r, idx) => (
+                      <Text key={r.id || idx} style={styles.behaviorAssessmentNoteText}>
+                        {idx + 1}. {r.behavior} · {r.frequency}
+                        {r.duration ? ` · ${r.duration}` : ''} · {r.intensity} intensity
+                        {r.trigger ? ` · Trigger: ${r.trigger}` : ''}
+                        {r.consequence ? ` · Consequence: ${r.consequence}` : ''}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+
+                {behaviorAssessment?.draftRecord && (behaviorAssessment.draftRecord.frequency?.trim() || behaviorAssessment.draftRecord.trigger?.trim() || behaviorAssessment.draftRecord.duration?.trim()) && (
+                  <View style={styles.behaviorAssessmentNote}>
+                    <Text style={styles.behaviorAssessmentNoteLabel}>In-Progress Draft Incident</Text>
+                    <Text style={styles.behaviorAssessmentNoteText}>
+                      {behaviorAssessment.draftRecord.behavior} · {behaviorAssessment.draftRecord.frequency || 'No frequency'}
+                      {behaviorAssessment.draftRecord.duration ? ` · ${behaviorAssessment.draftRecord.duration}` : ''}
+                      {behaviorAssessment.draftRecord.intensity ? ` · ${behaviorAssessment.draftRecord.intensity} intensity` : ''}
+                      {behaviorAssessment.draftRecord.trigger ? ` · Trigger: ${behaviorAssessment.draftRecord.trigger}` : ''}
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.openBehaviorBtn}
+                  onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: studentId ?? 'student-a' })}
+                >
+                  <Feather name="edit-3" size={13} color="#0284C7" />
+                  <Text style={styles.openBehaviorBtnText}>
+                    {behaviorAssessment?.status === 'submitted' ? 'View / Edit Assessment →' : 'Continue Editing Draft →'}
+                  </Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </View>
@@ -784,4 +1104,51 @@ const styles = StyleSheet.create({
     borderLeftColor: '#EF4444',
   },
   feedbackBoxText: { fontSize: 13, color: '#991B1B', lineHeight: 18 },
+
+  // Behavior Assessment (shared data from the BehaviorAssessment screen)
+  behaviorAssessmentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    gap: 10,
+  },
+  behaviorAssessmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  behaviorAssessmentTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  behaviorAssessmentClose: { padding: 4 },
+  behaviorAssessmentContent: { gap: 8 },
+  behaviorAssessmentStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  behaviorAssessmentSubtype: { fontSize: 11, color: '#64748B' },
+  behaviorAssessmentNote: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    gap: 4,
+  },
+  behaviorAssessmentNoteLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  behaviorAssessmentNoteText: { fontSize: 13, color: '#334155', lineHeight: 18 },
+  behaviorAssessmentEmpty: { fontSize: 13, color: '#94A3B8', paddingVertical: 8 },
+  openBehaviorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  openBehaviorBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
 });

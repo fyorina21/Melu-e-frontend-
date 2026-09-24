@@ -14,6 +14,8 @@ export interface DynamicFormField {
   visible: boolean;
   options?: string[];
   section?: string;
+  placeholder?: string;
+  helpText?: string;
 }
 
 interface DynamicFormFieldsProps {
@@ -72,10 +74,11 @@ export default function DynamicFormFields({
       if (f.section) {
         return f.section.toLowerCase().trim() === section.toLowerCase().trim();
       }
-      // Smart keyword fallback when no explicit section was selected
+      // For legacy/default fields without explicit section on Enrollment Wizard:
+      // Only attribute them to standard sections if their keywords match
       const normLabel = f.label.toLowerCase();
-      const normSec = section.toLowerCase();
-      if (normSec.includes('parent')) {
+      const normSec = section.toLowerCase().trim();
+      if (normSec === 'parent info' || normSec === 'parent') {
         return (
           normLabel.includes('parent') ||
           normLabel.includes('guardian') ||
@@ -86,7 +89,7 @@ export default function DynamicFormFields({
           normLabel.includes('contact')
         );
       }
-      if (normSec.includes('medical')) {
+      if (normSec === 'medical info' || normSec === 'medical') {
         return (
           normLabel.includes('medical') ||
           normLabel.includes('allerg') ||
@@ -99,7 +102,7 @@ export default function DynamicFormFields({
           normLabel.includes('diet')
         );
       }
-      if (normSec.includes('student')) {
+      if (normSec === 'student info' || normSec === 'student') {
         const isParent =
           normLabel.includes('parent') ||
           normLabel.includes('guardian') ||
@@ -120,6 +123,9 @@ export default function DynamicFormFields({
           normLabel.includes('diet');
         return !isParent && !isMed;
       }
+      // For any custom info type (e.g. "Current Status", "Emergency Contact Info", etc.):
+      // ONLY return fields that explicitly belong to this section!
+      return false;
     }
     return true;
   });
@@ -278,9 +284,14 @@ export default function DynamicFormFields({
                     {String(val)}
                   </Text>
                 ) : (
-                  <Text style={styles.noFileText}>No file chosen</Text>
+                  <Text style={styles.noFileText}>
+                    {field.placeholder ? `No file chosen (${field.placeholder})` : 'No file chosen'}
+                  </Text>
                 )}
               </View>
+              {Boolean(field.placeholder) && (
+                <Text style={styles.fieldSpecText}>Expected File: {field.placeholder}</Text>
+              )}
             </View>
           );
         }
@@ -327,7 +338,55 @@ export default function DynamicFormFields({
           );
         }
 
-        // Standard Text, Number, Date input
+        if (field.type === 'Number') {
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={String(val !== undefined && val !== null ? val : '')}
+                placeholder={field.placeholder || 'Enter number (e.g. 0-100)...'}
+                placeholderTextColor={colors.mutedText}
+                keyboardType="numeric"
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^0-9.-]/g, '');
+                  onChange(field.id, cleaned);
+                  onChange(field.label, cleaned);
+                }}
+              />
+              {Boolean(field.placeholder) && (
+                <Text style={styles.fieldSpecText}>Input: {field.placeholder}</Text>
+              )}
+            </View>
+          );
+        }
+
+        if (field.type === 'Date') {
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={String(val !== undefined && val !== null ? val : '')}
+                placeholder={field.placeholder || 'YYYY-MM-DD'}
+                placeholderTextColor={colors.mutedText}
+                onChangeText={(text) => {
+                  onChange(field.id, text);
+                  onChange(field.label, text);
+                }}
+              />
+              {Boolean(field.placeholder && field.placeholder !== 'YYYY-MM-DD') && (
+                <Text style={styles.fieldSpecText}>Input: {field.placeholder}</Text>
+              )}
+            </View>
+          );
+        }
+
+        // Standard Text input
         return (
           <View key={field.id} style={styles.field}>
             <Text style={typography.label}>
@@ -335,15 +394,17 @@ export default function DynamicFormFields({
             </Text>
             <TextInput
               style={styles.input}
-              value={String(val)}
-              placeholder={field.type === 'Date' ? 'YYYY-MM-DD' : `Enter ${field.label.toLowerCase()}...`}
+              value={String(val !== undefined && val !== null ? val : '')}
+              placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
               placeholderTextColor={colors.mutedText}
-              keyboardType={field.type === 'Number' ? 'numeric' : 'default'}
               onChangeText={(text) => {
                 onChange(field.id, text);
                 onChange(field.label, text);
               }}
             />
+            {Boolean(field.placeholder) && (
+              <Text style={styles.fieldSpecText}>Format: {field.placeholder}</Text>
+            )}
           </View>
         );
       })}
@@ -552,6 +613,12 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: {
     fontWeight: '700',
     color: '#92400E',
+  },
+  fieldSpecText: {
+    fontSize: 11,
+    color: colors.mutedText,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });
 

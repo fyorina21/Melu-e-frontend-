@@ -11,6 +11,9 @@ export interface StudentOption {
   name: string;
   age: number;
   phase?: string;
+  status?: string;
+  program?: string;
+  assessmentStatus?: string;
 }
 
 export interface StaffOption {

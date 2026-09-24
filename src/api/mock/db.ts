@@ -58,21 +58,22 @@ export interface MockSessionNote {
 }
 
 export interface MockSessionSummary {
-  id: UUID;
-  sessionId: string;
-  studentIds: string[];
-  station: string;
-  teacher: string;
-  startedAt: string;
-  endedAt: string;
-  status: 'pending_review' | 'approved' | 'revised_required';
-  trialsTotal: number;
-  trialsCorrect: number;
-  independencePercent: number;
-  notes: string;
-  incidentCount: number;
-  createdAt: string;
-}
+   id: UUID;
+   sessionId: string;
+   studentIds: string[];
+   station: string;
+   teacher: string;
+   startedAt: string;
+   endedAt: string;
+   durationMinutes?: number;
+   status: 'pending_review' | 'approved' | 'revised_required';
+   trialsTotal: number;
+   trialsCorrect: number;
+   independencePercent: number;
+   notes: string;
+   incidentCount: number;
+   createdAt: string;
+ }
 
 export interface MockGoal {
   id: UUID;
@@ -139,6 +140,7 @@ export interface MockAssessment {
   studentId: string;
   type: 'skills' | 'behavior' | 'preference' | 'sensory';
   status: 'in_progress' | 'completed' | 'submitted';
+  reviewedAt?: string;
   data: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -224,7 +226,11 @@ function cloneSeed(): MockDatabaseShape {
     auditLogs: [],
     adminConfigs: Object.entries(seed.adminConfigs).map(([id, value]) => ({ id, value: value as any })),
     attendanceRecords: [],
-    assessments: [],
+    assessments: seed.assessments.map((a) => ({
+      ...a,
+      status: a.status as MockAssessment['status'],
+      data: JSON.parse(JSON.stringify(a.data)),
+    })),
   };
 }
 

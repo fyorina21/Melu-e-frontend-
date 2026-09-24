@@ -66,14 +66,17 @@ export default function DirectorStudentProgressScreen({
   const [searchStudent, setSearchStudent] = useState('');
 
   useEffect(() => {
-    getStudentOptions()
-      .then(({ data: opts }) => {
-        setStudentOptions(opts);
-        if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
-          setSelectedStudentId(opts[0].id);
-        }
-      })
-      .catch(() => {});
+    import('../../api/sessionApi').then(({ default: client }) => {
+      client.get<StudentOption[]>('/director/options/assessed-students')
+        .then(({ data: opts }) => {
+          setStudentOptions(opts);
+          if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
+            setSelectedStudentId(opts[0].id);
+          }
+        })
+        .catch(() => {});
+
+    });
   }, []);
 
   const load = useCallback(async () => {
@@ -126,7 +129,7 @@ export default function DirectorStudentProgressScreen({
         '',
         '----------------------------------------------------------------',
         'CURRENT GOALS & MASTERY:',
-        ...data.goals.map((g, i) => `  ${i + 1}. ${g.name} — ${g.percent}% Independent`),
+        ...data.goals.filter((g, index, self) => index === self.findIndex((t) => t.name === g.name)).map((g, i) => `  ${i + 1}. ${g.name} — ${g.percent}% Independent`),
         '',
         '----------------------------------------------------------------',
         'SESSION HISTORY LOG:',
@@ -215,10 +218,29 @@ export default function DirectorStudentProgressScreen({
                         setSearchStudent('');
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
-                        {s.name}
-                      </Text>
-                      {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
+                                            <View style={{ flex: 1 }}>
+                        <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
+                          {s.name}
+                        </Text>
+                        <Text style={styles.dropdownItemSub}>
+                          {s.assessmentStatus ?? s.status} � {s.program || 'ABA Therapy'}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          s.status === 'Active' ? styles.statusActive : styles.statusPending,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusBadgeText,
+                            s.status === 'Active' ? styles.statusActiveText : styles.statusPendingText,
+                          ]}
+                        >
+                          {s.status}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -253,9 +275,11 @@ export default function DirectorStudentProgressScreen({
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.cardTitle}>Current Active Goals</Text>
-            <Text style={styles.countBadge}>{data.goals.length} Goals Assigned</Text>
+            <Text style={styles.countBadge}>{Array.from(new Set(data.goals.map(g => g.name))).length} Goals Assigned</Text>
           </View>
-          {data.goals.map((g) => (
+          {data.goals
+            .filter((g, index, self) => index === self.findIndex((t) => t.name === g.name))
+            .map((g) => (
             <View key={g.id} style={styles.goalRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.goalName}>{g.name}</Text>
@@ -533,5 +557,11 @@ const styles = StyleSheet.create({
   },
   saveNoteBtnText: { fontSize: 13, fontWeight: '700', color: colors.navyText },
   savedNoteText: { fontSize: 11, color: colors.successGreen, fontWeight: '600' },
+  dropdownItemSub: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
+  statusBadgeText: { fontSize: 10, fontWeight: "700" },
+  statusActive: { backgroundColor: "#DCFCE7" },
+  statusActiveText: { fontSize: 10, fontWeight: "700", color: "#166534" },
+  statusPending: { backgroundColor: "#FEF3C7" },
+  statusPendingText: { fontSize: 10, fontWeight: "700", color: "#B45309" },
 });
-

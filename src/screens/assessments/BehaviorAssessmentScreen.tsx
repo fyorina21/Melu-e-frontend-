@@ -195,7 +195,8 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
       await saveBehaviorAssessment(studentId, payload);
       await load();
     } catch (err) {}
-    Alert.alert('Assessment saved', message, goBack ? [{ text: 'Done', onPress: () => navigation?.goBack?.() }] : undefined);
+    Alert.alert('Assessment saved', message);
+    navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
   };
 
   const handleSaveDraft = () =>

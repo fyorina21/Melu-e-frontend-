@@ -43,8 +43,8 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Parent Communication',
     'Reports',
   ],
-  institutional_admin: ['Dashboard', 'Task Analysis', 'Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
-  system_admin: ['Dashboard', 'Staff account management', 'Role Management', 'Permission Configuration'],
+  institutional_admin: ['Task Analysis', 'Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
+  system_admin: ['Staff account management', 'Role Management'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 
@@ -96,17 +96,17 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
 };
 
 export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
-  Dashboard: 'AdminPanelOverview',
-  'Admin Panel': 'StaffAccountManagement',
-  'Staff account management': 'StaffAccountManagement',
-  'Role Management': 'RoleManagement',
-  'Permission Configuration': 'PermissionConfiguration',
-  'Audit Log': 'AuditLog',
-};
+   
+   'Admin Panel': 'StaffAccountManagement',
+   'Staff account management': 'StaffAccountManagement',
+   'Role Management': 'RoleManagement',
+   
+   'Audit Log': 'AuditLog',
+ };
 
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
   // Canonical tabs
-  Dashboard: 'AdminPanelOverview',
+  Dashboard: 'FormBuilder',
   'Task Analysis': 'TaskAnalysisTemplates',
   'Goal Domains': 'GoalDomainDefinitions',
   'Schedule & Capacity': 'ScheduleCapacityConfig',

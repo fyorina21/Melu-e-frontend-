@@ -71,32 +71,45 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   const [loadError, setLoadError] = useState(false);
   const [now, setNow] = useState(new Date());
 
-  const load = useCallback(async () => {
-    try {
-      const { data: res } = await getTeacherDashboard();
-      setData(res);
-      setLoadError(false);
-    } catch (err) {
-      setLoadError(true);
-    }
-  }, []);
+const load = useCallback(async () => {
+     try {
+       const { data: res } = await getTeacherDashboard();
+       setData(res);
+       setLoadError(false);
+     } catch (err) {
+       setLoadError(true);
+     }
+   }, []);
 
-  useEffect(() => { load(); }, [load]);
+   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+   useEffect(() => {
+     const timer = setInterval(() => setNow(new Date()), 1000);
+     return () => clearInterval(timer);
+   }, []);
 
-  const handleStartSession = () => navigation?.navigate?.('SessionDataCollection');
+   const handleStartSession = () => navigation?.navigate?.('SessionDataCollection');
 
-  if (loadError) return <ScreenError onRetry={load} />;
-  if (!data) return <ScreenLoader />;
+   if (loadError) return <ScreenError onRetry={load} />;
+   if (!data) return <ScreenLoader />;
 
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+   const hasData = data.todaySchedule.students.length > 0 || data.assessmentTasks.length > 0 || data.pendingMasteryChecks.length > 0 || data.notifications.length > 0;
 
-  return (
+   if (!hasData) {
+     return (
+       <SafeAreaView style={styles.safe}>
+         <AppNavbar activeTab="Dashboard" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+         <View style={styles.emptyContainer}>
+           <Text style={styles.emptyText}>No data available. Start a session to see dashboard information.</Text>
+         </View>
+       </SafeAreaView>
+     );
+   }
+
+const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Dashboard" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
@@ -326,8 +339,10 @@ const styles = StyleSheet.create({
   reviewBtn: { backgroundColor: '#334155', borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 8, minHeight: 36, justifyContent: 'center' },
   reviewBtnText: { color: colors.white, fontWeight: '600', fontSize: 12 },
 
-  unreadPill: { backgroundColor: '#FEE2E2', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
-  unreadPillText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
-  notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0EA5E9', marginTop: 4 },
-});
+unreadPill: { backgroundColor: '#FEE2E2', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
+   unreadPillText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
+   notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0EA5E9', marginTop: 4 },
+   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+ });

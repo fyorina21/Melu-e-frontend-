@@ -7,10 +7,10 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import { getEnrollmentStudents } from '../../api/coordinatorApi';
+import { getStaffOptions } from '../../api/optionsApi';
 import type { CoordinatorStackParamList } from '../../types';
 
 const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
-const THERAPISTS = ['Teacher A', 'Teacher B', 'Teacher C'];
 const DIAGNOSES = ['Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
 const AGE_RANGES = ['3-5', '6-8', '9-11', '12+'];
 
@@ -32,6 +32,7 @@ interface EnrollmentStudentRow {
   age: number;
   programType: string;
   therapyGroup: string;
+  therapist?: string;
   status: string;
 }
 
@@ -39,12 +40,23 @@ type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollmen
 
 export default function StudentEnrollmentScreen({ navigation }: Props) {
   const [students, setStudents] = useState<EnrolledStudent[]>([]);
+  const [therapistOptions, setTherapistOptions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [programFilter, setProgramFilter] = useState('All');
   const [therapistFilter, setTherapistFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [diagnosisFilter, setDiagnosisFilter] = useState('All');
   const [ageFilter, setAgeFilter] = useState('All');
+
+  useEffect(() => {
+    getStaffOptions()
+      .then(({ data }) => {
+        const therapists = data.filter((s) => s.role === 'teacher').map((t) => t.name);
+        setTherapistOptions(therapists);
+        setTherapistFilter((prev) => (prev === 'All' || therapists.includes(prev) ? prev : 'All'));
+      })
+      .catch(() => setTherapistOptions([]));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +74,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         age: row.age,
         gender: '',
         program: row.programType,
-        therapist: row.therapyGroup,
+        therapist: row.therapist || row.therapyGroup,
         diagnosis: '',
         status: row.status === 'active' ? 'Active' : 'Inactive',
         studentId: row.id,
@@ -122,7 +134,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           onChangeText={setSearch}
         />
         <FilterChips label="Program" options={PROGRAMS} value={programFilter} onChange={setProgramFilter} />
-        <FilterChips label="Therapist" options={THERAPISTS} value={therapistFilter} onChange={setTherapistFilter} />
+        <FilterChips label="Therapist" options={therapistOptions} value={therapistFilter} onChange={setTherapistFilter} />
         <FilterChips label="Status" options={['Active', 'Inactive']} value={statusFilter} onChange={setStatusFilter} />
         <FilterChips label="Age" options={AGE_RANGES} value={ageFilter} onChange={setAgeFilter} />
         <FilterChips label="Diagnosis" options={DIAGNOSES} value={diagnosisFilter} onChange={setDiagnosisFilter} />

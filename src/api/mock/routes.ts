@@ -2068,36 +2068,64 @@ export const MOCK_ROUTES: MockRoute[] = [
       const students = mockDb.all('students').filter((s) => s.status !== 'paused');
       const assessments = mockDb.all('assessments');
       const iups = mockDb.all('iups');
-      const goalBank = mockDb.all('goalBank');
-      const inAssessment = students.filter((s) => assessments.some((a) => a.studentId === s.id && a.status === 'in_progress')).length;
-      const activeIups = iups.filter((i) => i.status === 'active').length;
-      const readyForIup = students.filter((s) => !iups.some((i) => i.studentId === s.id)).length;
-      const goalsAssigned = students.reduce((sum, s) => sum + (s.goals?.length ?? 0), 0);
-      const recentActivity = [
-        ...students
-          .filter((s) => assessments.some((a) => a.studentId === s.id && a.status === 'in_progress'))
-          .slice(0, 3)
-          .map((s) => `Assessment in progress - ${s.fullName}`),
-        ...iups
-          .filter((i) => i.status === 'active')
-          .slice(0, 3)
-          .map((i) => {
-            const student = students.find((s) => s.id === i.studentId);
-            return `IUP active - ${student?.fullName ?? 'Student'}`;
-          }),
-      ].slice(0, 5);
+      const dbNotifs = mockDb.all('notifications');
+      
+      const mappedStudents = students.map((s) => {
+        const hasAssessment = assessments.some(a => a.studentId === s.id && a.status === 'completed');
+        const hasIup = iups.some(i => i.studentId === s.id);
+        const stage = hasIup ? 'Caseload' : (hasAssessment ? 'IUP' : 'Assessment');
+        return {
+          id: s.id,
+          fullName: s.fullName,
+          age: 8,
+          programType: s.programType || 'ABA Therapy',
+          therapist: 'Teacher A',
+          currentStage: stage,
+          progressPercent: 45,
+          flags: 0,
+          statusText: stage === 'Assessment' ? 'Pending Assessment' : 'Active'
+        };
+      });
+
+      const inAssessment = mappedStudents.filter(s => s.currentStage === 'Assessment').length;
+      const readyForIup = mappedStudents.filter(s => s.currentStage === 'IUP').length;
+      const activeCaseload = mappedStudents.filter(s => s.currentStage === 'Caseload').length;
+
+      const pdNotifications = dbNotifs.map(n => {
+        const p = (n.payload ?? {}) as { name?: string };
+        return {
+          id: n.id,
+          text: n.type === 'progress' ? `Goal update: ${p.name ?? 'Goal'}` : n.type === 'observation' ? 'New home observation submitted' : 'New message received',
+          urgent: !n.read
+        };
+      });
+
       return {
-        unreadCount: mockDb.all('notifications').filter((n) => !n.read).length,
-        studentsInAssessment: Math.max(inAssessment, 1),
-        readyForIup: Math.max(readyForIup, 1),
-        activeIupPlans: Math.max(activeIups, 1),
-        goalsAssignedThisMonth: Math.max(goalsAssigned, 1),
-        pipeline: [
-          { name: 'In Assessment', count: inAssessment },
-          { name: 'Ready for IUP', count: readyForIup },
-          { name: 'Active IUP', count: activeIups },
+        unreadCount: dbNotifs.filter(n => !n.read).length,
+        totalStudents: students.length,
+        inAssessment,
+        assessmentCompleted: readyForIup,
+        readyForSessions: activeCaseload,
+        workflowStages: [
+          { id: 's1', label: 'In Assessment', count: inAssessment, color: '#F59E0B' },
+          { id: 's2', label: 'Ready for IUP', count: readyForIup, color: '#3B82F6' },
+          { id: 's3', label: 'Active Caseload', count: activeCaseload, color: '#10B981' }
         ],
-        recentActivity,
+        students: mappedStudents,
+        clinicalOverview: {
+          activeStudents: students.length,
+          assessmentsPending: inAssessment,
+          sessionsAssigned: activeCaseload,
+          completedSessions: 12,
+          goalsInProgress: 45
+        },
+        recentActivity: [
+          { text: 'New assessment completed for Student A', type: 'assessment', time: '2 hours ago' },
+          { text: 'IUP finalized for Student B', type: 'iup', time: '5 hours ago' }
+        ],
+        notifications: pdNotifications.length > 0 ? pdNotifications : [
+          { id: 1, text: '2 assessments awaiting your review', urgent: true }
+        ]
       };
     },
   },
@@ -3102,6 +3130,25 @@ export const MOCK_ROUTES: MockRoute[] = [
   },
   {
     method: 'GET',
+    pattern: '/director/options/assessed-students',
+    handler: () => {
+      const assessments = mockDb.all('assessments');
+      return mockDb
+        .all('students')
+        .filter((s) => s.status !== 'paused' && s.phase === 'active' && assessments.some(a => a.studentId === s.id && a.status === 'completed'))
+        .map((s) => ({
+          id: s.id,
+          name: s.fullName,
+          age: ageOf(s),
+          phase: s.phase,
+          status: s.status === 'active' ? 'Active' : 'Pending',
+          program: s.programType || 'ABA Therapy',
+          assessmentStatus: 'Assessments Complete'
+        }));
+    }
+  },
+  {
+    method: 'GET',
     pattern: '/options/staff',
     handler: () =>
       mockDb
@@ -3490,28 +3537,41 @@ function buildStudentProgress(studentId: string, includeFlag: boolean) {
       behavior: findAssessment('behavior'),
       preferences: findAssessment('preference'),
     },
-    goals: student.goals.map((g, gi) => ({
-      id: g.id,
-      name: g.name,
-      percent: g.progressPercent,
-      status: g.status === 'mastered' ? 'Mastered' : g.status === 'in_progress' ? 'In Progress' : 'Active',
-      trend: [g.progressPercent - 12, g.progressPercent - 8, g.progressPercent - 4, g.progressPercent].map((v) =>
-        Math.max(0, v + ((gi * 3) % 5)),
-      ),
-    })),
-    sessionHistory: (summaries.length
-      ? summaries.map((s) => summaryDisplayRow(s))
-      : Array.from({ length: 3 }, (_, i) => ({
-          id: `sh-${studentId}-${i}`,
-          date: new Date(Date.now() - (i + 1) * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          teacherName: 'Teacher A',
-          stationName: 'Station 1',
-          bodyPreview: 'Session completed with steady progress.',
-          status: 'Approved',
-          studentNames: [student.fullName],
-          independencePercent: 60 + i * 5,
-        }))
-    ).map((row) => ({ ...row, independencePercent: row.independencePercent ?? 65 })),
+    goals: student.goals.map((g) => {
+      const goalTrials = mockDb.all('trials').filter(t => t.studentGoalId === g.id).sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+      
+      let percent = g.progressPercent;
+      let trend = [Math.max(0, percent - 12), Math.max(0, percent - 8), Math.max(0, percent - 4), percent];
+      let status = g.status === 'mastered' ? 'Mastered' : g.status === 'in_progress' ? 'In Progress' : 'Active';
+
+      if (goalTrials.length > 0) {
+        const correct = goalTrials.filter(t => t.outcome === 'correct').length;
+        percent = Math.round((correct / goalTrials.length) * 100);
+        status = percent >= 80 ? 'Mastered' : 'In Progress';
+        
+        const chunkSize = Math.ceil(goalTrials.length / 4);
+        const calculatedTrend = [];
+        for (let i = 0; i < 4; i++) {
+          const chunk = goalTrials.slice(i * chunkSize, (i + 1) * chunkSize);
+          if (chunk.length > 0) {
+            const chunkCorrect = chunk.filter(t => t.outcome === 'correct').length;
+            calculatedTrend.push(Math.round((chunkCorrect / chunk.length) * 100));
+          } else {
+            calculatedTrend.push(calculatedTrend.length > 0 ? calculatedTrend[calculatedTrend.length - 1] : 0);
+          }
+        }
+        trend = calculatedTrend;
+      }
+
+      return {
+        id: g.id,
+        name: g.name,
+        percent,
+        status,
+        trend,
+      };
+    }),
+    sessionHistory: summaries.map((s) => summaryDisplayRow(s)).map((row) => ({ ...row, independencePercent: row.independencePercent ?? 65 })),
     incidentSummary: incidents.length
       ? `${incidents.length} incident(s) recorded in the last 30 days.`
       : 'No incidents recorded in the last 30 days.',

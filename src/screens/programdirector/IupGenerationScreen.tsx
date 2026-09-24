@@ -22,12 +22,16 @@ import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { PD_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useAuth, ROLES } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import {
   getIupCandidates,
   getIupContext,
   saveIupDraft,
   finalizeIup,
   getGoalBank,
+  assignGoalToSlot,
+  removeGoalFromSlot,
+  getStudentCaseload,
 } from '../../api/programDirectorApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
@@ -39,6 +43,7 @@ interface GoalBankItem {
   description: string;
   goalType: string;
   masteryCriteria: string;
+  active?: boolean;
 }
 
 interface IupCandidate {
@@ -47,6 +52,8 @@ interface IupCandidate {
   status: string;
   program?: string;
   age?: number;
+  assessmentProgress?: number;
+  assessmentStatus?: string;
 }
 
 interface IupContext {
@@ -70,6 +77,7 @@ export default function IupGenerationScreen({
 }: NativeStackScreenProps<ProgramDirectorStackParamList | CoordinatorStackParamList, 'IupGeneration'>) {
   const { session } = useAuth();
   const isCoordinator = session?.role === ROLES.COORDINATOR;
+  const { showToast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [candidates, setCandidates] = useState<IupCandidate[]>([]);
@@ -133,10 +141,45 @@ export default function IupGenerationScreen({
 
   useEffect(() => {
     if (!selectedStudentId) return;
+    
+    // Clear slots and fields when student changes
+    setSlots({ station1: [null, null], station2: [null, null] });
+    setReinforcementSchedule('Fixed Ratio (FR-2)');
+    setCrisisProtocol('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
+    setAccommodations('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
+    setReviewCycle('6 Weeks');
+    setCustomIupValues({});
+    setLastSavedTimestamp(null);
+
+    // Fetch context
     getIupContext(selectedStudentId)
       .then(({ data }) => setContext(data))
       .catch(() => setContext(null));
-  }, [selectedStudentId]);
+
+    // Fetch existing assigned goals to populate slots
+    if (goalBank.length > 0) {
+      getStudentCaseload(selectedStudentId)
+        .then(({ data }) => {
+          if (data?.goals) {
+            setSlots((prev) => {
+              const next: Slots = { station1: [null, null], station2: [null, null] };
+              data.goals.forEach((g: any) => {
+                const gbGoal = goalBank.find((b) => b.id === g.id);
+                if (gbGoal) {
+                  const stationKey = g.station === 2 ? 'station2' : 'station1';
+                  const slotIndex = typeof g.slot === 'number' ? g.slot : (next[stationKey][0] === null ? 0 : 1);
+                  if (slotIndex >= 0 && slotIndex <= 1) {
+                    next[stationKey][slotIndex] = gbGoal;
+                  }
+                }
+              });
+              return next;
+            });
+          }
+        })
+        .catch(console.error);
+    }
+  }, [selectedStudentId, goalBank]);
 
   const selectedCandidate = useMemo(
     () => candidates.find((c) => c.id === selectedStudentId) ?? null,
@@ -150,15 +193,42 @@ export default function IupGenerationScreen({
     );
   }, [candidates, searchStudentText]);
 
-  const handleSelectGoal = (goal: GoalBankItem) => {
-    if (!selectorTarget) return;
+  const handleSelectGoal = async (goal: GoalBankItem) => {
+    if (!selectorTarget || goal.active === false) return;
     const { station, slotIndex } = selectorTarget;
+    
+    let newSlots: Slots | null = null;
     setSlots((prev) => {
       const next: Slots = { ...prev };
       next[station] = [...prev[station]];
       next[station][slotIndex] = goal;
+      newSlots = next;
       return next;
     });
+
+    if (selectedStudentId) {
+      try {
+        const stationNumber = station === 'station1' ? 1 : 2;
+        await assignGoalToSlot(selectedStudentId, { goalId: goal.id, station: stationNumber, slot: slotIndex });
+        
+        if (newSlots) {
+          await saveIupDraft(selectedStudentId, {
+            slots: newSlots,
+            reinforcementSchedule,
+            crisisProtocol,
+            accommodations,
+            reviewCycle,
+            customFields: customIupValues,
+          });
+          setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          showToast('Goal assigned and draft saved successfully.', 'success');
+        }
+      } catch (err) {
+        console.error('Failed to assign goal or save draft:', err);
+        showToast('Failed to save changes.', 'error');
+      }
+    }
+
     setSelectorTarget(null);
     setGoalSearch('');
   };
@@ -169,13 +239,23 @@ export default function IupGenerationScreen({
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () =>
+        onPress: async () => {
           setSlots((prev) => {
             const next: Slots = { ...prev };
             next[station] = [...prev[station]];
             next[station][slotIndex] = null;
             return next;
-          }),
+          });
+          
+          if (selectedStudentId) {
+            try {
+              const stationNumber = station === 'station1' ? 1 : 2;
+              await removeGoalFromSlot(selectedStudentId, { station: stationNumber, slot: slotIndex });
+            } catch (err) {
+              console.error('Failed to remove goal from slot:', err);
+            }
+          }
+        },
       },
     ]);
   };
@@ -192,9 +272,9 @@ export default function IupGenerationScreen({
         customFields: customIupValues,
       });
       setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      Alert.alert('Draft Saved', 'The IUP draft has been saved successfully to the IUP Library.');
+      showToast('The IUP draft has been saved successfully.', 'success');
     } catch {
-      Alert.alert('Error', 'Unable to save draft.');
+      showToast('Unable to save draft.', 'error');
     }
   };
 
@@ -202,40 +282,45 @@ export default function IupGenerationScreen({
     if (!selectedStudentId) return;
     const allAssigned = [...slots.station1, ...slots.station2].filter(Boolean);
     if (allAssigned.length === 0) {
-      Alert.alert('Goal Assignment Required', 'Please assign at least one target goal before finalizing the IUP.');
+      if (typeof window !== 'undefined') {
+        window.alert('Please assign at least one target goal before finalizing the IUP.');
+      } else {
+        Alert.alert('Goal Assignment Required', 'Please assign at least one target goal before finalizing the IUP.');
+      }
       return;
     }
 
-    Alert.alert(
-      `Finalize IUP for ${context?.studentName || selectedCandidate?.name}?`,
-      'This will officially activate the Individualized Unit Plan and move the student to Active Therapy status.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Finalize & Activate',
-          style: 'default',
-          onPress: async () => {
-            try {
-              await finalizeIup(selectedStudentId, {
-                slots,
-                reinforcementSchedule,
-                crisisProtocol,
-                accommodations,
-                reviewCycle,
-                customFields: customIupValues,
-              });
-              Alert.alert(
-                'IUP Finalized & Activated',
-                'The student is now in Active Therapy status. Goals are immediately available in the Teacher Session workbench.'
-              );
-              await loadData();
-            } catch {
-              Alert.alert('Error', 'Failed to finalize IUP.');
-            }
-          },
-        },
-      ]
-    );
+    const doFinalize = async () => {
+      try {
+        await finalizeIup(selectedStudentId, {
+          slots,
+          goals: allAssigned.map(g => g?.id).filter(Boolean),
+          reinforcementSchedule,
+          crisisProtocol,
+          accommodations,
+          reviewCycle,
+          customFields: customIupValues,
+        });
+        showToast('IUP Finalized & Activated. Goals are now in the Teacher Session workbench.', 'success');
+        await loadData();
+      } catch {
+        showToast('Failed to finalize IUP.', 'error');
+      }
+    };
+
+    if (typeof window !== 'undefined' && window.confirm) {
+      const ok = window.confirm(`Finalize IUP for ${context?.studentName || selectedCandidate?.name}?\n\nThis will officially activate the Individualized Unit Plan and move the student to Active Therapy status.`);
+      if (ok) doFinalize();
+    } else {
+      Alert.alert(
+        `Finalize IUP for ${context?.studentName || selectedCandidate?.name}?`,
+        'This will officially activate the Individualized Unit Plan and move the student to Active Therapy status.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Finalize & Activate', style: 'default', onPress: doFinalize },
+        ]
+      );
+    }
   };
 
   const buildExportText = () => {
@@ -306,6 +391,7 @@ export default function IupGenerationScreen({
   const assignedGoalCount = [...slots.station1, ...slots.station2].filter(Boolean).length;
   const filteredGoals = goalBank.filter(
     (g) =>
+      g.active !== false &&
       (domainFilter === 'All' || g.domain === domainFilter) &&
       (!goalSearch || g.name.toLowerCase().includes(goalSearch.toLowerCase()) || g.description.toLowerCase().includes(goalSearch.toLowerCase()))
   );
@@ -382,7 +468,7 @@ export default function IupGenerationScreen({
                   </Text>
                   <Text style={styles.dropdownSelectedMeta}>
                     {selectedCandidate
-                      ? `Status: ${selectedCandidate.status} · ${context?.program || 'Therapy'}`
+                      ? `${selectedCandidate.assessmentStatus ?? selectedCandidate.status} · ${context?.program || 'Therapy'}`
                       : 'Click to select from enrollment caseload'}
                   </Text>
                 </View>
@@ -409,44 +495,48 @@ export default function IupGenerationScreen({
                 />
               </View>
               <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
-                {filteredCandidates.map((c) => {
-                  const isSelected = c.id === selectedStudentId;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
-                      onPress={() => {
-                        setSelectedStudentId(c.id);
-                        setStudentDropdownOpen(false);
-                        setSearchStudentText('');
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
-                          {c.name}
-                        </Text>
-                        <Text style={styles.dropdownItemSub}>
-                          {c.status} · {c.program || 'ABA Therapy'}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          c.status === 'Active' ? styles.statusActive : styles.statusPending,
-                        ]}
+                {filteredCandidates.length === 0 ? (
+                  <Text style={styles.dropdownEmptyText}>No students ready for IUP</Text>
+                ) : (
+                  filteredCandidates.map((c) => {
+                    const isSelected = c.id === selectedStudentId;
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
+                        onPress={() => {
+                          setSelectedStudentId(c.id);
+                          setStudentDropdownOpen(false);
+                          setSearchStudentText('');
+                        }}
                       >
-                        <Text
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
+                            {c.name}
+                          </Text>
+                          <Text style={styles.dropdownItemSub}>
+                            {c.assessmentStatus ?? c.status} · {c.program || 'ABA Therapy'}
+                          </Text>
+                        </View>
+                        <View
                           style={[
-                            styles.statusBadgeText,
-                            c.status === 'Active' ? styles.statusActiveText : styles.statusPendingText,
+                            styles.statusBadge,
+                            c.status === 'Active' ? styles.statusActive : styles.statusPending,
                           ]}
                         >
-                          {c.status}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              c.status === 'Active' ? styles.statusActiveText : styles.statusPendingText,
+                            ]}
+                          >
+                            {c.status}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </ScrollView>
             </View>
           )}
@@ -1112,6 +1202,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.bgApp,
   },
   dropdownItemActive: { backgroundColor: '#FEF9C3' },
+  dropdownEmptyText: { padding: spacing.md, fontSize: 13, color: colors.mutedText, textAlign: 'center' },
   dropdownItemText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
   dropdownItemTextActive: { color: colors.navyText, fontWeight: '700' },
   dropdownItemSub: { fontSize: 11, color: colors.mutedText, marginTop: 2 },

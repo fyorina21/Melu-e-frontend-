@@ -11,7 +11,8 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill, { StatusType } from '../../components/StatusPill';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import { getTeacherStudentProfile, getSkillsAssessment } from '../../api/teacherExtrasApi';
+import { DEFAULT_ABLLS_DOMAINS, SCORE_LABEL } from '../assessments/abllsConfigHelper';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'StudentProfile'>;
@@ -89,10 +90,18 @@ const SECTION_ICON: Record<string, React.ComponentProps<typeof Feather>['name']>
   'Notes': 'file-text',
 };
 
+interface SavedSkillsAssessment {
+  status: string;
+  scores: Record<string, any>;
+  notes: Record<string, string>;
+  customFields: Record<string, any>;
+}
+
 export default function StudentProfileScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
   const { logout } = useAuth();
   const [profile, setProfile] = useState<TeacherStudentProfile | null>(null);
+  const [skills, setSkills] = useState<SavedSkillsAssessment | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
@@ -102,6 +111,25 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       setLoadError(false);
     } catch (err) {
       setLoadError(true);
+    }
+    try {
+      const { data: saved } = await getSkillsAssessment(studentId);
+      const savedData = (saved?.data ?? saved ?? {}) as {
+        scores?: Record<string, any>;
+        notes?: Record<string, string>;
+        customFields?: Record<string, any>;
+      };
+      const scores = (savedData.scores ?? (saved as any)?.scores ?? {}) as Record<string, any>;
+      const notes = (savedData.notes ?? (saved as any)?.notes ?? {}) as Record<string, string>;
+      const customFields = (savedData.customFields ?? (saved as any)?.customFields ?? {}) as Record<string, any>;
+      const hasData = Object.keys(scores).length > 0 || Object.keys(notes).length > 0 || Object.keys(customFields).length > 0;
+      if (hasData) {
+        setSkills({ status: (saved?.status as string) || '', scores, notes, customFields });
+      } else {
+        setSkills(null);
+      }
+    } catch (err) {
+      setSkills(null);
     }
   }, [studentId]);
 
@@ -176,6 +204,67 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           ))}
         </View>
 
+        {renderSection('Skills Assessment (ABLLS)')}
+        <View style={styles.card}>
+          {!skills ? (
+            <Text style={[typography.body, { color: colors.mutedText }]}>No skills assessment saved yet.</Text>
+          ) : (
+            <>
+              <View style={styles.assessHeader}>
+                <Text style={styles.assessStatus}>
+                  {skills.status === 'completed' || skills.status === 'submitted' ? 'Completed' : 'In Progress'}
+                </Text>
+                <Text style={styles.assessAnswered}>
+                  {Object.keys(skills.scores).length} of {DEFAULT_ABLLS_DOMAINS.reduce((sum, d) => sum + d.items.length, 0)} items scored
+                </Text>
+              </View>
+
+              {Object.keys(skills.scores).length > 0 &&
+                DEFAULT_ABLLS_DOMAINS.map((d) => {
+                  const scored = d.items.filter((i) => skills.scores[i.id] !== undefined);
+                  if (scored.length === 0) return null;
+                  return (
+                    <View key={d.code} style={styles.assessDomain}>
+                      <Text style={typography.bodyBold}>{d.name}</Text>
+                      {scored.map((i) => {
+                        const raw = skills.scores[i.id];
+                        const value = (SCORE_LABEL as Record<string, string>)[String(raw)] ?? String(raw);
+                        return (
+                          <View key={i.id} style={styles.assessRow}>
+                            <Text style={styles.assessItem}>{i.id} · {i.description}</Text>
+                            <Text style={styles.assessScore}>{value}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+
+              {Object.entries(skills.notes).filter(([, v]) => v && String(v).trim()).length > 0 && (
+                <View style={styles.assessDomain}>
+                  <Text style={typography.bodyBold}>Notes</Text>
+                  {Object.entries(skills.notes)
+                    .filter(([, v]) => v && String(v).trim())
+                    .map(([k, v]) => (
+                      <Text key={k} style={styles.assessNote}>
+                        <Text style={styles.assessNoteLabel}>{k}: </Text>{String(v)}
+                      </Text>
+                    ))}
+                </View>
+              )}
+
+              {Object.entries(skills.customFields)
+                .filter(([, v]) => v !== '' && v !== undefined && v !== false)
+                .map(([k, v]) => (
+                  <View key={k} style={styles.assessRow}>
+                    <Text style={styles.assessItem}>{k}</Text>
+                    <Text style={styles.assessScore}>{String(v)}</Text>
+                  </View>
+                ))}
+            </>
+          )}
+        </View>
+
         {renderSection('Parent / Guardian')}
         {infoRow('Name', profile.parentName)}
         {infoRow('Phone', profile.parentPhone)}
@@ -227,4 +316,13 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, alignItems: 'center', gap: 2 },
   statValue: { fontSize: 22, fontWeight: '700', color: colors.navyText },
   statLabel: { fontSize: 11, color: colors.mutedText },
+  assessHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
+  assessStatus: { color: colors.statusApprovedText, fontWeight: '700', fontSize: 12 },
+  assessAnswered: { color: colors.mutedText, fontSize: 12 },
+  assessDomain: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  assessRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md, paddingVertical: 2 },
+  assessItem: { flex: 1, color: colors.bodyText, fontSize: 13 },
+  assessScore: { color: colors.navyText, fontWeight: '700', fontSize: 13 },
+  assessNote: { color: colors.bodyText, fontSize: 13 },
+  assessNoteLabel: { fontWeight: '700', color: colors.navyText },
 });

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, TextInput } from 'react-native';
 import { Alert, SafeAreaView } from 'react-native';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -7,87 +8,8 @@ import type { ProgramDirectorStackParamList } from '../../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-
-const mockStudents = [
-  { id: '1', name: 'Student A' },
-  { id: '2', name: 'Student B' },
-];
-
-const mockData = {
-  studentInfo: {
-    fullName: 'Student A',
-    dateOfBirth: '2018-03-12',
-    age: 8,
-    diagnosis: 'Autism Spectrum Disorder (Level 2)',
-    parentGuardian: 'Maria Santos',
-    phone: '(555) 012-3456',
-    programType: 'Early Intensive Behavioral Intervention',
-    therapyGroup: 'Group A',
-    station: 'Station 1',
-    enrollmentDate: '2024-09-01',
-    assessmentStart: '2025-01-06',
-    assessmentEnd: '2025-02-14',
-  },
-  ablls: [
-    { domain: 'Language', score: 72, max: 100 },
-    { domain: 'Reading', score: 45, max: 100 },
-    { domain: 'Math', score: 38, max: 100 },
-    { domain: 'Writing', score: 28, max: 100 },
-    { domain: 'Self-Help', score: 68, max: 100 },
-    { domain: 'Leisure Skills', score: 80, max: 100 },
-    { domain: 'Social Interaction', score: 34, max: 100 },
-    { domain: 'Gross Motor', score: 90, max: 100 },
-    { domain: 'Fine Motor', score: 55, max: 100 },
-    { domain: 'Vocal Imitation', score: null, max: 100 },
-  ],
-  behavior: {
-    mass: {
-      scores: [
-        { function: 'Sensory', score: 3.8 },
-        { function: 'Escape', score: 2.1 },
-        { function: 'Attention', score: 4.5 },
-        { function: 'Tangible', score: 1.9 },
-      ],
-      dominantFunction: 'Attention',
-    },
-    fast: {
-      scores: [
-        { function: 'Social Attention', score: 28 },
-        { function: 'Escape/Avoidance', score: 14 },
-        { function: 'Automatic Reinforcement', score: 9 },
-        { function: 'Access to Tangibles', score: 7 },
-      ],
-      hypothesizedFunction: 'Social Attention',
-    },
-    abc: {
-      totalIncidents: 23,
-      topAntecedents: [
-        { antecedent: 'Demand Presented', count: 11 },
-        { antecedent: 'Peer Interaction', count: 7 },
-        { antecedent: 'Transition Between Activities', count: 5 },
-      ],
-    },
-  },
-  preference: [
-    { rank: 1, item: 'Tablet (YouTube)', duration: '18 min', frequency: 9, context: 'Free play period, individual sessions' },
-    { rank: 2, item: 'Bubble Blower', duration: '14 min', frequency: 7, context: 'Outdoor play, sensory breaks' },
-    { rank: 3, item: 'Toy Cars (Red Set)', duration: '11 min', frequency: 8, context: 'Table activities, parallel play' },
-    { rank: 4, item: 'Playdough', duration: '9 min', frequency: 6, context: 'Fine motor station, group activities' },
-    { rank: 5, item: 'Music via Speaker', duration: '7 min', frequency: 10, context: 'Transitions, calm-down corner' },
-  ],
-  iup: {
-    status: 'Finalized',
-    station1Goals: [
-      { id: 'G1', description: 'Student will request preferred items using 2-word phrases in 4 out of 5 opportunities across 3 consecutive sessions.' },
-      { id: 'G2', description: 'Student will maintain eye contact with communication partner for 3 seconds when name is called, in 80% of trials.' },
-      { id: 'G3', description: 'Student will independently complete a 5-step hand-washing routine with visual support in 4 out of 5 trials.' },
-    ],
-    station2Goals: [
-      { id: 'G4', description: 'Student will match uppercase letters A–M to corresponding lowercase letters with 90% accuracy across 3 sessions.' },
-      { id: 'G5', description: 'Student will identify numbers 1–10 by pointing when named, in 8 out of 10 trials across 3 consecutive sessions.' },
-    ],
-  },
-};
+import { getAssessmentSummaryDashboard } from '../../api/programDirectorApi';
+import AbllsGridView from '../../components/AbllsGridView';
 
 function getAblssColor(score: number | null): { bg: string; text: string; label: string } {
   if (score === null) return { bg: '#F3F4F6', text: '#6B7280', label: 'Not Assessed' };
@@ -95,6 +17,32 @@ function getAblssColor(score: number | null): { bg: string; text: string; label:
   if (score <= 66) return { bg: '#FEF3C7', text: '#B45309', label: 'Developing' };
   return { bg: '#D1FAE5', text: '#059669', label: 'Proficient' };
 }
+
+const MASS_ITEMS = [
+  { id: 'M1', text: 'Would the behavior occur continuously if left alone for long periods of time?' },
+  { id: 'M2', text: 'Does the behavior occur when the person is asked to do a difficult task?' },
+  { id: 'M3', text: 'Does the behavior seem to occur when the person is ignored?' },
+  { id: 'M4', text: 'Does the behavior occur when a preferred item is taken away?' },
+  { id: 'M5', text: 'Does the behavior occur when the person is left alone, with no one around?' },
+  { id: 'M6', text: 'Does the behavior occur following a request to perform an undesirable task?' },
+  { id: 'M7', text: 'Does the behavior occur when attention is diverted from the person?' },
+  { id: 'M8', text: 'Does the behavior occur when the person is denied access to a desired item or activity?' },
+  { id: 'M9', text: 'Does the behavior occur during a task that the person does not enjoy?' },
+  { id: 'M10', text: 'Does the behavior seem to be enjoyable to the person (self-stimulatory)?' },
+  { id: 'M11', text: 'Does the behavior occur to get a reaction from others?' },
+  { id: 'M12', text: 'Does the behavior occur to obtain food, toys, or a specific activity?' },
+];
+
+const FAST_ITEMS = [
+  { id: 'F1', text: 'Does the behavior occur when others are present, and does attention follow?' },
+  { id: 'F2', text: 'Does the behavior occur to avoid or escape a task, demand, or request?' },
+  { id: 'F3', text: 'Does the behavior produce a rewarding sensory effect without others?' },
+  { id: 'F4', text: 'Does the behavior remove an unpleasant sensation or reduce pain?' },
+  { id: 'F5', text: 'Does the behavior typically happen when the person is alone or unoccupied?' },
+  { id: 'F6', text: 'Does the behavior occur during transitions or when demands increase?' },
+  { id: 'F7', text: 'Does an adult typically react by giving attention or talking to the person?' },
+  { id: 'F8', text: 'Is the behavior reduced when a preferred item or activity is provided freely?' },
+];
 
 function ScoreBar({ score }: { score: number | null }) {
   if (score === null) return <View style={[styles.barTrack, { backgroundColor: '#E5E7EB' }]} />;
@@ -106,15 +54,105 @@ function ScoreBar({ score }: { score: number | null }) {
   );
 }
 
-export default function AssessmentSummaryReport({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'AssessmentSummaryReport'> | { navigation?: any }) {
-  const [selectedStudent, setSelectedStudent] = useState('1');
+export default function AssessmentSummaryReport({ route, navigation }: any) {
+  const [selectedStudent, setSelectedStudent] = useState(route?.params?.studentId || '');
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [prefTab, setPrefTab] = useState('Sensory Time');
 
-  const data = mockData;
-  const { studentInfo, ablls, behavior, preference, iup } = data;
+
+  useEffect(() => {
+    let active = true;
+    const fetchDashboard = async () => {
+      setLoading(true);
+      try {
+        const response = await getAssessmentSummaryDashboard(selectedStudent);
+        if (active) {
+          setData(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to load assessment summary dashboard', err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchDashboard();
+    return () => { active = false; };
+  }, [selectedStudent]);
+
+  if (loading || !data) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <AppNavbar activeTab="Assessment Summary Report" onTabPress={(tab) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab] as never)} />
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <ActivityIndicator size="large" color={colors.primaryBlue} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+    const mockStudents = data?.students || [];
 
   function handleDownload() {
     Alert.alert('Info', 'PDF export coming soon');
   }
+
+  if (data?.notSelected) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <AppNavbar activeTab="Assessment Summary Report" onTabPress={(tab) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab] as never)} />
+        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <View style={styles.brandBadge}>
+                <Text style={styles.brandText}>ABA</Text>
+              </View>
+              <View>
+                <Text style={styles.pageTitle}>Assessment Summary Report</Text>
+                <Text style={styles.pageSubtitle}>6-Week Assessment Completion Report</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={handleDownload} style={styles.downloadBtn}>
+              <Text style={styles.downloadBtnText}>Download PDF</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.selectRow, { zIndex: 10 }]}>
+            <Text style={styles.selectLabel}>Select Student</Text>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity style={styles.dropdownToggle} onPress={() => setDropdownOpen(!dropdownOpen)}>
+                <Text style={styles.dropdownToggleText}>
+                  {mockStudents.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
+                </Text>
+              </TouchableOpacity>
+              {dropdownOpen && (
+                <View style={styles.dropdownMenu}>
+                  <TextInput style={styles.searchInput} placeholder="Search students..." placeholderTextColor={colors.mutedText} value={searchQuery} onChangeText={setSearchQuery} />
+                  <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
+                    {mockStudents.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((s: any) => (
+                        <TouchableOpacity key={s.id} onPress={() => { setSelectedStudent(s.id); setDropdownOpen(false); setSearchQuery(''); }} style={[styles.dropdownItem, selectedStudent === s.id && styles.dropdownItemActive]}>
+                          <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>{s.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    {mockStudents.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                      <Text style={{ padding: 12, color: colors.mutedText, textAlign: 'center' }}>No students found.</Text>
+                    )}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 100 }}>
+            <Text style={{ fontSize: 18, color: colors.mutedText, fontWeight: '600' }}>Select a student</Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  const { studentInfo, ablls, abllsScores, behavior, preference, sensory, socialSkills } = data;
 
   const colorNeedMap = {
     red: ablls.filter(d => d.score !== null && d.score <= 33).map(d => d.domain),
@@ -142,20 +180,51 @@ export default function AssessmentSummaryReport({ navigation }: NativeStackScree
         </TouchableOpacity>
       </View>
 
-      <View style={styles.selectRow}>
-        <Text style={styles.selectLabel}>Select Student</Text>
-        <View style={styles.selectWrapper}>
-          {mockStudents.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              onPress={() => setSelectedStudent(s.id)}
-              style={[styles.selectOption, selectedStudent === s.id && styles.selectOptionActive]}
+      <View style={[styles.selectRow, { zIndex: 10 }]}>
+          <Text style={styles.selectLabel}>Select Student</Text>
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity 
+              style={styles.dropdownToggle} 
+              onPress={() => setDropdownOpen(!dropdownOpen)}
             >
-              <Text style={[styles.selectOptionText, selectedStudent === s.id && styles.selectOptionTextActive]}>{s.name}</Text>
+              <Text style={styles.dropdownToggleText}>
+                {mockStudents.find(s => s.id === selectedStudent)?.name || 'Select a Student'}
+              </Text>
             </TouchableOpacity>
-          ))}
+            
+            {dropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search students..."
+                  placeholderTextColor={colors.mutedText}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
+                  {mockStudents
+                    .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map(s => (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => {
+                          setSelectedStudent(s.id);
+                          setDropdownOpen(false);
+                          setSearchQuery('');
+                        }}
+                        style={[styles.dropdownItem, selectedStudent === s.id && styles.dropdownItemActive]}
+                      >
+                        <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>{s.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  {mockStudents.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                    <Text style={{ padding: 12, color: colors.mutedText, textAlign: 'center' }}>No students found.</Text>
+                  )}
+                </ScrollView>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
 
       {/* Student Info */}
       <View style={styles.card}>
@@ -166,15 +235,8 @@ export default function AssessmentSummaryReport({ navigation }: NativeStackScree
           <InfoItem label="Full Name" value={studentInfo.fullName} />
           <InfoItem label="Date of Birth" value={studentInfo.dateOfBirth} />
           <InfoItem label="Age" value={`${studentInfo.age} years old`} />
-          <InfoItem label="Diagnosis" value={studentInfo.diagnosis} />
           <InfoItem label="Parent / Guardian" value={studentInfo.parentGuardian} />
-          <InfoItem label="Phone" value={studentInfo.phone} />
-          <InfoItem label="Program Type" value={studentInfo.programType} />
-          <InfoItem label="Therapy Group" value={studentInfo.therapyGroup} />
           <InfoItem label="Station" value={studentInfo.station} />
-          <InfoItem label="Enrollment Date" value={studentInfo.enrollmentDate} />
-          <InfoItem label="Assessment Start" value={studentInfo.assessmentStart} />
-          <InfoItem label="Assessment End" value={studentInfo.assessmentEnd} />
         </View>
       </View>
 
@@ -205,6 +267,11 @@ export default function AssessmentSummaryReport({ navigation }: NativeStackScree
             <NeedMapBox title="Proficient (67–100%)" items={colorNeedMap.green} color="#D1FAE5" textColor="#059669" />
             <NeedMapBox title="Not Assessed" items={colorNeedMap.gray} color="#F3F4F6" textColor="#6B7280" />
           </View>
+          
+          <View style={{ marginTop: 16 }}>
+            <Text style={[styles.cardHeaderText, { marginBottom: 12, color: '#0F172A' }]}>ABLLS-R Skill Tracking Grid</Text>
+            <AbllsGridView scores={abllsScores} />
+          </View>
         </View>
       </View>
 
@@ -214,31 +281,31 @@ export default function AssessmentSummaryReport({ navigation }: NativeStackScree
           <Text style={styles.cardHeaderText}>Behavior Assessment</Text>
         </View>
         <View style={styles.cardBody}>
-          <SectionTitle title="MASS Results" />
-          <TableHeader cols={['Function', 'Score (0–6)']} />
-          {behavior.mass.scores.map(item => (
-            <TableRow key={item.function} values={[
-              <Text key="f" style={[styles.tableCell, item.function === behavior.mass.dominantFunction && styles.tableBoldText]}>
-                {item.function}{item.function === behavior.mass.dominantFunction ? '  (Dominant)' : ''}
-              </Text>,
-              <Text key="v" style={[styles.tableCell, styles.tableRight]}>{item.score.toFixed(1)}</Text>
-            ]} />
+          <SectionTitle title="Motivation Assessment Scale (MASS) - Q&A" />
+          {MASS_ITEMS.map(item => (
+            <View key={item.id} style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 4 }}>
+                {item.id}. {item.text}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#475569' }}>
+                Answer: <Text style={{ fontWeight: '500', color: behavior.massAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior.massAnswers?.[item.id] || 'Not answered'}</Text>
+              </Text>
+            </View>
           ))}
-          <Text style={styles.subNote}>Dominant function: <Text style={styles.subNoteBold}>{behavior.mass.dominantFunction}</Text></Text>
 
           <View style={styles.divider} />
 
-          <SectionTitle title="FAST Results" />
-          <TableHeader cols={['Function', 'Score']} />
-          {behavior.fast.scores.map(item => (
-            <TableRow key={item.function} values={[
-              <Text key="f" style={[styles.tableCell, item.function === behavior.fast.hypothesizedFunction && styles.tableBoldText]}>
-                {item.function}{item.function === behavior.fast.hypothesizedFunction ? '  (Hypothesized)' : ''}
-              </Text>,
-              <Text key="v" style={[styles.tableCell, styles.tableRight]}>{item.score}</Text>
-            ]} />
+          <SectionTitle title="Functional Analysis Screening Tool (FAST) - Q&A" />
+          {FAST_ITEMS.map(item => (
+            <View key={item.id} style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 4 }}>
+                {item.id}. {item.text}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#475569' }}>
+                Answer: <Text style={{ fontWeight: '500', color: behavior.fastAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior.fastAnswers?.[item.id] || 'Not answered'}</Text>
+              </Text>
+            </View>
           ))}
-          <Text style={styles.subNote}>Hypothesized function: <Text style={styles.subNoteBold}>{behavior.fast.hypothesizedFunction}</Text></Text>
 
           <View style={styles.divider} />
 
@@ -260,8 +327,18 @@ export default function AssessmentSummaryReport({ navigation }: NativeStackScree
           <Text style={styles.cardHeaderText}>Preference Assessment</Text>
         </View>
         <View style={styles.cardBody}>
-          <TableHeader cols={['Rank', 'Preferred Item', 'Duration', 'Frequency', 'Context']} alignEnd={false} />
-          {preference.map(item => (
+          <View style={radioStyles.row}>
+            {['Sensory Time', 'Circle Time', 'Play Time'].map(tab => (
+              <TouchableOpacity key={tab} style={radioStyles.radioBtn} onPress={() => setPrefTab(tab)}>
+                <View style={[radioStyles.radioCircle, prefTab === tab && radioStyles.radioCircleSelected]}>
+                  {prefTab === tab && <View style={radioStyles.radioDot} />}
+                </View>
+                <Text style={radioStyles.radioText}>{tab}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TableHeader cols={['Rank', 'Preferred Item', 'Duration', 'Freq', 'Context', 'Engagement', 'Approach']} alignEnd={false} />
+          {(preference?.items || []).map((item: any) => (
             <TableRow key={item.rank} values={[
               <Text key="r" style={[styles.tableCell, styles.tableBoldText]}>
                 <View style={styles.rankCircle}><Text style={styles.rankText}>{item.rank}</Text></View>
@@ -269,46 +346,54 @@ export default function AssessmentSummaryReport({ navigation }: NativeStackScree
               <Text key="i" style={[styles.tableCell, styles.tableBoldText]}>{item.item}</Text>,
               <Text key="d" style={[styles.tableCell, styles.tableRight]}>{item.duration}</Text>,
               <Text key="f" style={[styles.tableCell, styles.tableRight]}>{item.frequency}x</Text>,
-              <Text key="c" style={[styles.tableCell, { fontSize: 11, color: colors.mutedText }]}>{item.context}</Text>
+              <Text key="c" style={[styles.tableCell, { fontSize: 11, color: colors.mutedText }]}>{item.context}</Text>,
+              <Text key="e" style={[styles.tableCell, { fontSize: 11 }]}>{item.engaged || 'N/A'}</Text>,
+              <Text key="a" style={[styles.tableCell, { fontSize: 11 }]}>{item.approached || 'N/A'}</Text>
             ]} />
           ))}
         </View>
       </View>
 
-      {/* IUP */}
+            {/* Sensory */}
+      {sensory && sensory.activities && sensory.activities.length > 0 && (
       <View style={styles.card}>
         <View style={styles.cardHeaderBlue}>
-          <Text style={styles.cardHeaderText}>IUP Status</Text>
+          <Text style={styles.cardHeaderText}>Sensory Assessment</Text>
         </View>
         <View style={styles.cardBody}>
-          <View style={styles.iupRow}>
-            <Text style={styles.iupLabel}>IUP Status:</Text>
-            <View style={[styles.iupPill, iup.status === 'Finalized' ? styles.iupPillGreen : styles.iupPillYellow]}>
-              <Text style={iup.status === 'Finalized' ? styles.iupPillGreenText : styles.iupPillYellowText}>{iup.status}</Text>
-            </View>
-          </View>
-
-          <View style={styles.goalSection}>
-            <Text style={styles.goalSectionTitle}>Station 1 Goals</Text>
-            {iup.station1Goals.map(goal => (
-              <View key={goal.id} style={styles.goalItem}>
-                <Text style={styles.goalId}>{goal.id}</Text>
-                <Text style={styles.goalDesc}>{goal.description}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.goalSection}>
-            <Text style={styles.goalSectionTitle}>Station 2 Goals</Text>
-            {iup.station2Goals.map(goal => (
-              <View key={goal.id} style={styles.goalItem}>
-                <Text style={styles.goalId}>{goal.id}</Text>
-                <Text style={styles.goalDesc}>{goal.description}</Text>
-              </View>
-            ))}
-          </View>
+          <TableHeader cols={['Activity', 'Engagement', 'Reaction', 'Notes']} alignEnd={false} />
+           {sensory.activities.map((item: any, idx: number) => (
+            <TableRow key={idx} values={[
+              <Text key="n" style={styles.tableCell}>{item.name}</Text>,
+              <Text key="e" style={styles.tableCell}>{item.engagementLevel || 'N/A'}</Text>,
+              <Text key="r" style={styles.tableCell}>{item.responseReaction || 'N/A'}</Text>,
+              <Text key="m" style={styles.tableCell}>{item.remark || 'N/A'}</Text>
+            ]} />
+          ))}
         </View>
       </View>
+      )}
+
+      {/* Social Skills */}
+      {socialSkills && socialSkills.scores && Object.keys(socialSkills.scores).length > 0 && (
+      <View style={styles.card}>
+        <View style={styles.cardHeaderBlue}>
+          <Text style={styles.cardHeaderText}>Social Skills Questionnaire</Text>
+        </View>
+        <View style={styles.cardBody}>
+           <Text style={styles.subNote}>Completed: <Text style={styles.subNoteBold}>{socialSkills.percent}%</Text></Text>
+           <TableHeader cols={['Question ID', 'Score']} alignEnd={false} />
+           {Object.keys(socialSkills.scores).map((key: string) => (
+             <TableRow key={key} values={[
+               <Text key="k" style={styles.tableCell}>{key}</Text>,
+               <Text key="v" style={styles.tableCell}>{socialSkills.scores[key]}</Text>
+             ]} />
+           ))}
+        </View>
+      </View>
+      )}
+
+      
 
       <View style={styles.footerActions}>
         <TouchableOpacity onPress={handleDownload} style={styles.footerBtn}>
@@ -362,6 +447,15 @@ function TableRow({ values }: { values: React.ReactNode[] }) {
   );
 }
 
+const radioStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 },
+  radioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#94A3B8', alignItems: 'center', justifyContent: 'center' },
+  radioCircleSelected: { borderColor: '#0284C7' },
+  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284C7' },
+  radioText: { fontSize: 13, color: '#334155' }
+});
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bgApp },
   container: { flex: 1, backgroundColor: colors.bgApp },
@@ -377,6 +471,59 @@ const styles = StyleSheet.create({
   selectRow: { marginBottom: spacing.md },
   selectLabel: { fontSize: 12, fontWeight: '600', color: colors.mutedText, marginBottom: spacing.xs },
   selectWrapper: { flexDirection: 'row', gap: spacing.sm },
+
+  dropdownToggle: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  dropdownToggleText: {
+    fontSize: 14,
+    color: colors.navyText,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 1000,
+  },
+  searchInput: {
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    fontSize: 14,
+    color: colors.navyText,
+  },
+  dropdownItem: {
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  dropdownItemActive: {
+    backgroundColor: '#eff6ff',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: colors.navyText,
+  },
+  dropdownItemTextActive: {
+    fontWeight: '600',
+    color: '#2563eb',
+  },
+
   selectOption: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgCard },
   selectOptionActive: { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' },
   selectOptionText: { fontSize: 13, color: colors.bodyText },

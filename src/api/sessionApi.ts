@@ -104,6 +104,9 @@ export const logTrial = (sessionId: string, studentId: string, goalId: string, p
   // payload: { promptLevel: 'FP' | 'PP' | 'G' | 'INDEPENDENT', timestamp }
   client.post(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials`, payload);
 
+export const undoLastTrial = (sessionId: string, studentId: string, goalId: string) =>
+  client.delete(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials/last`);
+
 export const recordIncident = (sessionId: string, studentId: string, payload: Payload) =>
   client.post(`/sessions/${sessionId}/students/${studentId}/incidents`, payload);
 

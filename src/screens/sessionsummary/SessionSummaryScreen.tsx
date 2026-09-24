@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import {
@@ -16,6 +16,8 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import AppNavbar from '../../components/AppNavbar';
+import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getSessionSummary, submitSessionSummary, saveSessionDraft, resubmitSessionNote } from '../../api/sessionApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
@@ -52,10 +54,10 @@ function TrialLogModal({ visible, goalName, trials, onClose }: TrialLogModalProp
             </TouchableOpacity>
           </View>
           <ScrollView>
-            {(trials || []).map((t, i) => (
-              <View key={i} style={styles.trialLogRow}>
-                <Text style={typography.body}>{t.timestamp}</Text>
-                <View
+              {(trials || []).map((t, i) => (
+                <View key={i} style={styles.trialLogRow}>
+                  <Text style={typography.body}>{(t as any).date ? `${(t as any).date} ` : ''}{t.timestamp}</Text>
+                  <View
                   style={[
                     styles.trialBadge,
                     { backgroundColor: PROMPT_CONFIG[t.promptLevel]?.bg || '#F3F4F6' },
@@ -168,31 +170,47 @@ function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectio
 }
 
 export function SessionSummaryScreen({ route, navigation }: Props) {
-  const sessionId = route.params?.sessionId;
-  const localIncidents = route.params?.localIncidents as IncidentPayload[] || [];
+  const sessionId = route.params?.sessionId ?? 'active';
+  const localIncidents = useMemo(() => route.params?.localIncidents as IncidentPayload[] || [], [route.params?.localIncidents]);
   const { showToast } = useToast();
 
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
   const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
+  const [expandedIncidentIndex, setExpandedIncidentIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
       if (sessionId) {
         const { data } = await getSessionSummary(sessionId);
-        // Merge local incidents with API incidents
-        const mergedIncidents = [
-          ...localIncidents.map((inc) => ({
+        // Map backend incidents to UI format
+        const apiIncidents = (data.incidents || []).map((inc: any) => ({
+          date: inc.date,
+          time: inc.time,
+          behavior: inc.behavior,
+          studentName: inc.studentName,
+          antecedent: inc.antecedent,
+          consequence: inc.consequence,
+          additionalNotes: inc.notes || inc.additionalNotes,
+        }));
+
+        // Only include local incidents that aren't already in the API response (e.g. if API sync failed)
+        // We do a simple deduplication based on time and studentName
+        const apiKeys = new Set(apiIncidents.map((i: any) => `${i.time}-${i.studentName}`));
+        const uniqueLocal = localIncidents
+          .filter((inc) => !apiKeys.has(`${inc.time}-${inc.studentName}`))
+          .map((inc) => ({
+            date: new Date().toLocaleDateString(),
             time: inc.time || new Date().toLocaleTimeString(),
             behavior: inc.behavior,
-            studentName: inc.studentName || 'Student',
+            studentName: inc.studentName || '',
             antecedent: inc.antecedent,
             consequence: inc.consequence,
             additionalNotes: inc.additionalNotes,
-          })),
-          ...(data.incidents || []),
-        ];
+          }));
+
+        const mergedIncidents = [...uniqueLocal, ...apiIncidents];
         setSummary({ ...data, incidents: mergedIncidents });
       }
       setLoadError(false);
@@ -209,14 +227,16 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           incidents: localIncidents.map((inc) => ({
             time: inc.time || new Date().toLocaleTimeString(),
             behavior: inc.behavior,
-            studentName: inc.studentName || 'Student',
+            studentName: inc.studentName || '',
             antecedent: inc.antecedent,
             consequence: inc.consequence,
             additionalNotes: inc.additionalNotes,
           })),
         });
+        setLoadError(false);
+      } else {
+        setLoadError(true);
       }
-      setLoadError(true);
     }
   }, [sessionId, localIncidents]);
 
@@ -262,10 +282,9 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   const handlePreviewPdf = () => {
     if (!summary) return;
     const lines = [
-      `Melu'e Foundation — Session Summary`,
+      `Melu'e Foundation - Session Summary`,
       `Station: ${summary.stationName}`,
       `Teacher: ${summary.teacherName}`,
-      `Time: ${summary.startTime} – ${summary.endTime} (${summary.durationMinutes} minutes)`,
       '',
       'STUDENT GOAL DATA',
       ...summary.students.flatMap((s) => [
@@ -304,6 +323,19 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   if (loadError) return <ScreenError onRetry={load} />;
   if (!summary) return <ScreenLoader />;
 
+  if (summary.students.length === 0 && summary.incidents.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No session data found.</Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   const summaryStatus = summary.status || 'pending_review';
   const statusLabel =
     summaryStatus === 'pending_review'
@@ -314,17 +346,13 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       ? 'Revision Required'
       : 'Draft';
   const isDraft = summaryStatus === 'draft';
-  const showCoordinatorFeedback =
-    summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
-  const coordinatorFeedback =
-    summaryStatus === 'revised_required'
-      ? 'Please revise the session notes for this block. Missing behavior data — include the antecedent, behavior, and consequence for the observed incident, and correct the trial counts to match the data collection sheet.'
-      : summaryStatus === 'approved'
-      ? 'Great documentation. Approved — keep up the consistent trial logging across both stations.'
-      : '';
+  const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
+  const showCoordinatorFeedback = isReviewed;
+  const coordinatorFeedback = (summary as any).coordinatorFeedback || '';
 
   return (
     <SafeAreaView style={styles.safe}>
+      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={handleBackToSession} style={styles.topBackBtn}>
           <Feather name="arrow-left" size={16} color="#64748B" />
@@ -348,14 +376,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
             <View style={styles.metaColumn}>
               <Text style={styles.metaLabel}>Teacher</Text>
               <Text style={styles.metaValue}>{summary.teacherName}</Text>
-            </View>
-            <View style={styles.metaColumn}>
-              <Text style={styles.metaLabel}>Time</Text>
-              <Text style={styles.metaValue}>{summary.startTime}</Text>
-            </View>
-            <View style={styles.metaColumn}>
-              <Text style={styles.metaLabel}>Duration</Text>
-              <Text style={styles.metaValue}>{summary.durationMinutes} minutes</Text>
             </View>
           </View>
 
@@ -404,29 +424,35 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
                 Behavior Incidents ({summary.incidents.length})
               </Text>
             </View>
-            {summary.incidents.map((inc, i) => (
-              <View key={i} style={styles.incidentBody}>
-                <View style={styles.incidentRowTop}>
-                  <Text style={styles.incidentTime}>{inc.time}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      Alert.alert(
-                        `Behavior Incident Details`,
-                        `Student: ${inc.studentName || 'Student'}\nTime: ${inc.time}\n\nAntecedent (A):\n${(inc as any).antecedent || 'Task demand / Transition'}\n\nBehavior (B):\n${inc.behavior}\n\nConsequence (C):\n${(inc as any).consequence || 'Offered sensory break'}\n\nAdditional Notes:\n${(inc as any).additionalNotes || 'None'}`,
-                        [{ text: 'Close', style: 'default' }]
-                      );
-                    }}
-                  >
-                    <Text style={styles.linkText}>View Details</Text>
-                  </TouchableOpacity>
+              {summary.incidents.map((inc, i) => (
+                <View key={i} style={styles.incidentBody}>
+                  <View style={styles.incidentRowTop}>
+                    <Text style={styles.incidentTime}>{inc.date ? `${inc.date} ` : ''}{inc.time}</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setExpandedIncidentIndex(expandedIncidentIndex === i ? null : i);
+                      }}
+                    >
+                      <Text style={styles.linkText}>
+                        {expandedIncidentIndex === i ? 'Hide Details' : 'View Details'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.incidentABC}>
+                    <Text style={styles.boldText}>A:</Text> {(inc as any).antecedent || 'Not recorded'} •{' '}
+                    <Text style={styles.boldText}>B:</Text> {inc.behavior || 'Not recorded'} •{' '}
+                    <Text style={styles.boldText}>C:</Text> {(inc as any).consequence || 'Not recorded'}
+                  </Text>
+                  
+                  {expandedIncidentIndex === i && (
+                    <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 4 }}>
+                      <Text style={styles.boldText}>Student: <Text style={{fontWeight: 'normal'}}>{inc.studentName || 'Student'}</Text></Text>
+                      <Text style={[styles.boldText, {marginTop: 4}]}>Additional Notes:</Text>
+                      <Text style={{ marginTop: 2, color: '#334155' }}>{(inc as any).additionalNotes || 'None'}</Text>
+                    </View>
+                  )}
                 </View>
-               <Text style={styles.incidentABC}>
-                <Text style={styles.boldText}>A:</Text> {(inc as any).antecedent || 'Task demand'} •{' '}
-                   <Text style={styles.boldText}>B:</Text> {inc.behavior} •{' '}
-                   <Text style={styles.boldText}>C:</Text> {(inc as any).consequence || 'Offered break'}
-              </Text>
-              </View>
-            ))}
+              ))}
           </View>
         )}
 
@@ -640,6 +666,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-  trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
-  trialBadgeText: { fontSize: 12, fontWeight: '700' },
-});
+trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
+   trialBadgeText: { fontSize: 12, fontWeight: '700' },
+   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+ });

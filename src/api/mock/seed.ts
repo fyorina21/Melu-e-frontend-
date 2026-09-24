@@ -24,6 +24,18 @@ import type { SensoryActivity } from '../resources/sensory';
 import type { TeacherScheduleEntry, Assignment } from '../resources/staffScheduling';
 import type { MasteryCheck } from '../resources/masteryChecks';
 
+export interface SeededStudentGoal {
+  id: string;
+  name: string;
+  status: string;
+  progressPercent: number;
+  domain?: string;
+  description?: string;
+  masteryCriteria?: string;
+  station?: number;
+  slot?: number;
+}
+
 export interface SeededStudent {
   id: string;
   fullName: string;
@@ -37,7 +49,7 @@ export interface SeededStudent {
   phase?: string;
   headshotUrl: string | null;
   currentFocusStudentGoalId: string | null;
-  goals: Array<{ id: string; name: string; status: string; progressPercent: number }>;
+  goals: SeededStudentGoal[];
 }
 
 export type DemoRole =
@@ -144,6 +156,8 @@ export const seed: SeedShape = {
 
   users: [
     { id: 'user-1', name: 'Rosa Delgado', email: 'teacher@melue.org', password: 'demo1234', role: 'teacher', childIds: [] },
+    { id: 'staff-3', name: 'Jared Cruz', email: 'jared@melue.org', password: 'demo1234', role: 'teacher', childIds: [] },
+    { id: 'staff-4', name: 'Jeah Torres', email: 'jeah@melue.org', password: 'demo1234', role: 'teacher', childIds: [] },
     { id: 'user-2', name: 'Marcus Chen', email: 'coordinator@melue.org', password: 'demo1234', role: 'coordinator', childIds: [] },
     { id: 'user-3', name: 'Aisha Patel', email: 'pd@melue.org', password: 'demo1234', role: 'program_director', childIds: [] },
     { id: 'user-4', name: 'Elena Martinez', email: 'parent@melue.org', password: 'demo1234', role: 'parent', childIds: ['student-a', 'student-b'] },
@@ -156,9 +170,19 @@ export const seed: SeedShape = {
 
   conversations: [] satisfies DemoConversation[],
 
-  trials: [] as Array<import('../resources/types').Trial>,
+  trials: [
+    { id: 't-1', studentGoalId: 'goal-1', studentGoalStepId: null, promptLevelId: 'pl-3', promptLabel: 'G', outcome: 'incorrect', clientEventId: 'evt-1', loggedAt: '2026-08-01T09:00:00Z' },
+    { id: 't-2', studentGoalId: 'goal-1', studentGoalStepId: null, promptLevelId: 'pl-3', promptLabel: 'G', outcome: 'correct', clientEventId: 'evt-2', loggedAt: '2026-08-08T09:00:00Z' },
+    { id: 't-3', studentGoalId: 'goal-1', studentGoalStepId: null, promptLevelId: 'pl-2', promptLabel: 'PP', outcome: 'correct', clientEventId: 'evt-3', loggedAt: '2026-08-15T09:00:00Z' },
+    { id: 't-4', studentGoalId: 'goal-1', studentGoalStepId: null, promptLevelId: 'pl-2', promptLabel: 'PP', outcome: 'correct', clientEventId: 'evt-4', loggedAt: '2026-08-22T09:00:00Z' },
+    
+    { id: 't-5', studentGoalId: 'goal-2', studentGoalStepId: null, promptLevelId: 'pl-2', promptLabel: 'PP', outcome: 'correct', clientEventId: 'evt-5', loggedAt: '2026-08-01T09:30:00Z' },
+    { id: 't-6', studentGoalId: 'goal-2', studentGoalStepId: null, promptLevelId: 'pl-2', promptLabel: 'PP', outcome: 'incorrect', clientEventId: 'evt-6', loggedAt: '2026-08-08T09:30:00Z' },
+    { id: 't-7', studentGoalId: 'goal-2', studentGoalStepId: null, promptLevelId: 'pl-2', promptLabel: 'PP', outcome: 'correct', clientEventId: 'evt-7', loggedAt: '2026-08-15T09:30:00Z' },
+    { id: 't-8', studentGoalId: 'goal-2', studentGoalStepId: null, promptLevelId: 'pl-3', promptLabel: 'G', outcome: 'correct', clientEventId: 'evt-8', loggedAt: '2026-08-22T09:30:00Z' },
+  ] as Array<import('../resources/types').Trial>,
 
-  notifications: [] satisfies Notification[],
+  notifications: [ { id: "notif-1", type: "progress", payload: { name: "Expressive Language" }, read: false, readAt: null, createdAt: new Date().toISOString(), }, { id: "notif-2", type: "observation", payload: { }, read: false, readAt: null, createdAt: new Date(Date.now() - 86400000).toISOString(), }, { id: "notif-3", type: "message", payload: { name: "System" }, read: true, readAt: new Date(Date.now() - 2 * 86400000).toISOString(), createdAt: new Date(Date.now() - 3 * 86400000).toISOString(), }, ] satisfies Notification[],
 
   observations: [] satisfies ParentObservation[],
 
@@ -303,7 +327,14 @@ export const seed: SeedShape = {
 
   attendanceRecords: [] satisfies MockSeedAttendance[],
 
-  assessments: [] satisfies MockSeedAssessment[],
+  // Seeded students a/b/c have completed assessments so they stay eligible for
+  // SessionDataCollection (assessment completed + at least one assigned goal).
+  // student-d is in the 6-week assessment window and has no saved assessment.
+  assessments: [
+    { id: 'assess-a-skills', studentId: 'student-a', type: 'skills', status: 'completed', data: {}, createdAt: '2026-08-20T09:00:00Z', updatedAt: '2026-08-20T09:00:00Z' },
+    { id: 'assess-b-behavior', studentId: 'student-b', type: 'behavior', status: 'completed', data: {}, createdAt: '2026-08-21T09:00:00Z', updatedAt: '2026-08-21T09:00:00Z' },
+    { id: 'assess-c-behavior', studentId: 'student-c', type: 'behavior', status: 'completed', data: {}, createdAt: '2026-08-22T09:00:00Z', updatedAt: '2026-08-22T09:00:00Z' },
+  ] satisfies MockSeedAssessment[],
 }
 
 // Local structural aliases so the empty business collections stay typed
@@ -345,3 +376,4 @@ type MockSeedAssessment = {
   id: string; studentId: string; type: 'skills' | 'behavior' | 'preference' | 'sensory';
   status: string; data: Record<string, unknown>; createdAt: string; updatedAt: string;
 };
+

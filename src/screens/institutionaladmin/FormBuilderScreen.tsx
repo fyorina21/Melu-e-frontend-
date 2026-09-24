@@ -10,6 +10,8 @@ import {
   Modal,
   Alert,
   Switch,
+  Platform,
+  Pressable,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,50 +25,27 @@ import { useToast } from '../../context/ToastContext';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { InstitutionalAdminStackParamList } from '../../types';
 
-const FORMS = [
-  'Enrollment Wizard',
-  'IUP Form',
-  'ABLLS Assessment Form',
-  'Social Skills Questionnaire',
-  'Behavior Incident Form',
-];
-const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Checkbox', 'Radio', 'TextArea', 'File'];
-const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
-const ABLLS_SECTIONS = [
-  'Visual Performance',
-  'Motor Imitation',
-  'Vocal Imitation',
-  'Receptive Language',
-  'Requesting (Mands)',
-  'Play and Leisure',
-  'Social Interaction',
-  'Writing',
-  'Dressing',
-  'General',
-];
-
-const getSectionsForForm = (formName: string): string[] => {
-  if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
-  if (formName === 'ABLLS Assessment Form') return ABLLS_SECTIONS;
-  return [];
-};
-
-const SCORE_SCALE_PRESETS = [
-  { label: '2-Level (0, 1, N/A)', short: '2-Lvl (0,1)', options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'] },
-  { label: '4-Level (0, 1, 2, 3, N/A)', short: '4-Lvl', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'] },
-];
-
-const SECTION_LETTER: Record<string, string> = {
-  'Visual Performance': 'A',
-  'Motor Imitation': 'B',
-  'Vocal Imitation': 'C',
-  'Receptive Language': 'D',
-  'Requesting (Mands)': 'E',
-  'Play and Leisure': 'F',
-  'Social Interaction': 'G',
-  'Writing': 'H',
-  'Dressing': 'I',
-};
+import {
+  FORMS,
+  FIELD_TYPES,
+  ENROLLMENT_SECTIONS,
+  ABLLS_SECTIONS,
+  BEHAVIORAL_SECTIONS,
+  PREFERENCE_SECTIONS,
+  SENSORY_SECTIONS,
+  getSectionsForForm,
+  ASSESSMENT_DIRECT_ROUTES,
+  SCORE_SCALE_PRESETS,
+  BEHAVIORAL_PRESETS,
+  SENSORY_PRESETS,
+  getPresetsForForm,
+  BEHAVIOR_LEVELS,
+  SECTION_LETTER,
+  getNextIdForSection,
+  COMMON_SKILL_TYPES,
+  COMMON_INFO_TYPES,
+  getDomainLetterForAblls,
+} from './formBuilderConfig';
 
 interface FormField {
   id: string;
@@ -77,6 +56,9 @@ interface FormField {
   options?: string[];
   section?: string;
   level?: string;
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: string;
 }
 
 interface HistoryEntry {
@@ -86,6 +68,17 @@ interface HistoryEntry {
   oldValue: string;
   newValue: string;
 }
+
+export const FORM_METADATA: Record<string, { id: string; revision: string; pages: string }> = {
+  'Enrollment Wizard': { id: 'FRM-ENR-001', revision: 'Rev 2.4 · 2026-09-19', pages: 'Page 1 of 3' },
+  'IUP Form': { id: 'FRM-IUP-001', revision: 'Rev 1.8 · 2026-09-19', pages: 'Page 1 of 2' },
+  'ABLLS Assessment Form': { id: 'FRM-ABLLS-001', revision: 'Rev 3.1 · 2026-09-19', pages: 'Page 1 of 1' },
+  'Behavioral Assessment': { id: 'FRM-BEH-001', revision: 'Rev 2.0 · 2026-09-19', pages: 'Page 1 of 1' },
+  'Preference Assessment': { id: 'FRM-PREF-001', revision: 'Rev 1.5 · 2026-09-19', pages: 'Page 1 of 1' },
+  'Sensory Assessment': { id: 'FRM-SEN-001', revision: 'Rev 1.6 · 2026-09-19', pages: 'Page 1 of 1' },
+  'Social Skills Questionnaire': { id: 'FRM-SOC-001', revision: 'Rev 1.2 · 2026-09-19', pages: 'Page 1 of 1' },
+  'Behavior Incident Form': { id: 'FRM-BIF-001', revision: 'Rev 1.4 · 2026-09-19', pages: 'Page 1 of 1' },
+};
 
 export default function FormBuilderScreen({ navigation }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
   const { showToast } = useToast();
@@ -104,9 +97,20 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [showTypeModal, setShowTypeModal] = useState<boolean>(false);
   const [newFieldLabel, setNewFieldLabel] = useState<string>('');
   const [newFieldOptions, setNewFieldOptions] = useState<string>('');
+  const [newFieldPlaceholder, setNewFieldPlaceholder] = useState<string>('');
   const [newFieldRequired, setNewFieldRequired] = useState<boolean>(false);
   const [newFieldSection, setNewFieldSection] = useState<string>('Student Info');
-  const [addingToSection, setAddingToSection] = useState<string | null>(null); // ABLLS per-section add
+  const [addingToSection, setAddingToSection] = useState<string | null>(null);
+
+  // Skill Type / Info Type / Section State
+  const [customSections, setCustomSections] = useState<string[]>([]);
+  const [deletedSections, setDeletedSections] = useState<string[]>([]);
+  const [showAddSkillTypeModal, setShowAddSkillTypeModal] = useState<boolean>(false);
+  const [newSkillTypeName, setNewSkillTypeName] = useState<string>('');
+  const [showAddInfoTypeModal, setShowAddInfoTypeModal] = useState<boolean>(false);
+  const [newInfoTypeName, setNewInfoTypeName] = useState<string>('');
+  const [editingSkillType, setEditingSkillType] = useState<string | null>(null);
+  const [editSkillTypeName, setEditSkillTypeName] = useState<string>('');
 
   // Edit Existing Field Modal State
   const [editingField, setEditingField] = useState<FormField | null>(null);
@@ -117,27 +121,39 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   const [editRequired, setEditRequired] = useState<boolean>(false);
   const [editSection, setEditSection] = useState<string>('General');
   const [editLevel, setEditLevel] = useState<string>('');
+  const [editPlaceholder, setEditPlaceholder] = useState<string>('');
+  const [editHelpText, setEditHelpText] = useState<string>('');
+  const [editDefaultValue, setEditDefaultValue] = useState<string>('');
 
   // Preview Modal State
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
   const [previewFormValues, setPreviewFormValues] = useState<Record<string, any>>({});
 
-  const inferSectionFromId = (id: string): string | null => {
-    const match = id.match(/^([A-I])(\d+)$/);
-    if (!match) return null;
-    const letter = match[1];
-    const letterToSection: Record<string, string> = {
-      A: 'Visual Performance',
-      B: 'Motor Imitation',
-      C: 'Vocal Imitation',
-      D: 'Receptive Language',
-      E: 'Requesting (Mands)',
-      F: 'Play and Leisure',
-      G: 'Social Interaction',
-      H: 'Writing',
-      I: 'Dressing',
-    };
-    return letterToSection[letter] || null;
+  const inferSectionFromId = (id: string, form?: string): string | null => {
+    const currentForm = form || selectedForm;
+    if (currentForm === 'ABLLS Assessment Form') {
+      const match = id.match(/^([A-I])(\d+)$/);
+      if (!match) return null;
+      const letter = match[1];
+      const letterToSection: Record<string, string> = {
+        A: 'Visual Performance',
+        B: 'Motor Imitation',
+        C: 'Vocal Imitation',
+        D: 'Receptive Language',
+        E: 'Requesting (Mands)',
+        F: 'Play and Leisure',
+        G: 'Social Interaction',
+        H: 'Writing',
+        I: 'Dressing',
+      };
+      return letterToSection[letter] || null;
+    }
+    if (currentForm === 'Behavioral Assessment' || currentForm === 'Behavior Assessment') {
+      if (/^M\d+/i.test(id)) return 'MASS';
+      if (/^F\d+/i.test(id)) return 'FAST';
+      if (/^ABC/i.test(id) || /^b_/i.test(id)) return 'ABC Tracking';
+    }
+    return null;
   };
 
   const load = useCallback(async () => {
@@ -149,15 +165,28 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
           const inferred = inferSectionFromId(f.id);
           if (inferred) return { ...f, section: inferred };
         }
+        if (selectedForm === 'Enrollment Wizard' && (!f.section || f.section === 'General')) {
+          return { ...f, section: inferSection(f.label) };
+        }
         return f;
       });
       setFields(loadedFields);
       setIsDefault(Boolean(data?.isDefault));
       setHistory(Array.isArray(data?.history) ? data.history : []);
+      const loadedSections: string[] = Array.isArray(data?.customSections)
+        ? data.customSections
+        : Array.isArray(data?.sections)
+        ? data.sections
+        : [];
+      setCustomSections(loadedSections);
+      const loadedDeleted: string[] = Array.isArray(data?.deletedSections) ? data.deletedSections : [];
+      setDeletedSections(loadedDeleted);
     } catch (err) {
       setFields([]);
       setIsDefault(true);
       setHistory([]);
+      setCustomSections([]);
+      setDeletedSections([]);
     } finally {
       setLoading(false);
     }
@@ -167,11 +196,224 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     load();
   }, [load]);
 
-  // Reset the "Add Field" section default whenever the form changes
+  // Combined available sections for the current form (presets + custom skill types, excluding deleted)
+  const availableSections = useMemo(() => {
+    const base = getSectionsForForm(selectedForm);
+    const combined = Array.from(new Set([...base, ...customSections]));
+    return combined.filter((s) => !deletedSections.includes(s));
+  }, [selectedForm, customSections, deletedSections]);
+
+  // Reset the "Add Field" section default whenever the form or available sections change
   useEffect(() => {
-    const sections = getSectionsForForm(selectedForm);
-    setNewFieldSection(sections.length > 0 ? sections[0] : 'General');
-  }, [selectedForm]);
+    if (availableSections.length > 0 && !availableSections.includes(newFieldSection)) {
+      setNewFieldSection(availableSections[0]);
+    } else if (availableSections.length === 0) {
+      setNewFieldSection('General');
+    }
+  }, [availableSections, selectedForm]);
+
+  // Handle creating a new Skill Type folder / domain
+  const handleCreateSkillType = () => {
+    const trimmed = newSkillTypeName.trim();
+    if (!trimmed) {
+      showToast('Please enter a skill type name', 'error');
+      return;
+    }
+    const alreadyExists = availableSections.some((s) => s.toLowerCase() === trimmed.toLowerCase());
+    if (alreadyExists) {
+      showToast(`Skill type "${trimmed}" already exists`, 'info');
+      setShowAddSkillTypeModal(false);
+      setNewSkillTypeName('');
+      return;
+    }
+
+    const updatedSections = [...customSections, trimmed];
+    const updatedDeleted = deletedSections.filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
+    setCustomSections(updatedSections);
+    setDeletedSections(updatedDeleted);
+    setIsDefault(false);
+    setShowAddSkillTypeModal(false);
+    setNewSkillTypeName('');
+
+    saveFormConfig(selectedForm, {
+      fields,
+      customSections: updatedSections,
+      deletedSections: updatedDeleted,
+      history,
+      isDefault: false,
+    })
+      .then(() => showToast(`Created skill type "${trimmed}". Click "Add" inside it to add items.`, 'success'))
+      .catch(() => showToast(`Created skill type "${trimmed}" — click Save to persist`, 'info'));
+  };
+
+  // Handle creating a new Info Type folder / section for Enrollment Wizard
+  const handleCreateInfoType = () => {
+    const trimmed = newInfoTypeName.trim();
+    if (!trimmed) {
+      showToast('Please enter an info type name', 'error');
+      return;
+    }
+    const alreadyExists = availableSections.some((s) => s.toLowerCase() === trimmed.toLowerCase());
+    if (alreadyExists) {
+      showToast(`Info type "${trimmed}" already exists`, 'info');
+      setShowAddInfoTypeModal(false);
+      setNewInfoTypeName('');
+      return;
+    }
+
+    const updatedSections = [...customSections, trimmed];
+    const updatedDeleted = deletedSections.filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
+    setCustomSections(updatedSections);
+    setDeletedSections(updatedDeleted);
+    setIsDefault(false);
+    setShowAddInfoTypeModal(false);
+    setNewInfoTypeName('');
+
+    saveFormConfig(selectedForm, {
+      fields,
+      customSections: updatedSections,
+      deletedSections: updatedDeleted,
+      history,
+      isDefault: false,
+    })
+      .then(() => showToast(`Created info type "${trimmed}". Click "Add" inside it to add fields.`, 'success'))
+      .catch(() => showToast(`Created info type "${trimmed}" — click Save to persist`, 'info'));
+  };
+
+  // Open Edit Skill Type Modal (works on both new custom and old preset skill types)
+  const handleOpenEditSkillType = (sec: string) => {
+    setEditingSkillType(sec);
+    setEditSkillTypeName(sec);
+  };
+
+  // Save changes to Skill Type or Info Type Name (works on both new custom and old preset sections)
+  const handleSaveEditSkillType = () => {
+    if (!editingSkillType) return;
+    const oldName = editingSkillType;
+    const newName = editSkillTypeName.trim();
+    const isEnrollment = selectedForm === 'Enrollment Wizard';
+    const isAblls = selectedForm === 'ABLLS Assessment Form';
+    const typeLabel = isEnrollment ? 'Info Type' : isAblls ? 'Skill Type' : 'Section';
+
+    if (!newName) {
+      showToast(`Please enter a ${typeLabel.toLowerCase()} name`, 'error');
+      return;
+    }
+
+    if (newName === oldName) {
+      setEditingSkillType(null);
+      return;
+    }
+
+    const alreadyExists = availableSections.some(
+      (s) => s.toLowerCase() === newName.toLowerCase() && s.toLowerCase() !== oldName.toLowerCase()
+    );
+    if (alreadyExists) {
+      showToast(`${typeLabel} "${newName}" already exists`, 'error');
+      return;
+    }
+
+    let updatedCustom = [...customSections];
+    let updatedDeleted = [...deletedSections];
+
+    if (updatedCustom.includes(oldName)) {
+      updatedCustom = updatedCustom.map((s) => (s === oldName ? newName : s));
+    } else {
+      // It was an old (preset) type: mark old as deleted, add new as custom
+      if (!updatedDeleted.includes(oldName)) {
+        updatedDeleted.push(oldName);
+      }
+      if (!updatedCustom.includes(newName)) {
+        updatedCustom.push(newName);
+      }
+    }
+
+    // In case newName was previously marked deleted, un-delete it
+    updatedDeleted = updatedDeleted.filter((s) => s.toLowerCase() !== newName.toLowerCase());
+
+    // Update all fields belonging to the renamed type
+    const updatedFields = fields.map((f) => (f.section === oldName ? { ...f, section: newName } : f));
+
+    if (addingToSection === oldName) setAddingToSection(newName);
+    if (newFieldSection === oldName) setNewFieldSection(newName);
+
+    setFields(updatedFields);
+    setCustomSections(updatedCustom);
+    setDeletedSections(updatedDeleted);
+    setIsDefault(false);
+    setEditingSkillType(null);
+
+    saveFormConfig(selectedForm, {
+      fields: updatedFields,
+      customSections: updatedCustom,
+      deletedSections: updatedDeleted,
+      history,
+      isDefault: false,
+    })
+      .then(() => showToast(`Renamed ${typeLabel.toLowerCase()} "${oldName}" to "${newName}"`, 'success'))
+      .catch(() => showToast(`Renamed to "${newName}" — click Save to persist`, 'info'));
+  };
+
+  // Handle deleting a Skill Type or Info Type folder (works on both new custom and old preset sections)
+  const handleDeleteSkillType = (sec: string) => {
+    const matchingItems = fields.filter((f) => f.section === sec);
+    const isEnrollment = selectedForm === 'Enrollment Wizard';
+    const isAblls = selectedForm === 'ABLLS Assessment Form';
+    const typeLabel = isEnrollment ? 'Info Type' : isAblls ? 'Skill Type' : 'Section';
+
+    const performDelete = () => {
+      const updatedFields = fields.filter((f) => f.section !== sec);
+      const updatedCustom = customSections.filter((s) => s !== sec);
+      const updatedDeleted = deletedSections.includes(sec)
+        ? deletedSections
+        : [...deletedSections, sec];
+
+      if (addingToSection === sec) setAddingToSection(null);
+      if (newFieldSection === sec) {
+        const remaining = availableSections.filter((s) => s !== sec);
+        setNewFieldSection(remaining[0] || 'General');
+      }
+
+      setFields(updatedFields);
+      setCustomSections(updatedCustom);
+      setDeletedSections(updatedDeleted);
+      setIsDefault(false);
+
+      saveFormConfig(selectedForm, {
+        fields: updatedFields,
+        customSections: updatedCustom,
+        deletedSections: updatedDeleted,
+        history,
+        isDefault: false,
+      })
+        .then(() =>
+          showToast(
+            matchingItems.length > 0
+              ? `Deleted ${typeLabel.toLowerCase()} "${sec}" and its items`
+              : `Removed ${typeLabel.toLowerCase()} "${sec}"`,
+            'info'
+          )
+        )
+        .catch(() => showToast(`${typeLabel} removed — click Save to persist`, 'info'));
+    };
+
+    if (matchingItems.length > 0) {
+      Alert.alert(
+        `Delete ${typeLabel}`,
+        `The "${sec}" ${typeLabel.toLowerCase()} folder contains ${matchingItems.length} item(s). Deleting it will remove the ${typeLabel.toLowerCase()} and all its items. Are you sure?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: performDelete,
+          },
+        ]
+      );
+    } else {
+      performDelete();
+    }
+  };
 
   // Pre-compute grouped ABLLS fields outside JSX to avoid IIFE crashes
   const abllsGrouped = useMemo<Record<string, FormField[]>>(() => {
@@ -270,6 +512,57 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     showToast('Domain / Target section updated — click Save to persist', 'info');
   };
 
+
+  const moveFieldUp = (id: string) => {
+    const idx = fields.findIndex((f) => f.id === id);
+    if (idx <= 0) return;
+    const targetSec = fields[idx].section;
+    let swapIdx = idx - 1;
+    if (targetSec) {
+      for (let i = idx - 1; i >= 0; i--) {
+        if (fields[i].section === targetSec) {
+          swapIdx = i;
+          break;
+        }
+      }
+    }
+    if (swapIdx < 0 || swapIdx === idx) return;
+
+    const updated = [...fields];
+    const temp = updated[idx];
+    updated[idx] = updated[swapIdx];
+    updated[swapIdx] = temp;
+
+    setFields(updated);
+    setIsDefault(false);
+    showToast('Field moved up — click Save to persist', 'info');
+  };
+
+  const moveFieldDown = (id: string) => {
+    const idx = fields.findIndex((f) => f.id === id);
+    if (idx === -1 || idx >= fields.length - 1) return;
+    const targetSec = fields[idx].section;
+    let swapIdx = idx + 1;
+    if (targetSec) {
+      for (let i = idx + 1; i < fields.length; i++) {
+        if (fields[i].section === targetSec) {
+          swapIdx = i;
+          break;
+        }
+      }
+    }
+    if (swapIdx >= fields.length || swapIdx === idx) return;
+
+    const updated = [...fields];
+    const temp = updated[idx];
+    updated[idx] = updated[swapIdx];
+    updated[swapIdx] = temp;
+
+    setFields(updated);
+    setIsDefault(false);
+    showToast('Field moved down — click Save to persist', 'info');
+  };
+
   const handleConfirmAddField = () => {
     if (!newFieldLabel.trim()) {
       showToast('Please enter a field label', 'error');
@@ -285,61 +578,48 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             .filter(Boolean)
         : undefined;
 
-    const applicableSections = getSectionsForForm(selectedForm);
     const effectiveSection = addingToSection ?? newFieldSection;
-    const targetSection = applicableSections.length > 0 ? effectiveSection : undefined;
+    const targetSection = effectiveSection && effectiveSection !== 'General' ? effectiveSection : (availableSections.length > 0 ? effectiveSection : undefined);
 
-    setFields((prevFields) => {
-      // Auto-generate ABLLS field ID: letter prefix from section + next number
-      let newId = `f-${Date.now()}`;
-      if (selectedForm === 'ABLLS Assessment Form' && targetSection) {
-        const letter = SECTION_LETTER[targetSection];
-        if (letter) {
-          const existing = prevFields
-            .map((f) => f.id)
-            .filter((id) => new RegExp(`^${letter}(\\d+)$`).test(id))
-            .map((id) => parseInt(id.replace(letter, ''), 10))
-            .filter((n) => !isNaN(n));
-          const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
-          newId = `${letter}${nextNum}`;
-        }
-      }
+    const newId = getNextIdForSection(selectedForm, targetSection, fields);
 
-      const newEntry: FormField = {
-        id: newId,
-        type: newFieldType,
-        label: trimmedLabel,
-        required: newFieldRequired,
-        visible: true,
-        section: targetSection,
-        ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
-      };
+    const newEntry: FormField = {
+      id: newId,
+      type: newFieldType,
+      label: trimmedLabel,
+      required: newFieldRequired,
+      visible: true,
+      section: targetSection,
+      placeholder: newFieldPlaceholder.trim() || undefined,
+      ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
+    };
 
-      setIsDefault(false);
+    setIsDefault(false);
 
-      // Update history immediately
-      const today = new Date().toISOString().split('T')[0];
-      const newHistoryEntry: HistoryEntry = {
-        date: today,
-        user: 'Admin A',
-        field: trimmedLabel,
-        oldValue: 'None',
-        newValue: `Added (${newFieldType}${targetSection ? ` - ${targetSection}` : ''})`,
-      };
-      setHistory((prevHistory) => [newHistoryEntry, ...prevHistory]);
+    const today = new Date().toISOString().split('T')[0];
+    const newHistoryEntry: HistoryEntry = {
+      date: today,
+      user: 'Admin A',
+      field: trimmedLabel,
+      oldValue: 'None',
+      newValue: `Added (${newFieldType}${targetSection ? ` - ${targetSection}` : ''})`,
+    };
 
-      return [...prevFields, newEntry];
-    });
+    const updatedFields = [...fields, newEntry];
+    const updatedHistory = [newHistoryEntry, ...history];
+    setFields(updatedFields);
+    setHistory(updatedHistory);
 
     // Reset inline box state
     setNewFieldLabel('');
     setNewFieldOptions('');
+    setNewFieldPlaceholder('');
     setNewFieldRequired(false);
     setShowAddFieldBox(false);
     setAddingToSection(null);
 
-    // Auto-save (will use latest state via next render)
-    saveFormConfig(selectedForm, { fields: [], history: [], isDefault: false })
+    // Auto-save with updated fields
+    saveFormConfig(selectedForm, { fields: updatedFields, customSections, deletedSections, history: updatedHistory, isDefault: false })
       .then(() => showToast(`Field "${trimmedLabel}" added and saved`, 'success'))
       .catch(() => showToast(`Field added — click Save to persist`, 'info'));
   };
@@ -352,6 +632,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setEditRequired(field.required);
     setEditSection(field.section || (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General'));
     setEditLevel(field.level || '');
+    setEditPlaceholder(field.placeholder || '');
+    setEditHelpText(field.helpText || '');
+    setEditDefaultValue(field.defaultValue || '');
   };
 
   const handleSaveEditField = () => {
@@ -369,8 +652,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             .filter(Boolean)
         : undefined;
 
-    // If a level preset is selected, use its options; otherwise use manually entered options
-    const selectedPreset = SCORE_SCALE_PRESETS.find((p) => p.label === editLevel);
+    const allPresets = getPresetsForForm(selectedForm);
+    const selectedPreset = allPresets.find((p) => p.label === editLevel);
     const resolvedOptions = selectedPreset
       ? selectedPreset.options
       : editType === 'Dropdown' || editType === 'Radio'
@@ -387,6 +670,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             section: editSection,
             options: resolvedOptions,
             level: editLevel || undefined,
+            placeholder: editPlaceholder.trim() || undefined,
+            helpText: editHelpText.trim() || undefined,
+            defaultValue: editDefaultValue.trim() || undefined,
           }
         : f
     );
@@ -407,23 +693,26 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setIsDefault(false);
 
     // Auto-save immediately
-    saveFormConfig(selectedForm, { fields: updatedFields, history: updatedHistory, isDefault: false })
+    saveFormConfig(selectedForm, { fields: updatedFields, customSections, deletedSections, history: updatedHistory, isDefault: false })
       .then(() => showToast('Field updated and saved', 'success'))
       .catch(() => showToast('Field updated — click Save to persist', 'info'));
   };
 
-  const applyBulkAbllsPreset = (presetOptions: string[]) => {
+  const applyBulkPreset = (presetOptions: string[]) => {
     setFields((prev) =>
       prev.map((f) => {
-        // If it's a domain skill (Radio or has code like A1, B1, etc.)
-        if (f.type === 'Radio' || (f.section && f.section !== 'General') || f.id.match(/^[A-I]\d+$/)) {
+        if (f.type === 'Radio' || f.type === 'Dropdown' || (f.section && f.section !== 'General')) {
           return { ...f, options: presetOptions };
         }
         return f;
       })
     );
     setIsDefault(false);
-    showToast('Applied scoring preset to all ABLLS items — click Save to persist', 'success');
+    showToast(`Applied preset options to items — click Save to persist`, 'success');
+  };
+
+  const applyBulkAbllsPreset = (presetOptions: string[]) => {
+    applyBulkPreset(presetOptions);
   };
 
   const handleSave = async () => {
@@ -432,7 +721,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       return;
     }
     try {
-      await saveFormConfig(selectedForm, { fields, history, isDefault: false });
+      await saveFormConfig(selectedForm, { fields, customSections, deletedSections, history, isDefault: false });
       await load();
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
     } catch (err) {
@@ -441,13 +730,28 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
   };
 
   const handleReset = async () => {
-    try {
-      await resetFormToDefault(selectedForm);
-      await load();
-      showToast(`Reset ${selectedForm} to default template`, 'info');
-    } catch (err) {
-      showToast('Failed to reset form', 'error');
-    }
+    Alert.alert(
+      'Reset Form Configuration',
+      `Are you sure you want to restore the default template for "${selectedForm}"? All custom fields and configuration adjustments will be reverted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset to Default',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await resetFormToDefault(selectedForm);
+              setCustomSections([]);
+              setDeletedSections([]);
+              await load();
+              showToast(`Reset ${selectedForm} to default template`, 'info');
+            } catch (err) {
+              showToast('Failed to reset form', 'error');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -475,30 +779,20 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <Feather name="chevron-down" size={16} color="#475569" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.uploadBtn}
-            onPress={() => {
-              Alert.alert(
-                'Upload Template Schema',
-                'Select a template format to import for ' + selectedForm,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Import Standard JSON Template',
-                    onPress: () => {
-                      Alert.alert(
-                        'Template Imported',
-                        `Standard institutional template schema loaded successfully for ${selectedForm}.`
-                      );
-                    },
-                  },
-                ]
-              );
-            }}
-          >
-            <Feather name="upload" size={14} color="#334155" />
-            <Text style={styles.uploadBtnText}>Upload Template</Text>
-          </TouchableOpacity>
+          {ASSESSMENT_DIRECT_ROUTES[selectedForm] && (
+            <TouchableOpacity
+              style={styles.openAssessmentBtn}
+              onPress={() => {
+                const targetRoute = ASSESSMENT_DIRECT_ROUTES[selectedForm];
+                if (targetRoute && navigation?.navigate) {
+                  navigation.navigate(targetRoute.route as any);
+                }
+              }}
+            >
+              <Feather name="external-link" size={14} color="#0284C7" />
+              <Text style={styles.openAssessmentBtnText}>Open Assessment</Text>
+            </TouchableOpacity>
+          )}
 
           <View style={{ flex: 1 }} />
 
@@ -509,11 +803,64 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
           </View>
         </View>
 
+        {/* Standard Form Header Component */}
+        <View style={styles.formHeaderCard}>
+          <View style={styles.formHeaderTop}>
+            <View style={styles.formMetaLeft}>
+              <View style={styles.metaRowItem}>
+                <Text style={styles.metaLabel}>FORM ID:</Text>
+                <Text style={styles.metaValue}>{FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001'}</Text>
+              </View>
+              <View style={styles.metaRowItem}>
+                <Text style={styles.metaLabel}>FORM NAME:</Text>
+                <Text style={styles.metaValue}>{selectedForm}</Text>
+              </View>
+            </View>
+
+            <View style={styles.formMetaRight}>
+              <View style={styles.metaRowItem}>
+                <Text style={styles.metaLabel}>REVISION:</Text>
+                <Text style={styles.metaValue}>{FORM_METADATA[selectedForm]?.revision || 'Rev 1.0 · 2026-09-19'}</Text>
+              </View>
+              <View style={styles.metaRowItem}>
+                <Text style={styles.metaLabel}>PAGE:</Text>
+                <Text style={styles.metaValue}>{FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1'}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* Canvas Box */}
         <View style={styles.canvasContainer}>
-          <Text style={styles.canvasHeader}>FORM CANVAS — {selectedForm.toUpperCase()}</Text>
+          <View style={styles.canvasHeaderRow}>
+            <Text style={styles.canvasHeader}>FORM CANVAS — {selectedForm.toUpperCase()}</Text>
+            {selectedForm === 'ABLLS Assessment Form' && (
+              <TouchableOpacity
+                style={styles.addSkillTypeTopBtn}
+                onPress={() => {
+                  setNewSkillTypeName('');
+                  setShowAddSkillTypeModal(true);
+                }}
+              >
+                <Feather name="folder-plus" size={13} color="#0284C7" />
+                <Text style={styles.addSkillTypeTopBtnText}>Add a Skill Type</Text>
+              </TouchableOpacity>
+            )}
+            {selectedForm === 'Enrollment Wizard' && (
+              <TouchableOpacity
+                style={styles.addSkillTypeTopBtn}
+                onPress={() => {
+                  setNewInfoTypeName('');
+                  setShowAddInfoTypeModal(true);
+                }}
+              >
+                <Feather name="folder-plus" size={13} color="#0284C7" />
+                <Text style={styles.addSkillTypeTopBtnText}>Add a Info Type</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-          {/* Quick Scoring Scale Presets for ABLLS */}
+          {/* Quick Scoring Scale Presets — ONLY on ABLLS Assessment Form */}
           {selectedForm === 'ABLLS Assessment Form' && (
             <View style={styles.abllsPresetBar}>
               <View style={styles.abllsPresetHeader}>
@@ -525,7 +872,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   <TouchableOpacity
                     key={preset.label}
                     style={styles.presetBtn}
-                    onPress={() => applyBulkAbllsPreset(preset.options)}
+                    onPress={() => applyBulkPreset(preset.options)}
                   >
                     <Text style={styles.presetBtnText}>{preset.short}</Text>
                   </TouchableOpacity>
@@ -534,52 +881,110 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             </View>
           )}
 
-          {selectedForm === 'ABLLS Assessment Form' ? (() => {
-            // Group fields by section in ABLLS_SECTIONS order, then General last
-            const sectionOrder = [...ABLLS_SECTIONS, 'General'];
+          {availableSections.length > 0 ? (() => {
+            const allSectionNames = Array.from(
+              new Set([
+                ...availableSections,
+                ...fields.map((f) => f.section).filter(Boolean) as string[],
+                'General',
+              ])
+            ).filter((s) => !deletedSections.includes(s));
             const grouped: Record<string, FormField[]> = {};
             fields.forEach((f) => {
-              const sec = f.section || 'General';
+              const sec = f.section || (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
               if (!grouped[sec]) grouped[sec] = [];
               grouped[sec].push(f);
             });
-            return sectionOrder
-              .filter((sec) => grouped[sec] && grouped[sec].length > 0)
+
+            return allSectionNames
+              .filter((sec) => (grouped[sec] && grouped[sec].length > 0) || customSections.includes(sec) || addingToSection === sec)
               .map((sec) => {
-                const letter = SECTION_LETTER[sec];
-                const existingNums = (grouped[sec] ?? [])
-                  .map((f) => f.id)
-                  .filter((id) => letter && new RegExp(`^${letter}(\\d+)$`).test(id))
-                  .map((id) => parseInt(id.replace(letter ?? '', ''), 10))
-                  .filter((n) => !isNaN(n));
-                const nextId = letter
-                  ? `${letter}${existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1}`
-                  : '—';
+                const nextId = getNextIdForSection(selectedForm, sec, fields);
+                const sectionItems = grouped[sec] || [];
+                const isCustomSection = customSections.includes(sec);
 
                 return (
-                  <View key={sec}>
-                    {/* Section Header with + Add button */}
+                  <View key={sec} style={styles.sectionContainer}>
+                    {/* Section Header with + Add button, Edit button, and Delete button */}
                     <View style={styles.sectionHeader}>
-                      <Feather name="folder" size={12} color="#0369A1" />
-                      <Text style={styles.sectionHeaderText}>{sec}</Text>
-                      <Text style={styles.sectionHeaderCount}>{grouped[sec].length} item{grouped[sec].length !== 1 ? 's' : ''}</Text>
-                      <TouchableOpacity
-                        style={styles.sectionAddBtn}
-                        onPress={() => {
-                          setAddingToSection(sec);
-                          setNewFieldSection(sec);
-                          setNewFieldType('Radio');
-                          setNewFieldLabel('');
-                          setNewFieldOptions('');
-                          setNewFieldRequired(true);
-                          setShowAddFieldBox(true);
-                        }}
-                      >
-                        <Feather name="plus" size={11} color="#0284C7" />
-                        <Text style={styles.sectionAddBtnText}>Add</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                        <Feather name="folder" size={13} color="#0369A1" />
+                        <Text style={styles.sectionHeaderText}>{sec}</Text>
+                        <Text style={styles.sectionHeaderCount}>
+                          {sectionItems.length} item{sectionItems.length !== 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TouchableOpacity
+                          style={styles.sectionAddBtn}
+                          onPress={() => {
+                            setAddingToSection(sec);
+                            setNewFieldSection(sec);
+                            const isAblls = selectedForm === 'ABLLS Assessment Form';
+                            setNewFieldType(selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking' ? 'Text' : isAblls ? 'Radio' : 'Text');
+                            setNewFieldLabel('');
+                            setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
+                            setNewFieldPlaceholder('');
+                            setNewFieldRequired(true);
+                            setShowAddFieldBox(true);
+                          }}
+                        >
+                          <Feather name="plus" size={11} color="#0284C7" />
+                          <Text style={styles.sectionAddBtnText}>Add</Text>
+                        </TouchableOpacity>
+
+                        {/* Edit option for ALL sections (new custom + old presets) */}
+                        <TouchableOpacity
+                          style={styles.sectionEditBtn}
+                          onPress={() => handleOpenEditSkillType(sec)}
+                          accessibilityLabel={`Edit ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
+                        >
+                          <Feather name="edit-2" size={11} color="#0284C7" />
+                          <Text style={styles.sectionEditBtnText}>Edit</Text>
+                        </TouchableOpacity>
+
+                        {/* Delete option for ALL sections (new custom + old presets) */}
+                        <TouchableOpacity
+                          style={styles.sectionDeleteBtn}
+                          onPress={() => handleDeleteSkillType(sec)}
+                          accessibilityLabel={`Delete ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
+                        >
+                          <Feather name="trash-2" size={13} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    {grouped[sec].map((field) => (
+
+                    {/* Empty state helper if folder has 0 items */}
+                    {sectionItems.length === 0 && addingToSection !== sec && (
+                      <View style={styles.emptySectionBox}>
+                        <Feather name="inbox" size={18} color="#94A3B8" />
+                        <Text style={styles.emptySectionText}>
+                          {selectedForm === 'Enrollment Wizard'
+                            ? 'Empty info type folder (0 items).'
+                            : selectedForm === 'ABLLS Assessment Form'
+                            ? 'Empty skill type folder (0 items).'
+                            : 'Empty folder (0 items).'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.emptySectionAddBtn}
+                          onPress={() => {
+                            setAddingToSection(sec);
+                            setNewFieldSection(sec);
+                            const isAblls = selectedForm === 'ABLLS Assessment Form';
+                            setNewFieldType(selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking' ? 'Text' : isAblls ? 'Radio' : 'Text');
+                            setNewFieldLabel('');
+                            setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
+                            setNewFieldPlaceholder('');
+                            setNewFieldRequired(true);
+                            setShowAddFieldBox(true);
+                          }}
+                        >
+                          <Feather name="plus" size={12} color="#0284C7" />
+                          <Text style={styles.emptySectionAddBtnText}>Add First Item to {sec}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {sectionItems.map((field) => (
                       <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
                         <View style={styles.typeBadge}>
                           <Text style={styles.typeBadgeText}>{field.type}</Text>
@@ -604,6 +1009,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                         </View>
 
                         <View style={styles.rowRightControls}>
+                          <TouchableOpacity onPress={() => moveFieldUp(field.id)} style={styles.iconBtn} accessibilityLabel="Move Up">
+                            <Feather name="arrow-up" size={15} color="#475569" />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => moveFieldDown(field.id)} style={styles.iconBtn} accessibilityLabel="Move Down">
+                            <Feather name="arrow-down" size={15} color="#475569" />
+                          </TouchableOpacity>
                           <Text style={styles.controlLabel}>Required</Text>
                           <Switch
                             value={field.required}
@@ -635,21 +1046,31 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                           </Text>
                           <View style={[styles.levelPill, { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' }]}>
                             <Text style={[styles.levelPillText, { color: '#1D4ED8' }]}>
-                              Next ID: {nextId}
+                              Suggested ID: {nextId}
                             </Text>
                           </View>
                         </View>
-                        <View style={styles.inlineAddRow}>
-                          <View style={styles.inlineFieldCol}>
-                            <Text style={styles.inlineFieldLabel}>Field Type</Text>
-                            <TouchableOpacity
-                              style={styles.inlineTypeDropdown}
-                              onPress={() => setShowTypeModal(true)}
-                            >
-                              <Text style={styles.inlineTypeDropdownText}>{newFieldType}</Text>
-                              <Feather name="chevron-down" size={14} color="#64748B" />
-                            </TouchableOpacity>
+                        <View style={{ marginBottom: 10 }}>
+                          <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                          <View style={styles.typeSelectorRow}>
+                            {FIELD_TYPES.map((type) => {
+                              const isSelected = newFieldType === type;
+                              return (
+                                <TouchableOpacity
+                                  key={type}
+                                  style={[styles.typeSelectPill, isSelected && styles.typeSelectPillActive]}
+                                  onPress={() => setNewFieldType(type)}
+                                >
+                                  <Text style={[styles.typeSelectPillText, isSelected && styles.typeSelectPillTextActive]}>
+                                    {type}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
                           </View>
+                        </View>
+
+                        <View style={styles.inlineAddRow}>
                           <View style={[styles.inlineFieldCol, { flex: 2 }]}>
                             <Text style={styles.inlineFieldLabel}>Label</Text>
                             <TextInput
@@ -671,15 +1092,119 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                             />
                           </View>
                         </View>
-                        {(newFieldType === 'Dropdown' || newFieldType === 'Radio') && (
+
+                        {/* Dropdown Input Specification */}
+                        {newFieldType === 'Dropdown' && (
                           <View style={styles.inlineOptionsRow}>
-                            <Text style={styles.inlineFieldLabel}>Options (comma-separated)</Text>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <Text style={styles.inlineFieldPromptTitle}>What are the dropdown options going to be?</Text>
+                              <View style={styles.presetChipsRow}>
+                                {getPresetsForForm(selectedForm).map((p) => (
+                                  <TouchableOpacity
+                                    key={p.short}
+                                    style={styles.presetChip}
+                                    onPress={() => setNewFieldOptions(p.options.join(', '))}
+                                  >
+                                    <Text style={styles.presetChipText}>{p.short}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            </View>
+                            <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)</Text>
                             <TextInput
                               style={styles.inlineTextInput}
-                              placeholder="e.g. 0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A"
+                              placeholder="e.g. Low, Medium, High or Option 1, Option 2, Option 3"
                               placeholderTextColor="#94A3B8"
                               value={newFieldOptions}
                               onChangeText={(val: string) => setNewFieldOptions(val)}
+                            />
+                          </View>
+                        )}
+
+                        {/* Radio Input Specification */}
+                        {newFieldType === 'Radio' && (
+                          <View style={styles.inlineOptionsRow}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <Text style={styles.inlineFieldPromptTitle}>What are the radio choices going to be?</Text>
+                              <View style={styles.presetChipsRow}>
+                                {getPresetsForForm(selectedForm).map((p) => (
+                                  <TouchableOpacity
+                                    key={p.short}
+                                    style={styles.presetChip}
+                                    onPress={() => setNewFieldOptions(p.options.join(', '))}
+                                  >
+                                    <Text style={styles.presetChipText}>{p.short}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            </View>
+                            <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Yes, No, N/A)</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldOptions}
+                              onChangeText={(val: string) => setNewFieldOptions(val)}
+                            />
+                          </View>
+                        )}
+
+                        {/* Number Input Specification */}
+                        {newFieldType === 'Number' && (
+                          <View style={styles.inlineOptionsRow}>
+                            <Text style={styles.inlineFieldPromptTitle}>What is the number input going to be?</Text>
+                            <Text style={styles.inlineFieldPromptHint}>Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count of trials, Duration in min)</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in min"
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldPlaceholder}
+                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                            />
+                          </View>
+                        )}
+
+                        {/* Date Input Specification */}
+                        {newFieldType === 'Date' && (
+                          <View style={styles.inlineOptionsRow}>
+                            <Text style={styles.inlineFieldPromptTitle}>What is the date input going to be?</Text>
+                            <Text style={styles.inlineFieldPromptHint}>Specify date format or purpose (e.g. Assessment Date, Target Completion Date, YYYY-MM-DD)</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldPlaceholder}
+                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                            />
+                          </View>
+                        )}
+
+                        {/* File Input Specification */}
+                        {newFieldType === 'File' && (
+                          <View style={styles.inlineOptionsRow}>
+                            <Text style={styles.inlineFieldPromptTitle}>What is the file input going to be?</Text>
+                            <Text style={styles.inlineFieldPromptHint}>Specify expected document or attachment (e.g. PDF Medical Report, Consent Form, Evaluation Image)</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldPlaceholder}
+                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                            />
+                          </View>
+                        )}
+
+                        {/* Text Input Specification */}
+                        {newFieldType === 'Text' && (
+                          <View style={styles.inlineOptionsRow}>
+                            <Text style={styles.inlineFieldPromptTitle}>Input placeholder / hint (optional)</Text>
+                            <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
+                            <TextInput
+                              style={styles.inlineTextInput}
+                              placeholder="e.g. Enter notes, observations, or student details..."
+                              placeholderTextColor="#94A3B8"
+                              value={newFieldPlaceholder}
+                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
                             />
                           </View>
                         )}
@@ -730,6 +1255,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               </View>
 
               <View style={styles.rowRightControls}>
+                <TouchableOpacity onPress={() => moveFieldUp(field.id)} style={styles.iconBtn} accessibilityLabel="Move Up">
+                  <Feather name="arrow-up" size={15} color="#475569" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => moveFieldDown(field.id)} style={styles.iconBtn} accessibilityLabel="Move Down">
+                  <Feather name="arrow-down" size={15} color="#475569" />
+                </TouchableOpacity>
                 <Text style={styles.controlLabel}>Required</Text>
                 <Switch
                   value={field.required}
@@ -756,24 +1287,68 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
           {/* Inline Add Field Box */}
           {!showAddFieldBox ? (
-            <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddFieldBox(true)}>
-              <Feather name="plus" size={16} color="#0284C7" />
-              <Text style={styles.addBtnText}>Add New Field</Text>
-            </TouchableOpacity>
+            <View style={styles.canvasBottomActionsRow}>
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={() => {
+                  setNewFieldLabel('');
+                  setNewFieldOptions('');
+                  setNewFieldPlaceholder('');
+                  setAddingToSection(null);
+                  setShowAddFieldBox(true);
+                }}
+              >
+                <Feather name="plus" size={16} color="#0284C7" />
+                <Text style={styles.addBtnText}>Add New Field</Text>
+              </TouchableOpacity>
+              {selectedForm === 'ABLLS Assessment Form' && (
+                <TouchableOpacity
+                  style={styles.addSkillTypeBottomBtn}
+                  onPress={() => {
+                    setNewSkillTypeName('');
+                    setShowAddSkillTypeModal(true);
+                  }}
+                >
+                  <Feather name="folder-plus" size={14} color="#0284C7" />
+                  <Text style={styles.addSkillTypeBottomBtnText}>Add a Skill Type</Text>
+                </TouchableOpacity>
+              )}
+              {selectedForm === 'Enrollment Wizard' && (
+                <TouchableOpacity
+                  style={styles.addSkillTypeBottomBtn}
+                  onPress={() => {
+                    setNewInfoTypeName('');
+                    setShowAddInfoTypeModal(true);
+                  }}
+                >
+                  <Feather name="folder-plus" size={14} color="#0284C7" />
+                  <Text style={styles.addSkillTypeBottomBtnText}>Add a Info Type</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ) : (
             <View style={styles.inlineAddContainer}>
-              <View style={styles.inlineAddRow}>
-                <View style={styles.inlineFieldCol}>
-                  <Text style={styles.inlineFieldLabel}>Field Type</Text>
-                  <TouchableOpacity
-                    style={styles.inlineTypeDropdown}
-                    onPress={() => setShowTypeModal(true)}
-                  >
-                    <Text style={styles.inlineTypeDropdownText}>{newFieldType}</Text>
-                    <Feather name="chevron-down" size={14} color="#64748B" />
-                  </TouchableOpacity>
+              <View style={{ marginBottom: 10 }}>
+                <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                <View style={styles.typeSelectorRow}>
+                  {FIELD_TYPES.map((type) => {
+                    const isSelected = newFieldType === type;
+                    return (
+                      <TouchableOpacity
+                        key={type}
+                        style={[styles.typeSelectPill, isSelected && styles.typeSelectPillActive]}
+                        onPress={() => setNewFieldType(type)}
+                      >
+                        <Text style={[styles.typeSelectPillText, isSelected && styles.typeSelectPillTextActive]}>
+                          {type}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
+              </View>
 
+              <View style={styles.inlineAddRow}>
                 <View style={[styles.inlineFieldCol, { flex: 2 }]}>
                   <Text style={styles.inlineFieldLabel}>Label</Text>
                   <TextInput
@@ -797,11 +1372,11 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 </View>
               </View>
 
-              {getSectionsForForm(selectedForm).length > 0 && (
+              {availableSections.length > 0 && (
                 <View style={styles.inlineSectionRow}>
                   <Text style={styles.inlineFieldLabel}>Target Domain / Section</Text>
                   <View style={styles.sectionChipRow}>
-                    {getSectionsForForm(selectedForm).map((sec) => (
+                    {availableSections.map((sec) => (
                       <TouchableOpacity
                         key={sec}
                         style={[styles.sectionChip, newFieldSection === sec && styles.sectionChipActive]}
@@ -816,12 +1391,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 </View>
               )}
 
-              {(newFieldType === 'Dropdown' || newFieldType === 'Radio') && (
+              {/* Dropdown Input Specification */}
+              {newFieldType === 'Dropdown' && (
                 <View style={styles.inlineOptionsRow}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={styles.inlineFieldLabel}>Options (comma-separated)</Text>
+                    <Text style={styles.inlineFieldPromptTitle}>What are the dropdown options going to be?</Text>
                     <View style={styles.presetChipsRow}>
-                      {SCORE_SCALE_PRESETS.map((p) => (
+                      {getPresetsForForm(selectedForm).map((p) => (
                         <TouchableOpacity
                           key={p.short}
                           style={styles.presetChip}
@@ -832,12 +1408,101 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                       ))}
                     </View>
                   </View>
+                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)</Text>
                   <TextInput
                     style={styles.inlineTextInput}
-                    placeholder="e.g. 0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A"
+                    placeholder="e.g. Option 1, Option 2, Option 3 or Low, Medium, High"
                     placeholderTextColor="#94A3B8"
                     value={newFieldOptions}
                     onChangeText={(val: string) => setNewFieldOptions(val)}
+                  />
+                </View>
+              )}
+
+              {/* Radio Input Specification */}
+              {newFieldType === 'Radio' && (
+                <View style={styles.inlineOptionsRow}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={styles.inlineFieldPromptTitle}>What are the radio choices going to be?</Text>
+                    <View style={styles.presetChipsRow}>
+                      {getPresetsForForm(selectedForm).map((p) => (
+                        <TouchableOpacity
+                          key={p.short}
+                          style={styles.presetChip}
+                          onPress={() => setNewFieldOptions(p.options.join(', '))}
+                        >
+                          <Text style={styles.presetChipText}>{p.short}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Yes, No, N/A)</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldOptions}
+                    onChangeText={(val: string) => setNewFieldOptions(val)}
+                  />
+                </View>
+              )}
+
+              {/* Number Input Specification */}
+              {newFieldType === 'Number' && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>What is the number input going to be?</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count of trials, Duration in min)</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in minutes"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                  />
+                </View>
+              )}
+
+              {/* Date Input Specification */}
+              {newFieldType === 'Date' && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>What is the date input going to be?</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Specify date format or purpose (e.g. Assessment Date, Target Completion Date, YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                  />
+                </View>
+              )}
+
+              {/* File Input Specification */}
+              {newFieldType === 'File' && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>What is the file input going to be?</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Specify expected document or attachment (e.g. PDF Medical Report, Consent Form, Evaluation Image)</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                  />
+                </View>
+              )}
+
+              {/* Text Input Specification */}
+              {newFieldType === 'Text' && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>Input placeholder / hint (optional)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Enter notes, observations, or student details..."
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
                   />
                 </View>
               )}
@@ -857,17 +1522,6 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
         {/* Action Buttons Row */}
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.previewBtn}
-            onPress={() => {
-              setPreviewFormValues({});
-              setShowPreviewModal(true);
-            }}
-          >
-            <Feather name="eye" size={15} color="#0F172A" />
-            <Text style={styles.previewBtnText}>Preview Live Form</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
             <Feather name="save" size={15} color="#0F172A" />
             <Text style={styles.saveBtnText}>Save Configuration</Text>
@@ -930,8 +1584,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
       {/* Select Field Type Modal */}
       <Modal visible={showTypeModal} transparent animationType="fade" onRequestClose={() => setShowTypeModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTypeModal(false)}>
-          <View style={styles.dropdownModalBox}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowTypeModal(false)}>
+          <Pressable style={styles.dropdownModalBox} onPress={(e) => e.stopPropagation()}>
             {FIELD_TYPES.map((type) => (
               <TouchableOpacity
                 key={type}
@@ -946,8 +1600,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Form Preview Modal — Live Interactive Dynamic Form */}
@@ -1010,47 +1664,55 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               </View>
 
               {/* Field Type & Domain */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={[styles.editFormGroup, { flex: 1 }]}>
-                  <Text style={styles.inlineFieldLabel}>Field Type</Text>
-                  <TouchableOpacity
-                    style={styles.inlineTypeDropdown}
-                    onPress={() => setShowEditTypeModal(true)}
-                  >
-                    <Text style={styles.inlineTypeDropdownText}>{editType}</Text>
-                    <Feather name="chevron-down" size={14} color="#64748B" />
-                  </TouchableOpacity>
+              {/* Field Type Selection */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                <View style={styles.typeSelectorRow}>
+                  {FIELD_TYPES.map((type) => {
+                    const isSelected = editType === type;
+                    return (
+                      <TouchableOpacity
+                        key={type}
+                        style={[styles.typeSelectPill, isSelected && styles.typeSelectPillActive]}
+                        onPress={() => setEditType(type)}
+                      >
+                        <Text style={[styles.typeSelectPillText, isSelected && styles.typeSelectPillTextActive]}>
+                          {type}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-
-                {getSectionsForForm(selectedForm).length > 0 && (
-                  <View style={[styles.editFormGroup, { flex: 1.5 }]}>
-                    <Text style={styles.inlineFieldLabel}>Domain / Section</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 2 }}>
-                      <View style={styles.sectionChipRow}>
-                        {getSectionsForForm(selectedForm).map((sec) => (
-                          <TouchableOpacity
-                            key={sec}
-                            style={[styles.sectionChip, editSection === sec && styles.sectionChipActive]}
-                            onPress={() => setEditSection(sec)}
-                          >
-                            <Text style={[styles.sectionChipText, editSection === sec && styles.sectionChipTextActive]}>
-                              {sec}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </ScrollView>
-                  </View>
-                )}
               </View>
 
-              {/* Options Input with Presets */}
-              {(editType === 'Dropdown' || editType === 'Radio') && (
+              {availableSections.length > 0 && (
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.inlineFieldLabel}>Domain / Section</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 2 }}>
+                    <View style={styles.sectionChipRow}>
+                      {availableSections.map((sec) => (
+                        <TouchableOpacity
+                          key={sec}
+                          style={[styles.sectionChip, editSection === sec && styles.sectionChipActive]}
+                          onPress={() => setEditSection(sec)}
+                        >
+                          <Text style={[styles.sectionChipText, editSection === sec && styles.sectionChipTextActive]}>
+                            {sec}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Dropdown Options */}
+              {editType === 'Dropdown' && (
                 <View style={styles.editFormGroup}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={styles.inlineFieldLabel}>Scoring Options (comma-separated)</Text>
+                    <Text style={styles.inlineFieldPromptTitle}>What are the dropdown options going to be?</Text>
                     <View style={styles.presetChipsRow}>
-                      {SCORE_SCALE_PRESETS.map((p) => (
+                      {getPresetsForForm(selectedForm).map((p) => (
                         <TouchableOpacity
                           key={p.short}
                           style={styles.presetChip}
@@ -1061,20 +1723,49 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                       ))}
                     </View>
                   </View>
+                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)</Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editOptions}
                     onChangeText={(val) => setEditOptions(val)}
-                    placeholder="e.g. 0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A"
+                    placeholder="e.g. Option 1, Option 2, Option 3 or Low, Medium, High"
                     placeholderTextColor="#94A3B8"
                   />
                 </View>
               )}
 
-              {/* Scoring Level Preset — ABLLS only */}
+              {/* Radio Choices */}
+              {editType === 'Radio' && (
+                <View style={styles.editFormGroup}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={styles.inlineFieldPromptTitle}>What are the radio choices going to be?</Text>
+                    <View style={styles.presetChipsRow}>
+                      {getPresetsForForm(selectedForm).map((p) => (
+                        <TouchableOpacity
+                          key={p.short}
+                          style={styles.presetChip}
+                          onPress={() => setEditOptions(p.options.join(', '))}
+                        >
+                          <Text style={styles.presetChipText}>{p.short}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Yes, No, N/A)</Text>
+                  <TextInput
+                    style={[styles.inlineTextInput, { height: 40 }]}
+                    value={editOptions}
+                    onChangeText={(val) => setEditOptions(val)}
+                    placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              )}
+
+              {/* Scoring Scale Preset — ONLY on ABLLS Assessment Form */}
               {selectedForm === 'ABLLS Assessment Form' && (
                 <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldLabel}>Scoring Level</Text>
+                  <Text style={styles.inlineFieldLabel}>Scoring Scale Presets</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
                     <View style={styles.sectionChipRow}>
                       {SCORE_SCALE_PRESETS.map((p) => (
@@ -1098,11 +1789,95 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   </ScrollView>
                   {editLevel !== '' && (
                     <Text style={{ fontSize: 11, color: '#0284C7', marginTop: 3 }}>
-                      Level: {editLevel}
+                      Preset: {editLevel}
                     </Text>
                   )}
                 </View>
               )}
+
+              {/* Number Input Specification */}
+              {editType === 'Number' && (
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.inlineFieldPromptTitle}>What is the number input going to be?</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count of trials, Duration in min)</Text>
+                  <TextInput
+                    style={[styles.inlineTextInput, { height: 40 }]}
+                    value={editPlaceholder}
+                    onChangeText={(val) => setEditPlaceholder(val)}
+                    placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in minutes"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              )}
+
+              {/* Date Input Specification */}
+              {editType === 'Date' && (
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.inlineFieldPromptTitle}>What is the date input going to be?</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Specify date format or purpose (e.g. Assessment Date, Target Completion Date, YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={[styles.inlineTextInput, { height: 40 }]}
+                    value={editPlaceholder}
+                    onChangeText={(val) => setEditPlaceholder(val)}
+                    placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              )}
+
+              {/* File Input Specification */}
+              {editType === 'File' && (
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.inlineFieldPromptTitle}>What is the file input going to be?</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Specify expected document or attachment (e.g. PDF Medical Report, Consent Form, Evaluation Image)</Text>
+                  <TextInput
+                    style={[styles.inlineTextInput, { height: 40 }]}
+                    value={editPlaceholder}
+                    onChangeText={(val) => setEditPlaceholder(val)}
+                    placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              )}
+
+              {/* Text Input Specification */}
+              {editType === 'Text' && (
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.inlineFieldPromptTitle}>Input placeholder / hint (optional)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
+                  <TextInput
+                    style={[styles.inlineTextInput, { height: 40 }]}
+                    value={editPlaceholder}
+                    onChangeText={(val) => setEditPlaceholder(val)}
+                    placeholder="e.g. Enter notes, observations, or student details..."
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              )}
+
+              {/* Field Properties: Help Text */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>Help Text</Text>
+                <TextInput
+                  style={[styles.inlineTextInput, { height: 38 }]}
+                  value={editHelpText}
+                  onChangeText={(val) => setEditHelpText(val)}
+                  placeholder="e.g. Guidance for therapist during evaluation session"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+
+              {/* Field Properties: Default Value */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>Default Value</Text>
+                <TextInput
+                  style={[styles.inlineTextInput, { height: 38 }]}
+                  value={editDefaultValue}
+                  onChangeText={(val) => setEditDefaultValue(val)}
+                  placeholder="e.g. N/A or initial preset value"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
 
               {/* Required Switch */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
@@ -1130,8 +1905,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
       {/* Select Field Type Modal for Edit */}
       <Modal visible={showEditTypeModal} transparent animationType="fade" onRequestClose={() => setShowEditTypeModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowEditTypeModal(false)}>
-          <View style={styles.dropdownModalBox}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowEditTypeModal(false)}>
+          <Pressable style={styles.dropdownModalBox} onPress={(e) => e.stopPropagation()}>
             {FIELD_TYPES.map((type) => (
               <TouchableOpacity
                 key={type}
@@ -1146,8 +1921,255 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 </Text>
               </TouchableOpacity>
             ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add Skill Type Modal */}
+      <Modal
+        visible={showAddSkillTypeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddSkillTypeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="folder-plus" size={18} color="#0284C7" />
+                  <Text style={styles.modalTitle}>Add a Skill Type</Text>
+                </View>
+                <Text style={styles.modalSubtitle}>
+                  Creates an ABLLS skill domain with full scoring features matching Vocal Imitation, Motor Imitation, and Visual Performance.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAddSkillTypeModal(false)}>
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.inlineFieldLabel}>Quick Suggestions / Standard Skill Types:</Text>
+              <View style={styles.skillPresetWrap}>
+                {COMMON_SKILL_TYPES.map((st) => (
+                  <TouchableOpacity
+                    key={st}
+                    style={[
+                      styles.skillPresetChip,
+                      newSkillTypeName.toLowerCase() === st.toLowerCase() && styles.skillPresetChipActive,
+                    ]}
+                    onPress={() => setNewSkillTypeName(st)}
+                  >
+                    <Text
+                      style={[
+                        styles.skillPresetChipText,
+                        newSkillTypeName.toLowerCase() === st.toLowerCase() && styles.skillPresetChipTextActive,
+                      ]}
+                    >
+                      {st}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>Skill Type / Folder Name</Text>
+                <TextInput
+                  style={styles.inlineTextInput}
+                  value={newSkillTypeName}
+                  onChangeText={setNewSkillTypeName}
+                  placeholder="e.g. Visual Imitation, Cognitive Skills, Play & Leisure..."
+                  placeholderTextColor="#94A3B8"
+                  autoFocus
+                />
+              </View>
+
+              {newSkillTypeName.trim().length > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD', padding: 8, borderRadius: 6, marginTop: 2 }}>
+                  <Feather name="info" size={14} color="#0284C7" />
+                  <Text style={{ fontSize: 11, color: '#0369A1', fontWeight: '600' }}>
+                    Assigned Domain Code: {getDomainLetterForAblls(newSkillTypeName.trim(), fields)} · First Item ID: {getDomainLetterForAblls(newSkillTypeName.trim(), fields)}1
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.inlineButtonRow}>
+              <TouchableOpacity style={styles.confirmAddBtn} onPress={handleCreateSkillType}>
+                <Text style={styles.confirmAddBtnText}>Create Skill Type</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelAddBtn}
+                onPress={() => {
+                  setShowAddSkillTypeModal(false);
+                  setNewSkillTypeName('');
+                }}
+              >
+                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Add Info Type Modal — for Enrollment Wizard */}
+      <Modal
+        visible={showAddInfoTypeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowAddInfoTypeModal(false);
+          setNewInfoTypeName('');
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="folder-plus" size={18} color="#0284C7" />
+                  <Text style={styles.modalTitle}>Add a Info Type</Text>
+                </View>
+                <Text style={styles.modalSubtitle}>
+                  Creates a new enrollment information category like Student Info, Parent Info, and Medical Info with its own customizable fields.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAddInfoTypeModal(false);
+                  setNewInfoTypeName('');
+                }}
+              >
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.inlineFieldLabel}>Quick Suggestions / Standard Info Types:</Text>
+              <View style={styles.skillPresetWrap}>
+                {COMMON_INFO_TYPES.map((it) => (
+                  <TouchableOpacity
+                    key={it}
+                    style={[
+                      styles.skillPresetChip,
+                      newInfoTypeName.toLowerCase() === it.toLowerCase() && styles.skillPresetChipActive,
+                    ]}
+                    onPress={() => setNewInfoTypeName(it)}
+                  >
+                    <Text
+                      style={[
+                        styles.skillPresetChipText,
+                        newInfoTypeName.toLowerCase() === it.toLowerCase() && styles.skillPresetChipTextActive,
+                      ]}
+                    >
+                      {it}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>Info Type / Category Name</Text>
+                <TextInput
+                  style={styles.inlineTextInput}
+                  value={newInfoTypeName}
+                  onChangeText={setNewInfoTypeName}
+                  placeholder="e.g. Emergency Contact Info, Insurance & Billing..."
+                  placeholderTextColor="#94A3B8"
+                  autoFocus
+                />
+              </View>
+            </View>
+
+            <View style={styles.inlineButtonRow}>
+              <TouchableOpacity style={styles.confirmAddBtn} onPress={handleCreateInfoType}>
+                <Text style={styles.confirmAddBtnText}>Create Info Type</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelAddBtn}
+                onPress={() => {
+                  setShowAddInfoTypeModal(false);
+                  setNewInfoTypeName('');
+                }}
+              >
+                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Skill Type Modal */}
+      <Modal
+        visible={Boolean(editingSkillType)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setEditingSkillType(null);
+          setEditSkillTypeName('');
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="edit-2" size={18} color="#0284C7" />
+                  <Text style={styles.modalTitle}>
+                    {selectedForm === 'Enrollment Wizard' ? 'Edit Info Type' : selectedForm === 'ABLLS Assessment Form' ? 'Edit Skill Type' : 'Edit Section'}
+                  </Text>
+                </View>
+                <Text style={styles.modalSubtitle}>
+                  {selectedForm === 'Enrollment Wizard'
+                    ? 'Rename this info type category. All fields belonging to it will update automatically.'
+                    : selectedForm === 'ABLLS Assessment Form'
+                    ? 'Rename this skill type domain. All items belonging to it will update automatically.'
+                    : 'Rename this section. All items belonging to it will update automatically.'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditingSkillType(null);
+                  setEditSkillTypeName('');
+                }}
+              >
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.editFormGroup}>
+                <Text style={styles.inlineFieldLabel}>
+                  {selectedForm === 'Enrollment Wizard' ? 'Info Type / Category Name' : selectedForm === 'ABLLS Assessment Form' ? 'Skill Type / Domain Name' : 'Section Name'}
+                </Text>
+                <TextInput
+                  style={styles.inlineTextInput}
+                  value={editSkillTypeName}
+                  onChangeText={setEditSkillTypeName}
+                  placeholder={selectedForm === 'Enrollment Wizard' ? 'Enter info type name...' : 'Enter name...'}
+                  placeholderTextColor="#94A3B8"
+                  autoFocus
+                />
+              </View>
+            </View>
+
+            <View style={styles.inlineButtonRow}>
+              <TouchableOpacity style={styles.confirmAddBtn} onPress={handleSaveEditSkillType}>
+                <Text style={styles.confirmAddBtnText}>Save Changes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelAddBtn}
+                onPress={() => {
+                  setEditingSkillType(null);
+                  setEditSkillTypeName('');
+                }}
+              >
+                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1179,18 +2201,18 @@ const styles = StyleSheet.create({
   },
   selectDropdownText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
 
-  uploadBtn: {
+  openAssessmentBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F0F9FF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#BAE6FD',
     borderRadius: 8,
     paddingHorizontal: 12,
     height: 38,
   },
-  uploadBtnText: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  openAssessmentBtnText: { fontSize: 13, fontWeight: '600', color: '#0284C7' },
 
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   badgeDefault: { backgroundColor: '#DCFCE7' },
@@ -1198,6 +2220,79 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '600' },
   badgeTextDefault: { color: '#166534' },
   badgeTextCustom: { color: '#854D0E' },
+
+  formHeaderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    padding: 12,
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  formHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  formMetaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  formMetaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  metaRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  metaLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  metaValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  formHeaderDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  formHeaderBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  formHeaderNameLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  formHeaderNameText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
 
   canvasContainer: {
     backgroundColor: '#FFFFFF',
@@ -1207,7 +2302,142 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
-  canvasHeader: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, marginBottom: 4 },
+  canvasHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  canvasHeader: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5 },
+  addSkillTypeTopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  addSkillTypeTopBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  canvasBottomActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 6,
+  },
+  addSkillTypeBottomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderStyle: 'dashed',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  addSkillTypeBottomBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  sectionContainer: {
+    marginBottom: 4,
+  },
+  sectionEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 4,
+  },
+  sectionEditBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  sectionDeleteBtn: {
+    padding: 3,
+    marginLeft: 2,
+  },
+  emptySectionBox: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 6,
+    gap: 6,
+  },
+  emptySectionText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  emptySectionAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  emptySectionAddBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  skillPresetWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  skillPresetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  skillPresetChipActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  skillPresetChipText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  skillPresetChipTextActive: {
+    color: '#0369A1',
+    fontWeight: '700',
+  },
 
   abllsPresetBar: {
     backgroundColor: '#F0F9FF',
@@ -1320,6 +2550,45 @@ const styles = StyleSheet.create({
   },
   inlineOptionsRow: {
     gap: 4,
+    marginTop: 4,
+  },
+  typeSelectorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  typeSelectPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  typeSelectPillActive: {
+    borderColor: '#0284C7',
+    backgroundColor: '#E0F2FE',
+  },
+  typeSelectPillText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  typeSelectPillTextActive: {
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  inlineFieldPromptTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  inlineFieldPromptHint: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: 4,
   },
   inlineSectionRow: {
     gap: 6,

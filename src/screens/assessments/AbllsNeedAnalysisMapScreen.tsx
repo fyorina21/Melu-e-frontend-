@@ -140,18 +140,19 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
 
   const handleSaveAll = async () => {
     setSaving(true);
-    saveStorageAssessment(studentId, {
-      scores,
-      notes: savedNotes,
-      customFields: savedCustomFields,
-    });
     try {
+      saveStorageAssessment(studentId, {
+        scores,
+        notes: savedNotes,
+        customFields: savedCustomFields,
+      });
       await saveSkillsAssessment(studentId, {
         scores,
         notes: savedNotes,
         customFields: savedCustomFields,
       });
       showToast('ABLLS assessment map saved successfully.', 'success');
+      navigation?.navigate?.('AssessmentSummaryReport' as never);
     } catch {
       showToast('Failed to save assessment', 'error');
     } finally {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { saveSensoryAssessment } from '../../api/teacherExtrasApi';
+import { saveSensoryAssessment, getTeacherStudentProfile, getSensoryAssessment } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 
@@ -64,6 +64,12 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
   const { studentId } = route.params;
 
   const [assessmentDate, setAssessmentDate] = useState('08/21/2026');
+  const [profile, setProfile] = useState<any>(null);
+  useEffect(() => {
+    getTeacherStudentProfile(studentId).then(res => {
+      if (res?.data) setProfile(res.data);
+    }).catch(() => {});
+  }, [studentId]);
   const [activities, setActivities] = useState<SensoryActivityItem[]>(INITIAL_ACTIVITIES);
   const [showExport, setShowExport] = useState(false);
 
@@ -139,8 +145,8 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
               <Feather name="user" size={28} color="#64748B" />
             </View>
             <View>
-              <Text style={styles.studentName}>Student A</Text>
-              <Text style={styles.studentAge}>Age 6</Text>
+              <Text style={styles.studentName}>{profile?.fullName || 'Student'}</Text>
+              <Text style={styles.studentAge}>Age {profile?.age || '?'}</Text>
             </View>
           </View>
           <View style={styles.topCardRight}>
