@@ -127,26 +127,89 @@ export const DEFAULT_ABLLS_DOMAINS: AbllsDomainDef[] = [
 ];
 
 export function buildAbllsDomainsFromConfig(
-  fields?: Array<{ id: string; label: string; visible?: boolean; section?: string; options?: string[] }>
+  fields?: Array<{ id: string; label: string; visible?: boolean; section?: string; options?: string[] }>,
+  customSections?: string[],
+  deletedSections?: string[]
 ): AbllsDomainDef[] {
-  if (!fields || !Array.isArray(fields) || fields.length === 0) {
-    return DEFAULT_ABLLS_DOMAINS;
-  }
+  const deletedSet = new Set((deletedSections || []).map((s) => s.trim().toLowerCase()));
 
-  // Filter out visible === false
-  const visible = fields.filter((f) => f.visible !== false);
+  // 1. Filter out deleted default domains
+  const baseDomains = DEFAULT_ABLLS_DOMAINS.filter((d) => !deletedSet.has(d.name.trim().toLowerCase()));
 
   const domainMap = new Map<string, AbllsItemDef[]>();
-  DEFAULT_ABLLS_DOMAINS.forEach((d) => domainMap.set(d.name, []));
+  baseDomains.forEach((d) => domainMap.set(d.name, []));
+
+  const existingDomainNames = new Set(baseDomains.map((d) => d.name));
+  const additionalSections: string[] = [];
+
+  if (customSections && Array.isArray(customSections)) {
+    customSections.forEach((s) => {
+      if (
+        s &&
+        s !== 'General' &&
+        !deletedSet.has(s.trim().toLowerCase()) &&
+        !existingDomainNames.has(s) &&
+        !additionalSections.includes(s)
+      ) {
+        additionalSections.push(s);
+        domainMap.set(s, []);
+      }
+    });
+  }
+
+  const visible = (fields && Array.isArray(fields) ? fields : []).filter((f) => f.visible !== false);
+
+  visible.forEach((f) => {
+    if (
+      f.section &&
+      f.section !== 'General' &&
+      !deletedSet.has(f.section.trim().toLowerCase()) &&
+      !existingDomainNames.has(f.section) &&
+      !additionalSections.includes(f.section)
+    ) {
+      additionalSections.push(f.section);
+      domainMap.set(f.section, []);
+    }
+  });
+
+  const usedLetters = new Set<string>();
+  baseDomains.forEach((d) => {
+    if (d.code && d.code.length === 1) usedLetters.add(d.code.toUpperCase());
+  });
+
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let alphabetIdx = 0;
+  const getNextAvailableCode = (sectionName: string, itemsList: AbllsItemDef[]): string => {
+    if (itemsList && itemsList.length > 0) {
+      const firstId = itemsList[0].id || '';
+      const singleLetterMatch = firstId.match(/^([A-Z])\d+$/i);
+      if (singleLetterMatch) {
+        const code = singleLetterMatch[1].toUpperCase();
+        usedLetters.add(code);
+        return code;
+      }
+      const multiLetterMatch = firstId.match(/^([A-Z]+)[-_]?\d+$/i);
+      if (multiLetterMatch) {
+        return multiLetterMatch[1].toUpperCase();
+      }
+    }
+    while (alphabetIdx < alphabet.length) {
+      const candidate = alphabet[alphabetIdx++];
+      if (!usedLetters.has(candidate)) {
+        usedLetters.add(candidate);
+        return candidate;
+      }
+    }
+    return sectionName.slice(0, 2).toUpperCase();
+  };
 
   visible.forEach((f) => {
     let domainName = f.section;
     if (!domainName || domainName === 'General') {
-      const match = DEFAULT_ABLLS_DOMAINS.find(
+      const match = [...baseDomains, ...additionalSections.map((s) => ({ name: s, code: '' }))].find(
         (d) =>
           f.label.toLowerCase().includes(d.name.toLowerCase()) ||
-          f.id.toUpperCase().startsWith(d.code) ||
-          f.label.toUpperCase().startsWith(d.code)
+          (d.code && (f.id.toUpperCase().startsWith(d.code) || f.label.toUpperCase().startsWith(d.code)))
       );
       if (match) domainName = match.name;
     }
@@ -154,7 +217,7 @@ export function buildAbllsDomainsFromConfig(
     if (domainName && domainMap.has(domainName)) {
       const parts = f.label.split(':');
       const description = parts.length > 1 ? parts.slice(1).join(':').trim() : f.label;
-      const itemId = parts.length > 1 && parts[0].trim().length <= 4 ? parts[0].trim() : f.id;
+      const itemId = parts.length > 1 && parts[0].trim().length <= 6 ? parts[0].trim() : f.id;
       domainMap.get(domainName)!.push({
         id: itemId,
         description,
@@ -163,14 +226,28 @@ export function buildAbllsDomainsFromConfig(
     }
   });
 
-  return DEFAULT_ABLLS_DOMAINS.map((d) => {
+  const finalDomains: AbllsDomainDef[] = [];
+
+  baseDomains.forEach((d) => {
     const list = domainMap.get(d.name);
-    return {
+    finalDomains.push({
       code: d.code,
       name: d.name,
       items: list && list.length > 0 ? list : (DEFAULT_ABLLS_DOMAINS.find((def) => def.code === d.code)?.items ?? []),
-    };
+    });
   });
+
+  additionalSections.forEach((s) => {
+    const list = domainMap.get(s) || [];
+    const code = getNextAvailableCode(s, list);
+    finalDomains.push({
+      code,
+      name: s,
+      items: list,
+    });
+  });
+
+  return finalDomains;
 }
 
 export type Score = 0 | 1 | 2 | 3 | 4 | 'NA';

@@ -73,7 +73,7 @@ interface AssessmentData {
 }
 
 export default function AssessmentDashboardScreen({ navigation }: Props) {
-  const { logout } = useAuth();
+  const { session, logout } = useAuth();
   const [data, setData] = useState<AssessmentData | null>(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -89,8 +89,16 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Filter students to only show those in 6-week assessment phase
-  const filteredStudents = data?.students.filter((s) => s.phase === '6-week' || !s.phase) ?? [];
+  const isTeacher = session?.role === 'teacher';
+  const currentTherapistName = session?.userName || (session as any)?.user?.name;
+
+  // Filter students to strictly show only the therapist's assigned students when logged in as teacher
+  const filteredStudents = (data?.students ?? []).filter((s) => {
+    if (isTeacher && currentTherapistName) {
+      return s.therapist === currentTherapistName;
+    }
+    return s.phase === '6-week' || !s.phase;
+  });
 
   if (loadError) return <ScreenError onRetry={load} />;
   if (!data) return <ScreenLoader />;
@@ -104,6 +112,11 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
           <Feather name="clipboard" size={18} color={colors.navyText} />
           <View>
             <Text style={typography.h1}>6 Week Assessment Dashboard</Text>
+            {isTeacher && currentTherapistName && (
+              <Text style={[typography.caption, { color: colors.primaryBlue, fontWeight: '600' }]}>
+                Therapist: {currentTherapistName}
+              </Text>
+            )}
           </View>
         </View>
         <View style={styles.periodPill}>
@@ -116,30 +129,42 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Feather name="users" size={16} color={colors.mutedText} />
-            <Text style={styles.statValue}>{data.stats.total}</Text>
+            <Text style={styles.statValue}>{filteredStudents.length}</Text>
             <Text style={typography.caption}>Assigned Students</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="check-circle" size={16} color="#22C55E" />
-            <Text style={styles.statValue}>{data.stats.completed}</Text>
+            <Text style={styles.statValue}>
+              {filteredStudents.filter((s) => s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed').length}
+            </Text>
             <Text style={typography.caption}>Completed</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="clock" size={16} color={colors.statusInProgressText} />
-            <Text style={styles.statValue}>{data.stats.inProgress}</Text>
+            <Text style={styles.statValue}>
+              {filteredStudents.filter((s) => (s.ablls?.status === 'In Progress' || s.behavior?.status === 'In Progress')).length}
+            </Text>
             <Text style={typography.caption}>In Progress</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="alert-circle" size={16} color={colors.mutedText} />
-            <Text style={styles.statValue}>{data.stats.notStarted}</Text>
+            <Text style={styles.statValue}>
+              {filteredStudents.filter((s) => s.ablls?.status === 'Not Started' && s.behavior?.status === 'Not Started').length}
+            </Text>
             <Text style={typography.caption}>Not Started</Text>
           </View>
         </View>
 
         <Text style={typography.h3}>Student Assessments</Text>
         <View style={styles.studentsGrid}>
-          {filteredStudents.map((s) => (
-            <View key={s.id} style={styles.studentCard}>
+          {filteredStudents.map((s) => {
+            const isCompleted =
+              s.score === 100 ||
+              (s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed') ||
+              (s.ablls?.progress === 100 && s.behavior?.progress === 100);
+
+            return (
+              <View key={s.id} style={styles.studentCard}>
                 <View style={styles.studentHeaderRow}>
                   <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{s.initial}</Text></View>
                   <View style={{ flex: 1 }}>
@@ -153,32 +178,46 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                   </View>
                 </View>
 
-              <AssessmentRow label="Skills Assessment" status={s.ablls.status} progress={s.ablls.progress} />
-              <AssessmentRow label="Behavior Assessment" status={s.behavior.status} progress={s.behavior.progress} />
+                <AssessmentRow label="Skills Assessment" status={s.ablls.status} progress={s.ablls.progress} />
+                <AssessmentRow label="Behavior Assessment" status={s.behavior.status} progress={s.behavior.progress} />
 
-              <View style={styles.studentBtnRow}>
-                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]} onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}>
-                  <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#EF4444' }]} onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })}>
-                  <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
-                </TouchableOpacity>
+                {/* When assessment is fully 100% complete, prominent link/button to IUP Generation */}
+                {isCompleted && (
+                  <TouchableOpacity
+                    style={[styles.launchBtn, { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 }]}
+                    onPress={() => (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id })}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <Feather name="check-circle" size={14} color="#FFFFFF" />
+                      <Text style={styles.launchBtnTextLight}>100% Complete — Proceed to IUP Generation →</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                <View style={styles.studentBtnRow}>
+                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]} onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}>
+                    <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#EF4444' }]} onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })}>
+                    <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.studentBtnRow}>
+                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#22C55E' }]} onPress={() => navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })}>
+                    <Text style={styles.launchBtnTextLight}>Preference →</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#A855F7' }]} onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}>
+                    <Text style={styles.launchBtnTextLight}>Sensory →</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.studentBtnRow}>
+                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#D97706' }]} onPress={() => navigation?.navigate?.('SocialSkillsAssessment', { studentId: s.id })}>
+                    <Text style={styles.launchBtnTextLight}>Social Skills Questionnaire →</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.studentBtnRow}>
-                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#22C55E' }]} onPress={() => navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })}>
-                  <Text style={styles.launchBtnTextLight}>Preference →</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#A855F7' }]} onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}>
-                  <Text style={styles.launchBtnTextLight}>Sensory →</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.studentBtnRow}>
-                <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#D97706' }]} onPress={() => navigation?.navigate?.('SocialSkillsAssessment', { studentId: s.id })}>
-                  <Text style={styles.launchBtnTextLight}>Social Skills Questionnaire →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={styles.guidelinesBox}>

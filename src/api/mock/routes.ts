@@ -24,6 +24,7 @@ import { seed, type DemoConversation, type DemoMessage, type DemoRole } from './
 import { mockDb } from './db';
 import { reassignStudentsInStore, getWeekData, resolveTherapistName } from '../../stores/scheduleStore';
 import { ApiError } from '../http/errors';
+import { getAccessToken } from '../token';
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
@@ -216,10 +217,11 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'POST',
     pattern: '/students',
     handler: (ctx) => {
-      const p = bodyAs<{ firstName: string; middleName: string; lastName: string; dateOfBirth: string; programType: string; therapyGroup: string }>(ctx);
+      const p = bodyAs<{ firstName: string; middleName?: string; lastName: string; dateOfBirth: string; programType: string; therapyGroup: string }>(ctx);
       const id = newId('stu');
       const fullName = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
       const age = p.dateOfBirth ? new Date().getFullYear() - new Date(p.dateOfBirth).getFullYear() : 0;
+      const defaultTeacher = mockDb.all('staffMembers').find((s) => s.role === 'teacher');
       mockDb.insert('students', {
         id,
         fullName,
@@ -229,11 +231,18 @@ export const MOCK_ROUTES: MockRoute[] = [
         age,
         programType: p.programType,
         therapyGroup: p.therapyGroup,
+        assignedTherapist: defaultTeacher?.name ?? '',
         status: 'active',
+        phase: '6-week',
         headshotUrl: null,
         currentFocusStudentGoalId: null,
         goals: [],
       });
+      if (defaultTeacher) {
+        mockDb.updateById('staffMembers', defaultTeacher.id, {
+          assignedStudents: [...(defaultTeacher.assignedStudents ?? []), id],
+        });
+      }
       return serializeStudent(id);
     },
   },
@@ -1079,6 +1088,8 @@ export const MOCK_ROUTES: MockRoute[] = [
     pattern: '/sessions/:id/roster',
     handler: (ctx) => {
       const id = requiredParam(ctx, 'id');
+      const currentUser = currentUserFromToken();
+      const allAssessments = mockDb.all('assessments');
       const allTrials = mockDb.all('trials') as Array<{
         studentGoalId: string;
         promptLabel?: string | null;
@@ -1096,37 +1107,55 @@ export const MOCK_ROUTES: MockRoute[] = [
                 minute: '2-digit',
               }),
           }));
+
+      let eligible = mockDb
+        .all('students')
+        .filter((s) => s.status !== 'paused')
+        .filter((s) => {
+          const hasCompleteAssessment = allAssessments.some(
+            (a) => a.studentId === s.id && (a.status === 'completed' || a.status === 'submitted')
+          );
+          const hasGoals = Array.isArray(s.goals) && s.goals.length > 0;
+          return hasCompleteAssessment && hasGoals;
+        });
+
+      if (currentUser?.role === 'teacher') {
+        const staff = staffForUser(currentUser.id) || mockDb.all('staffMembers').find((st) => st.name === currentUser.name);
+        const assignedIds = new Set(staff?.assignedStudents ?? []);
+        eligible = eligible.filter((s) => assignedIds.has(s.id));
+      }
+
+      const students = eligible.map((s, idx) => {
+        const mappedGoals = (s.goals ?? [])
+          .map((g: any) => {
+            const gid = g.id || g.goalId;
+            const bg = mockDb.findById('goalBank', gid);
+            if (!bg) return null;
+            return {
+              id: gid,
+              name: bg.name,
+              category: bg.domain || 'Cognitive',
+            };
+          })
+          .filter((g): g is { id: string; name: string; category: string } => Boolean(g));
+        const allStudentTrials = mappedGoals.flatMap((g) => trialsForGoal(g.id));
+        return {
+          id: s.id,
+          name: s.fullName,
+          initial: s.fullName.charAt(0),
+          program: s.programType === 'ABA' ? 'Basic' : 'Functional',
+          active: idx === 0,
+          goals: mappedGoals,
+          trials: allStudentTrials,
+        };
+      });
+
       return {
         sessionId: id,
         stationName: 'Station 1 — Basic Skills',
         roomName: 'Room 2',
         blockDurationMinutes: 90,
-        students: [
-          {
-            id: 'student-a',
-            name: 'Student A',
-            initial: 'A',
-            program: 'Basic',
-            active: true,
-            goals: [
-              { id: 'goal-1', name: 'Identify Colors', category: 'Cognitive' },
-              { id: 'goal-2', name: 'Goal 2', category: '' },
-            ],
-            trials: trialsForGoal('goal-1').concat(trialsForGoal('goal-2')),
-          },
-          {
-            id: 'student-b',
-            name: 'Student B',
-            initial: 'B',
-            program: 'Functional',
-            active: false,
-            goals: [
-              { id: 'goal-3', name: 'Request Items', category: 'Expressive Language' },
-              { id: 'goal-4', name: 'Goal 2', category: '' },
-            ],
-            trials: trialsForGoal('goal-3').concat(trialsForGoal('goal-4')),
-          },
-        ],
+        students,
       };
     },
   },
@@ -1651,10 +1680,10 @@ export const MOCK_ROUTES: MockRoute[] = [
       if (sid === 'stu-1') sid = 'student-a';
       const type = requiredParam(ctx, 'type');
       const payload = bodyAs<Record<string, unknown>>(ctx);
-      const targetStatus = (payload.status as any) || 'in_progress';
       const existing = mockDb
         .all('assessments')
         .find((a) => a.studentId === sid && a.type === type);
+      const targetStatus = (payload.status as any) || existing?.status || 'in_progress';
 
       if (existing) {
         const mergedPayload = {
@@ -1692,8 +1721,17 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: (ctx) => {
       let id = requiredParam(ctx, 'studentId');
       if (id === 'stu-1') id = 'student-a';
-      const student = mockDb.findById('students', id) ?? mockDb.all('students')[0];
-      return student ?? null;
+      const currentUser = currentUserFromToken();
+      const student = mockDb.findById('students', id);
+      if (!student) throw notFound(id);
+      if (currentUser?.role === 'teacher') {
+        const staff = staffForUser(currentUser.id) || mockDb.all('staffMembers').find((s) => s.name === currentUser.name);
+        const assigned = new Set(staff?.assignedStudents ?? []);
+        if (!assigned.has(id) && (student as any)?.assignedTherapist !== staff?.name) {
+          throw notFound(id);
+        }
+      }
+      return student;
     },
   },
 
@@ -1703,6 +1741,12 @@ export const MOCK_ROUTES: MockRoute[] = [
     pattern: '/teacher/abc-log',
     handler: (ctx) => {
       let incidents = mockDb.all('incidents');
+      const currentUser = currentUserFromToken();
+      if (currentUser?.role === 'teacher') {
+        const staff = staffForUser(currentUser.id) || mockDb.all('staffMembers').find((s) => s.name === currentUser.name);
+        const assigned = new Set(staff?.assignedStudents ?? []);
+        incidents = incidents.filter((i) => assigned.has(i.studentId));
+      }
       const { studentId, from, to, behavior, category } = ctx.query;
       if (studentId && studentId !== 'All') incidents = incidents.filter((i) => i.studentId === studentId);
       if (from) incidents = incidents.filter((i) => new Date(i.createdAt) >= new Date(from as string));
@@ -1914,9 +1958,25 @@ export const MOCK_ROUTES: MockRoute[] = [
     pattern: '/coordinator/students',
     handler: (ctx) => {
       let rows = mockDb.all('students');
-      const { search, status, program, therapyGroup } = ctx.query;
+      const { search, status, program, therapyGroup, therapist } = ctx.query;
       if (search) rows = rows.filter((s) => s.fullName.toLowerCase().includes(search!.toLowerCase()));
-      return rows.map((s) => ({ id: s.id, fullName: s.fullName, age: ageOf(s), programType: s.programType, therapyGroup: s.therapyGroup, status: s.status }));
+      if (status && status !== 'All') rows = rows.filter((s) => s.status === status);
+      if (program && program !== 'All') rows = rows.filter((s) => s.programType === program);
+      if (therapyGroup && therapyGroup !== 'All') rows = rows.filter((s) => s.therapyGroup === therapyGroup);
+      if (therapist) {
+        const staff = mockDb.all('staffMembers').find((st) => st.name === therapist || st.id === therapist);
+        const assignedIds = new Set(staff?.assignedStudents ?? []);
+        rows = rows.filter((s) => assignedIds.has(s.id) || (s as any).assignedTherapist === therapist);
+      }
+      return rows.map((s) => ({
+        id: s.id,
+        fullName: s.fullName,
+        age: ageOf(s),
+        programType: s.programType,
+        therapyGroup: s.therapyGroup,
+        status: s.status,
+        therapist: (s as any).assignedTherapist || teacherForStudent(s.id)?.name || 'Unassigned',
+      }));
     },
   },
   {
@@ -1929,6 +1989,7 @@ export const MOCK_ROUTES: MockRoute[] = [
         dateOfBirth: string;
         programType: string;
         therapyGroup: string;
+        assignedTherapist?: string;
         gender?: string;
         parentName?: string;
         parentPhone?: string;
@@ -1938,6 +1999,14 @@ export const MOCK_ROUTES: MockRoute[] = [
         documents?: string[];
         customFields?: Record<string, any>;
       }>(ctx);
+
+      if (p.assignedTherapist) {
+        const staff = mockDb.all('staffMembers').find((s) => s.name === p.assignedTherapist || s.id === p.assignedTherapist);
+        if (staff && (staff.assignedStudents ?? []).length >= 2) {
+          throw new ApiError('Therapist has reached maximum caseload', 422);
+        }
+      }
+
       const student = {
         id: newId('stu'),
         fullName: `${p.firstName} ${p.lastName}`.trim(),
@@ -1946,7 +2015,9 @@ export const MOCK_ROUTES: MockRoute[] = [
         dateOfBirth: p.dateOfBirth,
         programType: p.programType,
         therapyGroup: p.therapyGroup,
+        assignedTherapist: p.assignedTherapist ?? '',
         status: 'active',
+        phase: '6-week',
         gender: p.gender ?? '',
         parentName: p.parentName ?? '',
         parentPhone: p.parentPhone ?? '',
@@ -1958,6 +2029,16 @@ export const MOCK_ROUTES: MockRoute[] = [
         goals: [],
       };
       mockDb.insert('students', student as any);
+
+      if (p.assignedTherapist) {
+        const staff = mockDb.all('staffMembers').find((s) => s.name === p.assignedTherapist || s.id === p.assignedTherapist);
+        if (staff) {
+          mockDb.updateById('staffMembers', staff.id, {
+            assignedStudents: [...(staff.assignedStudents ?? []), student.id],
+          });
+        }
+      }
+
       return student;
     },
   },
@@ -2132,6 +2213,236 @@ export const MOCK_ROUTES: MockRoute[] = [
   },
   {
     method: 'GET',
+    pattern: '/program-director/assessment-summary-dashboard',
+    handler: (ctx) => {
+      const allStudents = mockDb.all('students');
+      const studentOptions = allStudents.map((s) => ({
+        id: s.id,
+        name: s.fullName,
+      }));
+
+      let sid = (ctx.query?.studentId as string) || '';
+      let student = sid ? mockDb.findById('students', sid) : null;
+      if (!student && allStudents.length > 0) {
+        student = allStudents[0];
+        sid = student.id;
+      }
+
+      if (!student) {
+        return {
+          students: studentOptions,
+          notSelected: true,
+        };
+      }
+
+      const assessments = mockDb.all('assessments').filter((a) => a.studentId === student!.id || a.studentId === sid);
+      const skills = assessments.find((a) => a.type === 'skills')?.data ?? {};
+      const behavior = assessments.find((a) => a.type === 'behavior')?.data ?? {};
+      const preference = assessments.find((a) => a.type === 'preference')?.data ?? {};
+      const sensory = assessments.find((a) => a.type === 'sensory')?.data ?? {};
+
+      // Calculate MASS & FAST
+      const LIKERT_SCORE: Record<string, number> = {
+        Never: 0,
+        'Almost Never': 1,
+        Seldom: 2,
+        'Half the Time': 3,
+        Usually: 4,
+        'Almost Always': 5,
+        Always: 6,
+      };
+      const massAnswers = (behavior.massAnswers as Record<string, string>) || {};
+      const fastAnswers = (behavior.fastAnswers as Record<string, string>) || {};
+      const records = (behavior.records as any[]) || [];
+
+      let sensoryScore = 0, escape = 0, attention = 0, tangible = 0;
+      if (massAnswers['M1']) sensoryScore += LIKERT_SCORE[massAnswers['M1']] || 0;
+      if (massAnswers['M5']) sensoryScore += LIKERT_SCORE[massAnswers['M5']] || 0;
+      if (massAnswers['M10']) sensoryScore += LIKERT_SCORE[massAnswers['M10']] || 0;
+
+      if (massAnswers['M2']) escape += LIKERT_SCORE[massAnswers['M2']] || 0;
+      if (massAnswers['M6']) escape += LIKERT_SCORE[massAnswers['M6']] || 0;
+      if (massAnswers['M9']) escape += LIKERT_SCORE[massAnswers['M9']] || 0;
+
+      if (massAnswers['M3']) attention += LIKERT_SCORE[massAnswers['M3']] || 0;
+      if (massAnswers['M7']) attention += LIKERT_SCORE[massAnswers['M7']] || 0;
+      if (massAnswers['M11']) attention += LIKERT_SCORE[massAnswers['M11']] || 0;
+
+      if (massAnswers['M4']) tangible += LIKERT_SCORE[massAnswers['M4']] || 0;
+      if (massAnswers['M8']) tangible += LIKERT_SCORE[massAnswers['M8']] || 0;
+      if (massAnswers['M12']) tangible += LIKERT_SCORE[massAnswers['M12']] || 0;
+
+      const massScores = [
+        { function: 'Sensory', score: sensoryScore },
+        { function: 'Escape', score: escape },
+        { function: 'Attention', score: attention },
+        { function: 'Tangible', score: tangible },
+      ];
+      const massDominant = massScores.reduce((max, s) => (s.score > max.score ? s : max), massScores[0]).function;
+
+      let socialPos = 0, socialNeg = 0, autoPos = 0, autoNeg = 0;
+      if (fastAnswers['F1']) socialPos++;
+      if (fastAnswers['F7']) socialPos++;
+      if (fastAnswers['F8']) socialPos++;
+
+      if (fastAnswers['F2']) socialNeg++;
+      if (fastAnswers['F6']) socialNeg++;
+
+      if (fastAnswers['F3']) autoPos++;
+      if (fastAnswers['F5']) autoPos++;
+
+      if (fastAnswers['F4']) autoNeg++;
+
+      const fastScores = [
+        { function: 'Social - Positive', score: socialPos },
+        { function: 'Social - Negative', score: socialNeg },
+        { function: 'Automatic - Positive', score: autoPos },
+        { function: 'Automatic - Negative', score: autoNeg },
+      ];
+      const fastHypothesized = fastScores.reduce((max, s) => (s.score > max.score ? s : max), fastScores[0]).function;
+
+      const studentIncidents = mockDb.all('incidents').filter((i) => i.studentId === student!.id);
+      const antecedentCounts: Record<string, number> = {};
+      studentIncidents.forEach((i) => {
+        if (i.antecedent) {
+          antecedentCounts[i.antecedent] = (antecedentCounts[i.antecedent] || 0) + 1;
+        }
+      });
+      records.forEach((r: any) => {
+        const trig = r.trigger || r.behavior || 'Task Demand';
+        antecedentCounts[trig] = (antecedentCounts[trig] || 0) + 1;
+      });
+      const topAntecedents = Object.entries(antecedentCounts)
+        .map(([antecedent, count]) => ({ antecedent, count }))
+        .sort((a, b) => b.count - a.count);
+
+      const prefItems = ((preference.items as any[]) || []).slice();
+      const sortedPrefs = prefItems
+        .sort((a: any, b: any) => (b.timerSeconds || 0) - (a.timerSeconds || 0))
+        .map((item: any, idx: number) => ({
+          rank: idx + 1,
+          item: item.name || 'Preferred Item',
+          duration: `${Math.floor((item.timerSeconds || 0) / 60)} min ${(item.timerSeconds || 0) % 60} sec`,
+          frequency: item.frequency || 1,
+          context: item.category || 'General',
+          engaged: item.engaged || 'Engaged',
+          approached: item.approached || 'Approached',
+        }));
+
+      // ABLLS Domains calculation
+      const scoresRecord = (skills.scores as Record<string, any>) || {};
+      const abllsDomainDefs = [
+        { code: 'A', name: 'Visual Performance' },
+        { code: 'B', name: 'Motor Imitation' },
+        { code: 'C', name: 'Vocal Imitation' },
+        { code: 'D', name: 'Receptive Language' },
+        { code: 'E', name: 'Requesting (Mands)' },
+        { code: 'F', name: 'Play and Leisure' },
+        { code: 'G', name: 'Social Interaction' },
+        { code: 'H', name: 'Writing' },
+        { code: 'I', name: 'Dressing' },
+      ];
+
+      const computedAblls = abllsDomainDefs.map((d) => {
+        const domainItemKeys = Object.keys(scoresRecord).filter((k) => k.startsWith(d.code));
+        if (domainItemKeys.length === 0) {
+          return {
+            domain: d.name,
+            score: (student as any)?.assessmentProgress
+              ? Math.min(100, Math.round((student as any).assessmentProgress * 0.9))
+              : 80,
+          };
+        }
+        let total = 0;
+        let count = 0;
+        domainItemKeys.forEach((k) => {
+          const val = scoresRecord[k];
+          if (typeof val === 'number') {
+            total += val;
+            count++;
+          } else if (typeof val === 'string') {
+            const m = val.match(/^(\d+)/);
+            if (m) {
+              total += parseInt(m[1], 10);
+              count++;
+            }
+          }
+        });
+        const pct = count > 0 ? Math.min(100, Math.round((total / (count * 2)) * 100)) : 75;
+        return { domain: d.name, score: pct };
+      });
+
+      const parentUser = mockDb.all('users').find((u) => u.childIds && u.childIds.includes(student!.id));
+      const sensoryActivities = ((sensory.activities as any[]) || []).map((a: any) => ({
+        name: a.name || 'Sensory Activity',
+        engagementLevel: a.engagementLevel || 'Independent',
+        responseReaction: a.responseReaction || 'Enjoyed',
+        remark: a.remark || '',
+      }));
+
+      return {
+        students: studentOptions,
+        selectedStudentId: student.id,
+        studentInfo: {
+          fullName: student.fullName,
+          dateOfBirth: student.dateOfBirth || '2019-04-12',
+          age: student.age || 6,
+          diagnosis: 'Autism Spectrum Disorder',
+          parentGuardian: parentUser?.name || 'Parent / Guardian',
+          phone: '(555) 234-5678',
+          programType: student.programType || 'ABA Therapy',
+          therapyGroup: student.therapyGroup || 'Pioneer',
+          station: 'Station 1',
+          enrollmentDate: '2026-08-01',
+          assessmentStart: '2026-08-05',
+          assessmentEnd: '2026-09-15',
+        },
+        ablls: computedAblls,
+        abllsScores: scoresRecord,
+        behavior: {
+          massAnswers,
+          fastAnswers,
+          mass: {
+            scores: massScores,
+            dominantFunction: massDominant,
+          },
+          fast: {
+            scores: fastScores,
+            hypothesizedFunction: fastHypothesized,
+          },
+          abc: {
+            totalIncidents: records.length + studentIncidents.length,
+            topAntecedents: topAntecedents.length > 0 ? topAntecedents : [
+              { antecedent: 'Task Demand', count: 3 },
+              { antecedent: 'Denied Access', count: 1 },
+            ],
+          },
+        },
+        preference: {
+          items: sortedPrefs.length > 0 ? sortedPrefs : [
+            { rank: 1, item: 'Light-up toys', duration: '5 min 20 sec', frequency: 3, context: 'Visual', engaged: 'Engaged', approached: 'Approached' },
+            { rank: 2, item: 'Bubbles', duration: '3 min 45 sec', frequency: 2, context: 'Visual', engaged: 'Engaged', approached: 'Approached' },
+          ],
+        },
+        sensory: {
+          activities: sensoryActivities.length > 0 ? sensoryActivities : [
+            { name: 'Sand Play', engagementLevel: 'Independent', responseReaction: 'Enjoyed', remark: 'Calming sensory interaction' },
+            { name: 'Water Play', engagementLevel: 'Partial Prompt', responseReaction: 'Neutral', remark: 'Requires supervision' },
+          ],
+        },
+        socialSkills: {
+          percent: 85,
+          scores: {
+            'Peer Interaction': 'High',
+            'Turn-Taking': 'Consistently',
+            'Group Participation': 'Active',
+          },
+        },
+      };
+    },
+  },
+  {
+    method: 'GET',
     pattern: '/program-director/assessments',
     handler: () => buildAssessmentReviewList(),
   },
@@ -2154,16 +2465,22 @@ export const MOCK_ROUTES: MockRoute[] = [
     method: 'GET',
     pattern: '/program-director/iup/candidates',
     handler: () => {
-      const assessed = new Set(mockDb.all('assessments').map((a) => a.studentId));
+      const allAssessments = mockDb.all('assessments');
       return mockDb
         .all('students')
         .filter((s) => s.status !== 'paused')
+        .filter((s) => {
+          const studentAssessments = allAssessments.filter((a) => a.studentId === s.id);
+          return studentAssessments.some((a) => a.status === 'completed' || a.status === 'submitted');
+        })
         .map((s) => ({
           id: s.id,
           studentId: s.id,
           name: s.fullName,
-          hasAssessmentData: assessed.has(s.id),
-          status: assessed.has(s.id) ? 'Ready for IUP' : 'In Assessment',
+          hasAssessmentData: true,
+          status: 'Ready for IUP',
+          assessmentStatus: '100% Complete',
+          assessmentProgress: 100,
         }));
     },
   },
@@ -2213,13 +2530,19 @@ export const MOCK_ROUTES: MockRoute[] = [
         name: student?.fullName ?? 'Student',
         primaryTeacher: teacher?.name ?? 'Unassigned',
         program: `${student?.programType ?? 'ABA'} Program`,
-        goals: (student?.goals ?? []).map((g) => ({
-          id: g.id,
-          name: g.name,
-          station: assignment?.stationId ? `Station ${assignment.stationId}` : 'Station 1',
-          percent: g.progressPercent,
-          assignedBy: 'Program Director',
-        })),
+        goals: (student?.goals ?? []).map((g: any) => {
+          const bg = mockDb.findById('goalBank', g.id || g.goalId);
+          return {
+            id: g.id || g.goalId,
+            goalId: g.goalId || g.id,
+            name: bg?.name || g.name,
+            station: g.station !== undefined ? g.station : (assignment?.stationId ? Number(assignment.stationId) : 1),
+            slot: g.slot !== undefined ? g.slot : 1,
+            bankActive: bg ? bg.status !== 'inactive' : true,
+            percent: g.progressPercent ?? 0,
+            assignedBy: 'Program Director',
+          };
+        }),
         caseloadBalance: teachers.map((t) => ({
           teacherName: t.name,
           studentCount: new Set(
@@ -2276,6 +2599,11 @@ export const MOCK_ROUTES: MockRoute[] = [
     handler: (ctx) => mockDb.updateById('goalBank', requiredParam(ctx, 'id'), { status: 'inactive' }),
   },
   {
+    method: 'POST',
+    pattern: '/program-director/goal-bank/:id/activate',
+    handler: (ctx) => mockDb.updateById('goalBank', requiredParam(ctx, 'id'), { status: 'active' }),
+  },
+  {
     method: 'DELETE',
     pattern: '/program-director/goal-bank/:id',
     handler: (ctx) => ({ deleted: mockDb.removeById('goalBank', requiredParam(ctx, 'id')) }),
@@ -2287,16 +2615,33 @@ export const MOCK_ROUTES: MockRoute[] = [
       const sid = requiredParam(ctx, 'studentId');
       const student = mockDb.findById('students', sid);
       if (!student) throw notFound(sid);
-      const { goalId, name, station } = bodyAs<{ goalId?: string; name?: string; station?: string }>(ctx);
+      const { goalId, name, station, slot } = bodyAs<{ goalId?: string; name?: string; station?: number | string; slot?: number | string }>(ctx);
       let goalName = name;
+      let bankGoal: MockGoal | null = null;
       if (goalId) {
-        const bankGoal = mockDb.findById('goalBank', goalId);
-        if (bankGoal) goalName = bankGoal.name;
+        bankGoal = mockDb.findById('goalBank', goalId) ?? null;
+        if (bankGoal) {
+          if (bankGoal.status === 'inactive') {
+            throw new ApiError('Goal is inactive', 409);
+          }
+          goalName = bankGoal.name;
+        }
       }
       if (!goalName) throw new ApiError('goalId or name is required', 422);
-      const goal = { id: goalId ?? newId('goal'), name: goalName, status: 'active', progressPercent: 0 };
+      const stNum = station !== undefined ? Number(station) : 1;
+      const slNum = slot !== undefined ? Number(slot) : 1;
+      const goal = {
+        id: goalId ?? newId('goal'),
+        goalId: goalId ?? newId('goal'),
+        name: goalName,
+        category: bankGoal?.domain ?? '',
+        status: 'active',
+        progressPercent: 0,
+        station: stNum,
+        slot: slNum,
+      };
       mockDb.updateById('students', sid, { goals: [...student.goals, goal] });
-      return { assigned: true, goal, station: station ?? null };
+      return { assigned: true, goal, station: stNum, slot: slNum };
     },
   },
   {
@@ -2741,6 +3086,55 @@ export const MOCK_ROUTES: MockRoute[] = [
           { id: 's4', type: 'TextArea', label: 'Social Engagement Notes', required: false, visible: true },
           { id: 's5', type: 'Checkbox', label: 'Participates in Group Activities', required: false, visible: true },
         ];
+      } else if (name.toLowerCase().includes('behavioral') || name.toLowerCase().includes('behavior assessment')) {
+        defaultFields = [
+          { id: 'M1', type: 'Radio', label: 'M1: Would the behavior occur continuously if left alone for long periods of time?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M2', type: 'Radio', label: 'M2: Does the behavior occur when the person is asked to do a difficult task?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M3', type: 'Radio', label: 'M3: Does the behavior seem to occur when the person is ignored?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M4', type: 'Radio', label: 'M4: Does the behavior occur when a preferred item is taken away?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M5', type: 'Radio', label: 'M5: Does the behavior occur when the person is left alone, with no one around?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M6', type: 'Radio', label: 'M6: Does the behavior occur following a request to perform an undesirable task?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M7', type: 'Radio', label: 'M7: Does the behavior occur when attention is diverted from the person?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M8', type: 'Radio', label: 'M8: Does the behavior occur when the person is denied access to a desired item or activity?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M9', type: 'Radio', label: 'M9: Does the behavior occur during a task that the person does not enjoy?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M10', type: 'Radio', label: 'M10: Does the behavior seem to be enjoyable to the person (self-stimulatory)?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M11', type: 'Radio', label: 'M11: Does the behavior occur to get a reaction from others?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'M12', type: 'Radio', label: 'M12: Does the behavior occur to obtain food, toys, or a specific activity?', required: true, visible: true, section: 'MASS', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+          { id: 'F1', type: 'Radio', label: 'F1: Does the behavior occur when others are present, and does attention follow?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F2', type: 'Radio', label: 'F2: Does the behavior occur to avoid or escape a task, demand, or request?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F3', type: 'Radio', label: 'F3: Does the behavior produce a rewarding sensory effect without others?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F4', type: 'Radio', label: 'F4: Does the behavior remove an unpleasant sensation or reduce pain?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F5', type: 'Radio', label: 'F5: Does the behavior typically happen when the person is alone or unoccupied?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F6', type: 'Radio', label: 'F6: Does the behavior occur during transitions or when demands increase?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F7', type: 'Radio', label: 'F7: Does an adult typically react by giving attention or talking to the person?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+          { id: 'F8', type: 'Radio', label: 'F8: Is the behavior reduced when a preferred item or activity is provided freely?', required: true, visible: true, section: 'FAST', options: ['Yes', 'No'] },
+        ];
+      } else if (name.toLowerCase().includes('preference')) {
+        defaultFields = [
+          { id: 'P1', type: 'Radio', label: 'Light-up toys', required: true, visible: true, section: 'Visual', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P2', type: 'Radio', label: 'Bubbles', required: true, visible: true, section: 'Visual', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P3', type: 'Radio', label: 'Mirror', required: true, visible: true, section: 'Visual', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P4', type: 'Radio', label: 'Kaleidoscope', required: true, visible: true, section: 'Visual', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P5', type: 'Radio', label: 'Musical Instruments', required: true, visible: true, section: 'Auditory', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P6', type: 'Radio', label: 'Squeeze / Stress Ball', required: true, visible: true, section: 'Tactile', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P7', type: 'Radio', label: 'Spinning Top', required: true, visible: true, section: 'Toys', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+          { id: 'P8', type: 'Radio', label: 'Trampoline / Bounce', required: true, visible: true, section: 'Movement', options: ['High Preference', 'Moderate Preference', 'Low Preference', 'Non-Preferred'] },
+        ];
+      } else if (name.toLowerCase().includes('sensory')) {
+        defaultFields = [
+          { id: 'SEN-001', type: 'Radio', label: 'Sand Play', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-002', type: 'Radio', label: 'Water Play', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-003', type: 'Radio', label: 'Finger Painting', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-004', type: 'Radio', label: 'Play-Doh / Clay', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-005', type: 'Radio', label: 'Bubble Play', required: true, visible: true, section: 'Visual & Auditory', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-006', type: 'Radio', label: 'Sensory Bin (Rice/Beans)', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-007', type: 'Radio', label: 'Textured Mat Walking', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-008', type: 'Radio', label: 'Vibrating Toys', required: true, visible: true, section: 'Tactile', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-009', type: 'Radio', label: 'Light Box Exploration', required: true, visible: true, section: 'Visual & Auditory', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-010', type: 'Radio', label: 'Music & Movement', required: true, visible: true, section: 'Visual & Auditory', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-011', type: 'Radio', label: 'Deep Pressure Activities', required: true, visible: true, section: 'Proprioception & Vestibular', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+          { id: 'SEN-012', type: 'Radio', label: 'Spinning / Vestibular', required: true, visible: true, section: 'Proprioception & Vestibular', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+        ];
       } else {
         defaultFields = [
           { id: 'b1', type: 'Dropdown', label: 'Antecedent', required: true, visible: true, options: ['Task Demand', 'Transition', 'Peer Interaction', 'Denied Access'] },
@@ -3123,10 +3517,26 @@ export const MOCK_ROUTES: MockRoute[] = [
   {
     method: 'GET',
     pattern: '/options/students',
-    handler: () =>
-      mockDb
+    handler: () => {
+      const user = currentUserFromToken();
+      if (user?.role === 'teacher') {
+        const staff = staffForUser(user.id) || mockDb.all('staffMembers').find((s) => s.name === user.name);
+        const assigned = new Set(staff?.assignedStudents ?? []);
+        return mockDb
+          .all('students')
+          .filter((s) => s.status !== 'paused' && assigned.has(s.id))
+          .map((s) => ({
+            id: s.id,
+            name: s.fullName,
+            age: ageOf(s),
+            phase: s.phase,
+            status: (s.status ?? 'active') === 'active' ? 'Active' : s.status,
+            program: s.programType ?? '',
+          }));
+      }
+      return mockDb
         .all('students')
-        .filter((s) => s.status !== 'paused')
+        .filter((s) => s.status !== 'paused' && s.phase !== '6-week')
         .map((s) => ({
           id: s.id,
           name: s.fullName,
@@ -3134,7 +3544,8 @@ export const MOCK_ROUTES: MockRoute[] = [
           phase: s.phase,
           status: (s.status ?? 'active') === 'active' ? 'Active' : s.status,
           program: s.programType ?? '',
-        })),
+        }));
+    },
   },
   {
     method: 'GET',
@@ -3162,7 +3573,7 @@ export const MOCK_ROUTES: MockRoute[] = [
       mockDb
         .all('staffMembers')
         .filter((s) => s.status === 'active')
-        .map((s) => ({ id: s.id, name: s.name, role: s.role })),
+        .map((s) => ({ id: s.id, name: s.name, role: s.role, assignedStudents: s.assignedStudents ?? [] })),
   },
   {
     method: 'GET',
@@ -3558,7 +3969,7 @@ function buildStudentProgress(studentId: string, includeFlag: boolean) {
         status = percent >= 80 ? 'Mastered' : 'In Progress';
         
         const chunkSize = Math.ceil(goalTrials.length / 4);
-        const calculatedTrend = [];
+        const calculatedTrend: number[] = [];
         for (let i = 0; i < 4; i++) {
           const chunk = goalTrials.slice(i * chunkSize, (i + 1) * chunkSize);
           if (chunk.length > 0) {
@@ -3629,6 +4040,50 @@ function upsertIup(studentId: string, status: MockIup['status'], ctx: MockHandle
   const goals = Array.isArray(body.goals) ? (body.goals as string[]) : [];
   const existing = mockDb.all('iups').find((i) => i.studentId === studentId);
   const now = new Date().toISOString();
+
+  if (status === 'active') {
+    const student = mockDb.findById('students', studentId);
+    if (student) {
+      const slotGoals: any[] = [];
+      if (body.slots && typeof body.slots === 'object') {
+        const slotsObj = body.slots as Record<string, any[]>;
+        Object.values(slotsObj).forEach((slotList) => {
+          if (Array.isArray(slotList)) {
+            slotList.forEach((slotItem) => {
+              if (slotItem && slotItem.id) {
+                slotGoals.push(slotItem);
+              }
+            });
+          }
+        });
+      }
+      const goalIds = Array.isArray(body.goals) ? (body.goals as string[]) : [];
+      goalIds.forEach((gid) => {
+        if (!slotGoals.some((sg) => sg.id === gid)) {
+          const bg = mockDb.findById('goalBank', gid);
+          if (bg) slotGoals.push(bg);
+          else slotGoals.push({ id: gid, name: 'Assigned Goal' });
+        }
+      });
+      if (slotGoals.length > 0) {
+        const newGoals = slotGoals.map((sg, i) => ({
+          id: sg.id,
+          goalId: sg.id,
+          name: sg.name,
+          category: sg.domain || sg.category || 'General',
+          status: 'active',
+          progressPercent: 0,
+          station: 1,
+          slot: i + 1,
+        }));
+        mockDb.updateById('students', studentId, {
+          goals: newGoals,
+          phase: 'active',
+        });
+      }
+    }
+  }
+
   if (existing) {
     return mockDb.updateById('iups', existing.id, {
       status,
@@ -3803,44 +4258,104 @@ function buildWeeklySummary() {
 /** SCR-010: 6-week assessment dashboard built from live mock data so
  *  teacher assessment saves (skills/behavior) reflect back on the board. */
 function buildAssessmentDashboard() {
-  const students = mockDb.all('students').filter((s) => s.status !== 'paused');
+  const currentUser = currentUserFromToken();
+  let students = mockDb.all('students').filter((s) => s.status !== 'paused');
   const rows = mockDb.all('assessments');
-  const teacherName = mockDb.all('users').find((u) => u.role === 'teacher')?.name ?? 'Teacher A';
+  const defaultTeacherName = mockDb.all('users').find((u) => u.role === 'teacher')?.name ?? 'Teacher A';
 
-  const rowFor = (studentId: string, type: 'skills' | 'behavior') => {
+  let currentTeacherStaff: MockStaffMember | null = null;
+  if (currentUser?.role === 'teacher') {
+    currentTeacherStaff = staffForUser(currentUser.id) || mockDb.all('staffMembers').find((s) => s.name === currentUser.name) || null;
+    if (currentTeacherStaff) {
+      const assignedSet = new Set(currentTeacherStaff.assignedStudents ?? []);
+      students = students.filter((s) => assignedSet.has(s.id));
+    }
+  }
+
+  const rowFor = (studentId: string, type: 'skills' | 'behavior' | 'preference' | 'sensory') => {
     const a = rows.find((r) => r.studentId === studentId && r.type === type);
     if (!a) return { status: 'Not Started', progress: 0 };
     if (a.status === 'completed' || a.status === 'submitted') return { status: 'Completed', progress: 100 };
-    const saved = Object.keys(a.data ?? {}).length;
-    const progress = Math.min(90, saved * 10);
+
+    const data = (a.data ?? {}) as Record<string, unknown>;
+
+    // Count actual scored items from nested data.scores (skills) or answered
+    // questions (behavior: massAnswers/fastAnswers) rather than top-level keys.
+    let scored = 0;
+    let total = 0;
+
+    if (type === 'skills') {
+      // ABLLS has 58 default items across 9 domains (A7+B4+C7+D8+E6+F6+G7+H6+I7)
+      const TOTAL_ABLLS_ITEMS = 58;
+      const scoresMap = (data.scores ?? {}) as Record<string, unknown>;
+      scored = Object.keys(scoresMap).length;
+      total = TOTAL_ABLLS_ITEMS;
+    } else if (type === 'behavior') {
+      // MASS has 12 questions, FAST has 8 = 20 total
+      const TOTAL_BEHAVIOR_QUESTIONS = 20;
+      const massAnswers = (data.massAnswers ?? {}) as Record<string, unknown>;
+      const fastAnswers = (data.fastAnswers ?? {}) as Record<string, unknown>;
+      scored = Object.keys(massAnswers).length + Object.keys(fastAnswers).length;
+      total = TOTAL_BEHAVIOR_QUESTIONS;
+    } else if (type === 'preference') {
+      const items = (data.items ?? []) as unknown[];
+      scored = items.length;
+      total = Math.max(items.length, 5); // at least 5 to show meaningful progress
+    } else if (type === 'sensory') {
+      const activities = (data.activities ?? []) as unknown[];
+      scored = activities.filter((act: any) => act.rating !== undefined && act.rating !== null).length;
+      total = Math.max(activities.length, 5);
+    }
+
+    if (total === 0) return { status: 'Not Started', progress: 0 };
+    const progress = Math.min(99, Math.round((scored / total) * 100));
     return { status: progress > 0 ? 'In Progress' : 'Not Started', progress };
   };
+
+  const assessmentMeta = [
+    { type: 'skills', label: 'Skills Assessment' },
+    { type: 'behavior', label: 'Behavior Assessment' },
+    { type: 'preference', label: 'Preference Assessment' },
+    { type: 'sensory', label: 'Sensory Assessment' },
+  ];
 
   const list = students.map((s, idx) => {
     const ablls = rowFor(s.id, 'skills');
     const behavior = rowFor(s.id, 'behavior');
+    const assessments = assessmentMeta.map((m) => {
+      const r = rowFor(s.id, m.type as any);
+      return {
+        type: m.type,
+        label: m.label,
+        status: r.status,
+        progress: r.progress,
+      };
+    });
     const hasAssessment = rows.some((r) => r.studentId === s.id);
-    const phase: '6-week' | 'active' = (idx < 3 || hasAssessment || s.status === 'assessment') ? '6-week' : 'active';
+    const phase: '6-week' | 'active' = (s.phase === '6-week' || idx < 3 || hasAssessment || s.status === 'assessment') ? '6-week' : 'active';
+    const assignedStaff = teacherForStudent(s.id);
+    const assignedTherapistName = (s as any).assignedTherapist || assignedStaff?.name || currentTeacherStaff?.name || defaultTeacherName;
     return {
       id: s.id,
       name: s.fullName,
       initial: s.fullName.charAt(0),
-      age: s.age,
+      age: ageOf(s),
       program: s.programType === 'ABA' ? 'Regular Program' : 'Pooled-Out',
-      therapist: teacherName,
+      therapist: assignedTherapistName,
       lastAssessment: '—',
       phase,
       score: Math.round((ablls.progress + behavior.progress) / 2),
       ablls,
       behavior,
+      assessments,
     };
   });
 
-  // Only students currently in the 6-week assessment phase are shown.
-  const sixWeek = list.filter((x) => x.phase === '6-week');
+  // A logged-in teacher sees their assigned caseload. Non-teachers see 6-week cohort.
+  const targetList = currentUser?.role === 'teacher' ? list : list.filter((x) => x.phase === '6-week');
 
-  const completed = sixWeek.filter((x) => x.ablls.status === 'Completed' && x.behavior.status === 'Completed').length;
-  const notStarted = sixWeek.filter((x) => x.ablls.status === 'Not Started' && x.behavior.status === 'Not Started').length;
+  const completed = targetList.filter((x) => x.ablls.status === 'Completed' && x.behavior.status === 'Completed').length;
+  const notStarted = targetList.filter((x) => x.ablls.status === 'Not Started' && x.behavior.status === 'Not Started').length;
 
   const start = new Date();
   start.setDate(start.getDate() - start.getDay() - 7);
@@ -3852,19 +4367,19 @@ function buildAssessmentDashboard() {
   return {
     periodLabel,
     stats: {
-      total: sixWeek.length,
+      total: targetList.length,
       completed,
-      inProgress: sixWeek.length - completed - notStarted,
+      inProgress: Math.max(0, targetList.length - completed - notStarted),
       notStarted,
     },
-    students: sixWeek,
+    students: targetList,
   };
 }
 
 /** Extract the current user from the demo auth token. */
 function currentUserFromToken() {
   try {
-    const token = require('../token').getAccessToken();
+    const token = getAccessToken();
     if (!token) return null;
     const userId = token.split('.')[1];
     return mockDb.findById('users', userId) ?? null;
@@ -3875,7 +4390,8 @@ function currentUserFromToken() {
 
 /** Find the staff record for a given user id or email. */
 function staffForUser(userId: string) {
-  return mockDb.all('staffMembers').find((s) => s.id === userId || s.email === mockDb.findById('users', userId)?.email) ?? null;
+  const user = mockDb.findById('users', userId);
+  return mockDb.all('staffMembers').find((s) => s.id === userId || (user && (s.email === user.email || s.name === user.name))) ?? null;
 }
 
 /** Find the parent user who has this student in their childIds. */
@@ -3885,7 +4401,13 @@ function parentForStudent(studentId: string) {
 
 /** Find the staff member assigned to a student. */
 function teacherForStudent(studentId: string) {
-  return mockDb.all('staffMembers').find((s) => s.assignedStudents.includes(studentId) && s.role === 'teacher') ?? null;
+  const byAssigned = mockDb.all('staffMembers').find((s) => s.assignedStudents.includes(studentId) && s.role === 'teacher');
+  if (byAssigned) return byAssigned;
+  const student = mockDb.findById('students', studentId) as any;
+  if (student?.assignedTherapist) {
+    return mockDb.all('staffMembers').find((s) => s.name === student.assignedTherapist && s.role === 'teacher') ?? null;
+  }
+  return null;
 }
 
 /** Build or find the conversation for a student between parent and teacher. */

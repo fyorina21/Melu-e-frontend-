@@ -1,5 +1,5 @@
-import AssessmentSummaryReportScreen from '../src/screens/programdirector/AssessmentSummaryReport';
+import Index from './index';
 
-export default function AssessmentSummaryReport(props: any) {
-  return <AssessmentSummaryReportScreen {...props} />;
+export default function AssessmentSummaryReport() {
+  return <Index />;
 }

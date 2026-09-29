@@ -43,7 +43,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Parent Communication',
     'Reports',
   ],
-  institutional_admin: ['Task Analysis', 'Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
+  institutional_admin: ['Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
   system_admin: ['Staff account management', 'Role Management'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
@@ -69,6 +69,18 @@ export const ROLE_NOTIFICATION_ROUTE: Record<Role, string | undefined> = {
 };
 
 // ---- Tab → route maps (used by AppNavbar and screens for navigation) ----
+
+export const TEACHER_ROUTE_BY_TAB: Record<string, string> = {
+  Dashboard: 'TeacherDashboard',
+  Session: 'SessionDataCollection',
+  Assessments: 'AssessmentDashboard',
+  'Assessment Dashboard': 'AssessmentDashboard',
+  'Assessment Summary Report': 'AssessmentSummaryReport',
+  'Daily Notes': 'DailyNotes',
+  'ABC Log': 'AbcLog',
+  Parents: 'ParentCommunication',
+  Notifications: 'Notifications',
+};
 
 export const PARENT_ROUTE_BY_TAB: Record<string, keyof ParentStackParamList> = {
   Dashboard: 'ParentDashboard',
@@ -184,10 +196,13 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   Staff: 'WorkloadDashboard',
   Rooms: 'RoomResourceScheduling',
   Notifications: 'Notifications',
+  'Assessment Summary Report': 'AssessmentSummaryReport',
+  Assessments: 'AssessmentDashboard',
 };
 
 export function routeMapForRole(role: Role): Record<string, string> | undefined {
   switch (role) {
+    case 'teacher': return TEACHER_ROUTE_BY_TAB;
     case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
     case 'program_director': return PD_ROUTE_BY_TAB;
     case 'director': return DIRECTOR_ROUTE_BY_TAB;

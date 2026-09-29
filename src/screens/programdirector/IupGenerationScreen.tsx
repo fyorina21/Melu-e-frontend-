@@ -54,6 +54,7 @@ interface IupCandidate {
   age?: number;
   assessmentProgress?: number;
   assessmentStatus?: string;
+  hasAssessmentData?: boolean;
 }
 
 interface IupContext {
@@ -181,17 +182,33 @@ export default function IupGenerationScreen({
     }
   }, [selectedStudentId, goalBank]);
 
+  const completedCandidates = useMemo(() => {
+    return candidates.filter((c) => {
+      const statusLower = (c.status || '').toLowerCase();
+      const assessStatusLower = (c.assessmentStatus || '').toLowerCase();
+      if (statusLower.includes('in assessment') || assessStatusLower.includes('in assessment')) {
+        return false;
+      }
+      return (
+        c.assessmentStatus === '100% Complete' ||
+        c.assessmentProgress === 100 ||
+        c.status === 'Ready for IUP' ||
+        c.hasAssessmentData === true
+      );
+    });
+  }, [candidates]);
+
   const selectedCandidate = useMemo(
-    () => candidates.find((c) => c.id === selectedStudentId) ?? null,
-    [candidates, selectedStudentId]
+    () => completedCandidates.find((c) => c.id === selectedStudentId) ?? null,
+    [completedCandidates, selectedStudentId]
   );
 
   const filteredCandidates = useMemo(() => {
-    if (!searchStudentText.trim()) return candidates;
-    return candidates.filter((c) =>
+    if (!searchStudentText.trim()) return completedCandidates;
+    return completedCandidates.filter((c) =>
       c.name.toLowerCase().includes(searchStudentText.toLowerCase())
     );
-  }, [candidates, searchStudentText]);
+  }, [completedCandidates, searchStudentText]);
 
   const handleSelectGoal = async (goal: GoalBankItem) => {
     if (!selectorTarget || goal.active === false) return;
@@ -302,7 +319,7 @@ export default function IupGenerationScreen({
           customFields: customIupValues,
         });
         showToast('IUP Finalized & Activated. Goals are now in the Teacher Session workbench.', 'success');
-        await loadData();
+        navigation?.navigate?.('SessionDataCollection' as never);
       } catch {
         showToast('Failed to finalize IUP.', 'error');
       }

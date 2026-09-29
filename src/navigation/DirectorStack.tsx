@@ -9,6 +9,7 @@ import DirectorParentCommunicationScreen from '../screens/director/DirectorParen
 import ReportsOversightScreen from '../screens/director/ReportsOversightScreen';
 import DirectorStudentProgressScreen from '../screens/director/DirectorStudentProgressScreen';
 import ReportBuilderScreen from '../screens/director/ReportBuilderScreen';
+import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 
 const Stack = createNativeStackNavigator<DirectorStackParamList>();
 
@@ -48,6 +49,11 @@ export default function DirectorStack() {
       <Stack.Screen
         name="ReportBuilder"
         component={ReportBuilderScreen}
+      />
+
+      <Stack.Screen
+        name="AssessmentSummaryReport"
+        component={AssessmentSummaryReportScreen as never}
       />
     </Stack.Navigator>
   );

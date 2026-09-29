@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,7 +19,7 @@ const mockRoles = [
 function Badge({ children, system }: { children: React.ReactNode; system?: boolean }) {
   return (
     <View style={[styles.badge, system ? styles.badgeSystem : styles.badgeCustom]}>
-      <Text style={[styles.badgeText, system ? styles.badgeSystemText : styles.badgeCustomText]}>{children}</Text>
+      <Text style={system ? styles.badgeSystemText : styles.badgeCustomText}>{children}</Text>
     </View>
   );
 }

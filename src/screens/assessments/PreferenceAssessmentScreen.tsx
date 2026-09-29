@@ -206,7 +206,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     try {
       await savePreferenceAssessment(studentId, { items, sessionTab: activeTab, status });
       showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
-      navigation?.navigate?.('AssessmentSummaryReport' as never);
+      navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
     } catch {
       showToast('Failed to save assessment data', 'error');
     }

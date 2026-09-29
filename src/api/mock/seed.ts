@@ -45,6 +45,7 @@ export interface SeededStudent {
   age: number;
   programType: string;
   therapyGroup: string;
+  assignedTherapist?: string;
   status: string;
   phase?: string;
   headshotUrl: string | null;
@@ -182,7 +183,7 @@ export const seed: SeedShape = {
     { id: 't-8', studentGoalId: 'goal-2', studentGoalStepId: null, promptLevelId: 'pl-3', promptLabel: 'G', outcome: 'correct', clientEventId: 'evt-8', loggedAt: '2026-08-22T09:30:00Z' },
   ] as Array<import('../resources/types').Trial>,
 
-  notifications: [ { id: "notif-1", type: "progress", payload: { name: "Expressive Language" }, read: false, readAt: null, createdAt: new Date().toISOString(), }, { id: "notif-2", type: "observation", payload: { }, read: false, readAt: null, createdAt: new Date(Date.now() - 86400000).toISOString(), }, { id: "notif-3", type: "message", payload: { name: "System" }, read: true, readAt: new Date(Date.now() - 2 * 86400000).toISOString(), createdAt: new Date(Date.now() - 3 * 86400000).toISOString(), }, ] satisfies Notification[],
+  notifications: [] satisfies Notification[],
 
   observations: [] satisfies ParentObservation[],
 

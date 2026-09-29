@@ -109,6 +109,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn('Logout API failed:', err);
     } finally {
       setSession(null);
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', '/');
+      }
       showToast('You have been signed out.', 'info');
     }
   };

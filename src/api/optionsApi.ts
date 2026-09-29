@@ -20,6 +20,7 @@ export interface StaffOption {
   id: string;
   name: string;
   role: string;
+  assignedStudents?: string[];
 }
 
 export interface RoomOption {

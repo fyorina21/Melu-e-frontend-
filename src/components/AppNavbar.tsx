@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
+import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, TEACHER_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
 import { useBreakpoint } from '../utils/useBreakpoint';
 import type { Role } from '../types';
 
@@ -58,6 +58,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   // screen gets consistent navigation without wiring it up individually.
   const routeByTab = ((): Record<string, string> | undefined => {
     switch (role) {
+      case 'teacher': return TEACHER_ROUTE_BY_TAB;
       case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
       case 'program_director': return PD_ROUTE_BY_TAB;
       case 'director': return DIRECTOR_ROUTE_BY_TAB;
@@ -102,11 +103,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const handleTabPress = (tab: string) => {
     setDrawerOpen(false);
     setMenuOpen(false);
-    if (!routeByTab || tab === activeTabNormalized) {
-      onTabPress?.(tab);
-      return;
-    }
-    const route = routeByTab[tab];
+    const route = routeByTab?.[tab];
     if (route) {
       navigation?.navigate?.(route as never);
     } else {
@@ -187,7 +184,8 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
           </TouchableOpacity>
 
           <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-            <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
+            <View style={styles.menuOverlay}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />
               <View style={styles.menuCard}>
                 <View style={styles.menuHeader}>
                   <View style={[styles.avatar, styles.menuAvatar]}><Text style={styles.avatarText}>{initial}</Text></View>
@@ -201,7 +199,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
                   <Text style={styles.menuItemText}>Log out</Text>
                 </TouchableOpacity>
               </View>
-            </Pressable>
+            </View>
           </Modal>
         </View>
       </View>

@@ -116,6 +116,7 @@ export interface SessionIncident {
   time: string;
   behavior: string;
   studentName: string;
+  date?: string;
   antecedent?: string;
   consequence?: string;
   additionalNotes?: string;
@@ -143,7 +144,7 @@ export interface SessionSummary {
 export type SessionStackParamList = {
   TeacherDashboard: undefined;
   AssessmentDashboard: undefined;
-  AssessmentSummaryReport: undefined;
+  AssessmentSummaryReport?: { studentId?: string } | undefined;
   SkillsAssessment: { studentId: string };
   AbllsNeedMap: { studentId: string };
   BehaviorAssessment: { studentId: string };
@@ -163,6 +164,8 @@ export type SessionStackParamList = {
   ParentCommunication: undefined;
   Notifications: undefined;
   StudentProfile: { studentId: string };
+  StudentEnrollmentWizard: undefined;
+  IupGeneration: { studentId?: string } | undefined;
 };
 
 export type CoordinatorStackParamList = {
@@ -177,8 +180,11 @@ export type CoordinatorStackParamList = {
   WorkloadDashboard: undefined;
   RoomResourceScheduling: undefined;
   IupGeneration: { studentId?: string } | undefined;
-  AssessmentSummaryReport: undefined;
+  AssessmentSummaryReport?: { studentId?: string } | undefined;
   Notifications: undefined;
+  StudentEnrollmentWizard: undefined;
+  AssessmentDashboard: undefined;
+  SessionDataCollection: { sessionId?: string } | undefined;
 };
 
 export type DirectorStackParamList = {
@@ -189,6 +195,7 @@ export type DirectorStackParamList = {
   ReportsOversight: undefined;
   DirectorStudentProgress: undefined;
   ReportBuilder: undefined;
+  AssessmentSummaryReport?: { studentId?: string } | undefined;
 };
 
 export type ProgramDirectorStackParamList = {
@@ -202,7 +209,9 @@ export type ProgramDirectorStackParamList = {
   PdParentCommunication: undefined;
   GraphChartView: { studentId?: string; goalIds?: string[] } | undefined;
   StudentEnrollmentWizard: undefined;
-  AssessmentSummaryReport: undefined;
+  AssessmentSummaryReport?: { studentId?: string } | undefined;
+  AssessmentDashboard: undefined;
+  SessionDataCollection: { sessionId?: string } | undefined;
 };
 
 export type InstitutionalAdminStackParamList = {

@@ -3,21 +3,12 @@ import { ActivityIndicator } from 'react-native';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, TextInput } from 'react-native';
 import { Alert, SafeAreaView } from 'react-native';
 import AppNavbar from '../../components/AppNavbar';
-import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { ProgramDirectorStackParamList } from '../../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { getAssessmentSummaryDashboard } from '../../api/programDirectorApi';
 import AbllsGridView from '../../components/AbllsGridView';
-
-function getAblssColor(score: number | null): { bg: string; text: string; label: string } {
-  if (score === null) return { bg: '#F3F4F6', text: '#6B7280', label: 'Not Assessed' };
-  if (score <= 33) return { bg: '#FEE2E2', text: '#DC2626', label: 'Needs Support' };
-  if (score <= 66) return { bg: '#FEF3C7', text: '#B45309', label: 'Developing' };
-  return { bg: '#D1FAE5', text: '#059669', label: 'Proficient' };
-}
-
 const MASS_ITEMS = [
   { id: 'M1', text: 'Would the behavior occur continuously if left alone for long periods of time?' },
   { id: 'M2', text: 'Does the behavior occur when the person is asked to do a difficult task?' },
@@ -44,36 +35,39 @@ const FAST_ITEMS = [
   { id: 'F8', text: 'Is the behavior reduced when a preferred item or activity is provided freely?' },
 ];
 
-function ScoreBar({ score }: { score: number | null }) {
-  if (score === null) return <View style={[styles.barTrack, { backgroundColor: '#E5E7EB' }]} />;
-  const color = score <= 33 ? '#F87171' : score <= 66 ? '#FBBF24' : '#22C55E';
-  return (
-    <View style={styles.barTrack}>
-      <View style={[styles.barFill, { width: `${score}%`, backgroundColor: color }]} />
-    </View>
-  );
-}
-
 export default function AssessmentSummaryReport({ route, navigation }: any) {
   const [selectedStudent, setSelectedStudent] = useState(route?.params?.studentId || '');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [prefTab, setPrefTab] = useState('Sensory Time');
 
+  useEffect(() => {
+    if (route?.params?.studentId && route.params.studentId !== selectedStudent) {
+      setSelectedStudent(route.params.studentId);
+    }
+  }, [route?.params?.studentId]);
 
   useEffect(() => {
     let active = true;
     const fetchDashboard = async () => {
       setLoading(true);
+      setError(null);
       try {
         const response = await getAssessmentSummaryDashboard(selectedStudent);
         if (active) {
           setData(response.data);
+          if (!selectedStudent && response.data?.selectedStudentId) {
+            setSelectedStudent(response.data.selectedStudentId);
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to load assessment summary dashboard', err);
+        if (active) {
+          setError(err?.message || 'Failed to load assessment summary dashboard');
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -82,12 +76,34 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
     return () => { active = false; };
   }, [selectedStudent]);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <AppNavbar activeTab="Assessment Summary Report" onTabPress={(tab) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab] as never)} />
-        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <AppNavbar activeTab="Assessment Summary Report" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={colors.primaryBlue} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <AppNavbar activeTab="Assessment Summary Report" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 16, color: colors.navyText, fontWeight: '600', marginBottom: 8 }}>
+            Unable to load assessment summary
+          </Text>
+          <Text style={{ fontSize: 13, color: colors.mutedText, textAlign: 'center', marginBottom: 16 }}>
+            {error || 'No assessment data available.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.downloadBtn}
+            onPress={() => setSelectedStudent(selectedStudent || '')}
+          >
+            <Text style={styles.downloadBtnText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -102,7 +118,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
   if (data?.notSelected) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <AppNavbar activeTab="Assessment Summary Report" onTabPress={(tab) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab] as never)} />
+        <AppNavbar activeTab="Assessment Summary Report" />
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
           <View style={styles.headerRow}>
             <View style={styles.headerLeft}>
@@ -152,18 +168,11 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
     );
   }
 
-  const { studentInfo, ablls, abllsScores, behavior, preference, sensory, socialSkills } = data;
-
-  const colorNeedMap = {
-    red: ablls.filter(d => d.score !== null && d.score <= 33).map(d => d.domain),
-    yellow: ablls.filter(d => d.score !== null && d.score > 33 && d.score <= 66).map(d => d.domain),
-    green: ablls.filter(d => d.score !== null && d.score > 66).map(d => d.domain),
-    gray: ablls.filter(d => d.score === null).map(d => d.domain),
-  };
+  const { studentInfo, abllsScores, behavior, preference, sensory, socialSkills } = data;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppNavbar activeTab="Assessment Summary Report" onTabPress={(tab) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab] as never)} />
+      <AppNavbar activeTab="Assessment Summary Report" />
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
@@ -188,7 +197,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               onPress={() => setDropdownOpen(!dropdownOpen)}
             >
               <Text style={styles.dropdownToggleText}>
-                {mockStudents.find(s => s.id === selectedStudent)?.name || 'Select a Student'}
+                {mockStudents.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
               </Text>
             </TouchableOpacity>
             
@@ -203,8 +212,8 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 />
                 <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
                   {mockStudents
-                    .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                    .map(s => (
+                    .filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map((s: any) => (
                       <TouchableOpacity
                         key={s.id}
                         onPress={() => {
@@ -217,7 +226,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                         <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>{s.name}</Text>
                       </TouchableOpacity>
                     ))}
-                  {mockStudents.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  {mockStudents.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                     <Text style={{ padding: 12, color: colors.mutedText, textAlign: 'center' }}>No students found.</Text>
                   )}
                 </ScrollView>
@@ -246,32 +255,8 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           <Text style={styles.cardHeaderText}>Skills Assessment — ABLLS-R</Text>
         </View>
         <View style={styles.cardBody}>
-          {ablls.map(domain => {
-            const c = getAblssColor(domain.score);
-            return (
-              <View key={domain.domain} style={styles.abllRow}>
-                <Text style={styles.abllDomain}>{domain.domain}</Text>
-                <View style={styles.abllBarWrap}>
-                  <ScoreBar score={domain.score} />
-                  <Text style={styles.abllScoreText}>{domain.score !== null ? `${domain.score}%` : '—'}</Text>
-                </View>
-                <View style={[styles.pill, { backgroundColor: c.bg }]}>
-                  <Text style={[styles.pillText, { color: c.text }]}>{c.label}</Text>
-                </View>
-              </View>
-            );
-          })}
-          <View style={styles.needMapRow}>
-            <NeedMapBox title="Needs Support (0–33%)" items={colorNeedMap.red} color="#FEE2E2" textColor="#DC2626" />
-            <NeedMapBox title="Developing (34–66%)" items={colorNeedMap.yellow} color="#FEF3C7" textColor="#B45309" />
-            <NeedMapBox title="Proficient (67–100%)" items={colorNeedMap.green} color="#D1FAE5" textColor="#059669" />
-            <NeedMapBox title="Not Assessed" items={colorNeedMap.gray} color="#F3F4F6" textColor="#6B7280" />
-          </View>
-          
-          <View style={{ marginTop: 16 }}>
-            <Text style={[styles.cardHeaderText, { marginBottom: 12, color: '#0F172A' }]}>ABLLS-R Skill Tracking Grid</Text>
-            <AbllsGridView scores={abllsScores} />
-          </View>
+          <Text style={[styles.cardHeaderText, { marginBottom: 12, color: '#0F172A' }]}>ABLLS-R Skill Tracking Grid</Text>
+          <AbllsGridView scores={abllsScores} />
         </View>
       </View>
 
@@ -312,7 +297,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           <SectionTitle title="ABC Incident Log Summary" />
           <Text style={styles.subNote}>Total incidents: <Text style={styles.subNoteBold}>{behavior.abc.totalIncidents}</Text></Text>
           <TableHeader cols={['Top Antecedents', 'Count']} />
-          {behavior.abc.topAntecedents.map(item => (
+          {behavior.abc.topAntecedents.map((item: any) => (
             <TableRow key={item.antecedent} values={[
               <Text key="a" style={styles.tableCell}>{item.antecedent}</Text>,
               <Text key="c" style={[styles.tableCell, styles.tableRight]}>{item.count}</Text>
@@ -414,14 +399,7 @@ function InfoItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NeedMapBox({ title, items, color, textColor }: { title: string; items: string[]; color: string; textColor: string }) {
-  return (
-    <View style={[styles.needBox, { backgroundColor: color }]}>
-      <Text style={[styles.needTitle, { color: textColor }]}>{title}</Text>
-      <Text style={[styles.needItems, { color: textColor, opacity: 0.9 }]}>{items.join(', ') || 'None'}</Text>
-    </View>
-  );
-}
+
 
 function SectionTitle({ title }: { title: string }) {
   return <Text style={styles.sectionTitle}>{title}</Text>;

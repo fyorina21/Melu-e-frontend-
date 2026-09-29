@@ -325,7 +325,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     try {
       await createStudentEnrollment(payload);
       showToast(`${form.name} enrolled in ${form.program}`, 'success');
-      navigation?.goBack?.();
+      navigation?.navigate?.('AssessmentDashboard' as never);
     } catch (err) {
       showToast('Could not save the enrollment. Please try again.', 'error');
     } finally {

@@ -119,13 +119,15 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
+      const allAnswered = totalItems > 0 && totalAnswered >= totalItems;
+      const status = allAnswered ? 'completed' : 'in_progress';
       saveStorageAssessment(studentId, { scores, notes, customFields });
-      saveSkillsAssessment(studentId, { scores, notes, customFields }).catch(() => {});
+      saveSkillsAssessment(studentId, { scores, notes, customFields, status }).catch(() => {});
     }, 400);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [scores, notes, customFields, studentId, totalAnswered]);
+  }, [scores, notes, customFields, studentId, totalAnswered, totalItems]);
 
   if (loading) return <ScreenLoader />;
 
@@ -140,8 +142,10 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const setScore = (itemId: string, score: Score) => {
     const updated = { ...scores, [itemId]: score };
     setScores(updated);
+    const allAnswered = totalItems > 0 && Object.keys(updated).length >= totalItems;
+    const status = allAnswered ? 'completed' : 'in_progress';
     saveStorageAssessment(studentId, { scores: updated, notes, customFields });
-    saveSkillsAssessment(studentId, { scores: updated, notes, customFields }).catch(() => {});
+    saveSkillsAssessment(studentId, { scores: updated, notes, customFields, status }).catch(() => {});
   };
 
   const handleNotesChange = (itemId: string, text: string) => {
@@ -152,10 +156,17 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   const handleSaveDraft = async () => {
     try {
+      const allAnswered = totalItems > 0 && totalAnswered >= totalItems;
+      const status = allAnswered ? 'completed' : 'in_progress';
       saveStorageAssessment(studentId, { scores, notes, customFields });
-      await saveSkillsAssessment(studentId, { scores, notes, customFields });
-      showToast(`${studentName} ABLLS assessment saved successfully.`, 'success');
-      navigation?.navigate?.('AssessmentSummaryReport' as never);
+      await saveSkillsAssessment(studentId, { scores, notes, customFields, status });
+      showToast(
+        allAnswered
+          ? `${studentName} ABLLS assessment completed!`
+          : `${studentName} ABLLS assessment saved successfully.`,
+        'success'
+      );
+      navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');
     }

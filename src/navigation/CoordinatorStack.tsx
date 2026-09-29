@@ -13,6 +13,10 @@ import WorkloadDashboardScreen from '../screens/coordinator/WorkloadDashboardScr
 import RoomResourceSchedulingScreen from '../screens/coordinator/RoomResourceSchedulingScreen';
 import CoordinatorNotificationsScreen from '../screens/notifications/CoordinatorNotificationsScreen';
 import IupGenerationScreen from '../screens/programdirector/IupGenerationScreen';
+import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
+import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
+import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
+import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 
 const Stack = createNativeStackNavigator<CoordinatorStackParamList>();
 
@@ -31,6 +35,10 @@ export default function CoordinatorStack() {
       <Stack.Screen name="RoomResourceScheduling" component={RoomResourceSchedulingScreen} />
       <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
       <Stack.Screen name="Notifications" component={CoordinatorNotificationsScreen} />
+      <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen as never} />
+      <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
+      <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen as never} />
+      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen as never} />
     </Stack.Navigator>
   );
 }

@@ -500,5 +500,22 @@ describe('demo-mode persistence', () => {
     expect(abc.data.rows.length).toBeGreaterThan(0);
     expect(abc.data.rows[0].teacher).toBeTruthy();
     expect(typeof abc.data.stats.totalIncidents).toBe('number');
+
+    // Assessment summary dashboard returns complete shape required by AssessmentSummaryReport
+    const summaryReport = await mockHttp.get<{
+      students: Array<{ id: string; name: string }>;
+      studentInfo: { fullName: string };
+      ablls: Array<{ domain: string; score: number | null }>;
+      behavior: { mass: { dominantFunction: string }; fast: { hypothesizedFunction: string }; abc: { totalIncidents: number } };
+      preference: { items: Array<{ rank: number; item: string }> };
+    }>('/program-director/assessment-summary-dashboard', {
+      params: { studentId: stuA.id },
+    });
+    expect(summaryReport.data.students.length).toBeGreaterThan(0);
+    expect(summaryReport.data.studentInfo.fullName).toBeTruthy();
+    expect(summaryReport.data.ablls.length).toBeGreaterThan(0);
+    expect(summaryReport.data.behavior.mass.dominantFunction).toBeTruthy();
+    expect(summaryReport.data.behavior.fast.hypothesizedFunction).toBeTruthy();
+    expect(summaryReport.data.preference.items.length).toBeGreaterThan(0);
   }, 30000);
 });
