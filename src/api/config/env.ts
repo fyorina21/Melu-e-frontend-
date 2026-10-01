@@ -11,7 +11,7 @@
 
 const PLACEHOLDER_HOST = 'REPLACE_WITH_REAL_API_HOST';
 
-const DEFAULT_API_URL = `https://${PLACEHOLDER_HOST}`;
+const DEFAULT_API_URL = 'http://localhost:3000';
 
 export const env = {
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL,
@@ -21,5 +21,8 @@ export const env = {
 
 export const apiBaseUrl = `${env.apiUrl}/api/${env.apiVersion}`;
 
-/** True while the backend host has not been configured yet. */
-export const isDemoMode = env.apiUrl.includes(PLACEHOLDER_HOST);
+/** True while in test suite (unless mocked), when explicitly enabled, or when host hasn't been configured. */
+export const isDemoMode =
+  (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') ||
+  process.env.EXPO_PUBLIC_DEMO_MODE === 'true' ||
+  env.apiUrl.includes(PLACEHOLDER_HOST);

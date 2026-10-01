@@ -14,12 +14,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import { DEMO_ACCOUNTS, EXTRA_ROLES } from '../../context/AuthContext';
 import { resetPassword, requestResetCode } from '../../api/sessionApi';
 
 type RootStackParamList = { Login: undefined; ForgotPassword: undefined };
-
-const DEMO_RESET_CODE = '123456';
 
 export default function ForgotPasswordScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -28,55 +25,66 @@ export default function ForgotPasswordScreen() {
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleRequestCode = async () => {
-    const known = [...DEMO_ACCOUNTS, ...EXTRA_ROLES].some(
-      (a) => a.email.toLowerCase() === email.trim().toLowerCase()
-    );
-    if (!email.trim() || !known) {
-      Alert.alert('Unknown email', 'Enter one of the demo account emails shown on the login screen.');
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
       return;
     }
+    setLoading(true);
     try {
-      await requestResetCode({ email });
-    } catch (err) {}
-    Alert.alert('Reset code sent', `Your reset code is ${DEMO_RESET_CODE}`);
-    setStep('reset');
+      await requestResetCode({ email: trimmedEmail });
+      Alert.alert('Reset Code Sent', 'If an account exists with this email address, you will receive a verification code.');
+      setStep('reset');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Could not send reset code. Please try again.';
+      Alert.alert('Request Failed', msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleReset = async () => {
-    if (code.trim() !== DEMO_RESET_CODE) {
-      Alert.alert('Invalid code', `Enter the reset code we sent (demo: ${DEMO_RESET_CODE}).`);
+    if (!code.trim()) {
+      Alert.alert('Missing Code', 'Please enter the verification code sent to your email.');
       return;
     }
     if (newPassword.length < 6) {
-      Alert.alert('Weak password', 'New password must be at least 6 characters.');
+      Alert.alert('Weak Password', 'New password must be at least 6 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Passwords do not match', 'Please re-enter the same password in both fields.');
+      Alert.alert('Passwords Do Not Match', 'Please re-enter the same password in both fields.');
       return;
     }
+    setLoading(true);
     try {
-      await resetPassword({ email, code, password: newPassword });
-    } catch (err) {}
-    setStep('done');
+      await resetPassword({ email: email.trim(), code: code.trim(), password: newPassword });
+      setStep('done');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to reset password. Please verify the code and try again.';
+      Alert.alert('Reset Failed', msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
-          <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()} disabled={loading}>
             <Feather name="arrow-left" size={16} color={colors.statusInProgressText} />
             <Text style={styles.backText}>Back to Sign In</Text>
           </TouchableOpacity>
 
           <Text style={typography.h1}>Reset Your Password</Text>
           <Text style={[typography.body, { textAlign: 'center' }]}>
-            {step === 'request' && 'Enter your account email and we\u2019ll send a reset code.'}
+            {step === 'request' && 'Enter your account email and we’ll send a reset code.'}
             {step === 'reset' && 'Enter the reset code and choose a new password.'}
-            {step === 'done' && 'Your password has been reset.'}
+            {step === 'done' && 'Your password has been successfully reset.'}
           </Text>
 
           {step === 'request' && (
@@ -87,17 +95,18 @@ export default function ForgotPasswordScreen() {
                   <Feather name="mail" size={16} color={colors.mutedText} />
                   <TextInput
                     style={styles.input}
-                    placeholder="you@melue.org"
+                    placeholder="you@domain.com"
                     placeholderTextColor={colors.mutedText}
                     autoCapitalize="none"
                     keyboardType="email-address"
                     value={email}
                     onChangeText={setEmail}
+                    editable={!loading}
                   />
                 </View>
               </View>
-              <TouchableOpacity style={styles.primaryBtn} onPress={handleRequestCode}>
-                <Text style={styles.primaryBtnText}>Send Reset Code</Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={handleRequestCode} disabled={loading}>
+                <Text style={styles.primaryBtnText}>{loading ? 'Sending...' : 'Send Reset Code'}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -110,11 +119,12 @@ export default function ForgotPasswordScreen() {
                   <Feather name="key" size={16} color={colors.mutedText} />
                   <TextInput
                     style={styles.input}
-                    placeholder="6-digit code"
+                    placeholder="Verification code"
                     placeholderTextColor={colors.mutedText}
                     keyboardType="number-pad"
                     value={code}
                     onChangeText={setCode}
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -129,6 +139,7 @@ export default function ForgotPasswordScreen() {
                     secureTextEntry
                     value={newPassword}
                     onChangeText={setNewPassword}
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -143,11 +154,12 @@ export default function ForgotPasswordScreen() {
                     secureTextEntry
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
+                    editable={!loading}
                   />
                 </View>
               </View>
-              <TouchableOpacity style={styles.primaryBtn} onPress={handleReset}>
-                <Text style={styles.primaryBtnText}>Reset Password</Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={handleReset} disabled={loading}>
+                <Text style={styles.primaryBtnText}>{loading ? 'Resetting...' : 'Reset Password'}</Text>
               </TouchableOpacity>
             </>
           )}

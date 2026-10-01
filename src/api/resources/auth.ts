@@ -14,9 +14,11 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string;
+  token?: string;
+  access_token?: string;
   role?: string;
   homeRoute?: string;
+  home_route?: string;
 }
 
 export interface CreateAccountRequest {
@@ -49,9 +51,14 @@ export const authApi = {
       password: payload.password,
       remember_device: payload.rememberDevice,
     });
-    const token = data.token ?? extractBearer(headers.authorization);
+    const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
     if (token) await setAccessToken(token);
-    return data;
+    return {
+      ...data,
+      token: token || '',
+      role: data.role,
+      homeRoute: data.homeRoute || (data as any).home_route,
+    };
   },
 
   async logout(): Promise<void> {

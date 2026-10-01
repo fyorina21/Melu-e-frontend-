@@ -83,7 +83,7 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
       setName('');
       setEmail('');
       setPhone('');
-      setPassword('demo1234');
+      setPassword('');
       setRoles(['Teacher']);
     }
   }, [staff, visible]);
@@ -131,7 +131,7 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
               <View style={styles.passwordRow}>
                 <TextInput
                   style={[styles.textInput, { flex: 1 }]}
-                  placeholder={staff ? 'Leave blank to keep existing password' : 'Enter login password (e.g. demo1234)'}
+                  placeholder={staff ? 'Leave blank to keep existing password' : 'Enter login password'}
                   placeholderTextColor={colors.mutedText}
                   value={password}
                   onChangeText={setPassword}
@@ -195,20 +195,6 @@ function ResetPasswordModal({ visible, staff, onClose, onSuccess }: ResetPasswor
   }, [staff, visible]);
 
   if (!staff) return null;
-
-  const handleQuickReset = async () => {
-    try {
-      setSaving(true);
-      await resetStaffPassword(staff.id, 'demo1234');
-      showToast(`Password for ${staff.name} reset to "demo1234"`, 'success');
-      onSuccess();
-      onClose();
-    } catch (err) {
-      showToast('Failed to reset password', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleCustomReset = async () => {
     if (!newPassword.trim()) {
@@ -280,25 +266,6 @@ function ResetPasswordModal({ visible, staff, onClose, onSuccess }: ResetPasswor
               disabled={saving}
             >
               <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save New Password'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: spacing.xs,
-                borderWidth: 1,
-                borderColor: '#F59E0B',
-                backgroundColor: '#FEF3C7',
-                borderRadius: radius.md,
-                paddingVertical: spacing.md,
-              }}
-              onPress={handleQuickReset}
-              disabled={saving}
-            >
-              <Feather name="refresh-cw" size={14} color="#B45309" />
-              <Text style={{ fontWeight: '700', color: '#B45309', fontSize: 13 }}>Reset to Default ("demo1234")</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

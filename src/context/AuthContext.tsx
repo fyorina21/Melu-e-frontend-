@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
-import type { DemoAccount, AuthSession, Role } from '../types';
+import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
 import { useToast } from './ToastContext';
 
@@ -13,22 +13,8 @@ export const ROLES = {
   PARENT: 'parent',
 } as const;
 
-export const DEMO_ACCOUNTS: DemoAccount[] = [
-  { role: ROLES.TEACHER, label: 'Teacher', email: 'teacher@melue.org', userName: 'Teacher A' },
-  { role: ROLES.COORDINATOR, label: 'Coordinator', email: 'coordinator@melue.org', userName: 'Coordinator A' },
-  { role: ROLES.DIRECTOR, label: 'Director', email: 'director@melue.org', userName: 'Director A' },
-  { role: ROLES.INSTITUTIONAL_ADMIN, label: 'Institutional Admin', email: 'admin@melue.org', userName: 'Admin A' },
-  { role: ROLES.SYSTEM_ADMIN, label: 'System Admin', email: 'sysadmin@melue.org', userName: 'Sysadmin A' },
-];
-
-export const EXTRA_ROLES: DemoAccount[] = [
-  { role: ROLES.PROGRAM_DIRECTOR, label: 'Program Director', email: 'pd@melue.org', userName: 'Program Director A' },
-  { role: ROLES.PARENT, label: 'Parent', email: 'parent@melue.org', userName: 'Parent A' },
-];
-
 interface AuthContextValue {
   session: AuthSession | null;
-  loginAsRole: (account: DemoAccount) => void;
   loginWithCredentials: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -60,25 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     restoreSession();
   }, []);
-
-  const loginAsRole = async (account: DemoAccount) => {
-    try {
-      setLoading(true);
-      await authApi.login({ email: account.email, password: 'demo1234' });
-      const user = await authApi.me();
-      setSession({
-        role: user.role as Role,
-        userName: user.name,
-        email: user.email,
-      });
-      showToast(`Welcome back, ${user.name}!`, 'success');
-    } catch (err) {
-      console.error('Login failed:', err);
-      showToast('Login failed. Please check your credentials and try again.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loginWithCredentials = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -119,7 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
-      loginAsRole,
       loginWithCredentials,
       logout,
     }),

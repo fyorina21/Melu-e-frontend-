@@ -5,6 +5,7 @@ import {
   MaterialCommunityIcons, 
   Feather 
 } from '@expo/vector-icons';
+import { useAuth } from '../../context/AuthContext';
 
 type IconType = 'Ionicons' | 'MaterialCommunityIcons' | 'Feather';
 
@@ -25,6 +26,7 @@ const menuItems: MenuItem[] = [
 ];
 
 export default function SideBar() {
+  const { session } = useAuth();
   const [activeId, setActiveId] = useState<string>('1');
 
   // Fix: Explicitly typing parameters (type, name, color)
@@ -72,9 +74,9 @@ export default function SideBar() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.userName}>Admin A</Text>
-        <Text style={styles.userEmail}>admin@melue.org</Text>
-        <Text style={styles.userRole}>INSTITUTIONAL_ADMIN</Text>
+        <Text style={styles.userName}>{session?.userName || 'Administrator'}</Text>
+        <Text style={styles.userEmail}>{session?.email || ''}</Text>
+        <Text style={styles.userRole}>{session?.role ? session.role.toUpperCase() : 'ADMIN'}</Text>
       </View>
     </View>
   );

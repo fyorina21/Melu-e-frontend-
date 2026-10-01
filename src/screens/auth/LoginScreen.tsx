@@ -9,43 +9,34 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
-import { useAuth, DEMO_ACCOUNTS, EXTRA_ROLES } from '../../context/AuthContext';
-import type { DemoAccount } from '../../types';
-
-const ALL_DEMO_ACCOUNTS: DemoAccount[] = [...DEMO_ACCOUNTS, ...EXTRA_ROLES];
+import { useAuth } from '../../context/AuthContext';
 
 export default function LoginScreen() {
-  const { loginAsRole, loginWithCredentials } = useAuth();
+  const { loginWithCredentials } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<{ Login: undefined; ForgotPassword: undefined }>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Missing fields', 'Please enter both your email address and password.');
       return;
     }
-    const success = await loginWithCredentials(email, password);
-    if (!success) {
-      // Fallback for demo shortcut accounts if entered with default password
-      const match = ALL_DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === email.trim().toLowerCase());
-      if (match) {
-        loginAsRole(match);
-      }
+    setSubmitting(true);
+    try {
+      await loginWithCredentials(email, password);
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  const handleDemoTap = (account: DemoAccount) => {
-    setEmail(account.email);
-    setPassword('demo1234');
-    loginAsRole(account);
   };
 
   return (
@@ -64,12 +55,13 @@ export default function LoginScreen() {
               <Feather name="mail" size={16} color={colors.mutedText} />
               <TextInput
                 style={styles.input}
-                placeholder="you@melue.org"
+                placeholder="you@domain.com"
                 placeholderTextColor={colors.mutedText}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 value={email}
                 onChangeText={setEmail}
+                editable={!submitting}
               />
             </View>
           </View>
@@ -85,33 +77,28 @@ export default function LoginScreen() {
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
+                editable={!submitting}
               />
             </View>
           </View>
 
           <View style={styles.rowBetween}>
-            <TouchableOpacity style={styles.rememberRow} onPress={() => setRemember((r) => !r)}>
+            <TouchableOpacity style={styles.rememberRow} onPress={() => setRemember((r) => !r)} disabled={submitting}>
               <View style={[styles.checkbox, remember && styles.checkboxChecked]} />
               <Text style={typography.body}>Remember this device</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+            <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} disabled={submitting}>
               <Text style={styles.linkText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.signInBtn} onPress={handleSignIn}>
-            <Text style={styles.signInBtnText}>Sign In</Text>
+          <TouchableOpacity style={[styles.signInBtn, submitting && styles.signInBtnDisabled]} onPress={handleSignIn} disabled={submitting}>
+            {submitting ? (
+              <ActivityIndicator color={colors.navyText} size="small" />
+            ) : (
+              <Text style={styles.signInBtnText}>Sign In</Text>
+            )}
           </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <Text style={[typography.caption, { textAlign: 'center' }]}>Demo Accounts (any password)</Text>
-          {ALL_DEMO_ACCOUNTS.map((account) => (
-            <TouchableOpacity key={account.role} style={styles.demoRow} onPress={() => handleDemoTap(account)}>
-              <Text style={typography.bodyBold}>{account.label}</Text>
-              <Text style={styles.demoEmail}>{account.email}</Text>
-            </TouchableOpacity>
-          ))}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -149,8 +136,6 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: colors.navyText, borderColor: colors.navyText },
   linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 13 },
   signInBtn: { width: '100%', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.sm },
+  signInBtnDisabled: { opacity: 0.7 },
   signInBtnText: { fontWeight: '700', color: colors.navyText },
-  divider: { width: '100%', height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
-  demoRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  demoEmail: { color: colors.mutedText, fontSize: 13 },
 });
