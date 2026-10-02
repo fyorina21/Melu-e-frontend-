@@ -46,6 +46,7 @@ function extractBearer(header: string | undefined): string | null {
 
 export const authApi = {
   async login(payload: LoginRequest): Promise<LoginResponse> {
+    await setAccessToken(null);
     const { data, headers } = await http.post<LoginResponse>('/auth/login', {
       email: payload.email,
       password: payload.password,
@@ -64,6 +65,8 @@ export const authApi = {
   async logout(): Promise<void> {
     try {
       await http.post('/auth/logout');
+    } catch (_ignored) {
+      // Backend may respond 400 if token was already expired or invalid; local cleanup proceeds
     } finally {
       await setAccessToken(null);
     }

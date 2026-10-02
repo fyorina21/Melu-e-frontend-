@@ -70,8 +70,30 @@ function createHttpClient(): AxiosInstance {
   });
 
   instance.interceptors.request.use((config) => {
-    const token = getAccessToken();
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    const isPublicAuthUrl =
+      config.url?.includes('/auth/login') ||
+      config.url?.includes('/auth/create-account') ||
+      config.url?.includes('/auth/reset-password');
+
+    if (isPublicAuthUrl) {
+      if (config.headers) {
+        if (typeof (config.headers as any).delete === 'function') {
+          (config.headers as any).delete('Authorization');
+          (config.headers as any).delete('authorization');
+        }
+        delete (config.headers as any).Authorization;
+        delete (config.headers as any).authorization;
+      }
+    } else {
+      const token = getAccessToken();
+      if (token) {
+        if (typeof (config.headers as any).set === 'function') {
+          (config.headers as any).set('Authorization', `Bearer ${token}`);
+        } else {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    }
     (config as RetriableConfig)._startedAt = Date.now();
     return config;
   });

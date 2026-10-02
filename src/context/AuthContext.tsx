@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
+import { setAccessToken } from '../api/token';
 import { useToast } from './ToastContext';
 
 export const ROLES = {
   TEACHER: 'teacher',
+  THERAPIST: 'therapist',
   COORDINATOR: 'coordinator',
   DIRECTOR: 'director',
   PROGRAM_DIRECTOR: 'program_director',
@@ -12,6 +14,27 @@ export const ROLES = {
   SYSTEM_ADMIN: 'system_admin',
   PARENT: 'parent',
 } as const;
+
+export function normalizeRole(rawRole?: string): Role {
+  if (!rawRole) return 'teacher';
+  const lower = rawRole.toLowerCase().trim().replace(/[\s-]+/g, '_');
+  if (lower === 'therapist' || lower === 'teacher' || lower === 'clinical_staff') {
+    return 'teacher';
+  }
+  if (lower === 'coordinator' || lower === 'therapy_coordinator') {
+    return 'coordinator';
+  }
+  if (lower === 'director') return 'director';
+  if (lower === 'program_director') return 'program_director';
+  if (lower === 'institutional_admin' || lower === 'institutional_administrator' || lower === 'admin') {
+    return 'institutional_admin';
+  }
+  if (lower === 'system_admin' || lower === 'system_administrator' || lower === 'sysadmin') {
+    return 'system_admin';
+  }
+  if (lower === 'parent') return 'parent';
+  return lower as Role;
+}
 
 interface AuthContextValue {
   session: AuthSession | null;
@@ -31,15 +54,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const token = await authApi.restore();
         if (token) {
-          const user = await authApi.me();
-          setSession({
-            role: user.role as Role,
-            userName: user.name,
-            email: user.email,
-          });
+          try {
+            const user = await authApi.me();
+            setSession({
+              role: normalizeRole(user.role),
+              userName: user.name,
+              email: user.email,
+            });
+          } catch (meErr) {
+            console.warn('Failed to restore session (token expired or invalid):', meErr);
+            await setAccessToken(null);
+          }
         }
       } catch (err) {
         console.warn('Failed to restore session:', err);
+        await setAccessToken(null);
       } finally {
         setLoading(false);
       }
@@ -53,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authApi.login({ email: email.trim(), password: password.trim() });
       const user = await authApi.me();
       setSession({
-        role: user.role as Role,
+        role: normalizeRole(user.role),
         userName: user.name,
         email: user.email,
       });

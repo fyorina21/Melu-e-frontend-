@@ -58,7 +58,8 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   // screen gets consistent navigation without wiring it up individually.
   const routeByTab = ((): Record<string, string> | undefined => {
     switch (role) {
-      case 'teacher': return TEACHER_ROUTE_BY_TAB;
+      case 'teacher':
+      case 'therapist': return TEACHER_ROUTE_BY_TAB;
       case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
       case 'program_director': return PD_ROUTE_BY_TAB;
       case 'director': return DIRECTOR_ROUTE_BY_TAB;

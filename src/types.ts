@@ -23,7 +23,8 @@ export type Role =
   | 'program_director'
   | 'institutional_admin'
   | 'system_admin'
-  | 'parent';
+  | 'parent'
+  | 'therapist';
 
 export interface DemoAccount {
   role: Role;

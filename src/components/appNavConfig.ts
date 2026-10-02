@@ -18,6 +18,7 @@ import type {
 
 export const ROLE_TABS: Record<Role, string[]> = {
   teacher: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
+  therapist: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
   coordinator: [
     'Dashboard',
     'Live Sessions',
@@ -50,6 +51,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
 
 export const ROLE_LABELS: Record<Role, string> = {
   teacher: 'Teacher',
+  therapist: 'Therapist',
   coordinator: 'Therapy Coordinator',
   director: 'Director',
   program_director: 'Program Director',
@@ -60,6 +62,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_NOTIFICATION_ROUTE: Record<Role, string | undefined> = {
   teacher: 'Notifications',
+  therapist: 'Notifications',
   coordinator: 'Notifications',
   director: undefined,
   program_director: undefined,
@@ -202,7 +205,8 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
 
 export function routeMapForRole(role: Role): Record<string, string> | undefined {
   switch (role) {
-    case 'teacher': return TEACHER_ROUTE_BY_TAB;
+    case 'teacher':
+    case 'therapist': return TEACHER_ROUTE_BY_TAB;
     case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
     case 'program_director': return PD_ROUTE_BY_TAB;
     case 'director': return DIRECTOR_ROUTE_BY_TAB;

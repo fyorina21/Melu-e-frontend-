@@ -25,6 +25,7 @@ const SIDEBAR_ROLES = new Set<Role>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADM
 
 const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
   [ROLES.TEACHER]: SessionStack,
+  [ROLES.THERAPIST]: SessionStack,
   [ROLES.COORDINATOR]: CoordinatorStack,
   [ROLES.PROGRAM_DIRECTOR]: ProgramDirectorStack,
   [ROLES.DIRECTOR]: DirectorStack,
@@ -80,10 +81,7 @@ function AppNavigator() {
     );
   }
 
-  const RoleStack = STACK_BY_ROLE[session.role];
-  if (!RoleStack) {
-    throw new Error(`No navigation stack registered for role: ${session.role}`);
-  }
+  const RoleStack = STACK_BY_ROLE[session.role] || STACK_BY_ROLE[ROLES.TEACHER];
 
   if (SIDEBAR_ROLES.has(session.role)) {
     return (
@@ -119,7 +117,10 @@ export default function RootNavigator() {
     deepLinkRestored.current = true;
 
     const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
-    if (!target) return;
+    if (!target || target === 'Login' || target === 'ForgotPassword') {
+      window.history.replaceState(null, '', '/');
+      return;
+    }
 
     const nav = navRef.current;
     try {
@@ -140,6 +141,7 @@ export default function RootNavigator() {
   return (
     <NavigationIndependentTree>
       <NavigationContainer
+        key={session?.role ?? 'auth'}
         ref={navRef}
         onStateChange={(state) => {
           syncUrlToScreen(state);
