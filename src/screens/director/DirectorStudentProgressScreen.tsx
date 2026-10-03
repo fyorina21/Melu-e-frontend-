@@ -22,9 +22,10 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
-import StatusPill from '../../components/StatusPill';
+import StatusPill, { type StatusType } from '../../components/StatusPill';
 import { getDirectorStudentProgress } from '../../api/directorApi';
-import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
+import client from '../../api/sessionApi';
+import { type StudentOption } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
 interface DirectorGoal {
@@ -38,6 +39,7 @@ interface SessionHistoryEntry {
   id: string;
   date: string;
   teacherName: string;
+  status?: string;
 }
 
 interface DirectorStudentData {
@@ -48,6 +50,28 @@ interface DirectorStudentData {
   goals: DirectorGoal[];
   sessionHistory: SessionHistoryEntry[];
   incidentSummary: string;
+}
+
+/** Maps the assessment status strings returned by the API to StatusPill keys. */
+const ASSESSMENT_STATUS_KEY: Record<string, StatusType> = {
+  Completed: 'completed',
+  'In Progress': 'inProgress',
+  'Not Started': 'notStarted',
+};
+
+/** Maps a session-history review status to a StatusPill key. */
+const SESSION_STATUS_KEY: Record<string, StatusType> = {
+  Approved: 'approved',
+  Pending: 'pending',
+  'Revision Required': 'revision',
+};
+
+function assessmentStatusType(status: string): StatusType {
+  return ASSESSMENT_STATUS_KEY[status] ?? 'notStarted';
+}
+
+function sessionStatusType(status?: string): StatusType {
+  return (status && SESSION_STATUS_KEY[status]) || 'pending';
 }
 
 export default function DirectorStudentProgressScreen({
@@ -105,9 +129,18 @@ export default function DirectorStudentProgressScreen({
     );
   }, [studentOptions, searchStudent]);
 
-  const handleSaveNotes = () => {
-    setNotesSaved(true);
-    setTimeout(() => setNotesSaved(false), 2000);
+  const handleSaveNotes = async () => {
+    if (!selectedStudentId || !notes.trim()) return;
+    try {
+      await client.post(`/students/${selectedStudentId}/internal_notes`, {
+        content: notes.trim(),
+        recorded_at: new Date().toISOString(),
+      });
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2500);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to save internal note');
+    }
   };
 
   const handlePrint = () => {
@@ -133,7 +166,7 @@ export default function DirectorStudentProgressScreen({
         '',
         '----------------------------------------------------------------',
         'SESSION HISTORY LOG:',
-        ...data.sessionHistory.map((s) => `  • ${s.date} — Therapist: ${s.teacherName}`),
+        ...data.sessionHistory.map((s) => `  • ${s.date} — Therapist: ${s.teacherName}${s.status ? ` (${s.status})` : ''}`),
         '',
         '----------------------------------------------------------------',
         'BEHAVIOR INCIDENT TRENDS:',
@@ -223,7 +256,7 @@ export default function DirectorStudentProgressScreen({
                           {s.name}
                         </Text>
                         <Text style={styles.dropdownItemSub}>
-                          {s.assessmentStatus ?? s.status} � {s.program || 'ABA Therapy'}
+                          {s.assessmentStatus ?? s.status} · {s.program || 'ABA Therapy'}
                         </Text>
                       </View>
                       <View
@@ -255,18 +288,15 @@ export default function DirectorStudentProgressScreen({
           <View style={styles.assessmentGrid}>
             <View style={styles.assessmentItem}>
               <Text style={styles.assessmentLabel}>Skills Assessment</Text>
-              <Text style={styles.assessmentVal}>{data.assessmentSummary.skills}</Text>
-              <StatusPill status="approved" label="Assessed" />
+              <StatusPill status={assessmentStatusType(data.assessmentSummary.skills)} />
             </View>
             <View style={styles.assessmentItem}>
               <Text style={styles.assessmentLabel}>Behavior Assessment</Text>
-              <Text style={styles.assessmentVal}>{data.assessmentSummary.behavior}</Text>
-              <StatusPill status="approved" label="Assessed" />
+              <StatusPill status={assessmentStatusType(data.assessmentSummary.behavior)} />
             </View>
             <View style={styles.assessmentItem}>
               <Text style={styles.assessmentLabel}>Preferences Assessment</Text>
-              <Text style={styles.assessmentVal}>{data.assessmentSummary.preferences}</Text>
-              <StatusPill status="approved" label="Assessed" />
+              <StatusPill status={assessmentStatusType(data.assessmentSummary.preferences)} />
             </View>
           </View>
         </View>
@@ -323,8 +353,8 @@ export default function DirectorStudentProgressScreen({
                 <Text style={styles.sessionDate}>{s.date}</Text>
                 <Text style={styles.sessionTherapist}>Therapist: {s.teacherName}</Text>
               </View>
-              <View style={styles.sessionStatusPill}>
-                <Text style={styles.sessionStatusPillText}>Completed</Text>
+              <View style={styles.sessionRight}>
+                <StatusPill status={sessionStatusType(s.status)} />
               </View>
             </View>
           ))}
@@ -486,7 +516,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   assessmentLabel: { fontSize: 11, fontWeight: '600', color: colors.mutedText },
-  assessmentVal: { fontSize: 13, fontWeight: '700', color: colors.navyText },
 
   goalRow: {
     flexDirection: 'row',
@@ -521,8 +550,7 @@ const styles = StyleSheet.create({
   sessionIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bgApp, alignItems: 'center', justifyContent: 'center' },
   sessionDate: { fontSize: 13, fontWeight: '600', color: colors.navyText },
   sessionTherapist: { fontSize: 11, color: colors.bodyText },
-  sessionStatusPill: { backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
-  sessionStatusPillText: { fontSize: 10, fontWeight: '700', color: '#166534' },
+  sessionRight: { alignSelf: 'center' },
 
   incidentBox: {
     flexDirection: 'row',
