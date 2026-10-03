@@ -37,10 +37,26 @@ export function downloadTextFile(filename: string, text: string): boolean {
   return ok;
 }
 
-export function openPrintWindow(bodyHtml: string, title = 'Print Document'): boolean {
+export interface PrintOptions {
+  formId?: string;
+  revisionNumber?: string;
+  pageNumber?: number;
+  totalPages?: number;
+}
+
+export function openPrintWindow(
+  bodyHtml: string,
+  title = 'Print Document',
+  options: PrintOptions = {}
+): boolean {
   if (!isWeb()) return false;
   const win = window.open('', '_blank');
   if (!win) return false;
+
+  const formId = options.formId || 'MCTC-TRP-015';
+  const revisionNumber = options.revisionNumber || 'Rev: August 2025';
+  const pageNum = options.pageNumber || 1;
+  const totalPages = options.totalPages || 1;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -49,7 +65,13 @@ export function openPrintWindow(bodyHtml: string, title = 'Print Document'): boo
   <title>${title}</title>
   <style>
     @media print {
-      @page { margin: 16mm; size: auto; }
+      @page {
+        margin: 16mm;
+        size: auto;
+        @bottom-right {
+          content: "Page " counter(page) " of " counter(pages);
+        }
+      }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
     body {
@@ -78,12 +100,32 @@ export function openPrintWindow(bodyHtml: string, title = 'Print Document'): boo
     .doc-subtitle {
       font-size: 11px;
       color: #6B7280;
-      margin: 2px 0 0 0;
+      margin: 2px 0 4px 0;
+    }
+    .header-metadata {
+      font-size: 10px;
+      font-weight: 600;
+      color: #4B5563;
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .header-metadata span {
+      background: #F3F4F6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #E5E7EB;
     }
     .print-timestamp {
       font-size: 11px;
       color: #6B7280;
       text-align: right;
+    }
+    .page-indicator {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1A2233;
+      margin-top: 4px;
     }
     .print-body {
       white-space: pre-wrap;
@@ -101,7 +143,9 @@ export function openPrintWindow(bodyHtml: string, title = 'Print Document'): boo
       border-top: 1px solid #E5E7EB;
       font-size: 10px;
       color: #9CA3AF;
-      text-align: center;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
   </style>
 </head>
@@ -110,16 +154,23 @@ export function openPrintWindow(bodyHtml: string, title = 'Print Document'): boo
     <div>
       <h1 class="brand-title">Melu'e Foundation</h1>
       <p class="doc-subtitle">${title} — Official Clinical Record</p>
+      <div class="header-metadata">
+        <span>Form ID: ${formId}</span>
+        <span>Revision: ${revisionNumber}</span>
+        <span>Page ${pageNum} of ${totalPages}</span>
+      </div>
     </div>
     <div class="print-timestamp">
-      Printed: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}
+      <div>Printed: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</div>
+      <div class="page-indicator">Page ${pageNum} of ${totalPages}</div>
     </div>
   </div>
   <div class="print-content">
     ${bodyHtml.includes('<div') || bodyHtml.includes('<p') ? bodyHtml : `<div class="print-body">${bodyHtml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`}
   </div>
   <div class="footer-note">
-    Melu'e Clinical Therapy System · Confidential Student Document · Do Not Distribute Without Authorization
+    <span>Melu'e Clinical Therapy System · Confidential Student Document</span>
+    <span>Form ID: ${formId} | ${revisionNumber} | Page ${pageNum} of ${totalPages}</span>
   </div>
 </body>
 </html>`;

@@ -19,6 +19,10 @@ interface ExportPreviewModalProps {
   title: string;
   filename: string;
   content: string;
+  formId?: string;
+  revisionNumber?: string;
+  pageNumber?: number;
+  totalPages?: number;
   onClose: () => void;
 }
 
@@ -27,6 +31,10 @@ export default function ExportPreviewModal({
   title,
   filename,
   content,
+  formId = 'MCTC-TRP-015',
+  revisionNumber = 'Rev: August 2025',
+  pageNumber = 1,
+  totalPages = 1,
   onClose,
 }: ExportPreviewModalProps) {
   const [viewMode, setViewMode] = useState<'formatted' | 'raw'>('formatted');
@@ -49,7 +57,7 @@ export default function ExportPreviewModal({
   };
 
   const handlePrint = () => {
-    openPrintWindow(content, title);
+    openPrintWindow(content, title, { formId, revisionNumber, pageNumber, totalPages });
   };
 
   return (
@@ -129,10 +137,21 @@ export default function ExportPreviewModal({
             {viewMode === 'formatted' ? (
               <View style={styles.formattedDoc}>
                 <View style={styles.docLetterhead}>
-                  <Text style={styles.docBrand}>Melu'e Foundation</Text>
-                  <Text style={styles.docMeta}>
-                    Exported: {new Date().toLocaleDateString()} · Official Document
-                  </Text>
+                  <View style={styles.letterheadTopRow}>
+                    <Text style={styles.docBrand}>Melu'e Foundation</Text>
+                    <Text style={styles.docPageMeta}>Page {pageNumber} of {totalPages}</Text>
+                  </View>
+                  <View style={styles.letterheadMetaRow}>
+                    <View style={styles.metaBadge}>
+                      <Text style={styles.metaBadgeText}>Form ID: {formId}</Text>
+                    </View>
+                    <View style={styles.metaBadge}>
+                      <Text style={styles.metaBadgeText}>Revision: {revisionNumber}</Text>
+                    </View>
+                    <Text style={styles.docMeta}>
+                      Exported: {new Date().toLocaleDateString()} · Official Clinical Record
+                    </Text>
+                  </View>
                 </View>
                 <Text style={styles.docContentText}>{content || 'Nothing to export.'}</Text>
               </View>
@@ -262,9 +281,32 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.primaryYellow,
     paddingBottom: spacing.sm,
     marginBottom: spacing.xs,
+    gap: 4,
+  },
+  letterheadTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   docBrand: { fontSize: 16, fontWeight: '800', color: colors.navyText },
-  docMeta: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
+  docPageMeta: { fontSize: 11, fontWeight: '700', color: colors.navyText },
+  letterheadMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  metaBadge: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  metaBadgeText: { fontSize: 10, fontWeight: '700', color: '#374151' },
+  docMeta: { fontSize: 11, color: colors.mutedText },
   docContentText: { fontSize: 13, color: colors.navyText, lineHeight: 20, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   mono: {
     fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
