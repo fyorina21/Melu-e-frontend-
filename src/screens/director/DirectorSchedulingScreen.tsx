@@ -22,6 +22,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
+import { getScheduleCapacityConfig } from '../../api/institutionalAdminApi';
 import type { DirectorStackParamList } from '../../types';
 
 interface Option {
@@ -38,13 +39,12 @@ interface ScheduleBlock {
   studentIds: string[];
 }
 
-const CAPACITY = 2;
-
 function AssignmentEditorModal({
   visible,
   block,
   students,
   assignedIds,
+  capacity = 2,
   onClose,
   onSave,
 }: {
@@ -52,6 +52,7 @@ function AssignmentEditorModal({
   block: ScheduleBlock | null;
   students: Option[];
   assignedIds?: string[];
+  capacity?: number;
   onClose: () => void;
   onSave: (blockId: string, studentIds: string[]) => void;
 }) {
@@ -66,11 +67,11 @@ function AssignmentEditorModal({
   const toggle = (id: string) =>
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= CAPACITY) return prev; // block adding beyond limit
+      if (prev.length >= capacity) return prev; // block adding beyond limit
       return [...prev, id];
     });
 
-  const overCapacity = selected.length > CAPACITY;
+  const overCapacity = selected.length > capacity;
   const filteredStudents = students.filter((s) =>
     String(s.name || '').toLowerCase().includes(studentSearch.toLowerCase())
   );
@@ -88,7 +89,7 @@ function AssignmentEditorModal({
             </View>
             <View style={[styles.capacityBadge, overCapacity && styles.capacityBadgeOver]}>
               <Text style={[styles.capacityText, overCapacity && { color: colors.white }]}>
-                {selected.length}/{CAPACITY} Students
+                {selected.length}/{capacity} Students
               </Text>
             </View>
           </View>
@@ -112,7 +113,7 @@ function AssignmentEditorModal({
             )}
             {filteredStudents.map((s) => {
               const isChecked = selected.includes(s.id);
-              const atCapacity = selected.length >= CAPACITY;
+              const atCapacity = selected.length >= capacity;
               const isDisabled = !isChecked && atCapacity;
               const sAny = s as any;
               const status: string = sAny.status || 'Active';
@@ -174,6 +175,7 @@ export default function DirectorSchedulingScreen({
   const [teacherId, setTeacherId] = useState('');
   const [blocks, setBlocks] = useState<ScheduleBlock[] | null>(null);
   const [editorTarget, setEditorTarget] = useState<ScheduleBlock | null>(null);
+  const [capacity, setCapacity] = useState<number>(2);
 
   // Dropdown Picker State
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -193,6 +195,13 @@ export default function DirectorSchedulingScreen({
   }, [load]);
 
   useEffect(() => {
+    getScheduleCapacityConfig()
+      .then(({ data }) => {
+        const cap = Number(data?.staff_to_student_capacity ?? data?.capacity);
+        if (cap && !isNaN(cap) && cap > 0) setCapacity(cap);
+      })
+      .catch(() => {});
+
     getStaffOptions()
       .then(({ data: opts }) => {
         const teacherRows = opts.filter((t) => t.role === 'teacher');
@@ -326,12 +335,12 @@ export default function DirectorSchedulingScreen({
         <View style={styles.blocksSection}>
           <View style={styles.blocksHeaderRow}>
             <Text style={styles.sectionHeading}>SESSION SCHEDULE BLOCKS</Text>
-            <Text style={styles.capacityNotice}>Max Capacity: {CAPACITY} Students / Block</Text>
+            <Text style={styles.capacityNotice}>Max Capacity: {capacity} Students / Block</Text>
           </View>
 
           {blocks.map((block) => {
             const count = block.studentIds.length;
-            const overCapacity = count > CAPACITY;
+            const overCapacity = count > capacity;
             return (
               <View key={block.id} style={styles.blockCard}>
                 <View style={styles.blockHeaderRow}>
@@ -346,7 +355,7 @@ export default function DirectorSchedulingScreen({
                   </View>
                   <View style={[styles.capacityBadge, overCapacity && styles.capacityBadgeOver]}>
                     <Text style={[styles.capacityText, overCapacity && { color: colors.white }]}>
-                      {count}/{CAPACITY} Students
+                      {count}/{capacity} Students
                     </Text>
                   </View>
                 </View>
@@ -411,6 +420,7 @@ export default function DirectorSchedulingScreen({
         block={editorTarget}
         students={students}
         assignedIds={editorTarget?.studentIds}
+        capacity={capacity}
         onClose={() => setEditorTarget(null)}
         onSave={handleSaveAssignment}
       />

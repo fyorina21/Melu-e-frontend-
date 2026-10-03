@@ -3,8 +3,7 @@ import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } fr
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
-
-const CAPACITY_PER_APPOINTMENT = 2;
+import { getScheduleCapacityConfig } from '../../../api/institutionalAdminApi';
 
 export interface ReassignOption {
   id: string;
@@ -23,6 +22,7 @@ interface Props {
   visible: boolean;
   therapistOptions?: ReassignOption[];
   appointments?: AppointmentLike[]; // current day's appointments
+  capacityPerAppointment?: number;
   onClose: () => void;
   onSubmit: (payload: { fromTherapistId: string; toTherapistId: string; studentIds: string[] }) => void;
 }
@@ -31,12 +31,27 @@ export default function ReassignStudentsModal({
   visible,
   therapistOptions = [],
   appointments = [],
+  capacityPerAppointment,
   onClose,
   onSubmit,
 }: Props) {
   const [fromTherapistId, setFromTherapistId] = useState<string | null>(null);
   const [toTherapistId, setToTherapistId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [liveCapacity, setLiveCapacity] = useState<number>(capacityPerAppointment ?? 2);
+
+  useEffect(() => {
+    if (capacityPerAppointment) {
+      setLiveCapacity(capacityPerAppointment);
+      return;
+    }
+    getScheduleCapacityConfig()
+      .then(({ data }) => {
+        const cap = Number(data?.staff_to_student_capacity ?? data?.capacity);
+        if (cap && !isNaN(cap) && cap > 0) setLiveCapacity(cap);
+      })
+      .catch(() => {});
+  }, [capacityPerAppointment, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -75,9 +90,9 @@ export default function ReassignStudentsModal({
     if (!toTherapistId) return null;
     const targetAppts = appointments.filter((a) => a.therapistId === toTherapistId);
     const used = targetAppts.reduce((sum, a) => sum + (a.studentIds?.length || 0), 0);
-    const slots = targetAppts.length > 0 ? targetAppts.length * CAPACITY_PER_APPOINTMENT : CAPACITY_PER_APPOINTMENT;
+    const slots = targetAppts.length > 0 ? targetAppts.length * liveCapacity : liveCapacity;
     return { used, slots, remaining: Math.max(0, slots - used) };
-  }, [toTherapistId, appointments]);
+  }, [toTherapistId, appointments, liveCapacity]);
 
   const overCapacity = capacityInfo ? selected.length > capacityInfo.remaining : false;
 
