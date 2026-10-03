@@ -277,6 +277,7 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [showStrategyModal, setShowStrategyModal] = useState(false);
+  const [childName, setChildName] = useState<string>('');
 
   const load = useCallback(async () => {
     try {
@@ -287,6 +288,12 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
     } finally {
       setLoading(false);
     }
+    try {
+      const dash = await parentApi.dashboard();
+      const rawChild = (dash as any)?.childSummary ?? (dash as any)?.data?.students?.[0];
+      const name = rawChild?.fullName ?? rawChild?.name ?? (rawChild?.first_name ? `${rawChild.first_name} ${rawChild.last_name || ''}`.trim() : '');
+      if (name) setChildName(name);
+    } catch {}
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -337,7 +344,7 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
-            Recording what you see at home helps the therapy team understand Student A better. Share behaviors, achievements, or concerns.
+            Recording what you see at home helps the therapy team understand {childName || 'your child'} better. Share behaviors, achievements, or concerns.
           </Text>
         </View>
 

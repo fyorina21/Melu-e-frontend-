@@ -184,7 +184,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
     const filename = `SessionSummary_${activeConversation?.studentName || 'Student'}.html`;
     const content = `
       <h2>Session Summary</h2>
-      <p><b>Student:</b> ${activeConversation?.studentName || 'Student A'}</p>
+      <p><b>Student:</b> ${activeConversation?.studentName || 'Student'}</p>
       <p><b>Station:</b> Station 1 — Basic Skills · Room 2</p>
       <p><b>Date:</b> ${new Date().toLocaleDateString()}</p>
       <p><b>Status:</b> Approved by Coordinator</p>
@@ -199,7 +199,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
     const filename = `ProgressChart_${activeConversation?.studentName || 'Student'}.html`;
     const content = `
       <h2>Goal Progress Chart</h2>
-      <p><b>Student:</b> ${activeConversation?.studentName || 'Student A'}</p>
+      <p><b>Student:</b> ${activeConversation?.studentName || 'Student'}</p>
       <p><b>Goal:</b> Request Items (E2)</p>
       <p><b>Range:</b> Last 6 weeks</p>
       <p>Weekly independence: 40% → 55% → 62% → 70% → 78% → 85%</p>
@@ -382,6 +382,8 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
   const [showEscalateModal, setShowEscalateModal] = useState(false);
   const [escalateReason, setEscalateReason] = useState('');
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
+  const [activeChildName, setActiveChildName] = useState<string>('');
+  const [activeLogs, setActiveLogs] = useState<LogEntry[]>([]);
   const messagesEndRef = useRef<ScrollView>(null);
 
   const loadList = useCallback(async () => {
@@ -404,6 +406,36 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
     } finally {
       setListLoading(false);
     }
+    try {
+      const dash: any = await parentApi.dashboard();
+      const rawChild = dash?.childSummary ?? dash?.data?.students?.[0];
+      const name =
+        rawChild?.fullName ??
+        rawChild?.name ??
+        (rawChild?.first_name ? `${rawChild.first_name} ${rawChild.last_name || ''}`.trim() : '');
+      if (name) setActiveChildName(name);
+
+      const logs: LogEntry[] = [];
+      if (rawChild?.goals) {
+        rawChild.goals.slice(0, 3).forEach((g: any) => {
+          logs.push({
+            date: 'Recently',
+            from: 'Therapy Team',
+            preview: `Goal: ${g.name} — ${g.progressPercent || 0}% progress (${g.status || 'Active'})`,
+            status: g.status === 'mastered' ? 'Mastered' : 'Shared',
+          });
+        });
+      }
+      if (dash.sessionsThisWeek > 0 || dash.sessionsTotal > 0) {
+        logs.unshift({
+          date: 'This Week',
+          from: 'Lead Therapist',
+          preview: `Weekly session summary — ${dash.sessionsThisWeek || dash.sessionsTotal} sessions conducted for ${name || 'child'}.`,
+          status: 'Shared',
+        });
+      }
+      if (logs.length > 0) setActiveLogs(logs);
+    } catch (err) {}
   }, []);
 
   useEffect(() => { loadList(); }, [loadList]);
@@ -520,7 +552,7 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
               <View style={styles.chatHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={typography.h3}>{selected.recipient}</Text>
-                  <Text style={typography.caption}>{selected.role} &middot; Aiden Smith's Team</Text>
+                  <Text style={typography.caption}>{selected.role} &middot; {activeChildName ? `${activeChildName}'s Team` : 'Therapy Team'}</Text>
                 </View>
                 <View style={styles.headerActions}>
                   <TouchableOpacity style={styles.actionPill} onPress={() => setShowEscalateModal(true)}><Feather name="alert-triangle" size={12} color="#DC2626" /><Text style={[styles.actionPillText, { color: '#DC2626' }]}>Escalate</Text></TouchableOpacity>
@@ -552,14 +584,14 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
 
                   <View style={styles.inputBar}>
                     <TouchableOpacity style={styles.iconBtn} onPress={() => setShowTemplateMenu((v) => !v)}><Feather name="file-text" size={18} color="#64748B" /></TouchableOpacity>
-                    <TextInput style={styles.textInput} placeholder="Type a message to Aiden's Team..." value={newMessage} onChangeText={setNewMessage} onSubmitEditing={sendMessage} />
+                    <TextInput style={styles.textInput} placeholder={`Type a message to ${activeChildName ? `${activeChildName}'s Team` : 'the team'}...`} value={newMessage} onChangeText={setNewMessage} onSubmitEditing={sendMessage} />
                     <TouchableOpacity style={[styles.sendBtn, { backgroundColor: colors.primaryYellow }]} onPress={sendMessage}><Feather name="send" size={16} color={colors.navyText} /></TouchableOpacity>
                   </View>
                 </>
               ) : (
                 <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
                   <Text style={typography.bodyBold}>Past Reports & Logs Shared</Text>
-                  {PARENT_LOG.map((log: any, idx: number) => (
+                  {(activeLogs.length > 0 ? activeLogs : (activeChildName ? [{ date: 'Recently', from: 'Lead Therapist', preview: `Session summary shared for ${activeChildName}.`, status: 'Shared' }] : PARENT_LOG)).map((log: any, idx: number) => (
                     <View key={idx} style={styles.logCard}>
                       <View style={{ flex: 1 }}>
                         <Text style={typography.bodyBold}>{log.preview}</Text>
