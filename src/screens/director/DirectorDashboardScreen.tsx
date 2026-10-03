@@ -37,22 +37,42 @@ export default function DirectorDashboardScreen({
 
   const load = useCallback(async () => {
     try {
-      const { data: res } = await getDirectorDashboard();
-      setData(res);
+      const { data: rawRes } = await getDirectorDashboard();
+      const res = (rawRes && typeof rawRes === 'object' && 'data' in rawRes) ? (rawRes as any).data : rawRes;
+
+      const recentActivity: string[] = Array.isArray(res?.recentActivity)
+        ? res.recentActivity
+        : [];
+      if (recentActivity.length === 0 && res?.activity) {
+        if (res.activity.trials_logged_today > 0) {
+          recentActivity.push(`${res.activity.trials_logged_today} trials logged today`);
+        }
+        if (res.activity.behavior_incidents_today > 0) {
+          recentActivity.push(`${res.activity.behavior_incidents_today} behavior incident(s) logged today`);
+        }
+        if (res.activity.goals_mastered_this_month > 0) {
+          recentActivity.push(`${res.activity.goals_mastered_this_month} goal(s) mastered this month`);
+        }
+      }
+
+      setData({
+        unreadCount: res?.unreadCount ?? 0,
+        totalStudents: res?.students?.total_active ?? res?.totalStudents ?? 0,
+        activeTeachers: res?.staff?.teachers_on_duty ?? res?.staff?.total_teachers ?? res?.activeTeachers ?? 0,
+        pendingApprovals: res?.reviews?.mastery_checks_pending_approval ?? res?.pendingApprovals ?? 0,
+        unreadParentMessages: res?.unreadParentMessages ?? 0,
+        pendingReports: res?.reviews?.session_summaries_pending_review ?? res?.pendingReports ?? 0,
+        recentActivity,
+      });
     } catch {
       setData({
         unreadCount: 0,
-        totalStudents: 14,
-        activeTeachers: 6,
-        pendingApprovals: 2,
-        unreadParentMessages: 3,
-        pendingReports: 4,
-        recentActivity: [
-          'Mastery check submitted for Student Leo (Hand Washing TA)',
-          'Session summary submitted by Sarah Miller for 2 students',
-          'New parent message received from Mrs. Davis',
-          'Weekly schedule assignments updated for ABA Station 1',
-        ],
+        totalStudents: 0,
+        activeTeachers: 0,
+        pendingApprovals: 0,
+        unreadParentMessages: 0,
+        pendingReports: 0,
+        recentActivity: [],
       });
     }
   }, []);
