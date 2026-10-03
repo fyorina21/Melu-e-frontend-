@@ -22,7 +22,6 @@ import { mockHttp } from '../mock/client';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
-  _mockFallback?: boolean;
   _startedAt?: number;
 }
 
@@ -142,33 +141,6 @@ function createHttpClient(): AxiosInstance {
           return instance(cfg);
         } catch (refreshError) {
           return Promise.reject(toApiError(error));
-        }
-      }
-
-      // Fallback to mock data when backend hasn't implemented an endpoint yet (404)
-      if (status === 404 && cfg && !cfg._mockFallback) {
-        cfg._mockFallback = true;
-        const method = (cfg.method?.toLowerCase() || 'get') as 'get' | 'post' | 'patch' | 'put' | 'delete';
-        let url = cfg.url ?? '';
-        url = url.replace(/^https?:\/\/[^/]+(\/api\/v1)?/, '');
-        if (!url.startsWith('/')) url = `/${url}`;
-
-        try {
-          let mockRes: { data: unknown; headers?: unknown };
-          if (method === 'get' || method === 'delete') {
-            mockRes = await (mockHttp[method] as any)(url, { params: cfg.params });
-          } else {
-            mockRes = await (mockHttp[method] as any)(url, cfg.data, { params: cfg.params });
-          }
-          return {
-            data: mockRes.data,
-            status: 200,
-            statusText: 'OK',
-            headers: (mockRes.headers as any) || {},
-            config: cfg,
-          };
-        } catch (_) {
-          // If mock handler also doesn't exist, proceed with original error
         }
       }
 

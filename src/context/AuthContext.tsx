@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
 import { setAccessToken } from '../api/token';
@@ -36,9 +36,33 @@ export function normalizeRole(rawRole?: string): Role {
   return lower as Role;
 }
 
+/**
+ * Build the de-duplicated list of roles the user can switch between, with the
+ * primary (currently active) role first. Falls back to the teacher role so the
+ * navbar always has something to render.
+ */
+function resolveRoles(rawRoles?: string[], primary?: string, fallback?: string): Role[] {
+  const candidates = [
+    ...(primary ? [primary] : []),
+    ...(rawRoles ?? []),
+    ...(fallback ? [fallback] : []),
+  ];
+  const seen = new Set<Role>();
+  const roles: Role[] = [];
+  for (const candidate of candidates) {
+    const role = normalizeRole(candidate);
+    if (!seen.has(role)) {
+      seen.add(role);
+      roles.push(role);
+    }
+  }
+  return roles.length ? roles : [ROLES.TEACHER];
+}
+
 interface AuthContextValue {
   session: AuthSession | null;
-  loginWithCredentials: (email: string, password: string) => Promise<boolean>;
+  loginWithCredentials: (email: string, password: string, rememberDevice?: boolean) => Promise<boolean>;
+  switchRole: (role: Role) => void;
   logout: () => void;
 }
 
@@ -56,8 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (token) {
           try {
             const user = await authApi.me();
+            const roles = resolveRoles(user.roles, user.role);
             setSession({
-              role: normalizeRole(user.role),
+              role: roles[0],
+              roles,
               userName: user.name,
               email: user.email,
             });
@@ -76,13 +102,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restoreSession();
   }, []);
 
-  const loginWithCredentials = async (email: string, password: string): Promise<boolean> => {
+  const loginWithCredentials = async (
+    email: string,
+    password: string,
+    rememberDevice = false,
+  ): Promise<boolean> => {
     try {
       setLoading(true);
-      await authApi.login({ email: email.trim(), password: password.trim() });
+      const result = await authApi.login({
+        email: email.trim(),
+        password: password.trim(),
+        rememberDevice,
+      });
       const user = await authApi.me();
+      const roles = resolveRoles(user.roles, result.role, user.role);
       setSession({
-        role: normalizeRole(user.role),
+        role: roles[0],
+        roles,
         userName: user.name,
         email: user.email,
       });
@@ -97,6 +133,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   };
+
+  /**
+   * Switch the active role without re-authenticating. The token already
+   * carries every granted role, so this only changes which role's tab set and
+   * home route the shell renders.
+   */
+  const switchRole = useCallback((role: Role) => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const roles = prev.roles?.length ? prev.roles : [role];
+      if (!roles.includes(role)) return prev;
+      if (prev.role === role) return prev;
+      return { ...prev, role };
+    });
+  }, []);
 
   const logout = async () => {
     try {
@@ -116,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       loginWithCredentials,
+      switchRole,
       logout,
     }),
     [session]

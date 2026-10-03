@@ -1,20 +1,46 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import type { SystemAdminStackParamList } from '../../types';
 import { useToast } from '../../context/ToastContext';
+import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
+import IconButton from '../../components/IconButton';
+import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
+import { getRoles, createRole, updateRole, deleteRole } from '../../api/SystemAdminApi';
 
 type Props = NativeStackScreenProps<SystemAdminStackParamList, 'RoleManagement'>;
 
-const mockRoles = [
-  { id: '1', name: 'System Admin', description: 'Full system access and configuration', count: 1, system: true },
-  { id: '2', name: 'Program Director', description: 'Oversees program curriculum and scheduling', count: 2, system: true },
-  { id: '3', name: 'Teacher / BCBA', description: 'Manages students and conducts assessments', count: 5, system: true },
-  { id: '4', name: 'Assistant', description: 'Assists in classrooms', count: 12, system: false },
-];
+/** Shape returned by GET /api/v1/sysadmin/roles. */
+interface RoleRecord {
+  id: string;
+  name: string;
+  description: string;
+  is_system_critical: boolean;
+  user_count: number;
+}
+
+/** Row model the table renders. */
+interface RoleRow {
+  id: string;
+  name: string;
+  description: string;
+  count: number;
+  system: boolean;
+}
+
+function toRow(role: RoleRecord): RoleRow {
+  return {
+    id: role.id,
+    name: role.name,
+    description: role.description ?? '',
+    count: role.user_count ?? 0,
+    system: Boolean(role.is_system_critical),
+  };
+}
 
 function Badge({ children, system }: { children: React.ReactNode; system?: boolean }) {
   return (
@@ -26,39 +52,124 @@ function Badge({ children, system }: { children: React.ReactNode; system?: boole
 
 export default function RoleManagementScreen({ navigation }: Props) {
   const { showToast } = useToast();
-  const [roles, setRoles] = useState(mockRoles);
+  const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [addingRole, setAddingRole] = useState(false);
   const [newRole, setNewRole] = useState({ name: '', description: '' });
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
 
-  const saveEdit = (id: string) => {
-    if (!editForm.name.trim()) return;
-    setRoles(rs => rs.map(r => r.id === id ? { ...r, name: editForm.name, description: editForm.description } : r));
-    setEditingRole(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await getRoles();
+      const list = Array.isArray(data) ? (data as RoleRecord[]) : [];
+      setRoles(list.map(toRow));
+    } catch {
+      setRoles([]);
+      showToast('Could not load roles. Check your connection and try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const saveEdit = async (id: string) => {
+    if (!editForm.name.trim()) {
+      showToast('Role name is required.', 'error');
+      return;
+    }
+    setBusyId(id);
+    try {
+      const { data } = await updateRole(id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+      });
+      const updated = toRow(data as RoleRecord);
+      setRoles((rs) => rs.map((r) => (r.id === id ? updated : r)));
+      setEditingRole(null);
+      showToast('Role updated.', 'success');
+    } catch {
+      showToast('Failed to update role.', 'error');
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const addRole = () => {
-    if (!newRole.name.trim()) return;
-    setRoles((rs) => [...rs, { id: String(Date.now()), ...newRole, count: 0, system: false }]);
-    setNewRole({ name: '', description: '' });
-    setAddingRole(false);
+  const addRole = async () => {
+    if (!newRole.name.trim()) {
+      showToast('Role name is required.', 'error');
+      return;
+    }
+    setBusyId('new');
+    try {
+      const { data } = await createRole({
+        name: newRole.name.trim(),
+        description: newRole.description.trim(),
+      });
+      setRoles((rs) => [...rs, toRow(data as RoleRecord)]);
+      setNewRole({ name: '', description: '' });
+      setAddingRole(false);
+      showToast('Role created.', 'success');
+    } catch {
+      showToast('Failed to create role.', 'error');
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const handleSave = () => {
-    showToast('Role changes saved successfully', 'success');
+  const removeRole = async (id: string) => {
+    setBusyId(id);
+    try {
+      await deleteRole(id);
+      setRoles((rs) => rs.filter((r) => r.id !== id));
+      showToast('Role deleted.', 'success');
+    } catch {
+      showToast('Failed to delete role.', 'error');
+    } finally {
+      setBusyId(null);
+    }
   };
+
+  const renderRowActions = (role: RoleRow, busy: boolean) => (
+    <View style={styles.actionsCell}>
+      <IconButton
+        onPress={() => {
+          setEditingRole(role.id);
+          setEditForm({ name: role.name, description: role.description });
+        }}
+        label={`Edit ${role.name}`}
+      >
+        <Feather name="edit-2" size={16} color={colors.primaryBlue} />
+      </IconButton>
+      {!role.system && (
+        <IconButton onPress={() => removeRole(role.id)} disabled={busy} label={`Delete ${role.name}`}>
+          <Feather name="trash-2" size={16} color={colors.statusRevisionText} />
+        </IconButton>
+      )}
+    </View>
+  );
+
+  const navbar = (
+    <AppNavbar activeTab="Role Management" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        {navbar}
+        <ScreenLoader />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
-          <Feather name="arrow-left" size={16} color="#334155" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Role Management</Text>
-        <View style={{ width: 80 }} />
-      </View>
+      {navbar}
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.sectionHeader}>
@@ -69,7 +180,7 @@ export default function RoleManagementScreen({ navigation }: Props) {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={typography.bodyBold}>Roles</Text>
-            <TouchableOpacity style={styles.addBtn} onPress={() => setAddingRole(true)}>
+            <TouchableOpacity style={styles.addBtn} onPress={() => setAddingRole(true)} accessibilityRole="button">
               <Feather name="plus" size={14} color={colors.primaryBlue} />
               <Text style={styles.addBtnText}>Add Role</Text>
             </TouchableOpacity>
@@ -77,73 +188,70 @@ export default function RoleManagementScreen({ navigation }: Props) {
 
           <View style={styles.table}>
             <View style={styles.tableHeader}>
-              <Text style={[styles.headerText, { flex: 2 }]}>Role Name</Text>
-              <Text style={[styles.headerText, { flex: 3 }]}>Description</Text>
-              <Text style={[styles.headerText, { flex: 1, textAlign: 'center' }]}>Staff Count</Text>
-              <Text style={[styles.headerText, { flex: 1, textAlign: 'center' }]}>Type</Text>
-              <Text style={[styles.headerText, { width: 70, textAlign: 'center' }]}>Actions</Text>
+              <Text style={[styles.headerText, styles.colName]}>Role Name</Text>
+              <Text style={[styles.headerText, styles.colDescription]}>Description</Text>
+              <Text style={[styles.headerText, styles.colCount]}>Staff Count</Text>
+              <Text style={[styles.headerText, styles.colType]}>Type</Text>
+              <Text style={[styles.headerText, styles.colActions]}>Actions</Text>
             </View>
 
-            {roles.map((role) => (
-              <View key={role.id} style={[styles.tableRow, editingRole === role.id && styles.addingRow]}>
-                {editingRole === role.id ? (
-                  <>
-                    <View style={{ flex: 2, paddingRight: spacing.xs }}>
-                      <TextInput
-                        style={styles.input}
-                        value={editForm.name}
-                        onChangeText={(text) => setEditForm((prev) => ({ ...prev, name: text }))}
-                        placeholder="Role name"
-                        autoFocus
-                      />
-                    </View>
-                    <View style={{ flex: 3, paddingRight: spacing.xs }}>
-                      <TextInput
-                        style={styles.input}
-                        value={editForm.description}
-                        onChangeText={(text) => setEditForm((prev) => ({ ...prev, description: text }))}
-                        placeholder="Description"
-                      />
-                    </View>
-                    <Text style={[styles.cellText, { flex: 1, textAlign: 'center' }]}>{role.count}</Text>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
-                    </View>
-                    <View style={{ width: 70, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-                      <TouchableOpacity onPress={() => saveEdit(role.id)}>
-                        <Feather name="check" size={18} color={colors.statusApprovedText} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => setEditingRole(null)}>
-                        <Feather name="x" size={18} color={colors.statusRevisionText} />
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <Text style={[styles.cellTextBold, { flex: 2 }]}>{role.name}</Text>
-                    <Text style={[styles.cellText, { flex: 3 }]} numberOfLines={2}>{role.description}</Text>
-                    <Text style={[styles.cellText, { flex: 1, textAlign: 'center' }]}>{role.count}</Text>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
-                    </View>
-                    <View style={{ width: 70, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-                      <TouchableOpacity onPress={() => { setEditingRole(role.id); setEditForm({ name: role.name, description: role.description }); }}>
-                        <Feather name="edit-2" size={16} color={colors.primaryBlue} />
-                      </TouchableOpacity>
-                      {!role.system && (
-                        <TouchableOpacity onPress={() => setRoles((rs) => rs.filter((r) => r.id !== role.id))}>
-                          <Feather name="trash-2" size={16} color={colors.statusRevisionText} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </>
-                )}
+            {roles.length === 0 && (
+              <View style={styles.tableRow}>
+                <Text style={[styles.cellText, styles.colFull, { textAlign: 'center' }]}>No roles found.</Text>
               </View>
-            ))}
+            )}
+
+            {roles.map((role) =>
+              editingRole === role.id ? (
+                <View key={role.id} style={[styles.tableRow, styles.addingRow]}>
+                  <View style={[styles.colName, styles.inputCell]}>
+                    <TextInput
+                      style={styles.input}
+                      value={editForm.name}
+                      onChangeText={(text) => setEditForm((prev) => ({ ...prev, name: text }))}
+                      placeholder="Role name"
+                      autoFocus
+                    />
+                  </View>
+                  <View style={[styles.colDescription, styles.inputCell]}>
+                    <TextInput
+                      style={styles.input}
+                      value={editForm.description}
+                      onChangeText={(text) => setEditForm((prev) => ({ ...prev, description: text }))}
+                      placeholder="Description"
+                    />
+                  </View>
+                  <Text style={[styles.cellText, styles.colCount, { textAlign: 'center' }]}>{role.count}</Text>
+                  <View style={[styles.colType, styles.centerCell]}>
+                    <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
+                  </View>
+                  <View style={styles.actionsCell}>
+                    <IconButton onPress={() => saveEdit(role.id)} disabled={busyId === role.id} label={`Save ${role.name}`}>
+                      <Feather name="check" size={18} color={colors.statusApprovedText} />
+                    </IconButton>
+                    <IconButton onPress={() => setEditingRole(null)} label="Cancel editing role">
+                      <Feather name="x" size={18} color={colors.statusRevisionText} />
+                    </IconButton>
+                  </View>
+                </View>
+              ) : (
+                <View key={role.id} style={styles.tableRow}>
+                  <Text style={[styles.cellTextBold, styles.colName]}>{role.name}</Text>
+                  <Text style={[styles.cellText, styles.colDescription]} numberOfLines={2}>
+                    {role.description}
+                  </Text>
+                  <Text style={[styles.cellText, styles.colCount, { textAlign: 'center' }]}>{role.count}</Text>
+                  <View style={[styles.colType, styles.centerCell]}>
+                    <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
+                  </View>
+                  {renderRowActions(role, busyId === role.id)}
+                </View>
+              )
+            )}
 
             {addingRole && (
               <View style={[styles.tableRow, styles.addingRow]}>
-                <View style={{ flex: 2, paddingRight: spacing.xs }}>
+                <View style={[styles.colName, styles.inputCell]}>
                   <TextInput
                     style={styles.input}
                     value={newRole.name}
@@ -153,7 +261,7 @@ export default function RoleManagementScreen({ navigation }: Props) {
                     autoFocus
                   />
                 </View>
-                <View style={{ flex: 3, paddingRight: spacing.xs }}>
+                <View style={[styles.colDescription, styles.inputCell]}>
                   <TextInput
                     style={styles.input}
                     value={newRole.description}
@@ -162,27 +270,26 @@ export default function RoleManagementScreen({ navigation }: Props) {
                     placeholderTextColor={colors.mutedText}
                   />
                 </View>
-                <Text style={[styles.cellText, { flex: 1, textAlign: 'center' }]}>0</Text>
-                <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={[styles.cellText, styles.colCount, { textAlign: 'center' }]}>0</Text>
+                <View style={[styles.colType, styles.centerCell]}>
                   <Badge>Custom</Badge>
                 </View>
-                <View style={{ width: 70, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-                  <TouchableOpacity onPress={addRole}>
-                    <Feather name="check" size={18} color={colors.statusApprovedText} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setAddingRole(false)}>
+                <View style={styles.actionsCell}>
+                  <IconButton onPress={addRole} disabled={busyId === 'new'} label="Save new role">
+                    {busyId === 'new' ? (
+                      <ActivityIndicator size="small" color={colors.statusApprovedText} />
+                    ) : (
+                      <Feather name="check" size={18} color={colors.statusApprovedText} />
+                    )}
+                  </IconButton>
+                  <IconButton onPress={() => setAddingRole(false)} label="Cancel adding role">
                     <Feather name="x" size={18} color={colors.statusRevisionText} />
-                  </TouchableOpacity>
+                  </IconButton>
                 </View>
               </View>
             )}
           </View>
         </View>
-
-        <TouchableOpacity style={styles.saveMainBtn} onPress={handleSave}>
-          <Feather name="save" size={16} color={colors.navyText} />
-          <Text style={styles.saveMainBtnText}>Save Changes</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -190,10 +297,6 @@ export default function RoleManagementScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  backText: { color: '#334155', fontSize: 14, fontWeight: '500' },
-  headerTitle: { ...typography.h3, textAlign: 'center' },
   content: { padding: spacing.lg, gap: spacing.xl },
   sectionHeader: { gap: spacing.xs },
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
@@ -207,12 +310,19 @@ const styles = StyleSheet.create({
   addingRow: { backgroundColor: '#F0F9FF' },
   cellText: { fontSize: 13, color: colors.bodyText },
   cellTextBold: { fontSize: 13, fontWeight: '600', color: colors.navyText },
+  colName: { flex: 2 },
+  colDescription: { flex: 3 },
+  colCount: { flex: 1, textAlign: 'center' },
+  colType: { flex: 1 },
+  colActions: { width: 70 },
+  colFull: { flex: 1 },
+  centerCell: { alignItems: 'center' },
+  inputCell: { paddingRight: spacing.xs },
+  actionsCell: { width: 70, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
   badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
   badgeSystem: { backgroundColor: colors.statusInProgressBg },
   badgeSystemText: { color: colors.statusInProgressText, fontSize: 11, fontWeight: '600' },
   badgeCustom: { backgroundColor: colors.statusPendingBg },
   badgeCustomText: { color: colors.statusPendingText, fontSize: 11, fontWeight: '600' },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4, fontSize: 13, backgroundColor: colors.bgCard },
-  saveMainBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.primaryYellow, padding: spacing.md, borderRadius: radius.md, alignSelf: 'flex-start', paddingHorizontal: spacing.xl },
-  saveMainBtnText: { color: colors.navyText, fontWeight: '700', fontSize: 14 },
 });

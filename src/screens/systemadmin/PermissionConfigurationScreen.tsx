@@ -18,7 +18,6 @@ import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getRoles,
   getPermissionMatrix,
-  savePermissionMatrix,
   getPermissionAuditTrail,
 } from '../../api/SystemAdminApi';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -44,6 +43,58 @@ interface PermissionRole {
 }
 
 type PermissionMatrix = Record<string, Record<ActionType, boolean>>;
+
+const blankActions = (): Record<ActionType, boolean> => ({
+  VIEW: false,
+  CREATE: false,
+  EDIT: false,
+  DELETE: false,
+  APPROVE: false,
+});
+
+// ---------------------------------------------------------------------------
+// Backend contract adapter.
+//
+// roles_controller#permissions returns `{ roleId, permissions: [...] }` where
+// each entry is `{ id, resource, action, name }` and `name` is "resource:action".
+// The backend taxonomy (`roles`, `staff_members` / `index`, `create`, ...) does
+// NOT correspond to the MODULES and ACTIONS this screen was designed around,
+// so only the pairs that genuinely line up are mapped. Anything else is
+// unrepresentable in this UI and is deliberately dropped rather than guessed.
+// ---------------------------------------------------------------------------
+const MODULE_BY_RESOURCE: Record<string, string> = {
+  roles: 'Admin',
+  staff_members: 'Staff',
+};
+
+const ACTION_BY_RESOURCE_ACTION: Record<string, ActionType> = {
+  index: 'VIEW',
+  show: 'VIEW',
+  create: 'CREATE',
+  update: 'EDIT',
+  destroy: 'DELETE',
+  approve: 'APPROVE',
+  manage: 'EDIT',
+};
+
+interface BackendPermission {
+  id?: string;
+  resource?: string;
+  action?: string;
+  name?: string;
+}
+
+function toDisplayMatrix(permissions: unknown): PermissionMatrix {
+  const matrix: PermissionMatrix = {};
+  if (!Array.isArray(permissions)) return matrix;
+  for (const p of permissions as BackendPermission[]) {
+    const mod = p.resource ? MODULE_BY_RESOURCE[p.resource] : undefined;
+    const act = p.action ? ACTION_BY_RESOURCE_ACTION[p.action] : undefined;
+    if (!mod || !act) continue;
+    matrix[mod] = { ...(matrix[mod] ?? blankActions()), [act]: true };
+  }
+  return matrix;
+}
 
 interface AuditEntry {
   date: string;
@@ -85,7 +136,7 @@ export default function PermissionConfigurationScreen({
     if (!selectedRoleId) return;
     getPermissionMatrix(selectedRoleId)
       .then(({ data }) => {
-        setMatrix(data.matrix);
+        setMatrix(toDisplayMatrix(data?.permissions));
         setDirty(false);
       })
       .catch(() => {
@@ -162,7 +213,7 @@ export default function PermissionConfigurationScreen({
   const handleCopyFromRole = async (sourceRoleId: string) => {
     try {
       const { data } = await getPermissionMatrix(sourceRoleId);
-      setMatrix(data.matrix);
+      setMatrix(toDisplayMatrix(data?.permissions));
     } catch (err) {
       setMatrix({});
     }
@@ -170,15 +221,25 @@ export default function PermissionConfigurationScreen({
     setCopyModalOpen(false);
   };
 
+  // Saving is intentionally blocked.
+  //
+  // roles_controller#update_permissions replaces the role's entire permission
+  // set from `params[:permission_ids]` and ignores any other key. There is no
+  // permission catalog endpoint, so this screen cannot learn the ID of a
+  // permission the role does not already hold -- it could only ever submit the
+  // IDs it can see, which would strip every unrepresented permission off the
+  // role. Posting anyway would destroy access control data, so we refuse and
+  // surface the reason instead.
   const handleSave = async () => {
     if (!selectedRoleId) return;
-    try {
-      await savePermissionMatrix(selectedRoleId, matrix);
-      const { data } = await getPermissionAuditTrail(selectedRoleId);
-      setAuditTrail(data);
-    } catch (err) {}
-    setDirty(false);
-    Alert.alert('Permissions Saved', `Permissions for ${selectedRole.name} updated successfully.`);
+    Alert.alert(
+      'Cannot save permissions',
+      'The server replaces permissions by ID and exposes no catalog of assignable ' +
+        'permissions, so unchecking a box here could not be turned back into a valid ' +
+        'request. Saving is disabled to avoid stripping access from this role.\n\n' +
+        'Needs a permission catalog endpoint (GET /api/v1/sysadmin/permissions) and an ' +
+        'agreed resource/action taxonomy.',
+    );
   };
 
   // Helper function to format actions into dynamic sentence strings
