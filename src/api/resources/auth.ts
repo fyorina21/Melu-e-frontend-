@@ -86,8 +86,8 @@ export const authApi = {
     return loadToken();
   },
 
-  async me(): Promise<{ id: string; name: string; email: string; role: string }> {
-    const { data } = await http.get('/auth/me');
+  async me(): Promise<{ id: string; name: string; email: string; role: string; roles?: string[] }> {
+    const { data } = await http.get<{ id: string; name: string; email: string; role: string; roles?: string[] }>('/auth/me');
     return data;
   },
 };
