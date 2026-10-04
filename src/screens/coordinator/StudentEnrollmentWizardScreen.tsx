@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, ActivityIndicator, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import DobPicker from '../../components/DobPicker';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
@@ -11,15 +13,44 @@ import { getStaffOptions, getStudentOptions, type StaffOption, type StudentOptio
 import { createStudentEnrollment } from '../../api/coordinatorApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
+import CameraCaptureModal from '../../components/CameraCaptureModal';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'];
 
-const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
+const PROGRAM_TYPES = ['Regular', 'Pulled Out'];
+const THERAPY_GROUPS = ['Basic', 'Functional Living Skill'];
 const GENDERS = ['Female', 'Male', 'Other'];
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DOB_PLACEHOLDER = new Date(2018, 0, 1);
+
+export function calculateAge(dobIso: string): number | null {
+  if (!dobIso) return null;
+  const birthDate = new Date(dobIso);
+  if (isNaN(birthDate.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age >= 0 ? age : 0;
+}
+
+export function getTherapyGroupAgeWarning(therapyGroup: string, age: number | null): string | null {
+  if (age === null) return null;
+  const normalized = therapyGroup.toLowerCase();
+  if (normalized.includes('basic')) {
+    if (age < 3 || age > 12) {
+      return `Basic group is recommended for ages 3–12 (Current age: ${age} yrs)`;
+    }
+  } else if (normalized.includes('functional')) {
+    if (age < 13 || age > 19) {
+      return `Functional Living Skill group is recommended for ages 13–19 (Current age: ${age} yrs)`;
+    }
+  }
+  return null;
+}
 
 // Reference design palette (Matches the Enrollment Wizard reference)
 const C_NAVY = '#1F2937';
@@ -35,6 +66,9 @@ interface WizardState {
   dob: string;
   gender: string;
   program: string;
+  therapyGroup: string;
+  photoUri?: string;
+  photoBase64?: string;
   parentName: string;
   parentPhone: string;
   parentEmail: string;
@@ -49,7 +83,10 @@ const INITIAL_STATE: WizardState = {
   name: '',
   dob: '',
   gender: 'Female',
-  program: PROGRAMS[0],
+  program: PROGRAM_TYPES[0],
+  therapyGroup: THERAPY_GROUPS[0],
+  photoUri: '',
+  photoBase64: '',
   parentName: '',
   parentPhone: '',
   parentEmail: '',
@@ -184,8 +221,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const [customSections, setCustomSections] = useState<string[]>([]);
   const [deletedSections, setDeletedSections] = useState<string[]>([]);
   const [formFields, setFormFields] = useState<any[]>([]);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
 
-  useEffect(() => {
+  const loadFormConfig = useCallback(() => {
     getStaffOptions()
       .then(({ data }) => {
         const teachers = data.filter((s) => s.role === 'teacher');
@@ -194,6 +232,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         setForm((prev) => ({ ...prev, therapist: prev.therapist || available?.name || '' }));
       })
       .catch(() => setTherapists([]));
+
     getStudentOptions()
       .then(({ data }) => setExistingStudents(data))
       .catch(() => setExistingStudents([]));
@@ -225,6 +264,24 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    loadFormConfig();
+  }, [loadFormConfig]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFormConfig();
+    }, [loadFormConfig])
+  );
+
+  const isFieldVisible = (label: string, defaultVisible = true) => {
+    const f = formFields.find(
+      (item) => item.label?.toLowerCase().trim() === label.toLowerCase().trim()
+    );
+    if (!f) return defaultVisible;
+    return f.visible !== false;
+  };
+
   const caseloadOf = (name: string) => therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
   const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
   const therapistNames = therapists.map((t) => t.name);
@@ -241,6 +298,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const next = () => {
     if (currentStep === 'Student Info') {
       if (!form.name.trim()) { showToast('Student name is required', 'error'); return; }
+      if (!form.dob.trim()) { showToast('Date of birth is required', 'error'); return; }
     }
     if (currentStep === 'Parent Info') {
       if (!form.parentName.trim()) { showToast('Parent name is required', 'error'); return; }
@@ -292,6 +350,46 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     if (step < steps.length - 1) setStep(step + 1);
   };
 
+  const handleTakePhoto = () => {
+    setCameraModalOpen(true);
+  };
+
+  const handleChoosePhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        showToast('Media library permission is required to choose a photo', 'error');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        set('photoUri', asset.uri);
+        if (asset.base64) {
+          const mimeType = asset.mimeType || 'image/jpeg';
+          set('photoBase64', `data:${mimeType};base64,${asset.base64}`);
+        } else {
+          set('photoBase64', asset.uri);
+        }
+        showToast('Student photo uploaded successfully', 'success');
+      }
+    } catch (err: any) {
+      showToast('Could not select photo: ' + (err?.message || 'Error occurred'), 'error');
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    set('photoUri', '');
+    set('photoBase64', '');
+    showToast('Photo removed', 'info');
+  };
+
   const saveProgress = () => {
     try {
       const key = `enrollment-draft-${form.name.trim().toLowerCase() || 'untitled'}`;
@@ -311,7 +409,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       lastName: rest.join(' ') || '-',
       dateOfBirth: form.dob,
       programType: form.program,
-      therapyGroup: '',
+      therapyGroup: form.therapyGroup,
       gender: form.gender,
       parentName: form.parentName.trim(),
       parentPhone: form.parentPhone.trim(),
@@ -320,6 +418,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       medicalNotes: form.medicalNotes.trim(),
       documents: [],
       assignedTherapist: form.therapist,
+      photo: form.photoBase64 || form.photoUri || '',
+      photoBase64: form.photoBase64 || '',
       customFields: customValues,
     };
     try {
@@ -370,18 +470,19 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     .filter(([k, v]) => !capturedKeys.has(k) && v !== '' && v !== undefined && v !== false)
     .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)] as [string, string]);
 
+  const calculatedAge = calculateAge(form.dob);
+
   const reviewSections: Array<{ title: string; rows: [string, string][] }> = [
     {
       title: 'Student',
       rows: [
         ['Full Name', form.name || '—'],
         ['Gender', form.gender || '—'],
-        ['Date of Birth', form.dob || '—'],
+        ['Date of Birth', form.dob ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}` : '—'],
+        ['Program Type', form.program || '—'],
+        ['Therapy Group', form.therapyGroup || '—'],
+        ['Photo', form.photoUri ? 'Photo Attached' : 'None'],
       ],
-    },
-    {
-      title: 'Program',
-      rows: [['Program', form.program || '—']],
     },
     {
       title: 'Parent / Guardian',
@@ -420,19 +521,100 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           {currentStep === 'Student Info' && (
             <View style={styles.stepBody}>
-              <Field label="Student Full Name" value={form.name} onChangeText={(t) => set('name', t)} placeholder="e.g. Aiden Rivera" />
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Date of Birth</Text>
-                <View style={styles.dobWrap}>
-                  <DobPicker
-                    value={form.dob ? new Date(`${form.dob}T00:00:00`) : DOB_PLACEHOLDER}
-                    maximumDate={new Date()}
-                    onChange={(iso) => set('dob', iso)}
-                  />
+              {/* Student Photo Card with Camera & Upload buttons */}
+              {isFieldVisible('Student Photo') && isFieldVisible('Photo') && (
+                <View style={styles.photoUploadCard}>
+                  <Text style={styles.fieldLabel}>Student Photo</Text>
+                  <View style={styles.photoRow}>
+                    <View style={styles.photoAvatarContainer}>
+                      {form.photoUri ? (
+                        <View style={styles.photoWrapper}>
+                          <Image source={{ uri: form.photoUri }} style={styles.photoImage} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveBtn}
+                            onPress={handleRemovePhoto}
+                            accessibilityLabel="Remove photo"
+                          >
+                            <Feather name="x" size={12} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={styles.photoPlaceholder}>
+                          <Feather name="user" size={32} color="#94A3B8" />
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.photoButtonContainer}>
+                      <TouchableOpacity style={styles.cameraBtn} onPress={handleTakePhoto}>
+                        <Feather name="camera" size={15} color="#FFFFFF" />
+                        <Text style={styles.cameraBtnText}>Open Camera</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.uploadBtn} onPress={handleChoosePhoto}>
+                        <Feather name="upload" size={15} color={colors.navyText} />
+                        <Text style={styles.uploadBtnText}>Upload Photo</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <Text style={styles.fieldHint}>
+                    Take a live picture with your camera or upload an image file from your device.
+                  </Text>
                 </View>
-              </View>
-              <View style={styles.field}><Text style={styles.fieldLabel}>Gender</Text><Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} /></View>
-              <View style={styles.field}><Text style={styles.fieldLabel}>Program</Text><Chips options={PROGRAMS} value={form.program} onChange={(v) => set('program', v)} /></View>
+              )}
+
+              {isFieldVisible('Student Full Name') && isFieldVisible('Full Name') && (
+                <Field label="Student Full Name" value={form.name} onChangeText={(t) => set('name', t)} placeholder="e.g. Aiden Rivera" />
+              )}
+
+              {isFieldVisible('Date of Birth') && (
+                <View style={styles.field}>
+                  <View style={styles.fieldLabelRow}>
+                    <Text style={styles.fieldLabel}>Date of Birth</Text>
+                    {form.dob && calculateAge(form.dob) !== null ? (
+                      <View style={styles.ageBadge}>
+                        <Feather name="calendar" size={12} color="#0284C7" />
+                        <Text style={styles.ageBadgeText}>
+                          Calculated Age: {calculateAge(form.dob)} {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.dobWrap}>
+                    <DobPicker
+                      value={form.dob || ''}
+                      maximumDate={new Date()}
+                      onChange={(iso) => set('dob', iso)}
+                    />
+                  </View>
+                </View>
+              )}
+
+              {isFieldVisible('Gender') && (
+                <View style={styles.field}><Text style={styles.fieldLabel}>Gender</Text><Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} /></View>
+              )}
+
+              {isFieldVisible('Program Type') && isFieldVisible('Program') && (
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Program Type</Text>
+                  <Chips options={PROGRAM_TYPES} value={form.program} onChange={(v) => set('program', v)} />
+                </View>
+              )}
+
+              {isFieldVisible('Therapy Group') && (
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Therapy Group</Text>
+                  <Chips options={THERAPY_GROUPS} value={form.therapyGroup} onChange={(v) => set('therapyGroup', v)} />
+                  {form.dob && getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
+                    <View style={styles.ageWarningBox}>
+                      <Feather name="info" size={13} color="#D97706" />
+                      <Text style={styles.ageWarningText}>
+                        {getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob))}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
 
               <DynamicFormFields
                 formName="Enrollment Wizard"
@@ -442,10 +624,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
                 excludeStandardLabels={[
                   'Full Name',
+                  'Student Full Name',
+                  'Student Photo',
+                  'Photo',
                   'Date of Birth',
+                  'Age',
                   'Gender',
                   'Program',
                   'Program Type',
+                  'Therapy Group',
                 ]}
               />
             </View>
@@ -453,9 +640,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           {currentStep === 'Parent Info' && (
             <View style={styles.stepBody}>
-              <Field required label="Parent / Guardian Name" value={form.parentName} onChangeText={(t) => set('parentName', t)} placeholder="e.g. Maria Rivera" />
-              <Field required label="Phone" value={form.parentPhone} onChangeText={(t) => set('parentPhone', t)} keyboardType="phone-pad" maxWidth placeholder="(555) 000-0000" />
-              <Field label="Email" value={form.parentEmail} onChangeText={(t) => set('parentEmail', t)} keyboardType="email-address" maxWidth placeholder="guardian@example.com" hint="Optional" />
+              {isFieldVisible('Parent / Guardian Name') && isFieldVisible('Parent Name') && (
+                <Field required label="Parent / Guardian Name" value={form.parentName} onChangeText={(t) => set('parentName', t)} placeholder="e.g. Maria Rivera" />
+              )}
+              {isFieldVisible('Phone') && isFieldVisible('Parent Phone') && (
+                <Field required label="Phone" value={form.parentPhone} onChangeText={(t) => set('parentPhone', t)} keyboardType="phone-pad" maxWidth placeholder="(555) 000-0000" />
+              )}
+              {isFieldVisible('Email') && isFieldVisible('Parent Email') && (
+                <Field label="Email" value={form.parentEmail} onChangeText={(t) => set('parentEmail', t)} keyboardType="email-address" maxWidth placeholder="guardian@example.com" hint="Optional" />
+              )}
 
               <DynamicFormFields
                 formName="Enrollment Wizard"
@@ -465,7 +658,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
                 excludeStandardLabels={[
                   'Parent / Guardian Name',
+                  'Parent Name',
+                  'Phone',
                   'Parent Phone',
+                  'Email',
                   'Parent Email',
                 ]}
               />
@@ -474,8 +670,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           {currentStep === 'Medical Info' && (
             <View style={styles.stepBody}>
-              <Field label="Diagnosis" value={form.diagnosis} onChangeText={(t) => set('diagnosis', t)} placeholder="e.g. Autism Spectrum Disorder" />
-              <Field label="Medical Notes" value={form.medicalNotes} onChangeText={(t) => set('medicalNotes', t)} multiline placeholder="Enter any relevant medical notes..." />
+              {isFieldVisible('Diagnosis') && (
+                <Field label="Diagnosis" value={form.diagnosis} onChangeText={(t) => set('diagnosis', t)} placeholder="e.g. Autism Spectrum Disorder" />
+              )}
+              {isFieldVisible('Medical Notes') && (
+                <Field label="Medical Notes" value={form.medicalNotes} onChangeText={(t) => set('medicalNotes', t)} multiline placeholder="Enter any relevant medical notes..." />
+              )}
 
               <DynamicFormFields
                 formName="Enrollment Wizard"
@@ -566,6 +766,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               <Text style={styles.reviewIntro}>Please review the enrollment details before confirming.</Text>
 
               <View style={styles.reviewCard}>
+                {form.photoUri ? (
+                  <View style={styles.reviewPhotoHeader}>
+                    <Image source={{ uri: form.photoUri }} style={styles.reviewPhotoImage} />
+                    <View style={styles.reviewPhotoInfo}>
+                      <Text style={styles.reviewStudentName}>{form.name || 'New Student'}</Text>
+                      <Text style={styles.reviewStudentProgram}>{form.program} Program</Text>
+                    </View>
+                  </View>
+                ) : null}
+
                 {reviewSections.map((section) => (
                   <ReviewSection key={section.title} title={section.title}>
                     {section.rows.map(([label, value]) => (
@@ -624,6 +834,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       <View style={styles.footer}>
         <Text style={styles.footerText}>ABA Therapy Management System — SCR-009 Enrollment Wizard</Text>
       </View>
+
+      <CameraCaptureModal
+        visible={cameraModalOpen}
+        onClose={() => setCameraModalOpen(false)}
+        onCapture={(uri, b64) => {
+          set('photoUri', uri);
+          set('photoBase64', b64 || uri);
+          showToast('Student photo captured successfully', 'success');
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -696,8 +916,146 @@ const styles = StyleSheet.create({
 
   stepBody: { gap: spacing.lg },
 
+  photoUploadCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginTop: 4,
+  },
+  photoAvatarContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoWrapper: {
+    position: 'relative',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: C_SKY,
+  },
+  photoImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+  },
+  photoPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#E2E8F0',
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoRemoveBtn: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: C_RED,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    elevation: 2,
+  },
+  photoButtonContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  cameraBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0284C7',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  cameraBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  uploadBtnText: {
+    color: '#1E293B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
   field: { gap: spacing.xs },
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: C_INK, marginBottom: 2 },
+  ageBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  ageBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  ageWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 4,
+  },
+  ageWarningText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400E',
+    flex: 1,
+  },
   requiredStar: { color: C_RED, fontWeight: '700' },
   fieldHint: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   dobWrap: { paddingVertical: 2 },
@@ -738,6 +1096,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+  },
+  reviewPhotoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    backgroundColor: '#F1F5F9',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  reviewPhotoImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: C_SKY,
+  },
+  reviewPhotoInfo: {
+    flex: 1,
+  },
+  reviewStudentName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  reviewStudentProgram: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
   reviewSection: {
     paddingHorizontal: spacing.lg,

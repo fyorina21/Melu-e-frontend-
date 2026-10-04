@@ -57,27 +57,28 @@ const STATUS_FOR_GOAL: Record<string, StatusType> = {
   paused: 'notStarted',
 };
 
-function toProfile(row: StudentProfileResponse): TeacherStudentProfile {
+function toProfile(row: any): TeacherStudentProfile {
+  const fullName = row.fullName || `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Student';
   return {
-    id: row.id,
-    name: row.fullName,
-    initial: row.fullName.charAt(0).toUpperCase(),
-    age: row.age,
-    gender: '',
-    program: row.programType,
-    diagnosis: '',
-    parentName: '',
-    parentPhone: '',
-    parentEmail: '',
-    goals: (row.goals ?? []).map((g) => ({
+    id: row.id || '',
+    name: fullName,
+    initial: (fullName || 'S').charAt(0).toUpperCase(),
+    age: row.age || 0,
+    gender: row.gender || '',
+    program: row.programType || row.program || '',
+    diagnosis: row.diagnosis || '',
+    parentName: row.guardianName || row.parentName || '',
+    parentPhone: row.guardianPhone || row.parentPhone || '',
+    parentEmail: row.guardianEmail || row.parentEmail || '',
+    goals: (row.goals ?? []).map((g: any) => ({
       id: g.id,
       name: g.name,
-      category: '',
+      category: g.category || '',
       status: STATUS_FOR_GOAL[g.status] ?? 'inProgress',
     })),
-    trialsThisBlock: 0,
-    independencePercent: 0,
-    notes: '',
+    trialsThisBlock: row.trialsThisBlock || 0,
+    independencePercent: row.independencePercent || 0,
+    notes: row.notes || '',
   };
 }
 

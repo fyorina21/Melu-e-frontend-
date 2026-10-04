@@ -21,8 +21,5 @@ export const env = {
 
 export const apiBaseUrl = `${env.apiUrl}/api/${env.apiVersion}`;
 
-/** True while in test suite (unless mocked), when explicitly enabled, or when host hasn't been configured. */
-export const isDemoMode =
-  (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') ||
-  process.env.EXPO_PUBLIC_DEMO_MODE === 'true' ||
-  env.apiUrl.includes(PLACEHOLDER_HOST);
+/** Demo mode is disabled - application communicates with real backend / database API. */
+export const isDemoMode = false;

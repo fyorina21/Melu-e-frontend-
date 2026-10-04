@@ -109,7 +109,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
     );
   }
 
-    const mockStudents = data?.students || [];
+    const students = data?.students || [];
 
   function handleDownload() {
     Alert.alert('Info', 'PDF export coming soon');
@@ -139,19 +139,19 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
             <View style={{ position: 'relative' }}>
               <TouchableOpacity style={styles.dropdownToggle} onPress={() => setDropdownOpen(!dropdownOpen)}>
                 <Text style={styles.dropdownToggleText}>
-                  {mockStudents.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
+                  {students.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
                 </Text>
               </TouchableOpacity>
               {dropdownOpen && (
                 <View style={styles.dropdownMenu}>
                   <TextInput style={styles.searchInput} placeholder="Search students..." placeholderTextColor={colors.mutedText} value={searchQuery} onChangeText={setSearchQuery} />
                   <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
-                    {mockStudents.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((s: any) => (
+                    {students.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((s: any) => (
                         <TouchableOpacity key={s.id} onPress={() => { setSelectedStudent(s.id); setDropdownOpen(false); setSearchQuery(''); }} style={[styles.dropdownItem, selectedStudent === s.id && styles.dropdownItemActive]}>
                           <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>{s.name}</Text>
                         </TouchableOpacity>
                       ))}
-                    {mockStudents.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                    {students.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                       <Text style={{ padding: 12, color: colors.mutedText, textAlign: 'center' }}>No students found.</Text>
                     )}
                   </ScrollView>
@@ -197,7 +197,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               onPress={() => setDropdownOpen(!dropdownOpen)}
             >
               <Text style={styles.dropdownToggleText}>
-                {mockStudents.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
+                {students.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
               </Text>
             </TouchableOpacity>
             
@@ -211,7 +211,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                   onChangeText={setSearchQuery}
                 />
                 <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
-                  {mockStudents
+                  {students
                     .filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
                     .map((s: any) => (
                       <TouchableOpacity
@@ -226,7 +226,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                         <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>{s.name}</Text>
                       </TouchableOpacity>
                     ))}
-                  {mockStudents.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  {students.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                     <Text style={{ padding: 12, color: colors.mutedText, textAlign: 'center' }}>No students found.</Text>
                   )}
                 </ScrollView>

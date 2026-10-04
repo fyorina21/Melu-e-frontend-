@@ -92,10 +92,11 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   const isTeacher = session?.role === 'teacher';
   const currentTherapistName = session?.userName || (session as any)?.user?.name;
 
-  // Filter students to strictly show only the therapist's assigned students when logged in as teacher
-  const filteredStudents = (data?.students ?? []).filter((s) => {
-    if (isTeacher && currentTherapistName) {
-      return s.therapist === currentTherapistName;
+  // Filter students to strictly show only students who are in assessment and exclude active therapy students
+  const filteredStudents = (data?.students ?? []).filter((s: any) => {
+    // Students in active therapy / in session must NOT appear on the assessment dashboard
+    if (s.status === 'active' || s.status === 'active_therapy' || s.status === 'in_session') {
+      return false;
     }
     return s.phase === '6-week' || !s.phase;
   });

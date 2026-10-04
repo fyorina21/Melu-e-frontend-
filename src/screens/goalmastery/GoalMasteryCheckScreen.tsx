@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import ScreenLoader from '../../components/ScreenLoader';
-import ScreenError from '../../components/ScreenError';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
+import { useAuth } from '../../context/AuthContext';
 import { getGoalMasteryCheck, submitGoalMasteryCheck } from '../../api/sessionApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
+import { getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'GoalMasteryCheck'>;
@@ -23,9 +26,14 @@ interface PrimaryTeacherData {
 interface VerificationTeacher {
   name: string;
   date: string;
+  outcome?: OutcomeOption | null;
+  promptUsed?: PromptType;
+  notes?: string;
 }
 
 interface MasteryCheckData {
+  studentId?: string;
+  goalId?: string;
   studentName: string;
   goalName: string;
   station: string;
@@ -36,6 +44,12 @@ interface MasteryCheckData {
   primaryTeacher: PrimaryTeacherData;
   teacherB: VerificationTeacher;
   teacherC: VerificationTeacher;
+}
+
+interface GoalOption {
+  id: string;
+  name: string;
+  status?: string;
 }
 
 const OUTCOME_OPTIONS: { id: OutcomeOption; label: string }[] = [
@@ -52,9 +66,24 @@ const PROMPT_OPTIONS: PromptType[] = [
 ];
 
 export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
-  const { studentId, goalId } = route.params;
+  const { session: authSession } = useAuth();
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const urlGid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('goalId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+
+  const initialSid = route?.params?.studentId || urlSid || localSid || '';
+  const initialGid = route?.params?.goalId || urlGid || '';
+
+  const [activeStudentId, setActiveStudentId] = useState<string>(initialSid);
+  const [activeGoalId, setActiveGoalId] = useState<string>(initialGid);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+  const [goalOptions, setGoalOptions] = useState<GoalOption[]>([]);
+
+  const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
+  const [goalDropdownOpen, setGoalDropdownOpen] = useState(false);
 
   const [data, setData] = useState<MasteryCheckData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -72,17 +101,92 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
   const [touched, setTouched] = useState(false);
 
+  const loggedInTeacherName = authSession?.userName || data?.primaryTeacher?.name || 'Rosa Delgado';
+
+  // 1. Fetch available students list
+  useEffect(() => {
+    let active = true;
+    getStudentOptions()
+      .then(({ data: students }) => {
+        if (!active) return;
+        const list = Array.isArray(students) ? students : [];
+        setStudentOptions(list);
+        if (!activeStudentId && list.length > 0) {
+          setActiveStudentId(list[0].id);
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [activeStudentId]);
+
+  // 2. Fetch available goals for active student
+  useEffect(() => {
+    if (!activeStudentId) return;
+    let active = true;
+    getTeacherStudentProfile(activeStudentId)
+      .then(({ data: profile }) => {
+        if (!active) return;
+        const goals: GoalOption[] = (profile?.goals as GoalOption[]) || [];
+        setGoalOptions(goals);
+        if (goals.length > 0) {
+          const currentGoalExists = goals.some((g) => g.id === activeGoalId);
+          if (!currentGoalExists || !activeGoalId) {
+            setActiveGoalId(goals[0].id);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [activeStudentId, activeGoalId]);
+
+  // 3. Load mastery check details from backend
   const load = useCallback(async () => {
+    if (!activeStudentId) return;
+    setLoading(true);
     try {
-      const { data: res } = await getGoalMasteryCheck(studentId, goalId);
-      setData(res);
+      const gid = activeGoalId || 'goal-1';
+      const { data: res } = await getGoalMasteryCheck(activeStudentId, gid);
+      const masteryData = res as MasteryCheckData;
+      setData(masteryData);
       setLoadError(false);
+
+      // Pre-fill existing verification data if present
+      if (masteryData?.teacherB?.outcome) {
+        setTeacherBOutcome(masteryData.teacherB.outcome);
+        setTeacherBPrompt(masteryData.teacherB.promptUsed || '');
+        setTeacherBNotes(masteryData.teacherB.notes || '');
+      }
+      if (masteryData?.teacherC?.outcome) {
+        setTeacherCOutcome(masteryData.teacherC.outcome);
+        setTeacherCPrompt(masteryData.teacherC.promptUsed || '');
+        setTeacherCNotes(masteryData.teacherC.notes || '');
+      }
+
+      if (masteryData?.statusLabel === 'Pending Director Review' || masteryData?.statusLabel === 'Approved') {
+        setIsSubmitted(true);
+      } else {
+        setIsSubmitted(false);
+      }
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('last_assessment_student_id', activeStudentId);
+          const url = `/GoalMasteryCheck?studentId=${encodeURIComponent(activeStudentId)}&goalId=${encodeURIComponent(gid)}`;
+          window.history.replaceState(null, '', url);
+        } catch {}
+      }
     } catch (err) {
       setLoadError(true);
+    } finally {
+      setLoading(false);
     }
-  }, [studentId, goalId]);
+  }, [activeStudentId, activeGoalId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (activeStudentId) {
+      load();
+    }
+  }, [load, activeStudentId, activeGoalId]);
 
   // Validation Logic
   const isTeacherBValid = teacherBOutcome && (
@@ -107,42 +211,52 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !activeStudentId || !activeGoalId) return;
 
     const payload = {
-      teacherB: { outcome: teacherBOutcome, promptUsed: teacherBOutcome === 'failed' ? teacherBPrompt : null, notes: teacherBNotes },
-      teacherC: { outcome: teacherCOutcome, promptUsed: teacherCOutcome === 'failed' ? teacherCPrompt : null, notes: teacherCNotes },
+      teacherB: {
+        outcome: teacherBOutcome,
+        promptUsed: teacherBOutcome === 'failed' ? teacherBPrompt : null,
+        notes: teacherBNotes,
+        date: new Date().toISOString().split('T')[0],
+      },
+      teacherC: {
+        outcome: teacherCOutcome,
+        promptUsed: teacherCOutcome === 'failed' ? teacherCPrompt : null,
+        notes: teacherCNotes,
+        date: new Date().toISOString().split('T')[0],
+      },
     };
 
     try {
-      await submitGoalMasteryCheck(studentId, goalId, payload);
+      await submitGoalMasteryCheck(activeStudentId, activeGoalId, payload);
       await load();
       setIsSubmitted(true);
       Alert.alert('Success', 'Verification submitted and notification sent to Director.', [
-        { text: 'OK', onPress: () => navigation?.goBack?.() }
+        { text: 'OK', onPress: () => navigation?.goBack?.() },
       ]);
     } catch (err) {
       setIsSubmitted(true);
       Alert.alert('Submitted (offline)', 'Notification sent and will sync once online.', [
-        { text: 'OK', onPress: () => navigation?.goBack?.() }
+        { text: 'OK', onPress: () => navigation?.goBack?.() },
       ]);
     }
   };
 
-if (loadError) return <ScreenError onRetry={load} />;
-   if (!data) return <ScreenLoader />;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (loading && !data) return <ScreenLoader />;
 
-   if (!data.studentName) {
-     return (
-       <SafeAreaView style={styles.safe}>
-         <View style={styles.emptyContainer}>
-           <Text style={styles.emptyText}>No student found for this goal mastery check.</Text>
-         </View>
-       </SafeAreaView>
-     );
-   }
+  if (!data || !data.studentName) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No student found for this goal mastery check.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-   const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
+  const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -153,7 +267,82 @@ if (loadError) return <ScreenError onRetry={load} />;
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Goal Mastery Check</Text>
-        <View style={{ width: 80 }} />
+
+        <View style={styles.headerPickersRow}>
+          {/* Student Selector */}
+          {studentOptions.length > 1 && (
+            <View style={styles.pickerContainer}>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setGoalDropdownOpen(false);
+                  setStudentDropdownOpen(!studentDropdownOpen);
+                }}
+              >
+                <Feather name="user" size={14} color="#0284C7" />
+                <Text style={styles.pickerBtnText} numberOfLines={1}>
+                  {studentOptions.find((s) => s.id === activeStudentId)?.name || data.studentName}
+                </Text>
+                <Feather name="chevron-down" size={14} color="#64748B" />
+              </TouchableOpacity>
+              {studentDropdownOpen && (
+                <View style={styles.dropdownMenu}>
+                  {studentOptions.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={[styles.dropdownItem, opt.id === activeStudentId && styles.dropdownItemSelected]}
+                      onPress={() => {
+                        setActiveStudentId(opt.id);
+                        setStudentDropdownOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownItemText, opt.id === activeStudentId && styles.dropdownItemTextSelected]}>
+                        {opt.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Goal Selector */}
+          {goalOptions.length > 1 && (
+            <View style={styles.pickerContainer}>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setStudentDropdownOpen(false);
+                  setGoalDropdownOpen(!goalDropdownOpen);
+                }}
+              >
+                <Feather name="target" size={14} color="#0284C7" />
+                <Text style={styles.pickerBtnText} numberOfLines={1}>
+                  {goalOptions.find((g) => g.id === activeGoalId)?.name || data.goalName}
+                </Text>
+                <Feather name="chevron-down" size={14} color="#64748B" />
+              </TouchableOpacity>
+              {goalDropdownOpen && (
+                <View style={styles.dropdownMenu}>
+                  {goalOptions.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={[styles.dropdownItem, opt.id === activeGoalId && styles.dropdownItemSelected]}
+                      onPress={() => {
+                        setActiveGoalId(opt.id);
+                        setGoalDropdownOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownItemText, opt.id === activeGoalId && styles.dropdownItemTextSelected]}>
+                        {opt.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -193,16 +382,18 @@ if (loadError) return <ScreenError onRetry={load} />;
           {/* Primary Teacher (A) Card */}
           <View style={[styles.columnCard, styles.primaryTeacherCard]}>
             <View style={styles.primaryCardHeader}>
-              <Text style={styles.primaryCardTitle}>Primary Teacher (A)</Text>
+              <Text style={styles.primaryCardTitle}>{loggedInTeacherName} (Primary)</Text>
             </View>
             <View style={styles.cardBody}>
               <View style={styles.teacherNameRow}>
                 <Feather name="user" size={16} color="#64748B" />
-                <Text style={styles.teacherNameText}>{data.primaryTeacher.name}</Text>
+                <Text style={styles.teacherNameText}>{loggedInTeacherName}</Text>
               </View>
 
               <View style={styles.badge100}>
-                <Text style={styles.badge100Text}>100% Independence Achieved</Text>
+                <Text style={styles.badge100Text}>
+                  {data.primaryTeacher.independenceRate || '100%'} Independence Achieved
+                </Text>
               </View>
 
               <View style={styles.detailSection}>
@@ -216,15 +407,15 @@ if (loadError) return <ScreenError onRetry={load} />;
 
               <Text style={styles.notesLabel}>Notes</Text>
               <View style={styles.readOnlyNotes}>
-                <Text style={styles.notesText}>{data.primaryTeacher.notes || ''}</Text>
+                <Text style={styles.notesText}>{data.primaryTeacher.notes || 'No session notes recorded.'}</Text>
               </View>
             </View>
           </View>
 
-          {/* Teacher B Verification Card */}
+          {/* Second Teacher Verification Card */}
           <View style={styles.columnCard}>
             <View style={styles.standardCardHeader}>
-              <Text style={styles.standardCardTitle}>Teacher B Verification</Text>
+              <Text style={styles.standardCardTitle}>{data.teacherB.name} Verification</Text>
             </View>
             <View style={styles.cardBody}>
               <View style={styles.teacherNameRow}>
@@ -300,16 +491,18 @@ if (loadError) return <ScreenError onRetry={load} />;
                 editable={!isSubmitted}
                 value={teacherBNotes}
                 onChangeText={(v) => { setTouched(true); setTeacherBNotes(v); }}
+                placeholder="Enter verification notes..."
+                placeholderTextColor="#94A3B8"
               />
 
               <Text style={styles.cardFooterDate}>Date: {data.teacherB.date}</Text>
             </View>
           </View>
 
-          {/* Teacher C Verification Card */}
+          {/* Third Teacher Verification Card */}
           <View style={styles.columnCard}>
             <View style={styles.standardCardHeader}>
-              <Text style={styles.standardCardTitle}>Teacher C Verification</Text>
+              <Text style={styles.standardCardTitle}>{data.teacherC.name} Verification</Text>
             </View>
             <View style={styles.cardBody}>
               <View style={styles.teacherNameRow}>
@@ -385,6 +578,8 @@ if (loadError) return <ScreenError onRetry={load} />;
                 editable={!isSubmitted}
                 value={teacherCNotes}
                 onChangeText={(v) => { setTouched(true); setTeacherCNotes(v); }}
+                placeholder="Enter verification notes..."
+                placeholderTextColor="#94A3B8"
               />
 
               <Text style={styles.cardFooterDate}>Date: {data.teacherC.date}</Text>
@@ -423,11 +618,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
+    zIndex: 100,
   },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backText: { fontSize: 14, color: '#334155', fontWeight: '500' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
   
+  headerPickersRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pickerContainer: { position: 'relative', zIndex: 110 },
+  pickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    maxWidth: 180,
+  },
+  pickerBtnText: { fontSize: 12, fontWeight: '600', color: '#1E293B', flexShrink: 1 },
+
   content: { padding: 24, gap: 20, maxWidth: 1200, alignSelf: 'center', width: '100%' },
 
   studentCard: {
@@ -506,6 +718,10 @@ const styles = StyleSheet.create({
   selectText: { fontSize: 13, color: '#0F172A' },
   placeholderText: { color: '#64748B' },
   dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
@@ -514,11 +730,14 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 3,
+    elevation: 5,
+    zIndex: 200,
+    minWidth: 160,
   },
   dropdownItem: { paddingVertical: 10, paddingHorizontal: 12 },
-  dropdownItemSelected: { backgroundColor: '#3B82F6' },
+  dropdownItemSelected: { backgroundColor: '#E0F2FE' },
   dropdownItemText: { fontSize: 13, color: '#0F172A' },
+  dropdownItemTextSelected: { fontWeight: '700', color: '#0284C7' },
   dropdownItemTextPlaceholder: { fontSize: 13, color: '#64748B' },
 
   textInput: { minHeight: 70, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, padding: 8, fontSize: 13, textAlignVertical: 'top', backgroundColor: '#FFFFFF' },
@@ -530,8 +749,8 @@ const styles = StyleSheet.create({
   submitBtn: { backgroundColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' },
   submitBtnActive: { backgroundColor: '#FACC15' },
   submitBtnDisabled: { opacity: 0.6 },
-submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-   submitBtnTextActive: { color: '#1E293B' },
-   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
- });
+  submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  submitBtnTextActive: { color: '#1E293B' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+});

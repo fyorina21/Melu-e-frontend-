@@ -4,11 +4,6 @@
 // admin configures the order on the TrialLoggingFormat screen; the live
 // preview and the teacher session Trial Record read from this same store so
 // every surface renders trials in the identical sequence.
-//
-// State is persisted to the mock database (localStorage on web) so the
-// configured order survives reloads and role switches.
-
-import { mockDb } from '../api/mock/db';
 
 export interface PromptLevelConfigItem {
   id: string;
@@ -18,7 +13,7 @@ export interface PromptLevelConfigItem {
   status: 'Active';
 }
 
-const CONFIG_ID = 'trialLogging';
+const STORAGE_KEY = 'melue_prompt_levels_config';
 
 const DEFAULT_PROMPT_LEVELS: PromptLevelConfigItem[] = [
   { id: 'pl-1', name: 'FP', color: '#E5484D', order: 1, status: 'Active' },
@@ -42,34 +37,28 @@ function toItem(row: Record<string, unknown>, index: number): PromptLevelConfigI
   };
 }
 
-function readPersisted(): PromptLevelConfigItem[] | null {
+function readPersisted(): { levels: PromptLevelConfigItem[] | null; consecutive: number; streamCount: number } {
+  if (typeof localStorage === 'undefined') {
+    return { levels: null, consecutive: 5, streamCount: 5 };
+  }
   try {
-    const saved = mockDb.findById('adminConfigs', CONFIG_ID);
-    const rows = (saved?.value as { promptLevels?: Array<Record<string, unknown>> } | undefined)?.promptLevels;
-    if (!Array.isArray(rows) || rows.length === 0) return null;
-    return rows.map(toItem);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { levels: null, consecutive: 5, streamCount: 5 };
+    const parsed = JSON.parse(raw);
+    const rows = parsed?.promptLevels;
+    const levels = Array.isArray(rows) && rows.length > 0 ? rows.map(toItem) : null;
+    const consecutive = typeof parsed?.consecutive === 'number' ? parsed.consecutive : 5;
+    const streamCount = typeof parsed?.streamCount === 'number' ? parsed.streamCount : 5;
+    return { levels, consecutive, streamCount };
   } catch {
-    return null;
+    return { levels: null, consecutive: 5, streamCount: 5 };
   }
 }
 
-let config: PromptLevelConfigItem[] = readPersisted() ?? DEFAULT_PROMPT_LEVELS.map((c) => ({ ...c }));
-let configConsecutive = 5;
-let configStreamCount = 5;
-
-try {
-  const saved = mockDb.findById('adminConfigs', CONFIG_ID);
-  if (saved?.value) {
-    if (typeof (saved.value as any).consecutive === 'number') {
-      configConsecutive = (saved.value as any).consecutive;
-    }
-    if (typeof (saved.value as any).streamCount === 'number') {
-      configStreamCount = (saved.value as any).streamCount;
-    }
-  }
-} catch {
-  // best effort
-}
+const initial = readPersisted();
+let config: PromptLevelConfigItem[] = initial.levels ?? DEFAULT_PROMPT_LEVELS.map((c) => ({ ...c }));
+let configConsecutive = initial.consecutive;
+let configStreamCount = initial.streamCount;
 
 export function getPromptLevels(): PromptLevelConfigItem[] {
   return config.map((c) => ({ ...c }));
@@ -83,17 +72,20 @@ export function setPromptLevels(next: PromptLevelConfigItem[], consecutive: numb
   config = next.map((c) => ({ ...c }));
   configConsecutive = consecutive;
   configStreamCount = streamCount;
-  try {
-    const existing = mockDb.findById('adminConfigs', CONFIG_ID);
-    const value = { promptLevels: config, consecutive, streamCount };
-    if (existing) {
-      mockDb.updateById('adminConfigs', CONFIG_ID, { value });
-    } else {
-      mockDb.insert('adminConfigs', { id: CONFIG_ID, value });
-    }
-  } catch {
-    // Persistence is best-effort in demo mode.
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ promptLevels: config, consecutive, streamCount }));
+    } catch {}
   }
+}
+
+export function syncPromptLevelsFromApi(rows: any[], consecutive: number = configConsecutive, streamCount: number = configStreamCount): PromptLevelConfigItem[] {
+  if (Array.isArray(rows)) {
+    const items = rows.map((r, idx) => toItem(r, idx));
+    setPromptLevels(items, consecutive, streamCount);
+    return items;
+  }
+  return getPromptLevels();
 }
 
 export function getPromptLevelOrder(): Record<string, number> {
@@ -103,4 +95,4 @@ export function getPromptLevelOrder(): Record<string, number> {
     if (item.name === '+') map['INDEPENDENT'] = item.order;
   }
   return map;
-}
+}

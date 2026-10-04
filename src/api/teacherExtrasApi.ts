@@ -35,12 +35,21 @@ export const saveSensoryAssessment = (studentId: string, payload: Record<string,
   client.post(`/teacher/students/${studentId}/assessments/sensory`, payload);
 
 export const getSocialSkillsAssessment = (studentId: string) =>
-  client.get(`/teacher/students//assessments/social-skills`);
+  client.get(`/teacher/students/${studentId}/assessments/social-skills`);
 export const saveSocialSkillsAssessment = (studentId: string, payload: Record<string, unknown>) =>
-  client.post(`/teacher/students//assessments/social-skills`, payload);
+  client.post(`/teacher/students/${studentId}/assessments/social-skills`, payload);
 
-export const getTeacherStudentProfile = (studentId: string) =>
-  client.get(`/teacher/students/${studentId}/profile`);
+export const getTeacherStudentProfile = async (studentId: string) => {
+  try {
+    return await client.get(`/teacher/students/${studentId}/profile`);
+  } catch (err) {
+    try {
+      return await client.get(`/coordinator/students/${studentId}/profile`);
+    } catch {
+      return await client.get(`/students/${studentId}`);
+    }
+  }
+};
 
 // MR-52: Notifications (Teacher view)
 export const getTeacherNotifications = () => client.get('/teacher/notifications');

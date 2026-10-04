@@ -42,6 +42,8 @@ interface ActiveSessionRow {
   timer: string;
   trialCount: number;
   studentNames: string[];
+  goals?: string[];
+  trialBreakdown?: Record<string, number>;
   incidents: unknown[];
 }
 
@@ -59,6 +61,8 @@ function mapActiveSession(row: ActiveSessionRow): Session {
     station: row.stationName,
     room: row.roomName ?? '—',
     students: row.studentNames ?? [],
+    goals: row.goals ?? [],
+    trialBreakdown: row.trialBreakdown ?? { FP: 0, PP: 0, G: 0, '+': row.trialCount ?? 0 },
     timer: (m || 0) * 60 + (s || 0),
     trials: row.trialCount ?? 0,
     status: STATUS_FROM_API[row.status] ?? 'on-track',
@@ -72,6 +76,8 @@ interface Session {
   station: string;
   room: string;
   students: string[];
+  goals: string[];
+  trialBreakdown: Record<string, number>;
   timer: number;
   trials: number;
   status: SessionStatus;
@@ -108,19 +114,11 @@ const STATION_OPTIONS: { label: string; value: string }[] = [
 
 const ALERT_TYPES = ['Urgent', 'FYI', 'Check-in'];
 
-const MOCK_GOALS = ['Identify Colors', 'Request Items', 'Follow 2-Step Instructions', 'Match Objects'];
-const MOCK_TRIAL_BREAKDOWN: Record<string, number> = { FP: 5, PP: 4, G: 3, '+': 6 };
 const TRIAL_COLORS: Record<string, string> = {
   FP: colors.primaryYellowDark,
   PP: '#C084FC',
   G: '#FCD34D',
   '+': '#4ADE80',
-};
-const STUDENT_ID_MAP: Record<string, string> = {
-  'Student A': 's1',
-  'Student B': 's2',
-  'Student C': 's3',
-  'Student D': 's4',
 };
 
 export default function LiveSessionMonitoringScreen({ navigation }: Props) {
@@ -211,9 +209,9 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
     closeAlertModal();
   };
 
-  const openStudent = (studentName: string) => {
+  const openStudent = (studentId: string) => {
     setSelectedSession(null);
-    navigation?.navigate?.('StudentProfile', { studentId: STUDENT_ID_MAP[studentName] ?? 's1' });
+    navigation?.navigate?.('StudentProfile', { studentId });
   };
 
   const handleTabPress = (tab: string) => {
@@ -436,12 +434,18 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                 </View>
 
                 <Text style={styles.sectionLabel}>GOALS BEING WORKED ON</Text>
-                {MOCK_GOALS.slice(0, 2).map((g) => (
-                  <View key={g} style={styles.goalRow}>
-                    <CheckCircle size={14} color="#4ADE80" />
-                    <Text style={styles.goalText}>{g}</Text>
-                  </View>
-                ))}
+                {selectedSession.goals.length > 0 ? (
+                  selectedSession.goals.map((g) => (
+                    <View key={g} style={styles.goalRow}>
+                      <CheckCircle size={14} color="#4ADE80" />
+                      <Text style={styles.goalText}>{g}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.goalText, { color: colors.mutedText, fontStyle: 'italic', marginBottom: spacing.xs }]}>
+                    No active goals listed for this session
+                  </Text>
+                )}
 
                 <View style={styles.metricsGrid3}>
                   <View style={styles.metricTile}>
@@ -467,7 +471,7 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
 
                 <Text style={styles.sectionLabel}>TRIAL BREAKDOWN</Text>
                 <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                  {Object.entries(MOCK_TRIAL_BREAKDOWN).map(([key, val]) => (
+                  {Object.entries(selectedSession.trialBreakdown).map(([key, val]) => (
                     <View key={key} style={styles.breakdownTile}>
                       <Text style={styles.breakdownValue}>{val}</Text>
                       <Text style={[styles.breakdownKey, { color: TRIAL_COLORS[key] ?? '#4ADE80' }]}>{key}</Text>

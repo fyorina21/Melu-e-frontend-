@@ -163,10 +163,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       showToast(
         allAnswered
           ? `${studentName} ABLLS assessment completed!`
-          : `${studentName} ABLLS assessment saved successfully.`,
+          : `${studentName} ABLLS assessment draft saved.`,
         'success'
       );
-      navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');
     }

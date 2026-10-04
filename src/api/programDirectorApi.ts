@@ -50,5 +50,7 @@ export const escalateToDirector = (conversationId: string, payload: Payload) =>
 export const getChartData = (params: QueryParams) =>
   // params: { studentId, chartType, goalIds, dateRange }
   client.get('/program-director/charts', { params });
-export const exportChart = (params: QueryParams) => client.get('/program-director/charts/export', { params });
-export const getAssessmentSummaryDashboard = (studentId?: string) => client.get('/program-director/assessment-summary-dashboard', { params: { studentId } });
+export const getAssessmentSummaryDashboard = (studentId?: string) =>
+  client.get('/program-director/assessment-summary-dashboard', {
+    params: studentId && studentId.trim() ? { studentId: studentId.trim() } : undefined,
+  });

@@ -11,19 +11,31 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { getAbcLists } from '../../../api/institutionalAdminApi';
-import DynamicFormFields from '../../../components/DynamicFormFields';
+import { getFormConfig } from '../../../api/institutionalAdminApi';
+import DynamicFormFields, { type DynamicFormField } from '../../../components/DynamicFormFields';
+import { useAuth } from '../../../context/AuthContext';
 
 export interface IncidentPayload {
-  antecedent: string;
+  date: string;
+  time: string;
+  location: string;
   behavior: string;
+  frequency: string;
+  intensity: string;
+  category: string;
+  antecedent: string;
   consequence: string;
-  additionalNotes: string;
+  teacher: string;
+  additionalNotes?: string;
+  notes?: string;
   customFields?: Record<string, any>;
+  [key: string]: any;
 }
 
 interface BehaviorIncidentModalProps {
   visible: boolean;
+  studentId?: string;
+  studentGoalId?: string;
   studentName?: string;
   goalName?: string;
   recordedBy?: string;
@@ -31,93 +43,83 @@ interface BehaviorIncidentModalProps {
   onSave: (data: IncidentPayload) => void;
 }
 
-const DEFAULT_ANTECEDENT_OPTIONS = [
-  'Task demand',
-  'Transition',
-  'Peer interaction',
-  'Denied access to preferred item',
-  'Change in routine',
-  'Loud noise',
-  'Waiting',
-];
+const getCurrentDate = () => new Date().toISOString().split('T')[0];
+const getCurrentTime = () =>
+  new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-const DEFAULT_CONSEQUENCE_OPTIONS = [
-  'Redirected to task',
-  'Offered break',
-  'Ignored behavior',
-  'Provided replacement behavior',
-  'Removed from situation',
-  'Discussed with student',
+export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = [
+  { id: 'b_loc', type: 'Text', label: 'Location', required: true, visible: true, placeholder: 'Enter location...' },
+  { id: 'b_beh', type: 'TextArea', label: 'Behavior', required: true, visible: true, placeholder: 'Describe the behavior observed...' },
+  { id: 'b_freq', type: 'Text', label: 'Frequency', required: true, visible: true, placeholder: 'Enter frequency...' },
+  { id: 'b_int', type: 'Text', label: 'Intensity', required: true, visible: true, placeholder: 'Enter intensity...' },
+  { id: 'b_cat', type: 'Text', label: 'Category', required: true, visible: true, placeholder: 'Enter category...' },
+  { id: 'b_ant', type: 'Text', label: 'Antecedent', required: true, visible: true, placeholder: 'Enter antecedent...' },
+  { id: 'b_con', type: 'Text', label: 'Consequence', required: true, visible: true, placeholder: 'Enter consequence...' },
+  { id: 'b_notes', type: 'TextArea', label: 'Note', required: false, visible: true, placeholder: 'Enter any additional notes or relevant information...' },
 ];
 
 export default function BehaviorIncidentModal({
   visible,
+  studentId,
+  studentGoalId,
   studentName = 'Student A',
   goalName = 'Identify Colors',
+  recordedBy,
   onCancel,
   onSave,
 }: BehaviorIncidentModalProps) {
-  const [antecedent, setAntecedent] = useState('');
-  const [behavior, setBehavior] = useState('');
-  const [consequence, setConsequence] = useState('');
-  const [additionalNotes, setAdditionalNotes] = useState('');
-  const [customFields, setCustomFields] = useState<Record<string, any>>({});
+  const { session: authSession } = useAuth();
+  const defaultTeacher = recordedBy || authSession?.userName || 'Rosa Delgado';
 
-  const [showAntecedentDropdown, setShowAntecedentDropdown] = useState(false);
-  const [showConsequenceDropdown, setShowConsequenceDropdown] = useState(false);
-
-  // State to trigger "Discard Changes?" alert prompt
+  const [date, setDate] = useState(getCurrentDate());
+  const [time, setTime] = useState(getCurrentTime());
+  const [teacher, setTeacher] = useState(defaultTeacher);
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [fields, setFields] = useState<DynamicFormField[]>(DEFAULT_INCIDENT_FIELDS);
+  const [isValid, setIsValid] = useState(false);
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
 
-  // Antecedent/Consequence options from Institutional Admin
-  const [antecedentOptions, setAntecedentOptions] = useState<string[]>(DEFAULT_ANTECEDENT_OPTIONS);
-  const [consequenceOptions, setConsequenceOptions] = useState<string[]>(DEFAULT_CONSEQUENCE_OPTIONS);
-
-  const loadAbcOptions = useCallback(async () => {
+  const loadConfig = useCallback(async () => {
     try {
-      const { data } = await getAbcLists();
-      if (Array.isArray(data.Antecedents)) {
-        const opts = data.Antecedents.map((a: { name: string }) => a.name).filter((n: string) => n && n !== 'Other');
-        if (opts.length > 0) setAntecedentOptions(opts);
+      const { data } = await getFormConfig('Behavior Incident Form');
+      if (Array.isArray(data?.fields) && data.fields.length > 0) {
+        const loaded = data.fields.filter((f: DynamicFormField) => f.visible !== false);
+        const nonStandard = loaded.filter((f: DynamicFormField) => !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()));
+        if (nonStandard.length === 0) {
+          setFields(DEFAULT_INCIDENT_FIELDS);
+        } else {
+          setFields(loaded);
+        }
+      } else {
+        setFields(DEFAULT_INCIDENT_FIELDS);
       }
-      if (Array.isArray(data.Consequences)) {
-        const opts = data.Consequences.map((c: { name: string }) => c.name).filter((n: string) => n && n !== 'Other');
-        if (opts.length > 0) setConsequenceOptions(opts);
-      }
-    } catch (err) {
-      // Use defaults if API fails
+    } catch {
+      setFields(DEFAULT_INCIDENT_FIELDS);
     }
   }, []);
 
   useEffect(() => {
     if (visible) {
-      loadAbcOptions();
+      loadConfig();
+      setDate(getCurrentDate());
+      setTime(getCurrentTime());
+      const initialTeacher = recordedBy || authSession?.userName || 'Rosa Delgado';
+      setTeacher(initialTeacher);
+      setFormValues({});
+      setShowDiscardConfirmation(false);
     }
-  }, [visible, loadAbcOptions]);
+  }, [visible, recordedBy, authSession?.userName, loadConfig]);
 
   const isFormDirty =
-    antecedent !== '' ||
-    behavior !== '' ||
-    consequence !== '' ||
-    additionalNotes !== '' ||
-    Object.keys(customFields).length > 0;
-
-  const finalAntecedent = antecedent.trim();
-  const finalConsequence = consequence.trim();
-
-  const isValid =
-    finalAntecedent !== '' &&
-    behavior.trim() !== '' &&
-    finalConsequence !== '';
+    Object.values(formValues).some(
+      (v) => v !== '' && v !== undefined && v !== null && (!Array.isArray(v) || v.length > 0)
+    );
 
   const resetForm = () => {
-    setAntecedent('');
-    setBehavior('');
-    setConsequence('');
-    setAdditionalNotes('');
-    setCustomFields({});
-    setShowAntecedentDropdown(false);
-    setShowConsequenceDropdown(false);
+    setDate(getCurrentDate());
+    setTime(getCurrentTime());
+    setTeacher(recordedBy || authSession?.userName || 'Rosa Delgado');
+    setFormValues({});
     setShowDiscardConfirmation(false);
   };
 
@@ -136,14 +138,45 @@ export default function BehaviorIncidentModal({
   };
 
   const handleSave = () => {
-    if (!isValid) return;
+    const findFieldValue = (keys: string[]) => {
+      for (const k of keys) {
+        if (formValues[k] !== undefined && formValues[k] !== null && String(formValues[k]).trim() !== '') {
+          return String(formValues[k]).trim();
+        }
+      }
+      return '';
+    };
+
+    const location = findFieldValue(['Location', 'location', 'b_loc', 'b1']);
+    const category = findFieldValue(['Category', 'category', 'b_cat', 'b2']);
+    const behavior = findFieldValue(['Behavior', 'Observed Behavior', 'behavior', 'b_beh', 'b3']);
+    const frequency = findFieldValue(['Frequency', 'frequency', 'b_freq', 'b4']);
+    const intensity = findFieldValue(['Intensity', 'intensity', 'b_int', 'b5']);
+    const antecedent = findFieldValue(['Antecedent', 'antecedent', 'b_ant', 'b6', 'Trigger', 'Trigger / Antecedent']);
+    const consequence = findFieldValue(['Consequence', 'consequence', 'b_con', 'b7', 'Action Taken']);
+    const note = findFieldValue(['Note', 'note', 'Additional Notes', 'Incident Notes', 'Notes', 'notes', 'additionalNotes', 'b_notes', 'b8']);
 
     onSave({
-      antecedent: finalAntecedent,
-      behavior: behavior.trim(),
-      consequence: finalConsequence,
-      additionalNotes: additionalNotes.trim(),
-      customFields,
+      student_id: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),
+      studentId: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),
+      student_goal_id: studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
+      studentGoalId: studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
+      date: date.trim() || getCurrentDate(),
+      time: time.trim() || getCurrentTime(),
+      teacher: teacher.trim() || recordedBy || authSession?.userName || 'Rosa Delgado',
+      recordedBy: teacher.trim() || recordedBy || authSession?.userName || 'Rosa Delgado',
+      location: location || (formValues['Location'] ?? ''),
+      category: category || (formValues['Category'] ?? ''),
+      behavior: behavior || (formValues['Behavior'] ?? formValues['Observed Behavior'] ?? ''),
+      frequency: frequency || (formValues['Frequency'] ?? ''),
+      intensity: intensity || (formValues['Intensity'] ?? ''),
+      antecedent: antecedent || (formValues['Antecedent'] ?? ''),
+      consequence: consequence || (formValues['Consequence'] ?? ''),
+      note: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
+      notes: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
+      additionalNotes: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
+      customFields: formValues,
+      ...formValues,
     });
     resetForm();
   };
@@ -182,146 +215,52 @@ export default function BehaviorIncidentModal({
             contentContainerStyle={styles.bodyContent}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Antecedent Field */}
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                Antecedent <Text style={styles.required}>*</Text>
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.selectBox,
-                  showAntecedentDropdown && styles.selectBoxActive,
-                ]}
-                onPress={() => {
-                  setShowConsequenceDropdown(false);
-                  setShowAntecedentDropdown(!showAntecedentDropdown);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.selectText,
-                    !antecedent && styles.placeholderText,
-                  ]}
-                >
-                  {antecedent || 'Select antecedent...'}
-                </Text>
-                <Feather
-                  name={showAntecedentDropdown ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color="#64748B"
+            {/* Header Inputs: Date & Time */}
+            <View style={styles.rowTwoCols}>
+              <View style={[styles.field, styles.colHalf]}>
+                <Text style={styles.label}>Date</Text>
+                <TextInput
+                  style={styles.input}
+                  value={date}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#94A3B8"
+                  onChangeText={setDate}
                 />
-              </TouchableOpacity>
+              </View>
 
-              {showAntecedentDropdown && (
-                <View style={styles.inlineDropdownMenu}>
-                  {antecedentOptions.map((item) => (
-                    <TouchableOpacity
-                      key={item}
-                      style={[
-                        styles.dropdownItem,
-                        antecedent === item && styles.dropdownItemSelected,
-                      ]}
-                      onPress={() => {
-                        setAntecedent(item);
-                        setShowAntecedentDropdown(false);
-                      }}
-                    >
-                      <Text style={styles.dropdownItemText}>{item}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+              <View style={[styles.field, styles.colHalf]}>
+                <Text style={styles.label}>Time</Text>
+                <TextInput
+                  style={styles.input}
+                  value={time}
+                  placeholder="HH:MM AM/PM"
+                  placeholderTextColor="#94A3B8"
+                  onChangeText={setTime}
+                />
+              </View>
             </View>
 
-            {/* Behavior Input */}
+            {/* Header Input: Teacher */}
             <View style={styles.field}>
-              <Text style={styles.label}>
-                Behavior <Text style={styles.required}>*</Text>
-              </Text>
+              <Text style={styles.label}>Teacher</Text>
               <TextInput
-                style={styles.textArea}
-                placeholder="Describe the behavior observed..."
+                style={styles.input}
+                value={teacher}
+                placeholder="Teacher Name"
                 placeholderTextColor="#94A3B8"
-                multiline
-                numberOfLines={3}
-                value={behavior}
-                onChangeText={setBehavior}
+                onChangeText={setTeacher}
               />
             </View>
 
-            {/* Consequence Field */}
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                Consequence <Text style={styles.required}>*</Text>
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.selectBox,
-                  showConsequenceDropdown && styles.selectBoxActive,
-                ]}
-                onPress={() => {
-                  setShowAntecedentDropdown(false);
-                  setShowConsequenceDropdown(!showConsequenceDropdown);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.selectText,
-                    !consequence && styles.placeholderText,
-                  ]}
-                >
-                  {consequence || 'Select consequence...'}
-                </Text>
-                <Feather
-                  name={showConsequenceDropdown ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color="#64748B"
-                />
-              </TouchableOpacity>
-
-              {showConsequenceDropdown && (
-                <View style={styles.inlineDropdownMenu}>
-                  {consequenceOptions.map((item) => (
-                    <TouchableOpacity
-                      key={item}
-                      style={[
-                        styles.dropdownItem,
-                        consequence === item && styles.dropdownItemSelected,
-                      ]}
-                      onPress={() => {
-                        setConsequence(item);
-                        setShowConsequenceDropdown(false);
-                      }}
-                    >
-                      <Text style={styles.dropdownItemText}>{item}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-
-            {/* Additional Notes Input */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Additional Notes</Text>
-              <TextInput
-                style={styles.textArea}
-                placeholder="Any additional context or observations..."
-                placeholderTextColor="#94A3B8"
-                multiline
-                numberOfLines={3}
-                value={additionalNotes}
-                onChangeText={setAdditionalNotes}
-              />
-            </View>
-
-            {/* Dynamic Custom Fields from Institutional Admin */}
+            {/* Dynamic FormBuilder Questions */}
             <DynamicFormFields
+              key={visible ? 'open' : 'closed'}
               formName="Behavior Incident Form"
-              values={customFields}
-              onChange={(key, val) => setCustomFields((prev) => ({ ...prev, [key]: val }))}
-              excludeStandardLabels={['Antecedent', 'Observed Behavior', 'Behavior', 'Consequence', 'Incident Notes', 'Additional Notes']}
+              initialFields={fields.length > 0 ? fields : undefined}
+              values={formValues}
+              onChange={(key, val) => setFormValues((prev) => ({ ...prev, [key]: val }))}
+              onValidationChange={(valid) => setIsValid(valid)}
+              excludeStandardLabels={['Date', 'Time', 'Teacher']}
             />
           </ScrollView>
 
@@ -389,8 +328,8 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    maxWidth: 560,
-    maxHeight: '85%',
+    maxWidth: 580,
+    maxHeight: '90%',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     shadowColor: '#000',
@@ -426,7 +365,15 @@ const styles = StyleSheet.create({
   bodyContent: {
     paddingHorizontal: 24,
     paddingVertical: 16,
-    gap: 16,
+    gap: 14,
+  },
+  rowTwoCols: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  colHalf: {
+    flex: 1,
   },
   field: {
     width: '100%',
@@ -440,67 +387,14 @@ const styles = StyleSheet.create({
   required: {
     color: '#EF4444',
   },
-  selectBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  input: {
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 6,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-  },
-  selectBoxActive: {
-    borderColor: '#38BDF8',
-  },
-  selectText: {
+    paddingVertical: 9,
     fontSize: 13,
     color: '#0F172A',
-  },
-  placeholderText: {
-    color: '#94A3B8',
-  },
-  inlineDropdownMenu: {
-    marginTop: 4,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 6,
-    maxHeight: 180,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  dropdownItemSelected: {
-    backgroundColor: '#E0F2FE',
-  },
-  dropdownItemText: {
-    fontSize: 13,
-    color: '#0F172A',
-  },
-  specifyInput: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
-  },
-  textArea: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 6,
-    padding: 10,
-    fontSize: 13,
-    color: '#0F172A',
-    minHeight: 70,
-    textAlignVertical: 'top',
     backgroundColor: '#FFFFFF',
   },
   footer: {

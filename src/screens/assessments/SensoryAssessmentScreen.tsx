@@ -121,6 +121,9 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
         status === 'submitted' ? 'Submitted' : 'Saved',
         `Sensory assessment updated (${progressPercent}% complete).`
       );
+      if (status === 'submitted') {
+        navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
+      }
     } catch {
       Alert.alert('Error', 'Failed to save sensory assessment.');
     }

@@ -13,21 +13,33 @@ const TOKEN_KEY = 'melue.auth.token';
 let accessToken: string | null = null;
 
 export function getAccessToken(): string | null {
-  return accessToken;
-}
-
-export async function loadToken(): Promise<string | null> {
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+  if (!accessToken && typeof localStorage !== 'undefined') {
     accessToken = localStorage.getItem(TOKEN_KEY);
-    return accessToken;
+  }
+  if (!accessToken || accessToken === 'undefined' || accessToken === 'null' || accessToken.trim() === '') {
+    return null;
+  }
+  if (accessToken.startsWith('Bearer ')) {
+    accessToken = accessToken.replace(/^Bearer\s+/i, '');
   }
   return accessToken;
 }
 
+export async function loadToken(): Promise<string | null> {
+  return getAccessToken();
+}
+
 export async function setAccessToken(token: string | null): Promise<void> {
-  accessToken = token;
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+  if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
+    accessToken = null;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    return;
+  }
+  const cleanToken = token.startsWith('Bearer ') ? token.replace(/^Bearer\s+/i, '') : token.trim();
+  accessToken = cleanToken;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(TOKEN_KEY, cleanToken);
   }
 }

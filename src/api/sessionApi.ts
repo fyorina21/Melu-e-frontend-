@@ -1,16 +1,5 @@
 
 import type { QueryParams, Payload } from '../types';
-import {
-  addAppointment,
-  addUnavailability,
-  dayIndexFromDate,
-  getWeekData,
-  resolveRoomName,
-  resolveStudentNames,
-  resolveTherapistName,
-  setAppointmentStatus,
-  updateAppointmentById,
-} from '../stores/scheduleStore';
 
 // The legacy session API delegates to the shared http client from the API
 // foundation (src/api/http/client.ts). Config, auth headers, error
@@ -42,55 +31,23 @@ export const getAppointments = (params: QueryParams) =>
 export const getAppointmentDetail = (appointmentId: string) =>
   client.get(`/appointments/${appointmentId}`);
 
-export const createAppointment = (payload: Payload) => {
+export const createAppointment = (payload: Payload) =>
   // payload: { studentIds[], therapistId, roomId, date, startTime, endTime, stationName }
-  // Demo mode: write straight into the shared schedule store so the Teacher
-  // calendar and the Coordinator Operational Management screen stay in sync.
-  const studentIds = (payload.studentIds as string[]) || [];
-  const created = addAppointment(dayIndexFromDate(payload.date as string), {
-    status: 'scheduled',
-    therapistId: (payload.therapistId as string) || '',
-    therapistName: resolveTherapistName(payload.therapistId as string),
-    roomId: (payload.roomId as string) || '',
-    roomName: resolveRoomName(payload.roomId as string),
-    studentIds,
-    studentNames: resolveStudentNames(studentIds),
-    startTime: (payload.startTime as string) || '',
-    endTime: (payload.endTime as string) || '',
-    date: (payload.date as string) || '',
-  });
-  return Promise.resolve({ data: created });
-};
+  client.post('/appointments', payload);
 
-export const updateAppointment = (appointmentId: string, payload: Payload) => {
-  updateAppointmentById(appointmentId, {
-    studentIds: (payload.studentIds as string[]) || undefined,
-    studentNames: resolveStudentNames(payload.studentIds as string[]),
-    therapistId: (payload.therapistId as string) || undefined,
-    therapistName: resolveTherapistName(payload.therapistId as string),
-    roomId: (payload.roomId as string) || undefined,
-    roomName: resolveRoomName(payload.roomId as string),
-    startTime: (payload.startTime as string) || undefined,
-    endTime: (payload.endTime as string) || undefined,
-    date: (payload.date as string) || undefined,
-  });
-  return Promise.resolve({ data: { id: appointmentId } });
-};
+export const updateAppointment = (appointmentId: string, payload: Payload) =>
+  client.patch(`/appointments/${appointmentId}`, payload);
 
-export const cancelAppointment = (appointmentId: string, payload: Payload) => {
-  setAppointmentStatus(appointmentId, 'cancelled');
-  return Promise.resolve({ data: { id: appointmentId } });
-};
+export const cancelAppointment = (appointmentId: string, payload?: Payload) =>
+  client.post(`/appointments/${appointmentId}/cancel`, payload ?? {});
 
 export const rescheduleAppointment = (appointmentId: string, payload: Payload) =>
   // payload: { date, startTime, endTime }
   client.post(`/appointments/${appointmentId}/reschedule`, payload);
 
-export const markAppointmentStatus = (appointmentId: string, status: string) => {
+export const markAppointmentStatus = (appointmentId: string, status: string) =>
   // status: 'confirmed' | 'checked_in' | 'in_progress' | 'completed' | 'no_show'
-  setAppointmentStatus(appointmentId, status);
-  return Promise.resolve({ data: { id: appointmentId, status } });
-};
+  client.post(`/appointments/${appointmentId}/status`, { status });
 
 // ---- MR-33: Session Data Collection ----
 export const startSession = (sessionId: string) =>
@@ -107,19 +64,40 @@ export const logTrial = (sessionId: string, studentId: string, goalId: string, p
 export const undoLastTrial = (sessionId: string, studentId: string, goalId: string) =>
   client.delete(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials/last`);
 
+export const recordBehaviorIncident = (sessionId: string, payload: Payload) =>
+  client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, payload);
+
 export const recordIncident = (sessionId: string, studentId: string, payload: Payload) =>
-  client.post(`/sessions/${sessionId}/students/${studentId}/incidents`, payload);
+  client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, {
+    student_id: studentId,
+    studentId,
+    ...payload,
+  });
 
 export const requestMasteryCheck = (sessionId: string, studentId: string, goalId: string) =>
-  client.post(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/mastery-check`);
+  client.post(`/student_goals/${goalId}/mastery_checks`, { sessionId, studentId });
 
 // SCR-004: Goal Mastery Check Screen (Two-Teacher Generalization Check)
+export const createGoalMasteryCheck = (studentGoalId: string, payload?: Payload) =>
+  client.post(`/student_goals/${studentGoalId}/mastery_checks`, payload ?? {});
+
+export const submitGoalMasteryVerification = (masteryCheckId: string, payload: Payload) =>
+  client.post(`/mastery_checks/${masteryCheckId}/verifications`, payload);
+
 export const getGoalMasteryCheck = (studentId: string, goalId: string) =>
   client.get(`/students/${studentId}/goals/${goalId}/mastery-check`);
 
-export const submitGoalMasteryCheck = (studentId: string, goalId: string, payload: Payload) =>
-  // payload: { teacherB: {outcome, promptUsed, notes}, teacherC: {outcome, promptUsed, notes} }
-  client.post(`/students/${studentId}/goals/${goalId}/mastery-check/submit`, payload);
+export const submitGoalMasteryCheck = async (studentId: string, goalId: string, payload: Payload) => {
+  const { data: mcRes } = await client.post(`/student_goals/${goalId}/mastery_checks`, {
+    student_id: studentId,
+    studentId,
+    student_goal_id: goalId,
+    studentGoalId: goalId,
+    ...payload,
+  });
+  const checkId = (mcRes as any)?.mastery_check?.id || (mcRes as any)?.id || goalId;
+  return client.post(`/mastery_checks/${checkId}/verifications`, payload);
+};
 
 export const swapStudents = (sessionId: string, payload: Payload) =>
   client.post(`/sessions/${sessionId}/swap-students`, payload);
@@ -176,17 +154,13 @@ export const updateGoalProgress = (studentId: string, goalId: string, payload: P
 // ---- MR-38: Staff Scheduling Calendar ----
 // Per SCR-TC-005 (Operational Management): weekly grid, teacher filter,
 // mark unavailable, reassign students, export schedule.
-export const getStaffCalendar = (params: QueryParams) => {
+export const getStaffCalendar = (params: QueryParams) =>
   // params: { therapistId, weekStart }
-  // Demo mode: serve the shared schedule store directly.
-  return Promise.resolve({ data: getWeekData() });
-};
+  client.get('/staff-calendar', { params });
 
-export const markTeacherUnavailable = (therapistId: string, payload: Payload) => {
+export const markTeacherUnavailable = (therapistId: string, payload: Payload) =>
   // payload: { date, reason }
-  addUnavailability(therapistId, (payload.date as string) || '', (payload.reason as string) || '');
-  return Promise.resolve({ data: { therapistId } });
-};
+  client.post(`/therapists/${therapistId}/unavailability`, payload);
 
 export const reassignStudents = (payload: Payload) =>
   // payload: { fromTherapistId, toTherapistId, studentIds[] }

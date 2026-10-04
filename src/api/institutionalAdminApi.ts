@@ -10,6 +10,18 @@ export const resetFormToDefault = (formName: string) => client.post(`/admin/form
 export const getTrialLoggingConfig = () => client.get('/admin/trial-logging-config');
 export const saveTrialLoggingConfig = (payload: Payload) => client.post('/admin/trial-logging-config', payload);
 
+// SCR-ADMIN-002: Live Prompt Levels API (/admin/prompt_levels)
+export const getPromptLevelsApi = () => client.get('/admin/prompt_levels');
+export const getPromptLevelApi = (id: string | number) => client.get(`/admin/prompt_levels/${id}`);
+export const createPromptLevelApi = (payload: { label?: string; name?: string; color: string; display_order?: number; order?: number; is_active?: boolean }) =>
+  client.post('/admin/prompt_levels', { prompt_level: payload });
+export const updatePromptLevelApi = (id: string | number, payload: { label?: string; name?: string; color?: string; display_order?: number; order?: number; is_active?: boolean }) =>
+  client.put(`/admin/prompt_levels/${id}`, { prompt_level: payload });
+export const deletePromptLevelApi = (id: string | number) =>
+  client.delete(`/admin/prompt_levels/${id}`);
+export const reorderPromptLevelsApi = (ids: (string | number)[]) =>
+  client.put('/admin/prompt_levels/reorder', { ids });
+
 // SCR-ADMIN-003: ABC Dropdown List Manager
 export const getAbcLists = () => client.get('/admin/abc-lists');
 export const saveAbcList = (listType: string, items: Payload[]) => client.post(`/admin/abc-lists/${listType}`, { items });

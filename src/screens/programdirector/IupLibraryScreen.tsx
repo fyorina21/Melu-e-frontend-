@@ -46,7 +46,14 @@ export default function IupLibraryScreen({
   const load = useCallback(async () => {
     try {
       const { data: res } = await getIupLibrary({ search, status: statusFilter });
-      setList(Array.isArray(res) ? res : []);
+      const raw = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.iups)
+        ? res.iups
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
+      setList(raw);
     } catch {
       setList([]);
     }

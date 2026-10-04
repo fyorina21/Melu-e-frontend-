@@ -1,20 +1,22 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import type { SystemAdminStackParamList } from '../../types';
 import { useToast } from '../../context/ToastContext';
+import { getRoles, createRole, updateRole, deleteRole } from '../../api/SystemAdminApi';
 
 type Props = NativeStackScreenProps<SystemAdminStackParamList, 'RoleManagement'>;
 
-const mockRoles = [
-  { id: '1', name: 'System Admin', description: 'Full system access and configuration', count: 1, system: true },
-  { id: '2', name: 'Program Director', description: 'Oversees program curriculum and scheduling', count: 2, system: true },
-  { id: '3', name: 'Teacher / BCBA', description: 'Manages students and conducts assessments', count: 5, system: true },
-  { id: '4', name: 'Assistant', description: 'Assists in classrooms', count: 12, system: false },
-];
+interface RoleItem {
+  id: string;
+  name: string;
+  description: string;
+  count: number;
+  system: boolean;
+}
 
 function Badge({ children, system }: { children: React.ReactNode; system?: boolean }) {
   return (
@@ -26,23 +28,80 @@ function Badge({ children, system }: { children: React.ReactNode; system?: boole
 
 export default function RoleManagementScreen({ navigation }: Props) {
   const { showToast } = useToast();
-  const [roles, setRoles] = useState(mockRoles);
+  const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [addingRole, setAddingRole] = useState(false);
   const [newRole, setNewRole] = useState({ name: '', description: '' });
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
 
-  const saveEdit = (id: string) => {
+  const fetchRoles = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await getRoles();
+      const rawRoles = Array.isArray(res.data) ? res.data : (res.data?.roles || []);
+      const mapped: RoleItem[] = rawRoles.map((r: any) => ({
+        id: String(r.id),
+        name: r.name || r.role_name || '',
+        description: r.description || '',
+        count: r.count ?? r.users_count ?? r.staff_count ?? 0,
+        system: Boolean(r.system ?? r.is_system),
+      }));
+      setRoles(mapped);
+    } catch (err) {
+      showToast('Failed to load roles from database', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    fetchRoles();
+  }, [fetchRoles]);
+
+  const saveEdit = async (id: string) => {
     if (!editForm.name.trim()) return;
-    setRoles(rs => rs.map(r => r.id === id ? { ...r, name: editForm.name, description: editForm.description } : r));
-    setEditingRole(null);
+    try {
+      await updateRole(id, { name: editForm.name, description: editForm.description });
+      setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, name: editForm.name, description: editForm.description } : r)));
+      setEditingRole(null);
+      showToast('Role updated successfully', 'success');
+    } catch (err) {
+      showToast('Failed to update role', 'error');
+    }
   };
 
-  const addRole = () => {
+  const addRole = async () => {
     if (!newRole.name.trim()) return;
-    setRoles((rs) => [...rs, { id: String(Date.now()), ...newRole, count: 0, system: false }]);
-    setNewRole({ name: '', description: '' });
-    setAddingRole(false);
+    try {
+      const res = await createRole({ name: newRole.name, description: newRole.description });
+      const created = res.data;
+      setRoles((rs) => [
+        ...rs,
+        {
+          id: String(created?.id ?? Date.now()),
+          name: created?.name ?? newRole.name,
+          description: created?.description ?? newRole.description,
+          count: 0,
+          system: false,
+        },
+      ]);
+      setNewRole({ name: '', description: '' });
+      setAddingRole(false);
+      showToast('Role created successfully', 'success');
+    } catch (err) {
+      showToast('Failed to create role', 'error');
+    }
+  };
+
+  const handleDelete = async (roleId: string) => {
+    try {
+      await deleteRole(roleId);
+      setRoles((rs) => rs.filter((r) => r.id !== roleId));
+      showToast('Role deleted successfully', 'success');
+    } catch (err) {
+      showToast('Failed to delete role', 'error');
+    }
   };
 
   const handleSave = () => {
@@ -131,7 +190,7 @@ export default function RoleManagementScreen({ navigation }: Props) {
                         <Feather name="edit-2" size={16} color={colors.primaryBlue} />
                       </TouchableOpacity>
                       {!role.system && (
-                        <TouchableOpacity onPress={() => setRoles((rs) => rs.filter((r) => r.id !== role.id))}>
+                        <TouchableOpacity onPress={() => handleDelete(role.id)}>
                           <Feather name="trash-2" size={16} color={colors.statusRevisionText} />
                         </TouchableOpacity>
                       )}

@@ -77,6 +77,18 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
   const setScore = (id: string, value: Score) =>
     setScores((prev) => ({ ...prev, [id]: value }));
 
+  const handleSaveDraft = async () => {
+    setSaving(true);
+    try {
+      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent, status: 'draft' });
+      showToast('Social Skills Questionnaire draft saved', 'success');
+    } catch (err) {
+      showToast('Failed to save questionnaire draft', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (answered < QUESTIONS.length) {
       Alert.alert(
@@ -87,8 +99,8 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
     }
     setSaving(true);
     try {
-      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent });
-      showToast(`Social Skills Questionnaire saved (${percent}%)`, 'success');
+      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent, status: 'submitted' });
+      showToast(`Social Skills Questionnaire submitted (${percent}%)`, 'success');
       navigation?.goBack?.();
     } catch (err) {
       showToast('Failed to save questionnaire', 'error');
@@ -164,15 +176,27 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
           excludeStandardLabels={['Student Name']}
         />
 
-        <TouchableOpacity
-          style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          <Text style={styles.saveBtnText}>
-            {saving ? 'Saving…' : 'Save Questionnaire'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.draftBtn, saving && styles.saveBtnDisabled]}
+            onPress={handleSaveDraft}
+            disabled={saving}
+          >
+            <Text style={styles.draftBtnText}>
+              {saving ? 'Saving…' : 'Save Draft'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            <Text style={styles.saveBtnText}>
+              {saving ? 'Saving…' : 'Submit Questionnaire'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -232,12 +256,30 @@ const styles = StyleSheet.create({
   },
   scoreBtnText: { fontSize: 12, fontWeight: '600', color: colors.mutedText },
   scoreBtnTextActive: { color: colors.navyText },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  draftBtn: {
+    flex: 1,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  draftBtnText: {
+    fontWeight: '600',
+    color: colors.navyText,
+  },
   saveBtn: {
+    flex: 1,
     backgroundColor: colors.primaryYellow,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
-    marginTop: spacing.sm,
   },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { fontWeight: '700', color: colors.navyText },

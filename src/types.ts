@@ -104,13 +104,22 @@ export interface SessionRoster {
 }
 
 export interface IncidentPayload {
-  antecedent: string;
+  date?: string;
+  time?: string;
+  location?: string;
   behavior: string;
+  frequency?: string;
+  intensity?: string;
+  category?: string;
+  antecedent: string;
   consequence: string;
-  additionalNotes: string;
+  teacher?: string;
+  additionalNotes?: string;
+  notes?: string;
   studentId?: string;
   studentName?: string;
-  time?: string;
+  customFields?: Record<string, any>;
+  [key: string]: any;
 }
 
 export interface SessionIncident {

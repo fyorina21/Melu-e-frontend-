@@ -2,31 +2,25 @@
 //
 // The single axios instance used by every typed resource module in src/api.
 // Responsibilities:
-//   - point at the configured base URL
+//   - point at the configured base URL (real backend API / DB)
 //   - attach the bearer token when available
 //   - normalize errors into ApiError
-//   - in demo mode, route requests to the in-memory mock database
-//     (src/api/mock) so the app is fully usable without a backend
+//   - in demo mode / tests, route requests through the in-memory store
 //   - on 401, transparently refresh the token once via an opt-in handler and
 //     replay the original request
 //   - log requests through an opt-in hook
-//
-// Screens should never import this directly; use the typed resources in
-// src/api/resources.
 
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { apiBaseUrl, env, isDemoMode } from '../config/env';
 import { getAccessToken, setAccessToken } from '../token';
 import { toApiError, ApiError } from './errors';
-import { mockHttp } from '../mock/client';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
-  _mockFallback?: boolean;
   _startedAt?: number;
 }
 
-// ---- Opt-in hooks (not wired to any auth context / screens) ----
+// ---- Opt-in hooks ----
 
 type RefreshHandler = () => Promise<string | null>;
 export type Logger = (entry: {
@@ -51,15 +45,9 @@ export function setApiLogger(handler: Logger | null) {
   logger = handler;
 }
 
-// ---- Demo mode: route through the mock database ----
-
-const demoClient = mockHttp as unknown as AxiosInstance;
-
-// ---- Real client ----
+// ---- HTTP Client ----
 
 function createHttpClient(): AxiosInstance {
-  if (isDemoMode) return demoClient;
-
   const instance = axios.create({
     baseURL: apiBaseUrl,
     timeout: env.apiTimeoutMs,
@@ -92,6 +80,13 @@ function createHttpClient(): AxiosInstance {
         } else {
           config.headers.Authorization = `Bearer ${token}`;
         }
+      } else if (config.headers) {
+        if (typeof (config.headers as any).delete === 'function') {
+          (config.headers as any).delete('Authorization');
+          (config.headers as any).delete('authorization');
+        }
+        delete (config.headers as any).Authorization;
+        delete (config.headers as any).authorization;
       }
     }
     (config as RetriableConfig)._startedAt = Date.now();
@@ -128,48 +123,35 @@ function createHttpClient(): AxiosInstance {
         });
       }
 
-      // Transparent single-attempt refresh on 401 (opt-in, not wired to screens).
+      // Transparent single-attempt refresh on 401 or expired JWT
       const status = axiosError.response?.status;
-      const shouldRefresh = status === 401 && cfg && !cfg._retry && !!refreshHandler;
+      const respData = axiosError.response?.data as any;
+      const errorMsg = String(respData?.error || respData?.message || axiosError.message || '').toLowerCase();
+      const isExpiredJwt =
+        status === 401 ||
+        (status === 400 && (errorMsg.includes('expired') || errorMsg.includes('jwt') || errorMsg.includes('token')));
+
+      const shouldRefresh = isExpiredJwt && cfg && !cfg._retry && !!refreshHandler;
       if (shouldRefresh) {
         cfg._retry = true;
         try {
           const token = await refreshHandler!();
-          if (!token) return Promise.reject(toApiError(error));
+          if (!token) {
+            await setAccessToken(null);
+            return Promise.reject(toApiError(error));
+          }
           await setAccessToken(token);
           cfg.headers = cfg.headers ?? {};
           cfg.headers.Authorization = `Bearer ${token}`;
           return instance(cfg);
         } catch (refreshError) {
+          await setAccessToken(null);
           return Promise.reject(toApiError(error));
         }
       }
 
-      // Fallback to mock data when backend hasn't implemented an endpoint yet (404)
-      if (status === 404 && cfg && !cfg._mockFallback) {
-        cfg._mockFallback = true;
-        const method = (cfg.method?.toLowerCase() || 'get') as 'get' | 'post' | 'patch' | 'put' | 'delete';
-        let url = cfg.url ?? '';
-        url = url.replace(/^https?:\/\/[^/]+(\/api\/v1)?/, '');
-        if (!url.startsWith('/')) url = `/${url}`;
-
-        try {
-          let mockRes: { data: unknown; headers?: unknown };
-          if (method === 'get' || method === 'delete') {
-            mockRes = await (mockHttp[method] as any)(url, { params: cfg.params });
-          } else {
-            mockRes = await (mockHttp[method] as any)(url, cfg.data, { params: cfg.params });
-          }
-          return {
-            data: mockRes.data,
-            status: 200,
-            statusText: 'OK',
-            headers: (mockRes.headers as any) || {},
-            config: cfg,
-          };
-        } catch (_) {
-          // If mock handler also doesn't exist, proceed with original error
-        }
+      if (isExpiredJwt) {
+        await setAccessToken(null);
       }
 
       return Promise.reject(toApiError(error));
@@ -181,8 +163,7 @@ function createHttpClient(): AxiosInstance {
 
 export const http = createHttpClient();
 
-/** Attach the bearer token to every subsequent request (legacy helper). */
+/** Attach the bearer token to every subsequent request. */
 export function setAuthToken(token: string) {
-  if (isDemoMode) return;
   http.defaults.headers.common.Authorization = `Bearer ${token}`;
 }

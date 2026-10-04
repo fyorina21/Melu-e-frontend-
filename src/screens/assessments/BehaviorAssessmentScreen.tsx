@@ -194,9 +194,13 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
     try {
       await saveBehaviorAssessment(studentId, payload);
       await load();
-    } catch (err) {}
-    Alert.alert('Assessment saved', message);
-    navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
+      Alert.alert('Assessment saved', message);
+      if (goBack) {
+        navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to save behavior assessment.');
+    }
   };
 
   const handleSaveDraft = () =>

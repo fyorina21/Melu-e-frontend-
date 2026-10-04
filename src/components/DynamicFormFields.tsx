@@ -195,7 +195,7 @@ export default function DynamicFormFields({
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={String(val)}
-                placeholder={`Enter ${field.label.toLowerCase()}...`}
+                placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
                 placeholderTextColor={colors.mutedText}
                 onChangeText={(text) => {
                   onChange(field.id, text);

@@ -20,6 +20,13 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
+import {
+  getGoalBank,
+  getStudentCaseload,
+  assignGoalToSlot,
+  removeGoalFromSlot,
+  createGoal,
+} from '../../api/programDirectorApi';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 interface Goal {
@@ -55,33 +62,11 @@ const statusBadgeColors: Record<GoalStatus, { bg: string; text: string }> = {
   Mastered: { bg: '#E0F2FE', text: '#0284C7' },
 };
 
-const MOCK_GOALS: Goal[] = [
-  { id: 'g1', name: 'Identify Colors', domain: 'Cognitive', description: 'Student will identify primary colors when presented with visual stimuli.' },
-  { id: 'g2', name: 'Follow One-Step Instructions', domain: 'Receptive Language', description: 'Student will follow simple one-step verbal directions.' },
-  { id: 'g3', name: 'Request Breaks Appropriately', domain: 'Expressive Language', description: 'Student will request breaks using an appropriate communication modality.' },
-  { id: 'g4', name: 'Imitate Gross Motor Movements', domain: 'Motor Skills', description: 'Student will imitate modeled gross motor actions with increasing accuracy.' },
-  { id: 'g5', name: 'Turn-Taking with Peers', domain: 'Social Skills', description: 'Student will engage in reciprocal play activities taking turns with peers.' },
-  { id: 'g6', name: 'Hand Washing Routine', domain: 'Adaptive', description: 'Student will complete hand washing sequence independently.' },
-];
-
-const MOCK_PROGRESS: Record<string, number> = {
-  g1: 72, g2: 55, g3: 88, g4: 40, g5: 60, g6: 90,
-};
-
-const MOCK_STATUS: Record<string, GoalStatus> = {
-  g1: 'Active', g2: 'In Progress', g3: 'Mastered', g4: 'In Progress',
-  g5: 'Active', g6: 'Mastered',
-};
-
-function goalToWithStatus(g: Goal): GoalWithStatus {
-  return { ...g, status: MOCK_STATUS[g.id] ?? 'Active', progress: MOCK_PROGRESS[g.id] ?? 50 };
-}
-
-const defaultStudentGoals: StudentGoals = {
-  'station1-0': goalToWithStatus(MOCK_GOALS[0]),
-  'station1-1': goalToWithStatus(MOCK_GOALS[1]),
-  'station2-0': goalToWithStatus(MOCK_GOALS[2]),
-  'station2-1': goalToWithStatus(MOCK_GOALS[3]),
+const emptyStudentGoals: StudentGoals = {
+  'station1-0': null,
+  'station1-1': null,
+  'station2-0': null,
+  'station2-1': null,
 };
 
 const slotLabels: Record<SlotKey, string> = {
@@ -92,10 +77,10 @@ const slotLabels: Record<SlotKey, string> = {
 };
 
 export default function StudentCaseloadScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentCaseload'>) {
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('s1');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
   const [selectedStudentName, setSelectedStudentName] = useState('');
-  const [studentGoals, setStudentGoals] = useState<StudentGoals>(defaultStudentGoals);
+  const [studentGoals, setStudentGoals] = useState<StudentGoals>(emptyStudentGoals);
   const [searchTerm, setSearchTerm] = useState('');
   const [domainFilter, setDomainFilter] = useState('All');
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
@@ -104,20 +89,57 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalDomain, setNewGoalDomain] = useState('Cognitive');
   const [newGoalDescription, setNewGoalDescription] = useState('');
-  const [goalBank, setGoalBank] = useState<Goal[]>(MOCK_GOALS);
+  const [goalBank, setGoalBank] = useState<Goal[]>([]);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
   useEffect(() => {
+    getGoalBank({})
+      .then(({ data }) => {
+        const rawGoals = Array.isArray(data) ? data : (data?.goals || []);
+        setGoalBank(rawGoals.map((g: any) => ({
+          id: String(g.id),
+          name: g.name || g.title || '',
+          domain: g.domain || g.domainName || g.goal_domain?.name || 'Cognitive',
+          description: g.description || '',
+        })));
+      })
+      .catch(() => {});
+
     getStudentOptions()
       .then(({ data: opts }) => {
         setStudentOptions(opts);
-        if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
+        if (opts.length > 0) {
           setSelectedStudentId(opts[0].id);
           setSelectedStudentName(opts[0].name);
         }
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!selectedStudentId) return;
+    getStudentCaseload(selectedStudentId)
+      .then(({ data }) => {
+        if (!data) return;
+        const slots: StudentGoals = { ...emptyStudentGoals };
+        const rawSlots = data.slots || data.studentGoals || data;
+        (['station1-0', 'station1-1', 'station2-0', 'station2-1'] as SlotKey[]).forEach((key) => {
+          const item = rawSlots[key];
+          if (item) {
+            slots[key] = {
+              id: String(item.id || item.goalId),
+              name: item.name || item.goalName || '',
+              domain: item.domain || 'Cognitive',
+              description: item.description || '',
+              status: (item.status as GoalStatus) || 'Active',
+              progress: Number(item.progress ?? 0),
+            };
+          }
+        });
+        setStudentGoals(slots);
+      })
+      .catch(() => {});
+  }, [selectedStudentId]);
 
   const filteredGoals = goalBank.filter((g) => {
     const term = searchTerm.toLowerCase();
@@ -134,12 +156,21 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
     if (opt?.name) setSelectedStudentName(opt.name);
   };
 
-  const handleRemove = (slot: SlotKey) => {
+  const handleRemove = async (slot: SlotKey) => {
     const goal = studentGoals[slot];
     if (!goal) return;
     Alert.alert('Remove Goal', `Remove "${goal.name}" from this slot?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => setStudentGoals((prev) => ({ ...prev, [slot]: null })) },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          if (selectedStudentId) {
+            await removeGoalFromSlot(selectedStudentId, { slot, goalId: goal.id }).catch(() => {});
+          }
+          setStudentGoals((prev) => ({ ...prev, [slot]: null }));
+        },
+      },
     ]);
   };
 
@@ -148,16 +179,25 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
     setSlotPickerOpen(true);
   };
 
-  const handleSlotPick = (slot: SlotKey) => {
+  const handleSlotPick = async (slot: SlotKey) => {
     if (!slotPickerGoal) return;
     const current = studentGoals[slot];
+    const newGoalWithStatus: GoalWithStatus = {
+      ...slotPickerGoal,
+      status: 'Active',
+      progress: 0,
+    };
+
     if (current) {
       Alert.alert('Replace Goal', `Replace "${current.name}" with "${slotPickerGoal.name}"?`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Replace',
-          onPress: () => {
-            setStudentGoals((prev) => ({ ...prev, [slot]: goalToWithStatus(slotPickerGoal) }));
+          onPress: async () => {
+            if (selectedStudentId) {
+              await assignGoalToSlot(selectedStudentId, { slot, goalId: slotPickerGoal.id }).catch(() => {});
+            }
+            setStudentGoals((prev) => ({ ...prev, [slot]: newGoalWithStatus }));
             setSlotPickerOpen(false);
             setSlotPickerGoal(null);
           },
@@ -165,15 +205,44 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
       ]);
       return;
     }
-    setStudentGoals((prev) => ({ ...prev, [slot]: goalToWithStatus(slotPickerGoal) }));
+
+    if (selectedStudentId) {
+      await assignGoalToSlot(selectedStudentId, { slot, goalId: slotPickerGoal.id }).catch(() => {});
+    }
+    setStudentGoals((prev) => ({ ...prev, [slot]: newGoalWithStatus }));
     setSlotPickerOpen(false);
     setSlotPickerGoal(null);
   };
 
-  const handleAddGoal = () => {
+  const handleAddGoal = async () => {
     if (!newGoalName.trim()) return;
-    const id = `custom-${Date.now()}`;
-    setGoalBank((prev) => [...prev, { id, name: newGoalName, domain: newGoalDomain, description: newGoalDescription }]);
+    try {
+      const res = await createGoal({
+        name: newGoalName,
+        domain: newGoalDomain,
+        description: newGoalDescription,
+      });
+      const created = res.data;
+      setGoalBank((prev) => [
+        ...prev,
+        {
+          id: String(created?.id ?? Date.now()),
+          name: created?.name ?? newGoalName,
+          domain: created?.domain ?? newGoalDomain,
+          description: created?.description ?? newGoalDescription,
+        },
+      ]);
+    } catch {
+      setGoalBank((prev) => [
+        ...prev,
+        {
+          id: `custom-${Date.now()}`,
+          name: newGoalName,
+          domain: newGoalDomain,
+          description: newGoalDescription,
+        },
+      ]);
+    }
     setNewGoalName('');
     setNewGoalDomain('Cognitive');
     setNewGoalDescription('');

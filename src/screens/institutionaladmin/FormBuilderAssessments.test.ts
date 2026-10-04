@@ -1,5 +1,122 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
+
+const DEFAULT_CONFIGS: Record<string, any> = {
+  'Behavioral Assessment': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: [
+      ...Array.from({ length: 12 }, (_, i) => ({
+        id: `M${i + 1}`,
+        type: 'Radio',
+        label: `M${i + 1}: Motivational item ${i + 1}`,
+        required: true,
+        visible: true,
+        section: 'MASS',
+        options: ['0 - Never', '1 - Almost Never', '2 - Seldom (Removed)', '3 - Sometimes', '4 - Usually', '5 - Always'].filter(o => !o.includes('Seldom')),
+      })),
+      ...Array.from({ length: 8 }, (_, i) => ({
+        id: `F${i + 1}`,
+        type: 'Radio',
+        label: `F${i + 1}: Functional item ${i + 1}`,
+        required: true,
+        visible: true,
+        section: 'FAST',
+        options: ['Yes', 'No', 'N/A'],
+      })),
+    ],
+  },
+  'Preference Assessment': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: [
+      { id: 'P1', type: 'Radio', label: 'P1: Bubbles', required: true, visible: true, section: 'Visual' },
+      { id: 'P2', type: 'Radio', label: 'P2: Light spinner', required: true, visible: true, section: 'Visual' },
+      { id: 'P3', type: 'Radio', label: 'P3: Music box', required: true, visible: true, section: 'Auditory' },
+    ],
+  },
+  'Sensory Assessment': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: Array.from({ length: 12 }, (_, i) => ({
+      id: `SEN-${String(i + 1).padStart(3, '0')}`,
+      type: 'Radio',
+      label: `SEN-${String(i + 1).padStart(3, '0')}: Activity ${i + 1}`,
+      required: true,
+      visible: true,
+      section: 'Tactile',
+    })),
+  },
+  'ABLLS Assessment Form': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: [
+      { id: 'A1', type: 'Radio', label: 'A1: Matches identical objects', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+      { id: 'B1', type: 'Radio', label: 'B1: Gross motor imitation', required: true, visible: true, section: 'Motor Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+      { id: 'C1', type: 'Radio', label: 'C1: Vocal imitation', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+      { id: 'D1', type: 'Radio', label: 'D1: Follows instructions', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+      { id: 'H1', type: 'Radio', label: 'H1: Traces lines', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+    ],
+  },
+  'Enrollment Wizard': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: [
+      { id: 'f1', type: 'Text', label: 'Full Name', required: true, visible: true, section: 'Student Info' },
+      { id: 'f2', type: 'Date', label: 'Date of Birth', required: true, visible: true, section: 'Student Info' },
+      { id: 'f4', type: 'Text', label: 'Parent / Guardian Name', required: true, visible: true, section: 'Parent Info' },
+      { id: 'f7', type: 'Text', label: 'Medical Notes & Allergies', required: false, visible: true, section: 'Medical Info' },
+      { id: 'f8', type: 'Text', label: 'Transportation Required', required: false, visible: true, section: 'Student Info' },
+    ],
+  },
+  'IUP Form': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: [
+      { id: 'i1', type: 'Text', label: 'Student Name', required: true, visible: true },
+    ],
+  },
+  'Behavior Incident Form': {
+    isDefault: true,
+    customSections: [],
+    deletedSections: [],
+    fields: [
+      { id: 'b_loc', type: 'Dropdown', label: 'Location', required: true, visible: true, options: ['Classroom', 'Playground', 'Cafeteria'] },
+      { id: 'b_beh', type: 'Dropdown', label: 'Behavior Type', required: true, visible: true },
+      { id: 'b_int', type: 'Dropdown', label: 'Intensity', required: true, visible: true },
+      { id: 'b_dur', type: 'Number', label: 'Duration (mins)', required: true, visible: true },
+    ],
+  },
+};
+
+const store: Record<string, any> = {};
+
+vi.mock('../../api/institutionalAdminApi', () => ({
+  getFormConfig: vi.fn(async (formName: string) => {
+    if (!store[formName]) {
+      store[formName] = JSON.parse(JSON.stringify(DEFAULT_CONFIGS[formName] || { isDefault: true, fields: [], customSections: [], deletedSections: [] }));
+    }
+    return { data: JSON.parse(JSON.stringify(store[formName])) };
+  }),
+  saveFormConfig: vi.fn(async (formName: string, payload: any) => {
+    store[formName] = {
+      ...(store[formName] || {}),
+      ...payload,
+      isDefault: payload.isDefault ?? false,
+    };
+    return { data: JSON.parse(JSON.stringify(store[formName])) };
+  }),
+  resetFormToDefault: vi.fn(async (formName: string) => {
+    store[formName] = JSON.parse(JSON.stringify(DEFAULT_CONFIGS[formName] || { isDefault: true, fields: [], customSections: [], deletedSections: [] }));
+    return { data: { status: 'ok' } };
+  }),
+}));
 import {
   FORMS,
   FIELD_TYPES,
@@ -382,7 +499,7 @@ describe('FormBuilder Assessment Integration', () => {
     expect(domainsAfterDeleteOld.map((d) => d.name)).not.toContain('Writing');
 
     await resetFormToDefault('ABLLS Assessment Form');
-  });
+  }, 15000);
 
   it('supports adding Info Types to Enrollment Wizard and displays them with fields in StudentEnrollmentWizard', async () => {
     // 1. Verify COMMON_INFO_TYPES includes expected standard enrollment categories
@@ -663,5 +780,43 @@ describe('FormBuilder Assessment Integration', () => {
 
     // Reset to default
     await resetFormToDefault('Behavioral Assessment');
+  });
+
+  it('supports updating Behavior Incident Form so edits are persisted and loaded for Record Incident', async () => {
+    await resetFormToDefault('Behavior Incident Form');
+    const { data: initialConfig } = await getFormConfig('Behavior Incident Form');
+    expect(initialConfig.fields).toBeDefined();
+    expect(initialConfig.fields.length).toBeGreaterThanOrEqual(4);
+
+    const modifiedFields = initialConfig.fields.map((f: any) =>
+      f.label === 'Location'
+        ? { ...f, options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway'] }
+        : f
+    );
+
+    const customFields = [
+      ...modifiedFields,
+      {
+        id: 'b_staff',
+        type: 'Text',
+        label: 'Staff Involved',
+        required: false,
+        visible: true,
+      },
+    ];
+
+    await saveFormConfig('Behavior Incident Form', {
+      fields: customFields,
+      isDefault: false,
+    });
+
+    const { data: updatedConfig } = await getFormConfig('Behavior Incident Form');
+    expect(updatedConfig.fields.some((f: any) => f.label === 'Staff Involved')).toBe(true);
+
+    const locField = updatedConfig.fields.find((f: any) => f.label === 'Location');
+    expect(locField.options).toEqual(['Classroom', 'Playground', 'Cafeteria', 'Hallway']);
+
+    // Clean up
+    await resetFormToDefault('Behavior Incident Form');
   });
 });

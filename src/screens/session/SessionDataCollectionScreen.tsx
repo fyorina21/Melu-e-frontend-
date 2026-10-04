@@ -30,6 +30,7 @@ import {
   logTrial,
   undoLastTrial,
   recordIncident,
+  recordBehaviorIncident,
   swapStudents,
 } from '../../api/sessionApi';
 import type {
@@ -52,6 +53,7 @@ type Props = NativeStackScreenProps<
 
 interface IncidentModalState {
   studentId: string;
+  studentGoalId?: string;
   studentName?: string;
   goalName?: string;
 }
@@ -61,7 +63,7 @@ export default function SessionDataCollectionScreen({
   navigation,
 }: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
-  const { logout } = useAuth();
+  const { session: authSession, logout } = useAuth();
   const { showToast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -80,29 +82,72 @@ export default function SessionDataCollectionScreen({
 
   const loadRoster = useCallback(async (silent = false) => {
     try {
-      if (!silent) setLoading(true);
-
-      // Start the session on the backend so the mock DB records the true startedAt time!
-      await startSession(sessionId).catch(() => {});
+      // Start the session on the backend asynchronously so it doesn't block roster fetching
+      startSession(sessionId).catch(() => {});
 
       const { data } = await getSessionRoster(sessionId);
 
+      const rawStudents = (
+        Array.isArray(data?.students)
+          ? data.students
+          : Array.isArray(data)
+          ? data
+          : []
+      ).filter((s: any) => {
+        const isAssessment = s.status === 'in_assessment' || s.status === 'draft' || s.status === 'pending_review' || s.status === 'registered';
+        return !isAssessment;
+      });
+
+      const parsedRoster: SessionRoster = {
+        teacherName: data?.teacherName || 'Teacher',
+        stationName: data?.stationName || 'Station 1',
+        roomName: data?.roomName || 'Room 101',
+        blockDurationMinutes: Number(data?.blockDurationMinutes || 90),
+        students: rawStudents.map((s: any, idx: number) => {
+          const sName = String(s.name || s.fullName || 'Student').trim();
+          const sInitial = String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
+          return {
+            id: String(s.id),
+            name: sName,
+            initial: sInitial,
+            program: String(s.program || 'Regular'),
+            active: typeof s.active === 'boolean' ? s.active : idx === 0,
+            goals: Array.isArray(s.goals)
+              ? s.goals.map((g: any) => ({
+                  id: String(g.id),
+                  name: String(g.name || 'Goal'),
+                  category: g.category || 'Adaptive',
+                  goalType: g.goalType || 'standard',
+                  totalTrials: Number(g.totalTrials || 0),
+                  independencePercent: Number(g.independencePercent || 0),
+                  trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
+                }))
+              : [],
+            trials: Array.isArray(s.trials) ? s.trials : [],
+          };
+        }),
+      };
+
+      if (parsedRoster.students.length > 0 && !parsedRoster.students.some((s) => s.active)) {
+        parsedRoster.students[0].active = true;
+      }
+
       setSession((prev) => {
-        if (prev) {
-          const activeStudentId = prev.students.find(s => s.active)?.id;
-          if (activeStudentId) {
-            data.students = data.students.map((s: any) => ({
+        if (prev && parsedRoster.students.length > 0) {
+          const activeStudentId = prev.students.find((s) => s.active)?.id;
+          if (activeStudentId && parsedRoster.students.some((s) => s.id === activeStudentId)) {
+            parsedRoster.students = parsedRoster.students.map((s) => ({
               ...s,
-              active: s.id === activeStudentId
+              active: s.id === activeStudentId,
             }));
           }
         }
-        return data;
+        return parsedRoster;
       });
 
       startSessionTimer(
         sessionId,
-        (data.blockDurationMinutes || 90) * 60
+        (parsedRoster.blockDurationMinutes || 90) * 60
       );
 
       setSecondsRemaining(remainingSeconds());
@@ -179,10 +224,13 @@ export default function SessionDataCollectionScreen({
 
     const goal = student?.goals?.find(
       (g) => g.id === goalId
-    );
+    ) || student?.goals?.[0];
+
+    const activeGoalId = goalId || goal?.id;
 
     setIncidentModal({
       studentId,
+      studentGoalId: activeGoalId,
       studentName: student?.name,
       goalName: goal?.name,
     });
@@ -213,11 +261,20 @@ export default function SessionDataCollectionScreen({
   const handleSaveIncident = async (
     incidentData: IncidentPayload
   ) => {
+    const studentId = incidentModal?.studentId || (incidentData as any).student_id || (incidentData as any).studentId || '';
+    const studentGoalId = incidentModal?.studentGoalId || (incidentData as any).student_goal_id || (incidentData as any).studentGoalId || '';
+    const payload = {
+      ...incidentData,
+      student_id: studentId,
+      studentId: studentId,
+      student_goal_id: studentGoalId,
+      studentGoalId: studentGoalId,
+    };
+
     try {
-      await recordIncident(
+      await recordBehaviorIncident(
         sessionId,
-        incidentModal?.studentId ?? '',
-        incidentData as unknown as Payload
+        payload as unknown as Payload
       );
       await loadRoster();
     } catch (err) {
@@ -464,9 +521,11 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
       {/* Modal overlays over the session page keeping background visible */}
       <BehaviorIncidentModal
         visible={!!incidentModal}
+        studentId={incidentModal?.studentId}
+        studentGoalId={incidentModal?.studentGoalId}
         studentName={incidentModal?.studentName}
         goalName={incidentModal?.goalName}
-        recordedBy={session.teacherName}
+        recordedBy={authSession?.userName || session?.teacherName || 'Rosa Delgado'}
         onCancel={handleCancelIncident}
         onSave={handleSaveIncident}
       />

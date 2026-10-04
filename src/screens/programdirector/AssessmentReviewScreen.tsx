@@ -188,6 +188,81 @@ function scoreColor(score: unknown): string {
   return '#16A34A';
 }
 
+function normalizeStatus(rawStatus?: string): string {
+  if (!rawStatus) return 'Not Started';
+  const s = rawStatus.toLowerCase().replace(/[_\s-]+/g, ' ').trim();
+  if (s === 'not started' || s === 'notstarted') return 'Not Started';
+  if (s === 'in progress' || s === 'inprogress') return 'In Progress';
+  if (s === 'complete' || s === 'completed') return 'Complete';
+  if (s === 'reviewed' || s === 'approved') return 'Reviewed';
+  return rawStatus;
+}
+
+function normalizeAssessmentItem(item: any): AssessmentListItem {
+  return {
+    studentId: String(item.studentId ?? item.student_id ?? item.id ?? ''),
+    studentName: String(item.studentName ?? item.student_name ?? item.name ?? 'Unknown Student'),
+    age: Number(item.age ?? 0),
+    program: String(item.program ?? item.program_type ?? 'Regular'),
+    therapyGroup: String(item.therapyGroup ?? item.therapy_group ?? ''),
+    therapist: String(item.therapist ?? item.therapist_name ?? 'Unassigned'),
+    status: normalizeStatus(item.status),
+    abllsPct: Number(item.abllsPct ?? item.assessment_progress ?? item.completion_percentage ?? 0),
+    behaviorStatus: String(item.behaviorStatus ?? item.behavior_assessment ?? 'notStarted'),
+    sessionStatus: String(item.sessionStatus ?? ''),
+    dateCompleted: item.dateCompleted ?? item.completed_at ?? item.completed_on ?? null,
+  };
+}
+
+function normalizeAssessmentReport(res: any): AssessmentReport {
+  const student = res?.student || {};
+  const assessment = res?.assessment || {};
+  const skills = res?.skills || {};
+  const behavior = res?.behavior || {};
+  const preferences = res?.preferences || {};
+
+  const domainScores: DomainScore[] = Array.isArray(res?.domainScores)
+    ? res.domainScores
+    : Array.isArray(skills?.domains)
+    ? skills.domains.map((d: any) => ({
+        code: String(d.code || d.domain_code || ''),
+        name: String(d.name || d.domain_name || ''),
+        items: Array.isArray(d.items) ? d.items : [],
+        scoredCount: Number(d.scoredCount ?? d.completed_items ?? d.scored_count ?? 0),
+        total: Number(d.total ?? d.total_items ?? 0),
+      }))
+    : [];
+
+  const prefList: string[] = Array.isArray(res?.preferences)
+    ? res.preferences
+    : Array.isArray(preferences?.top_items)
+    ? preferences.top_items.map((p: any) => (typeof p === 'string' ? p : p.name || p.item_name || ''))
+    : Array.isArray(res?.top_preferences)
+    ? res.top_preferences.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
+    : [];
+
+  return {
+    studentId: String(student.id ?? res?.studentId ?? ''),
+    studentName: String(student.name ?? student.full_name ?? res?.studentName ?? 'Unknown Student'),
+    age: Number(student.age ?? res?.age ?? 0),
+    program: String(student.program_type ?? student.program ?? res?.program ?? 'Regular'),
+    therapyGroup: String(student.therapy_group ?? res?.therapyGroup ?? ''),
+    therapist: String(res?.therapist ?? student.therapist ?? 'Unassigned'),
+    status: normalizeStatus(assessment.status ?? res?.status),
+    skillsSummary: String(skills.summary ?? res?.skillsSummary ?? 'No skills summary available.'),
+    skillsStatus: String(skills.status ?? res?.skillsStatus ?? 'not_started'),
+    domainScores,
+    behaviorSummary: String(behavior.summary ?? res?.behaviorSummary ?? 'No behavior summary available.'),
+    behaviorStatus: String(behavior.status ?? res?.behaviorStatus ?? 'not_started'),
+    preferences: prefList,
+    notes: String(res?.notes ?? res?.teacher_notes ?? 'No notes recorded.'),
+    dateCompleted: assessment.completed_on ?? res?.dateCompleted ?? null,
+    iupStatus: String(res?.iupStatus ?? 'Draft'),
+    reviewNotes: String(res?.reviewNotes ?? res?.review_notes ?? ''),
+    assignedGoals: res?.assignedGoals ?? [],
+  };
+}
+
 export default function AssessmentReviewScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'AssessmentReview'>) {
   const [list, setList] = useState<AssessmentListItem[] | null>(null);
   const [search, setSearch] = useState('');
@@ -198,8 +273,16 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
   const load = useCallback(async () => {
     try {
       const { data: res } = await getAssessmentsForReview({ search });
-      setList(res);
+      const rawList = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.assessments)
+        ? res.assessments
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
+      setList(rawList.map(normalizeAssessmentItem));
     } catch (err) {
+      console.error('Failed to load assessments for review', err);
       setList([]);
     }
   }, [search]);
@@ -207,9 +290,9 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
-    if (!list) return [];
+    if (!Array.isArray(list)) return [];
     if (statusFilter === 'All') return list;
-    return list.filter((r) => r.status === statusFilter);
+    return list.filter((r) => r.status === statusFilter || normalizeStatus(r.status) === statusFilter);
   }, [list, statusFilter]);
 
   if (!list) return <ScreenLoader />;
@@ -217,8 +300,10 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
   const handleViewReport = async (studentId: string) => {
     try {
       const { data: res } = await getAssessmentReport(studentId);
-      setReportTarget(res);
-    } catch (err) {}
+      setReportTarget(normalizeAssessmentReport(res));
+    } catch (err) {
+      console.error('Failed to get assessment report', err);
+    }
   };
 
   const handleMarkReviewed = async (studentId: string, notes: string) => {
@@ -231,7 +316,9 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
             await markAssessmentReviewed(studentId, {});
             if (notes) await addAssessmentNote(studentId, { note: notes });
             await load();
-          } catch (err) {}
+          } catch (err) {
+            console.error('Failed to mark assessment reviewed', err);
+          }
           setReportTarget(null);
         },
       },
@@ -294,7 +381,9 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
       <View style={styles.filterRow}>
         {STATUS_OPTIONS.map((opt) => {
           const isActive = statusFilter === opt;
-          const count = opt === 'All' ? (list?.length ?? 0) : (list?.filter((r) => r.status === opt).length ?? 0);
+          const count = opt === 'All'
+            ? (Array.isArray(list) ? list.length : 0)
+            : (Array.isArray(list) ? list.filter((r) => r.status === opt || normalizeStatus(r.status) === opt).length : 0);
           return (
             <TouchableOpacity key={opt} style={[styles.chip, isActive && styles.chipActive]} onPress={() => setStatusFilter(opt)}>
               <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{opt} ({count})</Text>

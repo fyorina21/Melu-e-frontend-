@@ -114,7 +114,13 @@ export default function IupGenerationScreen({
     let loadedCandidates: IupCandidate[] = [];
     try {
       const { data: res } = await getIupCandidates();
-      loadedCandidates = Array.isArray(res) ? res : [];
+      loadedCandidates = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.candidates)
+        ? res.candidates
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
     } catch {
       loadedCandidates = [];
     }
@@ -122,7 +128,14 @@ export default function IupGenerationScreen({
 
     try {
       const { data: res } = await getGoalBank({});
-      setGoalBank(Array.isArray(res) ? res : []);
+      const loadedGoals = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.goals)
+        ? res.goals
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
+      setGoalBank(loadedGoals);
     } catch {
       setGoalBank([]);
     }

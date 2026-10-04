@@ -155,10 +155,11 @@ interface StudentSummarySectionProps {
 }
 
 function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectionProps) {
+  const goals = Array.isArray(student?.goals) ? student.goals : [];
   return (
     <View style={styles.studentSection}>
-      <Text style={styles.studentSectionTitle}>{student.name}</Text>
-      {student.goals.map((goal) => (
+      <Text style={styles.studentSectionTitle}>{student?.name || 'Student'}</Text>
+      {goals.map((goal) => (
         <GoalSummaryRow
           key={goal.id}
           goal={goal}
@@ -184,8 +185,11 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     try {
       if (sessionId) {
         const { data } = await getSessionSummary(sessionId);
+        const rawStudents = Array.isArray(data?.students) ? data.students : [];
+        const rawIncidents = Array.isArray(data?.incidents) ? data.incidents : [];
+
         // Map backend incidents to UI format
-        const apiIncidents = (data.incidents || []).map((inc: any) => ({
+        const apiIncidents = rawIncidents.map((inc: any) => ({
           date: inc.date,
           time: inc.time,
           behavior: inc.behavior,
@@ -198,7 +202,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         // Only include local incidents that aren't already in the API response (e.g. if API sync failed)
         // We do a simple deduplication based on time and studentName
         const apiKeys = new Set(apiIncidents.map((i: any) => `${i.time}-${i.studentName}`));
-        const uniqueLocal = localIncidents
+        const uniqueLocal = (localIncidents || [])
           .filter((inc) => !apiKeys.has(`${inc.time}-${inc.studentName}`))
           .map((inc) => ({
             date: new Date().toLocaleDateString(),
@@ -211,12 +215,21 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           }));
 
         const mergedIncidents = [...uniqueLocal, ...apiIncidents];
-        setSummary({ ...data, incidents: mergedIncidents });
+        setSummary({
+          ...data,
+          stationName: data?.stationName || data?.station || 'Station A',
+          teacherName: data?.teacherName || data?.teacher || 'Teacher',
+          startTime: data?.startTime || '9:00 AM',
+          endTime: data?.endTime || '10:30 AM',
+          durationMinutes: data?.durationMinutes || 90,
+          students: rawStudents,
+          incidents: mergedIncidents,
+        });
       }
       setLoadError(false);
     } catch (err) {
       // Fallback: use local incidents only
-      if (localIncidents.length > 0) {
+      if ((localIncidents || []).length > 0) {
         setSummary({
           stationName: '',
           teacherName: '',
@@ -224,7 +237,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           endTime: '',
           durationMinutes: 0,
           students: [],
-          incidents: localIncidents.map((inc) => ({
+          incidents: (localIncidents || []).map((inc) => ({
             time: inc.time || new Date().toLocaleTimeString(),
             behavior: inc.behavior,
             studentName: inc.studentName || '',
@@ -281,23 +294,25 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
   const handlePreviewPdf = () => {
     if (!summary) return;
+    const students = Array.isArray(summary.students) ? summary.students : [];
+    const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
     const lines = [
       `Melu'e Foundation - Session Summary`,
-      `Station: ${summary.stationName}`,
-      `Teacher: ${summary.teacherName}`,
+      `Station: ${summary.stationName || ''}`,
+      `Teacher: ${summary.teacherName || ''}`,
       '',
       'STUDENT GOAL DATA',
-      ...summary.students.flatMap((s) => [
+      ...students.flatMap((s) => [
         `— ${s.name}`,
-        ...s.goals.map((g) =>
+        ...(Array.isArray(s.goals) ? s.goals : []).map((g) =>
           g.goalType === 'task_analysis'
             ? `  • ${g.name} (TA): ${g.independencePercent}% independent · mastery: ${g.overallMasteryStatus}`
             : `  • ${g.name}: ${g.independencePercent}% independent · ${g.totalTrials} trials · ${Object.entries(g.promptBreakdown || {}).map(([l, c]) => `${l}:${c}`).join(' ')}`
         ),
       ]),
       '',
-      `BEHAVIOR INCIDENTS: ${summary.incidents.length}`,
-      ...summary.incidents.map((inc) => `• ${inc.time} — ${inc.behavior} (${inc.studentName})`),
+      `BEHAVIOR INCIDENTS: ${incidents.length}`,
+      ...incidents.map((inc) => `• ${inc.time} — ${inc.behavior} (${inc.studentName})`),
       '',
       'TEACHER QUALITATIVE NOTES',
       notes || '(no notes added yet)',
@@ -323,7 +338,10 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   if (loadError) return <ScreenError onRetry={load} />;
   if (!summary) return <ScreenLoader />;
 
-  if (summary.students.length === 0 && summary.incidents.length === 0) {
+  const students = Array.isArray(summary.students) ? summary.students : [];
+  const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
+
+  if (students.length === 0 && incidents.length === 0) {
     return (
       <SafeAreaView style={styles.safe}>
         <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
@@ -337,15 +355,15 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   }
 
   const summaryStatus = summary.status || 'pending_review';
+  const isDraft = summaryStatus === 'draft';
   const statusLabel =
-    summaryStatus === 'pending_review'
-      ? 'Pending Review'
-      : summaryStatus === 'approved'
+    summaryStatus === 'approved'
       ? 'Approved'
       : summaryStatus === 'revised_required'
       ? 'Revision Required'
-      : 'Draft';
-  const isDraft = summaryStatus === 'draft';
+      : isDraft
+      ? 'Draft'
+      : 'Pending Review';
   const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
   const showCoordinatorFeedback = isReviewed;
   const coordinatorFeedback = (summary as any).coordinatorFeedback || '';
@@ -371,11 +389,11 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           <View style={styles.sessionMetaGrid}>
             <View style={styles.metaColumn}>
               <Text style={styles.metaLabel}>Station</Text>
-              <Text style={styles.metaValue}>{summary.stationName}</Text>
+              <Text style={styles.metaValue}>{summary.stationName || 'Station A'}</Text>
             </View>
             <View style={styles.metaColumn}>
               <Text style={styles.metaLabel}>Teacher</Text>
-              <Text style={styles.metaValue}>{summary.teacherName}</Text>
+              <Text style={styles.metaValue}>{summary.teacherName || 'Teacher'}</Text>
             </View>
           </View>
 
@@ -406,7 +424,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        {summary.students.map((student) => (
+        {students.map((student) => (
           <StudentSummarySection
             key={student.id}
             student={student}
@@ -416,15 +434,15 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           />
         ))}
 
-        {summary.incidents.length > 0 && (
+        {incidents.length > 0 && (
           <View style={styles.incidentCard}>
             <View style={styles.incidentHeader}>
               <Feather name="alert-triangle" size={18} color="#EA580C" />
               <Text style={styles.incidentTitle}>
-                Behavior Incidents ({summary.incidents.length})
+                Behavior Incidents ({incidents.length})
               </Text>
             </View>
-              {summary.incidents.map((inc, i) => (
+              {incidents.map((inc, i) => (
                 <View key={i} style={styles.incidentBody}>
                   <View style={styles.incidentRowTop}>
                     <Text style={styles.incidentTime}>{inc.date ? `${inc.date} ` : ''}{inc.time}</Text>

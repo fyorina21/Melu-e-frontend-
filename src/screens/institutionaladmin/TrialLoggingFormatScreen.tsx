@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -17,7 +18,21 @@ import type { InstitutionalAdminStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
-import { getPromptLevels, setPromptLevels, getTrialConfig } from '../../stores/promptLevelsStore';
+import {
+  getPromptLevels,
+  setPromptLevels,
+  getTrialConfig,
+  syncPromptLevelsFromApi,
+  type PromptLevelConfigItem,
+} from '../../stores/promptLevelsStore';
+import {
+  getPromptLevelsApi,
+  createPromptLevelApi,
+  updatePromptLevelApi,
+  deletePromptLevelApi,
+  reorderPromptLevelsApi,
+  saveTrialLoggingConfig,
+} from '../../api/institutionalAdminApi';
 
 type Props = NativeStackScreenProps<InstitutionalAdminStackParamList, 'TrialLoggingFormat'>;
 
@@ -29,12 +44,16 @@ interface LevelItem {
   status: 'Active';
 }
 
-const COLOR_SWATCHES = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6'];
+const COLOR_SWATCHES = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#6366F1', '#8B5CF6', '#EC4899'];
 
 export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const { showToast } = useToast();
   const configInit = getTrialConfig();
   const [levels, setLevels] = useState<LevelItem[]>(() => getPromptLevels());
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBuf, setEditBuf] = useState({ name: '', color: '', order: 0 });
   const [addingLevel, setAddingLevel] = useState(false);
@@ -46,11 +65,44 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const [autoSuggest, setAutoSuggest] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const loadPromptLevels = async () => {
+    try {
+      setLoading(true);
+      const res = await getPromptLevelsApi();
+      const rawData = Array.isArray(res.data) ? res.data : (res.data?.prompt_levels ?? []);
+      const mapped: LevelItem[] = rawData.map((item: any, idx: number) => ({
+        id: String(item.id),
+        name: String(item.name ?? item.label ?? ''),
+        color: String(item.color ?? '#64748B'),
+        order:
+          typeof item.order === 'number'
+            ? item.order
+            : typeof item.display_order === 'number'
+            ? item.display_order
+            : idx + 1,
+        status: 'Active',
+      })).sort((a: LevelItem, b: LevelItem) => a.order - b.order);
+
+      setLevels(mapped);
+      syncPromptLevelsFromApi(mapped, consecutive, streamCount);
+    } catch (err: any) {
+      console.error('Failed to load prompt levels', err);
+      showToast(err?.response?.data?.error || 'Failed to load prompt levels from server', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPromptLevels();
+  }, []);
+
   const startEdit = (lv: LevelItem) => {
     setEditingId(lv.id);
     setEditBuf({ name: lv.name, color: lv.color, order: lv.order });
   };
-  const saveEdit = (id: string) => {
+
+  const saveEdit = async (id: string) => {
     if (!editBuf.name.trim()) {
       showToast('Every prompt level needs a name', 'error');
       return;
@@ -60,18 +112,64 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       showToast(`Order ${editBuf.order} is already in use. Each prompt level needs a unique order number.`, 'error');
       return;
     }
-    const next = levels.map((l) => (l.id === id ? { ...l, ...editBuf } : l));
-    setLevels(next);
-    setPromptLevels(next, consecutive, streamCount);
-    setEditingId(null);
+    try {
+      setActionLoadingId(id);
+      const res = await updatePromptLevelApi(id, {
+        label: editBuf.name.trim(),
+        name: editBuf.name.trim(),
+        color: editBuf.color,
+        display_order: editBuf.order,
+        order: editBuf.order,
+        is_active: true,
+      });
+      const updated = res.data;
+      const next = levels
+        .map((l) =>
+          l.id === id
+            ? {
+                ...l,
+                name: updated?.name || updated?.label || editBuf.name.trim(),
+                color: updated?.color || editBuf.color,
+                order: updated?.order ?? updated?.display_order ?? editBuf.order,
+              }
+            : l
+        )
+        .sort((a, b) => a.order - b.order);
+      setLevels(next);
+      syncPromptLevelsFromApi(next, consecutive, streamCount);
+      setEditingId(null);
+      showToast('Prompt level updated successfully', 'success');
+    } catch (err: any) {
+      console.error('Failed to update prompt level', err);
+      const msg =
+        err?.response?.data?.errors?.join?.(', ') ||
+        err?.response?.data?.error ||
+        'Failed to update prompt level';
+      showToast(msg, 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
   };
-  const deleteLevel = (id: string) => {
-    const next = levels.filter((l) => l.id !== id);
-    setLevels(next);
-    setPromptLevels(next, consecutive, streamCount);
-    setDeleteConfirmId(null);
+
+  const deleteLevel = async (id: string) => {
+    try {
+      setActionLoadingId(id);
+      await deletePromptLevelApi(id);
+      const next = levels.filter((l) => l.id !== id);
+      setLevels(next);
+      syncPromptLevelsFromApi(next, consecutive, streamCount);
+      setDeleteConfirmId(null);
+      showToast('Prompt level deleted successfully', 'success');
+    } catch (err: any) {
+      console.error('Failed to delete prompt level', err);
+      const msg = err?.response?.data?.error || 'Failed to delete prompt level';
+      showToast(msg, 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
   };
-  const addLevel = () => {
+
+  const addLevel = async () => {
     if (!newLevel.name.trim()) {
       showToast('Every prompt level needs a name', 'error');
       return;
@@ -81,11 +179,74 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       showToast(`Order ${newLevel.order} is already in use. Each prompt level needs a unique order number.`, 'error');
       return;
     }
-    const next: LevelItem[] = [...levels, { id: String(Date.now()), ...newLevel, status: 'Active' }];
-    setLevels(next);
-    setPromptLevels(next, consecutive, streamCount);
-    setNewLevel({ name: '', color: '#6366F1', order: levels.length + 2 });
-    setAddingLevel(false);
+    try {
+      setSubmitting(true);
+      const res = await createPromptLevelApi({
+        label: newLevel.name.trim(),
+        name: newLevel.name.trim(),
+        color: newLevel.color,
+        display_order: newLevel.order,
+        order: newLevel.order,
+        is_active: true,
+      });
+      const created = res.data;
+      const createdItem: LevelItem = {
+        id: String(created?.id ?? Date.now()),
+        name: created?.name || created?.label || newLevel.name.trim(),
+        color: created?.color || newLevel.color,
+        order: created?.order ?? created?.display_order ?? newLevel.order,
+        status: 'Active',
+      };
+      const next: LevelItem[] = [...levels, createdItem].sort((a, b) => a.order - b.order);
+      setLevels(next);
+      syncPromptLevelsFromApi(next, consecutive, streamCount);
+      setNewLevel({ name: '', color: '#6366F1', order: next.length + 1 });
+      setAddingLevel(false);
+      showToast('Prompt level created successfully', 'success');
+    } catch (err: any) {
+      console.error('Failed to create prompt level', err);
+      const msg =
+        err?.response?.data?.errors?.join?.(', ') ||
+        err?.response?.data?.error ||
+        'Failed to create prompt level';
+      showToast(msg, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveConfiguration = async () => {
+    try {
+      setSubmitting(true);
+      const validNumericIds = levels
+        .map((l) => Number(l.id))
+        .filter((id) => !isNaN(id) && id > 0);
+      if (validNumericIds.length === levels.length && validNumericIds.length > 0) {
+        try {
+          await reorderPromptLevelsApi(validNumericIds);
+        } catch (reorderErr) {
+          console.warn('Reorder endpoint warning:', reorderErr);
+        }
+      }
+      try {
+        await saveTrialLoggingConfig({
+          streamCount,
+          consecutive,
+          independence,
+          autoSuggest,
+          layout,
+        });
+      } catch {
+        // Fallback gracefully if separate trial logging config endpoint is not configured
+      }
+      syncPromptLevelsFromApi(levels, consecutive, streamCount);
+      showToast('Trial logging format saved successfully', 'success');
+    } catch (err: any) {
+      console.error('Failed to save configuration', err);
+      showToast('Failed to save configuration', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const renderSwatches = (selected: string, onSelect: (c: string) => void) => (
@@ -105,6 +266,13 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
   );
 
   const renderEditActions = (id: string) => {
+    if (actionLoadingId === id) {
+      return (
+        <View style={styles.actionRow}>
+          <ActivityIndicator size="small" color="#0284C7" />
+        </View>
+      );
+    }
     if (deleteConfirmId === id) {
       return (
         <View style={styles.deleteConfirmRow}>
@@ -151,8 +319,9 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
         {/* Prompt Level Table */}
         <View style={styles.tableContainer}>
           <View style={styles.tableHeaderRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 }}>
               <Text style={styles.tableHeaderText}>Prompt Levels</Text>
+              {loading && <ActivityIndicator size="small" color="#0284C7" />}
             </View>
             <TouchableOpacity onPress={() => setAddingLevel(true)} style={styles.addBtn}>
               <Feather name="plus" size={14} color="#0284C7" />
@@ -194,12 +363,18 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     </View>
                   </View>
                   <View style={{ flex: 1, justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity onPress={() => saveEdit(lv.id)} style={styles.actionBtn}>
-                      <Feather name="check" size={14} color={colors.white} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setEditingId(null)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
-                      <Feather name="x" size={14} color={colors.white} />
-                    </TouchableOpacity>
+                    {actionLoadingId === lv.id ? (
+                      <ActivityIndicator size="small" color="#0284C7" />
+                    ) : (
+                      <>
+                        <TouchableOpacity onPress={() => saveEdit(lv.id)} style={styles.actionBtn}>
+                          <Feather name="check" size={14} color={colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setEditingId(null)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
+                          <Feather name="x" size={14} color={colors.white} />
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 </>
               ) : (
@@ -252,12 +427,18 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 </View>
               </View>
               <View style={{ flex: 1, justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity onPress={addLevel} style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}>
-                  <Feather name="check" size={14} color={colors.white} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setAddingLevel(false)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
-                  <Feather name="x" size={14} color={colors.white} />
-                </TouchableOpacity>
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#22C55E" />
+                ) : (
+                  <>
+                    <TouchableOpacity onPress={addLevel} style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}>
+                      <Feather name="check" size={14} color={colors.white} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setAddingLevel(false)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
+                      <Feather name="x" size={14} color={colors.white} />
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
           )}
@@ -345,14 +526,16 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
 
         {/* Save */}
         <TouchableOpacity
-          style={styles.saveBtn}
-          onPress={() => {
-            setPromptLevels(levels, consecutive, streamCount);
-            showToast('Trial logging format saved successfully', 'success');
-          }}
+          style={[styles.saveBtn, submitting && { opacity: 0.7 }]}
+          disabled={submitting}
+          onPress={handleSaveConfiguration}
         >
-          <Feather name="save" size={15} color={colors.navyText} />
-          <Text style={styles.saveBtnText}>Save Configuration</Text>
+          {submitting ? (
+            <ActivityIndicator size="small" color={colors.navyText} />
+          ) : (
+            <Feather name="save" size={15} color={colors.navyText} />
+          )}
+          <Text style={styles.saveBtnText}>{submitting ? 'Saving...' : 'Save Configuration'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

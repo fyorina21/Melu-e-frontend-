@@ -45,6 +45,7 @@ export const ASSESSMENT_DIRECT_ROUTES: Record<string, { url: string; route: stri
   'Behavioral Assessment': { url: 'http://localhost:8081/BehaviorAssessment', route: 'BehaviorAssessment' },
   'Preference Assessment': { url: 'http://localhost:8081/PreferenceAssessment', route: 'PreferenceAssessment' },
   'Sensory Assessment': { url: 'http://localhost:8081/SensoryAssessment?', route: 'SensoryAssessment' },
+  'Behavior Incident Form': { url: 'http://localhost:8081/SessionDataCollection', route: 'SessionDataCollection' },
 };
 
 export const SCORE_SCALE_PRESETS = [
@@ -232,6 +233,16 @@ export const getNextIdForSection = (form: string, section: string | undefined, p
       .filter((n) => !isNaN(n));
     const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
     return `SEN-${String(nextNum).padStart(3, '0')}`;
+  }
+
+  if (form === 'Behavior Incident Form') {
+    const existing = prevFields
+      .map((f) => f.id)
+      .filter((id) => /^b(\d+)$/i.test(id))
+      .map((id) => parseInt(id.replace(/^b/i, ''), 10))
+      .filter((n) => !isNaN(n));
+    const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    return `b${nextNum}`;
   }
 
   // Handle custom skill type folders (e.g. Visual Performance, Cognitive Skills, Requesting (Mands))
