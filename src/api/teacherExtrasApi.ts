@@ -21,6 +21,8 @@ export const getSkillsAssessment = (studentId: string) =>
   client.get(`/teacher/students/${studentId}/assessments/skills`);
 export const saveSkillsAssessment = (studentId: string, payload: Record<string, unknown>) =>
   client.post(`/teacher/students/${studentId}/assessments/skills`, payload);
+export const bulkSaveAbllsResponses = (assessmentId: string, payload: { responses?: any[]; scores?: Record<string, unknown>; notes?: Record<string, unknown> }) =>
+  client.patch(`/ablls_assessments/${assessmentId}/responses/bulk`, payload);
 export const getBehaviorAssessment = (studentId: string) =>
   client.get(`/teacher/students/${studentId}/assessments/behavior`);
 export const saveBehaviorAssessment = (studentId: string, payload: Record<string, unknown>) =>
