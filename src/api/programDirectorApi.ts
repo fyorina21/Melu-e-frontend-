@@ -2,7 +2,7 @@ import client from './sessionApi';
 import type { QueryParams, Payload } from '../types';
 
 // SCR-PD-001: Dashboard
-export const getProgramDirectorDashboard = () => client.get('/program-director/dashboard');
+export const getProgramDirectorDashboard = () => client.get('/program_director/dashboard');
 
 // SCR-PD-002: Assessment Review & Approval
 export const getAssessmentsForReview = (params: QueryParams) => client.get('/program-director/assessments', { params });
