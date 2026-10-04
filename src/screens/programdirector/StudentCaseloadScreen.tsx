@@ -20,6 +20,7 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
+import { http } from '../../api/http/client';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 interface Goal {
@@ -55,33 +56,15 @@ const statusBadgeColors: Record<GoalStatus, { bg: string; text: string }> = {
   Mastered: { bg: '#E0F2FE', text: '#0284C7' },
 };
 
-const MOCK_GOALS: Goal[] = [
-  { id: 'g1', name: 'Identify Colors', domain: 'Cognitive', description: 'Student will identify primary colors when presented with visual stimuli.' },
-  { id: 'g2', name: 'Follow One-Step Instructions', domain: 'Receptive Language', description: 'Student will follow simple one-step verbal directions.' },
-  { id: 'g3', name: 'Request Breaks Appropriately', domain: 'Expressive Language', description: 'Student will request breaks using an appropriate communication modality.' },
-  { id: 'g4', name: 'Imitate Gross Motor Movements', domain: 'Motor Skills', description: 'Student will imitate modeled gross motor actions with increasing accuracy.' },
-  { id: 'g5', name: 'Turn-Taking with Peers', domain: 'Social Skills', description: 'Student will engage in reciprocal play activities taking turns with peers.' },
-  { id: 'g6', name: 'Hand Washing Routine', domain: 'Adaptive', description: 'Student will complete hand washing sequence independently.' },
-];
-
-const MOCK_PROGRESS: Record<string, number> = {
-  g1: 72, g2: 55, g3: 88, g4: 40, g5: 60, g6: 90,
-};
-
-const MOCK_STATUS: Record<string, GoalStatus> = {
-  g1: 'Active', g2: 'In Progress', g3: 'Mastered', g4: 'In Progress',
-  g5: 'Active', g6: 'Mastered',
-};
-
-function goalToWithStatus(g: Goal): GoalWithStatus {
-  return { ...g, status: MOCK_STATUS[g.id] ?? 'Active', progress: MOCK_PROGRESS[g.id] ?? 50 };
+function goalToWithStatus(g: Goal, status: GoalStatus = 'Active', progress = 50): GoalWithStatus {
+  return { ...g, status, progress };
 }
 
-const defaultStudentGoals: StudentGoals = {
-  'station1-0': goalToWithStatus(MOCK_GOALS[0]),
-  'station1-1': goalToWithStatus(MOCK_GOALS[1]),
-  'station2-0': goalToWithStatus(MOCK_GOALS[2]),
-  'station2-1': goalToWithStatus(MOCK_GOALS[3]),
+const emptyStudentGoals: StudentGoals = {
+  'station1-0': null,
+  'station1-1': null,
+  'station2-0': null,
+  'station2-1': null,
 };
 
 const slotLabels: Record<SlotKey, string> = {
@@ -95,7 +78,7 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
   const [selectedStudentId, setSelectedStudentId] = useState<string>('s1');
   const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
   const [selectedStudentName, setSelectedStudentName] = useState('');
-  const [studentGoals, setStudentGoals] = useState<StudentGoals>(defaultStudentGoals);
+  const [studentGoals, setStudentGoals] = useState<StudentGoals>(emptyStudentGoals);
   const [searchTerm, setSearchTerm] = useState('');
   const [domainFilter, setDomainFilter] = useState('All');
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
@@ -104,9 +87,26 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalDomain, setNewGoalDomain] = useState('Cognitive');
   const [newGoalDescription, setNewGoalDescription] = useState('');
-  const [goalBank, setGoalBank] = useState<Goal[]>(MOCK_GOALS);
+  const [goalBank, setGoalBank] = useState<Goal[]>([]);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
+  // Fetch live goals from /api/v1/goals
+  useEffect(() => {
+    http.get('/goals')
+      .then(({ data }) => {
+        const rawGoals = Array.isArray(data) ? data : data?.goals ?? [];
+        const mapped: Goal[] = rawGoals.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          domain: g.goal_domain?.name || g.domain || 'Cognitive',
+          description: g.description || '',
+        }));
+        if (mapped.length > 0) setGoalBank(mapped);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch student options
   useEffect(() => {
     getStudentOptions()
       .then(({ data: opts }) => {
@@ -118,6 +118,45 @@ export default function StudentCaseloadScreen({ navigation }: NativeStackScreenP
       })
       .catch(() => {});
   }, []);
+
+  // Fetch student goals when selected student changes
+  useEffect(() => {
+    if (!selectedStudentId) return;
+    http.get(`/students/${selectedStudentId}/goals`)
+      .then(({ data }) => {
+        const slots: StudentGoals = { ...emptyStudentGoals };
+        const stations = data?.stations || [];
+        for (const st of stations) {
+          const isStation1 = /1|one/i.test(st.station_name || '');
+          const prefix = isStation1 ? 'station1' : 'station2';
+          const goals = st.goals || [];
+          if (goals[0]) {
+            slots[`${prefix}-0` as SlotKey] = {
+              id: goals[0].goal_id || goals[0].id,
+              name: goals[0].goal_name || goals[0].name || '',
+              domain: goals[0].domain || '',
+              description: goals[0].clinical_note || '',
+              status: goals[0].status === 'mastered' ? 'Mastered' : goals[0].status === 'active' ? 'Active' : 'In Progress',
+              progress: Number(goals[0].progress_percent ?? 0),
+            };
+          }
+          if (goals[1]) {
+            slots[`${prefix}-1` as SlotKey] = {
+              id: goals[1].goal_id || goals[1].id,
+              name: goals[1].goal_name || goals[1].name || '',
+              domain: goals[1].domain || '',
+              description: goals[1].clinical_note || '',
+              status: goals[1].status === 'mastered' ? 'Mastered' : goals[1].status === 'active' ? 'Active' : 'In Progress',
+              progress: Number(goals[1].progress_percent ?? 0),
+            };
+          }
+        }
+        setStudentGoals(slots);
+      })
+      .catch(() => {
+        setStudentGoals(emptyStudentGoals);
+      });
+  }, [selectedStudentId]);
 
   const filteredGoals = goalBank.filter((g) => {
     const term = searchTerm.toLowerCase();
