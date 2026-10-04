@@ -158,6 +158,14 @@ export default function RoleManagementScreen({ navigation }: Props) {
     <AppNavbar activeTab="Role Management" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
   );
 
+// Edits are persisted immediately by saveEdit/addRole, so this button no
+  // longer gates anything. It re-reads the list from the server so the user can
+  // confirm what is actually stored.
+  const handleRefresh = async () => {
+    await load();
+    showToast('Role list refreshed from the server.', 'success');
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -290,6 +298,11 @@ export default function RoleManagementScreen({ navigation }: Props) {
             )}
           </View>
         </View>
+
+        <TouchableOpacity style={styles.saveMainBtn} onPress={handleRefresh} disabled={loading}>
+          <Feather name="save" size={16} color={colors.navyText} />
+          <Text style={styles.saveMainBtnText}>Save Changes</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -315,6 +328,8 @@ const styles = StyleSheet.create({
   colCount: { flex: 1, textAlign: 'center' },
   colType: { flex: 1 },
   colActions: { width: 70 },
+  saveMainBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.primaryYellow, padding: spacing.md, borderRadius: radius.md, alignSelf: 'flex-start', paddingHorizontal: spacing.xl },
+  saveMainBtnText: { color: colors.navyText, fontWeight: '700', fontSize: 14 },
   colFull: { flex: 1 },
   centerCell: { alignItems: 'center' },
   inputCell: { paddingRight: spacing.xs },
