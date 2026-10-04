@@ -33,7 +33,7 @@ export default function LoginScreen() {
     }
     setSubmitting(true);
     try {
-      await loginWithCredentials(email, password);
+      await loginWithCredentials(email, password, remember);
     } finally {
       setSubmitting(false);
     }

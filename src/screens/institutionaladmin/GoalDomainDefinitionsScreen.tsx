@@ -74,19 +74,30 @@ export default function GoalDomainDefinitionsScreen({
   const [overallMastery, setOverallMastery] = useState('80');
 
   const loadAll = useCallback(async () => {
-    try {
-      const [domainRes, templateRes] = await Promise.all([
-        getGoalDomains(),
-        getTaskAnalysisTemplates(),
-      ]);
-      setDomains(Array.isArray(domainRes.data) ? domainRes.data : []);
-      setTemplates(Array.isArray(templateRes.data) ? templateRes.data : []);
-    } catch {
+    // `Promise.all` would reject wholesale the moment one call 404s, so a
+    // broken sibling (e.g. the unimplemented task-analysis endpoint) would blank
+    // out goal domains too, even though that endpoint works. Settle them
+    // independently so each section renders whatever the server actually served.
+    const [domainRes, templateRes] = await Promise.allSettled([
+      getGoalDomains(),
+      getTaskAnalysisTemplates(),
+    ]);
+
+    if (domainRes.status === 'fulfilled') {
+      setDomains(Array.isArray(domainRes.value.data) ? domainRes.value.data : []);
+    } else {
       setDomains([]);
-      setTemplates([]);
-    } finally {
-      setLoading(false);
     }
+
+    if (templateRes.status === 'fulfilled') {
+      setTemplates(Array.isArray(templateRes.value.data) ? templateRes.value.data : []);
+    } else {
+      // No task-analysis endpoint on the backend yet; leave the section empty
+      // instead of letting it take the goal domains down with it.
+      setTemplates([]);
+    }
+
+    setLoading(false);
   }, []);
 
   useEffect(() => {
