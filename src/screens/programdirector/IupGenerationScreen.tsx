@@ -48,6 +48,8 @@ interface GoalBankItem {
 
 interface IupCandidate {
   id: string;
+  studentId?: string;
+  iupId?: string;
   name: string;
   status: string;
   program?: string;
@@ -214,32 +216,30 @@ export default function IupGenerationScreen({
     if (!selectorTarget || goal.active === false) return;
     const { station, slotIndex } = selectorTarget;
     
-    let newSlots: Slots | null = null;
-    setSlots((prev) => {
-      const next: Slots = { ...prev };
-      next[station] = [...prev[station]];
-      next[station][slotIndex] = goal;
-      newSlots = next;
-      return next;
-    });
+    const updatedSlots: Slots = {
+      ...slots,
+      [station]: slots[station].map((item, idx) => (idx === slotIndex ? goal : item)),
+    };
+    setSlots(updatedSlots);
 
     if (selectedStudentId) {
       try {
         const stationNumber = station === 'station1' ? 1 : 2;
         await assignGoalToSlot(selectedStudentId, { goalId: goal.id, station: stationNumber, slot: slotIndex });
         
-        if (newSlots) {
-          await saveIupDraft(selectedStudentId, {
-            slots: newSlots,
-            reinforcementSchedule,
-            crisisProtocol,
-            accommodations,
-            reviewCycle,
-            customFields: customIupValues,
-          });
-          setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-          showToast('Goal assigned and draft saved successfully.', 'success');
-        }
+        const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+        await saveIupDraft(targetIupId, {
+          slots: updatedSlots,
+          goals: [...updatedSlots.station1, ...updatedSlots.station2].filter(Boolean).map(g => g?.id).filter(Boolean),
+          reinforcementSchedule,
+          crisisProtocol,
+          accommodations,
+          reviewCycle,
+          customFields: customIupValues,
+          form_values: customIupValues,
+        });
+        setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        showToast('Goal assigned and draft saved successfully.', 'success');
       } catch (err) {
         console.error('Failed to assign goal or save draft:', err);
         showToast('Failed to save changes.', 'error');
@@ -280,13 +280,16 @@ export default function IupGenerationScreen({
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
     try {
-      await saveIupDraft(selectedStudentId, {
+      const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+      await saveIupDraft(targetIupId, {
         slots,
+        goals: [...slots.station1, ...slots.station2].filter(Boolean).map(g => g?.id).filter(Boolean),
         reinforcementSchedule,
         crisisProtocol,
         accommodations,
         reviewCycle,
         customFields: customIupValues,
+        form_values: customIupValues,
       });
       setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       showToast('The IUP draft has been saved successfully.', 'success');
@@ -309,7 +312,8 @@ export default function IupGenerationScreen({
 
     const doFinalize = async () => {
       try {
-        await finalizeIup(selectedStudentId, {
+        const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+        await finalizeIup(targetIupId, {
           slots,
           goals: allAssigned.map(g => g?.id).filter(Boolean),
           reinforcementSchedule,
@@ -317,6 +321,7 @@ export default function IupGenerationScreen({
           accommodations,
           reviewCycle,
           customFields: customIupValues,
+          form_values: customIupValues,
         });
         showToast('IUP Finalized & Activated. Goals are now in the Teacher Session workbench.', 'success');
         navigation?.navigate?.('SessionDataCollection' as never);
