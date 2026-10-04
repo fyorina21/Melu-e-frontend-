@@ -228,8 +228,11 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
         text: 'Confirm',
         onPress: async () => {
           try {
-            await markAssessmentReviewed(studentId, {});
+            await markAssessmentReviewed(studentId, { notes, status: 'ready_for_iup' });
             if (notes) await addAssessmentNote(studentId, { note: notes });
+            setList((prev) =>
+              prev ? prev.map((item) => (item.studentId === studentId ? { ...item, status: 'Reviewed' } : item)) : prev
+            );
             await load();
           } catch (err) {}
           setReportTarget(null);
