@@ -1,16 +1,44 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  SafeAreaView,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import type { SystemAdminStackParamList } from '../../types';
 import { useToast } from '../../context/ToastContext';
-import { getRoles, createRole, updateRole, deleteRole } from '../../api/SystemAdminApi';
+import AppNavbar from '../../components/AppNavbar';
+import ScreenLoader from '../../components/ScreenLoader';
+import IconButton from '../../components/IconButton';
+import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
+import {
+  getRoles,
+  createRole,
+  updateRole,
+  deleteRole,
+} from '../../api/SystemAdminApi';
 
 type Props = NativeStackScreenProps<SystemAdminStackParamList, 'RoleManagement'>;
 
-interface RoleItem {
+/** Shape returned by GET /api/v1/sysadmin/roles. */
+interface RoleRecord {
+  id: string;
+  name: string;
+  description: string;
+  is_system_critical: boolean;
+  user_count: number;
+}
+
+/** Row model the table renders. */
+interface RoleRow {
   id: string;
   name: string;
   description: string;
@@ -18,229 +46,640 @@ interface RoleItem {
   system: boolean;
 }
 
-function Badge({ children, system }: { children: React.ReactNode; system?: boolean }) {
+function toRow(role: RoleRecord): RoleRow {
+  return {
+    id: String(role.id),
+    name: role.name ?? '',
+    description: role.description ?? '',
+    count: role.user_count ?? 0,
+    system: Boolean(role.is_system_critical),
+  };
+}
+
+function Badge({
+  children,
+  system,
+}: {
+  children: React.ReactNode;
+  system?: boolean;
+}) {
   return (
-    <View style={[styles.badge, system ? styles.badgeSystem : styles.badgeCustom]}>
-      <Text style={system ? styles.badgeSystemText : styles.badgeCustomText}>{children}</Text>
+    <View
+      style={[
+        styles.badge,
+        system ? styles.badgeSystem : styles.badgeCustom,
+      ]}
+    >
+      <Text
+        style={
+          system ? styles.badgeSystemText : styles.badgeCustomText
+        }
+      >
+        {children}
+      </Text>
     </View>
   );
 }
 
-export default function RoleManagementScreen({ navigation }: Props) {
+export default function RoleManagementScreen({
+  navigation,
+}: Props) {
   const { showToast } = useToast();
-  const [roles, setRoles] = useState<RoleItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [addingRole, setAddingRole] = useState(false);
-  const [newRole, setNewRole] = useState({ name: '', description: '' });
-  const [editingRole, setEditingRole] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', description: '' });
 
-  const fetchRoles = useCallback(async () => {
+  const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [addingRole, setAddingRole] = useState(false);
+  const [newRole, setNewRole] = useState({
+    name: '',
+    description: '',
+  });
+
+  const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+
     try {
-      setLoading(true);
-      const res = await getRoles();
-      const rawRoles = Array.isArray(res.data) ? res.data : (res.data?.roles || []);
-      const mapped: RoleItem[] = rawRoles.map((r: any) => ({
-        id: String(r.id),
-        name: r.name || r.role_name || '',
-        description: r.description || '',
-        count: r.count ?? r.users_count ?? r.staff_count ?? 0,
-        system: Boolean(r.system ?? r.is_system),
-      }));
-      setRoles(mapped);
-    } catch (err) {
-      showToast('Failed to load roles from database', 'error');
+      const { data } = await getRoles();
+
+      const rawRoles = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.roles)
+          ? data.roles
+          : [];
+
+      const list = rawRoles as RoleRecord[];
+
+      setRoles(list.map(toRow));
+    } catch {
+      setRoles([]);
+      showToast(
+        'Could not load roles. Check your connection and try again.',
+        'error',
+      );
     } finally {
       setLoading(false);
     }
   }, [showToast]);
 
   useEffect(() => {
-    fetchRoles();
-  }, [fetchRoles]);
+    load();
+  }, [load]);
 
   const saveEdit = async (id: string) => {
-    if (!editForm.name.trim()) return;
+    if (!editForm.name.trim()) {
+      showToast('Role name is required.', 'error');
+      return;
+    }
+
+    setBusyId(id);
+
     try {
-      await updateRole(id, { name: editForm.name, description: editForm.description });
-      setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, name: editForm.name, description: editForm.description } : r)));
+      const { data } = await updateRole(id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+      });
+
+      const updated = toRow(data as RoleRecord);
+
+      setRoles((rs) =>
+        rs.map((r) => (r.id === id ? updated : r)),
+      );
+
       setEditingRole(null);
-      showToast('Role updated successfully', 'success');
-    } catch (err) {
-      showToast('Failed to update role', 'error');
+
+      showToast('Role updated.', 'success');
+    } catch {
+      showToast('Failed to update role.', 'error');
+    } finally {
+      setBusyId(null);
     }
   };
 
   const addRole = async () => {
-    if (!newRole.name.trim()) return;
+    if (!newRole.name.trim()) {
+      showToast('Role name is required.', 'error');
+      return;
+    }
+
+    setBusyId('new');
+
     try {
-      const res = await createRole({ name: newRole.name, description: newRole.description });
-      const created = res.data;
+      const { data } = await createRole({
+        name: newRole.name.trim(),
+        description: newRole.description.trim(),
+      });
+
       setRoles((rs) => [
         ...rs,
-        {
-          id: String(created?.id ?? Date.now()),
-          name: created?.name ?? newRole.name,
-          description: created?.description ?? newRole.description,
-          count: 0,
-          system: false,
-        },
+        toRow(data as RoleRecord),
       ]);
-      setNewRole({ name: '', description: '' });
+
+      setNewRole({
+        name: '',
+        description: '',
+      });
+
       setAddingRole(false);
-      showToast('Role created successfully', 'success');
-    } catch (err) {
-      showToast('Failed to create role', 'error');
+
+      showToast('Role created.', 'success');
+    } catch {
+      showToast('Failed to create role.', 'error');
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const handleDelete = async (roleId: string) => {
+  const removeRole = async (id: string) => {
+    setBusyId(id);
+
     try {
-      await deleteRole(roleId);
-      setRoles((rs) => rs.filter((r) => r.id !== roleId));
-      showToast('Role deleted successfully', 'success');
-    } catch (err) {
-      showToast('Failed to delete role', 'error');
+      await deleteRole(id);
+
+      setRoles((rs) => rs.filter((r) => r.id !== id));
+
+      showToast('Role deleted.', 'success');
+    } catch {
+      showToast('Failed to delete role.', 'error');
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const handleSave = () => {
-    showToast('Role changes saved successfully', 'success');
+  const renderRowActions = (
+    role: RoleRow,
+    busy: boolean,
+  ) => (
+    <View style={styles.actionsCell}>
+      <IconButton
+        onPress={() => {
+          setEditingRole(role.id);
+          setEditForm({
+            name: role.name,
+            description: role.description,
+          });
+        }}
+        disabled={busy}
+        label={`Edit ${role.name}`}
+      >
+        <Feather
+          name="edit-2"
+          size={16}
+          color={colors.primaryBlue}
+        />
+      </IconButton>
+
+      {!role.system && (
+        <IconButton
+          onPress={() => removeRole(role.id)}
+          disabled={busy}
+          label={`Delete ${role.name}`}
+        >
+          <Feather
+            name="trash-2"
+            size={16}
+            color={colors.statusRevisionText}
+          />
+        </IconButton>
+      )}
+    </View>
+  );
+
+  const navbar = (
+    <AppNavbar
+      activeTab="Role Management"
+      onTabPress={(tab) =>
+        navigation?.navigate?.(SYS_ROUTE_BY_TAB[tab])
+      }
+    />
+  );
+
+  // Edits are persisted immediately by saveEdit/addRole.
+  // This button re-reads the list from the server so the user
+  // can confirm what is actually stored.
+  const handleRefresh = async () => {
+    await load();
+    showToast(
+      'Role list refreshed from the server.',
+      'success',
+    );
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        {navbar}
+        <ScreenLoader />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
-          <Feather name="arrow-left" size={16} color="#334155" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Role Management</Text>
-        <View style={{ width: 80 }} />
-      </View>
+      {navbar}
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.sectionHeader}>
           <Text style={typography.h2}>Role Management</Text>
-          <Text style={typography.caption}>SCR-SYS-002 • Configure staff roles and their descriptions</Text>
+
+          <Text style={typography.caption}>
+            SCR-SYS-002 • Configure staff roles and their
+            descriptions
+          </Text>
         </View>
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={typography.bodyBold}>Roles</Text>
-            <TouchableOpacity style={styles.addBtn} onPress={() => setAddingRole(true)}>
-              <Feather name="plus" size={14} color={colors.primaryBlue} />
-              <Text style={styles.addBtnText}>Add Role</Text>
+
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => setAddingRole(true)}
+              accessibilityRole="button"
+              disabled={addingRole}
+            >
+              <Feather
+                name="plus"
+                size={14}
+                color={colors.primaryBlue}
+              />
+
+              <Text style={styles.addBtnText}>
+                Add Role
+              </Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.table}>
             <View style={styles.tableHeader}>
-              <Text style={[styles.headerText, { flex: 2 }]}>Role Name</Text>
-              <Text style={[styles.headerText, { flex: 3 }]}>Description</Text>
-              <Text style={[styles.headerText, { flex: 1, textAlign: 'center' }]}>Staff Count</Text>
-              <Text style={[styles.headerText, { flex: 1, textAlign: 'center' }]}>Type</Text>
-              <Text style={[styles.headerText, { width: 70, textAlign: 'center' }]}>Actions</Text>
+              <Text
+                style={[
+                  styles.headerText,
+                  styles.colName,
+                ]}
+              >
+                Role Name
+              </Text>
+
+              <Text
+                style={[
+                  styles.headerText,
+                  styles.colDescription,
+                ]}
+              >
+                Description
+              </Text>
+
+              <Text
+                style={[
+                  styles.headerText,
+                  styles.colCount,
+                ]}
+              >
+                Staff Count
+              </Text>
+
+              <Text
+                style={[
+                  styles.headerText,
+                  styles.colType,
+                ]}
+              >
+                Type
+              </Text>
+
+              <Text
+                style={[
+                  styles.headerText,
+                  styles.colActions,
+                ]}
+              >
+                Actions
+              </Text>
             </View>
 
-            {roles.map((role) => (
-              <View key={role.id} style={[styles.tableRow, editingRole === role.id && styles.addingRow]}>
-                {editingRole === role.id ? (
-                  <>
-                    <View style={{ flex: 2, paddingRight: spacing.xs }}>
-                      <TextInput
-                        style={styles.input}
-                        value={editForm.name}
-                        onChangeText={(text) => setEditForm((prev) => ({ ...prev, name: text }))}
-                        placeholder="Role name"
-                        autoFocus
-                      />
-                    </View>
-                    <View style={{ flex: 3, paddingRight: spacing.xs }}>
-                      <TextInput
-                        style={styles.input}
-                        value={editForm.description}
-                        onChangeText={(text) => setEditForm((prev) => ({ ...prev, description: text }))}
-                        placeholder="Description"
-                      />
-                    </View>
-                    <Text style={[styles.cellText, { flex: 1, textAlign: 'center' }]}>{role.count}</Text>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
-                    </View>
-                    <View style={{ width: 70, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-                      <TouchableOpacity onPress={() => saveEdit(role.id)}>
-                        <Feather name="check" size={18} color={colors.statusApprovedText} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => setEditingRole(null)}>
-                        <Feather name="x" size={18} color={colors.statusRevisionText} />
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <Text style={[styles.cellTextBold, { flex: 2 }]}>{role.name}</Text>
-                    <Text style={[styles.cellText, { flex: 3 }]} numberOfLines={2}>{role.description}</Text>
-                    <Text style={[styles.cellText, { flex: 1, textAlign: 'center' }]}>{role.count}</Text>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
-                    </View>
-                    <View style={{ width: 70, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-                      <TouchableOpacity onPress={() => { setEditingRole(role.id); setEditForm({ name: role.name, description: role.description }); }}>
-                        <Feather name="edit-2" size={16} color={colors.primaryBlue} />
-                      </TouchableOpacity>
-                      {!role.system && (
-                        <TouchableOpacity onPress={() => handleDelete(role.id)}>
-                          <Feather name="trash-2" size={16} color={colors.statusRevisionText} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </>
-                )}
+            {roles.length === 0 && !addingRole && (
+              <View style={styles.tableRow}>
+                <Text
+                  style={[
+                    styles.cellText,
+                    styles.colFull,
+                    { textAlign: 'center' },
+                  ]}
+                >
+                  No roles found.
+                </Text>
               </View>
-            ))}
+            )}
+
+            {roles.map((role) =>
+              editingRole === role.id ? (
+                <View
+                  key={role.id}
+                  style={[
+                    styles.tableRow,
+                    styles.addingRow,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.colName,
+                      styles.inputCell,
+                    ]}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      value={editForm.name}
+                      onChangeText={(text) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          name: text,
+                        }))
+                      }
+                      placeholder="Role name"
+                      placeholderTextColor={
+                        colors.mutedText
+                      }
+                      autoFocus
+                    />
+                  </View>
+
+                  <View
+                    style={[
+                      styles.colDescription,
+                      styles.inputCell,
+                    ]}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      value={editForm.description}
+                      onChangeText={(text) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          description: text,
+                        }))
+                      }
+                      placeholder="Description"
+                      placeholderTextColor={
+                        colors.mutedText
+                      }
+                    />
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.cellText,
+                      styles.colCount,
+                      { textAlign: 'center' },
+                    ]}
+                  >
+                    {role.count}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.colType,
+                      styles.centerCell,
+                    ]}
+                  >
+                    <Badge system={role.system}>
+                      {role.system ? 'System' : 'Custom'}
+                    </Badge>
+                  </View>
+
+                  <View style={styles.actionsCell}>
+                    <IconButton
+                      onPress={() => saveEdit(role.id)}
+                      disabled={busyId === role.id}
+                      label={`Save ${role.name}`}
+                    >
+                      {busyId === role.id ? (
+                        <ActivityIndicator
+                          size="small"
+                          color={colors.statusApprovedText}
+                        />
+                      ) : (
+                        <Feather
+                          name="check"
+                          size={18}
+                          color={
+                            colors.statusApprovedText
+                          }
+                        />
+                      )}
+                    </IconButton>
+
+                    <IconButton
+                      onPress={() =>
+                        setEditingRole(null)
+                      }
+                      disabled={busyId === role.id}
+                      label="Cancel editing role"
+                    >
+                      <Feather
+                        name="x"
+                        size={18}
+                        color={
+                          colors.statusRevisionText
+                        }
+                      />
+                    </IconButton>
+                  </View>
+                </View>
+              ) : (
+                <View
+                  key={role.id}
+                  style={styles.tableRow}
+                >
+                  <Text
+                    style={[
+                      styles.cellTextBold,
+                      styles.colName,
+                    ]}
+                  >
+                    {role.name}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.cellText,
+                      styles.colDescription,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {role.description}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.cellText,
+                      styles.colCount,
+                      { textAlign: 'center' },
+                    ]}
+                  >
+                    {role.count}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.colType,
+                      styles.centerCell,
+                    ]}
+                  >
+                    <Badge system={role.system}>
+                      {role.system ? 'System' : 'Custom'}
+                    </Badge>
+                  </View>
+
+                  {renderRowActions(
+                    role,
+                    busyId === role.id,
+                  )}
+                </View>
+              ),
+            )}
 
             {addingRole && (
-              <View style={[styles.tableRow, styles.addingRow]}>
-                <View style={{ flex: 2, paddingRight: spacing.xs }}>
+              <View
+                style={[
+                  styles.tableRow,
+                  styles.addingRow,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.colName,
+                    styles.inputCell,
+                  ]}
+                >
                   <TextInput
                     style={styles.input}
                     value={newRole.name}
-                    onChangeText={(text) => setNewRole((n) => ({ ...n, name: text }))}
+                    onChangeText={(text) =>
+                      setNewRole((prev) => ({
+                        ...prev,
+                        name: text,
+                      }))
+                    }
                     placeholder="Role name"
-                    placeholderTextColor={colors.mutedText}
+                    placeholderTextColor={
+                      colors.mutedText
+                    }
                     autoFocus
                   />
                 </View>
-                <View style={{ flex: 3, paddingRight: spacing.xs }}>
+
+                <View
+                  style={[
+                    styles.colDescription,
+                    styles.inputCell,
+                  ]}
+                >
                   <TextInput
                     style={styles.input}
                     value={newRole.description}
-                    onChangeText={(text) => setNewRole((n) => ({ ...n, description: text }))}
+                    onChangeText={(text) =>
+                      setNewRole((prev) => ({
+                        ...prev,
+                        description: text,
+                      }))
+                    }
                     placeholder="Description"
-                    placeholderTextColor={colors.mutedText}
+                    placeholderTextColor={
+                      colors.mutedText
+                    }
                   />
                 </View>
-                <Text style={[styles.cellText, { flex: 1, textAlign: 'center' }]}>0</Text>
-                <View style={{ flex: 1, alignItems: 'center' }}>
+
+                <Text
+                  style={[
+                    styles.cellText,
+                    styles.colCount,
+                    { textAlign: 'center' },
+                  ]}
+                >
+                  0
+                </Text>
+
+                <View
+                  style={[
+                    styles.colType,
+                    styles.centerCell,
+                  ]}
+                >
                   <Badge>Custom</Badge>
                 </View>
-                <View style={{ width: 70, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-                  <TouchableOpacity onPress={addRole}>
-                    <Feather name="check" size={18} color={colors.statusApprovedText} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setAddingRole(false)}>
-                    <Feather name="x" size={18} color={colors.statusRevisionText} />
-                  </TouchableOpacity>
+
+                <View style={styles.actionsCell}>
+                  <IconButton
+                    onPress={addRole}
+                    disabled={busyId === 'new'}
+                    label="Save new role"
+                  >
+                    {busyId === 'new' ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={
+                          colors.statusApprovedText
+                        }
+                      />
+                    ) : (
+                      <Feather
+                        name="check"
+                        size={18}
+                        color={
+                          colors.statusApprovedText
+                        }
+                      />
+                    )}
+                  </IconButton>
+
+                  <IconButton
+                    onPress={() => {
+                      setAddingRole(false);
+                      setNewRole({
+                        name: '',
+                        description: '',
+                      });
+                    }}
+                    disabled={busyId === 'new'}
+                    label="Cancel adding role"
+                  >
+                    <Feather
+                      name="x"
+                      size={18}
+                      color={
+                        colors.statusRevisionText
+                      }
+                    />
+                  </IconButton>
                 </View>
               </View>
             )}
           </View>
         </View>
 
-        <TouchableOpacity style={styles.saveMainBtn} onPress={handleSave}>
-          <Feather name="save" size={16} color={colors.navyText} />
-          <Text style={styles.saveMainBtnText}>Save Changes</Text>
+        <TouchableOpacity
+          style={styles.saveMainBtn}
+          onPress={handleRefresh}
+          disabled={loading}
+          accessibilityRole="button"
+        >
+          <Feather
+            name="save"
+            size={16}
+            color={colors.navyText}
+          />
+
+          <Text style={styles.saveMainBtnText}>
+            Save Changes
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -248,30 +687,187 @@ export default function RoleManagementScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  backText: { color: '#334155', fontSize: 14, fontWeight: '500' },
-  headerTitle: { ...typography.h3, textAlign: 'center' },
-  content: { padding: spacing.lg, gap: spacing.xl },
-  sectionHeader: { gap: spacing.xs },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: colors.border },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  addBtnText: { color: colors.primaryBlue, fontWeight: '600', fontSize: 13 },
-  table: { flex: 1 },
-  tableHeader: { flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: colors.border },
-  headerText: { fontSize: 11, fontWeight: '600', color: colors.mutedText, textTransform: 'uppercase' },
-  tableRow: { flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center' },
-  addingRow: { backgroundColor: '#F0F9FF' },
-  cellText: { fontSize: 13, color: colors.bodyText },
-  cellTextBold: { fontSize: 13, fontWeight: '600', color: colors.navyText },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
-  badgeSystem: { backgroundColor: colors.statusInProgressBg },
-  badgeSystemText: { color: colors.statusInProgressText, fontSize: 11, fontWeight: '600' },
-  badgeCustom: { backgroundColor: colors.statusPendingBg },
-  badgeCustomText: { color: colors.statusPendingText, fontSize: 11, fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4, fontSize: 13, backgroundColor: colors.bgCard },
-  saveMainBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.primaryYellow, padding: spacing.md, borderRadius: radius.md, alignSelf: 'flex-start', paddingHorizontal: spacing.xl },
-  saveMainBtnText: { color: colors.navyText, fontWeight: '700', fontSize: 14 },
+  safe: {
+    flex: 1,
+    backgroundColor: colors.bgApp,
+  },
+
+  content: {
+    padding: spacing.lg,
+    gap: spacing.xl,
+  },
+
+  sectionHeader: {
+    gap: spacing.xs,
+  },
+
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.md,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+
+  addBtnText: {
+    color: colors.primaryBlue,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+
+  table: {
+    flex: 1,
+  },
+
+  tableHeader: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    alignItems: 'center',
+  },
+
+  headerText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+  },
+
+  tableRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    alignItems: 'center',
+  },
+
+  addingRow: {
+    backgroundColor: '#F0F9FF',
+  },
+
+  cellText: {
+    fontSize: 13,
+    color: colors.bodyText,
+  },
+
+  cellTextBold: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+
+  colName: {
+    flex: 2,
+  },
+
+  colDescription: {
+    flex: 3,
+  },
+
+  colCount: {
+    flex: 1,
+    textAlign: 'center',
+  },
+
+  colType: {
+    flex: 1,
+  },
+
+  colActions: {
+    width: 70,
+  },
+
+  saveMainBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primaryYellow,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.xl,
+  },
+
+  saveMainBtnText: {
+    color: colors.navyText,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  colFull: {
+    flex: 1,
+  },
+
+  centerCell: {
+    alignItems: 'center',
+  },
+
+  inputCell: {
+    paddingRight: spacing.xs,
+  },
+
+  actionsCell: {
+    width: 70,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+
+  badgeSystem: {
+    backgroundColor: colors.statusInProgressBg,
+  },
+
+  badgeSystemText: {
+    color: colors.statusInProgressText,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  badgeCustom: {
+    backgroundColor: colors.statusPendingBg,
+  },
+
+  badgeCustomText: {
+    color: colors.statusPendingText,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    fontSize: 13,
+    backgroundColor: colors.bgCard,
+  },
 });

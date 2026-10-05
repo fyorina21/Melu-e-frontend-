@@ -34,7 +34,10 @@ export interface DemoAccount {
 }
 
 export interface AuthSession {
+  /** The role the shell is currently rendering as. */
   role: Role;
+  /** Every role granted to the user; drives the navbar role switcher. */
+  roles?: Role[];
   userName: string;
   email?: string;
 }

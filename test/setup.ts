@@ -5,6 +5,23 @@
 
 import { afterEach, beforeEach, vi } from 'vitest';
 
+// `src/api/token.ts` statically imports expo-secure-store for the native
+// keystore path. Expo module code reads the `__DEV__` global at import time;
+// React Native injects it, but this runs in plain Node, so the import graph
+// fails to evaluate without it. Must be defined before any module loads.
+if (typeof (globalThis as Record<string, unknown>).__DEV__ === 'undefined') {
+  (globalThis as Record<string, unknown>).__DEV__ = false;
+}
+
+// There is no keystore in Node. token.ts guards every call behind
+// `Platform.OS !== 'web'`, so these are never invoked by the suite -- the stub
+// only keeps the import graph loadable.
+vi.mock('expo-secure-store', () => ({
+  getItemAsync: vi.fn(async () => null),
+  setItemAsync: vi.fn(async () => undefined),
+  deleteItemAsync: vi.fn(async () => undefined),
+}));
+
 beforeEach(() => {
   // Node ships a non-functional `localStorage` global (object), so guard on
   // usability, not just typeof. Force the in-memory polyfill so every test

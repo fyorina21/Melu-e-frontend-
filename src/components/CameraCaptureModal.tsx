@@ -306,8 +306,7 @@ export default function CameraCaptureModal({
                   style={styles.switchCameraBtn}
                   onPress={handleSwitchFacing}
                   disabled={loading}
-                  title="Switch Front/Back Camera"
-                >
+                  accessibilityLabel="Switch camera">
                   <Feather name="refresh-cw" size={18} color="#475569" />
                   <Text style={styles.switchCameraText}>Flip</Text>
                 </TouchableOpacity>

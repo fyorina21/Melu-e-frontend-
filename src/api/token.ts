@@ -29,8 +29,10 @@ let accessToken: string | null = null;
 
 function createWebStorage(): KeyValueStorage | null {
   if (Platform.OS !== 'web') return null;
+
   try {
     if (typeof localStorage === 'undefined') return null;
+
     // Probe once: some environments expose the object but throw on access.
     const probe = '__melue_probe__';
     localStorage.setItem(probe, '1');
@@ -38,6 +40,7 @@ function createWebStorage(): KeyValueStorage | null {
   } catch {
     return null;
   }
+
   return {
     async getItem(key) {
       return localStorage.getItem(key);
@@ -75,6 +78,7 @@ const memoryStorage: KeyValueStorage = {
  */
 function createSecureStoreStorage(): KeyValueStorage | null {
   if (Platform.OS === 'web') return null;
+
   return {
     async getItem(key) {
       return SecureStore.getItemAsync(key);
@@ -105,52 +109,63 @@ function resolveStorage(): KeyValueStorage {
 }
 
 export function getAccessToken(): string | null {
-  if (!accessToken && typeof localStorage !== 'undefined') {
+  if (!accessToken && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
     accessToken = localStorage.getItem(TOKEN_KEY);
   }
-  if (!accessToken || accessToken === 'undefined' || accessToken === 'null' || accessToken.trim() === '') {
+
+  if (
+    !accessToken ||
+    accessToken === 'undefined' ||
+    accessToken === 'null' ||
+    accessToken.trim() === ''
+  ) {
     return null;
   }
+
   if (accessToken.startsWith('Bearer ')) {
     accessToken = accessToken.replace(/^Bearer\s+/i, '');
   }
+
   return accessToken;
 }
 
 export async function loadToken(): Promise<string | null> {
-<<<<<<< HEAD
-  return getAccessToken();
-}
-
-export async function setAccessToken(token: string | null): Promise<void> {
-  if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
-    accessToken = null;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY);
-    }
-    return;
-  }
-  const cleanToken = token.startsWith('Bearer ') ? token.replace(/^Bearer\s+/i, '') : token.trim();
-  accessToken = cleanToken;
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(TOKEN_KEY, cleanToken);
-=======
   try {
     accessToken = await resolveStorage().getItem(TOKEN_KEY);
   } catch (err) {
     console.warn('Failed to read stored auth token:', err);
   }
-  return accessToken;
+
+  return getAccessToken();
 }
 
 export async function setAccessToken(token: string | null): Promise<void> {
-  accessToken = token;
+  if (
+    !token ||
+    token === 'undefined' ||
+    token === 'null' ||
+    token.trim() === ''
+  ) {
+    accessToken = null;
+
+    try {
+      await resolveStorage().removeItem(TOKEN_KEY);
+    } catch (err) {
+      console.warn('Failed to remove stored auth token:', err);
+    }
+
+    return;
+  }
+
+  const cleanToken = token.startsWith('Bearer ')
+    ? token.replace(/^Bearer\s+/i, '')
+    : token.trim();
+
+  accessToken = cleanToken;
+
   try {
-    const storage = resolveStorage();
-    if (token) await storage.setItem(TOKEN_KEY, token);
-    else await storage.removeItem(TOKEN_KEY);
+    await resolveStorage().setItem(TOKEN_KEY, cleanToken);
   } catch (err) {
     console.warn('Failed to persist auth token:', err);
->>>>>>> 06dcdb4587ef44370f8b57ffe3e5fe5171a630cd
   }
 }
