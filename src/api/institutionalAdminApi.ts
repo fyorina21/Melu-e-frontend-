@@ -32,8 +32,9 @@ export const getScheduleCapacityConfig = () => client.get('/admin/schedule-capac
 export const saveScheduleCapacityConfig = (payload: Payload) => client.post('/admin/schedule-capacity-config', payload);
 
 // SCR-ADMIN-005: Goal Domain Definitions
-export const getGoalDomains = () => client.get('/admin/goal-domains');
-export const saveGoalDomains = (domains: Payload[]) => client.post('/admin/goal-domains', { domains });
+// Backend route is /admin/goal_domains (underscore) — see goal_domains_controller.rb
+export const getGoalDomains = () => client.get('/admin/goal_domains');
+export const saveGoalDomains = (domains: Payload[]) => client.post('/admin/goal_domains', { domains });
 
 // SCR-ADMIN-006: Task Analysis Templates
 export const getTaskAnalysisTemplates = () => client.get('/admin/task-analysis-templates');

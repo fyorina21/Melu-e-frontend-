@@ -17,8 +17,19 @@ export const updateRole = (roleId: string, payload: Payload) => client.patch(`/s
 export const deleteRole = (roleId: string) => client.delete(`/sysadmin/roles/${roleId}`);
 
 // SCR-SYS-003: Permission Configuration (RBAC)
+//
+// Backend contract (roles_controller#permissions / #update_permissions):
+//   GET  -> { roleId, permissions: [{ id, resource, action, name }] }
+//   POST -> expects `permission_ids` (flat array of Permission UUIDs).
+//           Anything else is ignored, which silently clears the role.
+//   GET  -> the response is a bare array of audit entries.
+//
+// The screen's MODULES/ACTIONS labels do not correspond to the backend's
+// `resource`/`action` taxonomy, and there is no permission catalog endpoint,
+// so this layer passes values through verbatim rather than guessing a mapping.
 export const getPermissionMatrix = (roleId: string) => client.get(`/sysadmin/roles/${roleId}/permissions`);
-export const savePermissionMatrix = (roleId: string, matrix: Payload) => client.post(`/sysadmin/roles/${roleId}/permissions`, { matrix });
+export const savePermissionMatrix = (roleId: string, permissionIds: string[]) =>
+  client.post(`/sysadmin/roles/${roleId}/permissions`, { permission_ids: permissionIds });
 export const getPermissionAuditTrail = (roleId: string) => client.get(`/sysadmin/roles/${roleId}/permissions/audit`);
 
 // MR-8: Audit Logging (System Admin view)

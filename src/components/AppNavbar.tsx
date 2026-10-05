@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing } from '../theme/colors';
 import { typography } from '../theme/typography';
+import IconButton from './IconButton';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, TEACHER_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
 import { useBreakpoint } from '../utils/useBreakpoint';
@@ -23,7 +24,7 @@ interface AppNavbarProps {
 }
 
 export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: AppNavbarProps) {
-  const { session, logout } = useAuth();
+  const { session, logout, switchRole } = useAuth();
   const navigation = useNavigation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -52,6 +53,11 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const userName = session?.userName ?? 'User';
   const initial = userName.charAt(0).toUpperCase() || 'U';
   const notificationRoute = ROLE_NOTIFICATION_ROUTE[role];
+
+  // Users holding more than one role get a switcher so they can re-skin the
+  // shell without signing out. Ordered so the active role is always present.
+  const availableRoles = session?.roles ?? [];
+  const canSwitchRole = availableRoles.length > 1;
 
   // Central tab → route map for the current role. Screens may still pass an
   // onTabPress fallback, but known tabs are always handled here so every
@@ -195,10 +201,39 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
                     <Text style={typography.caption}>{roleLabel}</Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+                {canSwitchRole && (
+                  <View style={styles.roleSection}>
+                    <Text style={styles.roleSectionLabel}>Switch active role</Text>
+                    <ScrollView style={styles.roleList}>
+                      {availableRoles.map((r) => {
+                        const active = r === role;
+                        const label = ROLE_LABELS[r] ?? r;
+                        return (
+                          <IconButton
+                            key={r}
+                            style={[styles.roleItem, active && styles.roleItemActive]}
+                            onPress={() => {
+                              setMenuOpen(false);
+                              switchRole(r);
+                            }}
+                            accessibilityState={{ selected: active }}
+                            label={`Switch to ${label} role`}
+                          >
+                            <Text style={[styles.roleItemText, active && styles.roleItemTextActive]}>
+                              {label}
+                            </Text>
+                            {active && <Feather name="check" size={14} color={colors.navyText} />}
+                          </IconButton>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <IconButton style={styles.menuItem} onPress={handleLogout} label="Log out">
                   <Feather name="log-out" size={16} color={colors.navyText} />
                   <Text style={styles.menuItemText}>Log out</Text>
-                </TouchableOpacity>
+                </IconButton>
               </View>
             </View>
           </Modal>
@@ -311,6 +346,20 @@ const styles = StyleSheet.create({
   menuAvatar: { width: 40, height: 40, borderRadius: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, borderRadius: radius.md },
   menuItemText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
+  roleSection: { paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.xs },
+  roleSectionLabel: { fontSize: 10, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase', letterSpacing: 0.5 },
+  roleList: { maxHeight: 160 },
+  roleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+  },
+  roleItemActive: { backgroundColor: colors.primaryYellow },
+  roleItemText: { fontSize: 14, fontWeight: '500', color: colors.bodyText },
+  roleItemTextActive: { fontWeight: '700', color: colors.navyText },
 
   drawerRoot: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.4)' },
   drawerOverlay: { flex: 1 },

@@ -150,10 +150,13 @@ function createHttpClient(): AxiosInstance {
         }
       }
 
+<<<<<<< HEAD
       if (isExpiredJwt) {
         await setAccessToken(null);
       }
 
+=======
+>>>>>>> 06dcdb4587ef44370f8b57ffe3e5fe5171a630cd
       return Promise.reject(toApiError(error));
     },
   );

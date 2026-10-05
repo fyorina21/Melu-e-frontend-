@@ -2,7 +2,7 @@ import client from './sessionApi';
 import type { QueryParams, Payload } from '../types';
 
 // SCR-PD-001: Dashboard
-export const getProgramDirectorDashboard = () => client.get('/program-director/dashboard');
+export const getProgramDirectorDashboard = () => client.get('/program_director/dashboard');
 
 // SCR-PD-002: Assessment Review & Approval
 export const getAssessmentsForReview = (params: QueryParams) => client.get('/program-director/assessments', { params });
@@ -15,8 +15,8 @@ export const addAssessmentNote = (studentId: string, payload: Payload) =>
 // SCR-PD-003: IUP Generation & Management
 export const getIupCandidates = () => client.get('/program-director/iup/candidates');
 export const getIupContext = (studentId: string) => client.get(`/program-director/iup/${studentId}/context`);
-export const saveIupDraft = (studentId: string, payload: Payload) => client.post(`/program-director/iup/${studentId}/draft`, payload);
-export const finalizeIup = (studentId: string, payload: Payload) => client.post(`/program-director/iup/${studentId}/finalize`, payload);
+export const saveIupDraft = (id: string, payload: Payload) => client.patch(`/iups/${id}`, payload);
+export const finalizeIup = (id: string, payload: Payload) => client.post(`/iups/${id}/finalize`, payload);
 
 // SCR-PD-004: IUP Library Management
 export const getIupLibrary = (params: QueryParams) => client.get('/program-director/iup-library', { params });
@@ -50,7 +50,12 @@ export const escalateToDirector = (conversationId: string, payload: Payload) =>
 export const getChartData = (params: QueryParams) =>
   // params: { studentId, chartType, goalIds, dateRange }
   client.get('/program-director/charts', { params });
+<<<<<<< HEAD
 export const getAssessmentSummaryDashboard = (studentId?: string) =>
   client.get('/program-director/assessment-summary-dashboard', {
     params: studentId && studentId.trim() ? { studentId: studentId.trim() } : undefined,
   });
+=======
+export const exportChart = (params: QueryParams) => client.get('/program-director/charts/export', { params });
+export const getAssessmentSummaryDashboard = (studentId?: string) => client.get('/program-director/assessment-summary-dashboard', { params: { studentId } });
+>>>>>>> 06dcdb4587ef44370f8b57ffe3e5fe5171a630cd

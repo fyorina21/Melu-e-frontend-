@@ -12,8 +12,8 @@ export const removeAllAssignments = (blockId: string) => client.post(`/director/
 // SCR-DIR-003: Goal Mastery Approval
 export const getPendingMasteryApprovals = (params: QueryParams) => client.get('/director/mastery-approvals', { params });
 export const getMasteryApprovalDetail = (goalId: string) => client.get(`/director/mastery-approvals/${goalId}`);
-export const approveMastery = (goalId: string, payload: Payload) => client.post(`/director/mastery-approvals/${goalId}/approve`, payload);
-export const rejectMastery = (goalId: string, payload: Payload) => client.post(`/director/mastery-approvals/${goalId}/reject`, payload);
+export const approveMastery = (id: string, payload?: Payload) => client.patch(`/mastery_checks/${id}/approve`, payload);
+export const rejectMastery = (id: string, payload?: Payload) => client.patch(`/mastery_checks/${id}/reject`, payload);
 
 // SCR-DIR-004: Parent Communication (Director View)
 export const getDirectorConversations = (params: QueryParams) => client.get('/director/conversations', { params });
