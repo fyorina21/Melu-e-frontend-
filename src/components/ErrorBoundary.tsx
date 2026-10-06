@@ -1,7 +1,7 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react';
+import React, { Component, type ReactNode, type ErrorInfo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, shadows } from '../theme';
 import { typography } from '../theme/typography';
 
 interface Props {
@@ -81,7 +81,7 @@ export class ErrorBoundary extends Component<Props, State> {
       <View style={styles.container}>
         <View style={styles.card}>
           <View style={styles.iconCircle}>
-            <Feather name="alert-triangle" size={32} color="#DC2626" />
+            <Feather name="alert-triangle" size={32} color={colors.error} />
           </View>
 
           <Text style={styles.title}>{title}</Text>
@@ -92,7 +92,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
           {/* Quick error banner */}
           <View style={styles.messageBanner}>
-            <Feather name="alert-circle" size={16} color="#DC2626" style={{ marginTop: 2 }} />
+            <Feather name="alert-circle" size={16} color={colors.error} style={{ marginTop: 2 }} />
             <Text style={styles.messageBannerText} numberOfLines={3}>
               {errorMessage}
             </Text>
@@ -180,25 +180,21 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#FECACA',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+    borderColor: colors.errorLight,
+    ...shadows.md,
   },
   iconCircle: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.errorLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.md,
   },
   title: {
     ...typography.h2,
-    color: '#991B1B',
+    color: colors.errorDark,
     marginBottom: spacing.xs,
     textAlign: 'center',
   },
@@ -213,9 +209,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.errorLight,
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: colors.promptFP,
     borderRadius: radius.md,
     padding: spacing.md,
     width: '100%',
@@ -224,7 +220,7 @@ const styles = StyleSheet.create({
   messageBannerText: {
     flex: 1,
     fontSize: 13,
-    color: '#991B1B',
+    color: colors.errorDark,
     fontWeight: '500',
     fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
   },
@@ -282,21 +278,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     width: '100%',
     maxHeight: 200,
-    backgroundColor: '#1E293B',
+    backgroundColor: colors.surfaceDark,
     borderRadius: radius.md,
     padding: spacing.md,
   },
   detailsHeader: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#94A3B8',
+    color: colors.mutedText,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 6,
   },
   detailsText: {
     fontSize: 11,
-    color: '#E2E8F0',
+    color: colors.surfaceDarkText,
     fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
     lineHeight: 16,
   },

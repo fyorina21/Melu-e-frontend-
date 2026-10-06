@@ -2,7 +2,7 @@
 //
 // Elevation system for consistent depth across all components.
 // Usage: `style={shadows.md}` or spread into StyleSheet.create.
-import { Platform, type ViewStyle } from 'react-native';
+import type { ViewStyle } from 'react-native';
 
 type ShadowToken = ViewStyle;
 

@@ -7,13 +7,31 @@ export const colors = {
   successGreen: '#22C55E',
   navyText: '#1A2233', // headings, nav text
   bodyText: '#4B5563', // secondary/body text
-  mutedText: '#9CA3AF', // placeholders, timestamps
+  mutedText: '#6B7280', // placeholders, timestamps (WCAG AA compliant 4.5:1+ on white)
 
   // Backgrounds
   bgApp: '#F4F5F7', // page background (light grey)
   bgCard: '#FFFFFF', // card surfaces
   bgFooter: '#1A2233', // dark footer bar
-  bgActiveCardBorder: '#3B82F6', // blue outline on "Active" student card (Image 2)
+  bgActiveCardBorder: '#3B82F6', // blue outline on "Active" student card
+
+  // Semantic status & feedback
+  error: '#DC2626',
+  errorLight: '#FEE2E2',
+  errorDark: '#991B1B',
+  warning: '#F59E0B',
+  warningLight: '#FEF3C7',
+  warningDark: '#B45309',
+  success: '#16A34A',
+  successLight: '#DCFCE7',
+  successDark: '#15803D',
+  info: '#2563EB',
+  infoLight: '#DBEAFE',
+  infoDark: '#1D4ED8',
+
+  // Dark surfaces & overlays
+  surfaceDark: '#1E293B',
+  surfaceDarkText: '#F8FAFC',
 
   // Status pills
   statusInProgressBg: '#DBEAFE',
@@ -29,7 +47,7 @@ export const colors = {
   statusApprovedBg: '#D1FAE5',
   statusApprovedText: '#059669',
 
-  // Prompt entry buttons (Image 2: FP / PP / G / +)
+  // Prompt entry buttons (FP / PP / G / +)
   promptFP: '#FCA5A5', // full physical - red/pink
   promptPP: '#FCD34D', // partial physical - amber
   promptG: '#93C5FD', // gestural - blue

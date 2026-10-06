@@ -8,15 +8,25 @@ export type FeatherIconName = ComponentProps<typeof Feather>['name'];
 export type QueryParams = Record<string, unknown>;
 export type Payload = Record<string, unknown>;
 
-export type Role =
+/**
+ * The 7 core predefined roles in MELUE.
+ * Other specialized roles (e.g., therapist, speech_therapist, behavior_analyst)
+ * are configurable within the application.
+ */
+export type PredefinedRole =
   | 'teacher'
   | 'coordinator'
   | 'director'
   | 'program_director'
   | 'institutional_admin'
   | 'system_admin'
-  | 'parent'
-  | 'therapist';
+  | 'parent';
+
+/**
+ * Role type allows the 7 core predefined roles with autocomplete,
+ * while seamlessly accepting any configured/custom role strings from the backend.
+ */
+export type Role = PredefinedRole | (string & {});
 
 export interface DemoAccount {
   role: Role;

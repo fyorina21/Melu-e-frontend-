@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Platform, View } from 'react-native';
 import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
 import type {
@@ -11,23 +11,28 @@ import { useAuth, ROLES } from '../context/AuthContext';
 import type { Role } from '../types';
 import LoginScreen from '../screens/auth/LoginScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
-import SessionStack from './SessionStack';
-import CoordinatorStack from './CoordinatorStack';
-import ProgramDirectorStack from './ProgramDirectorStack';
-import DirectorStack from './DirectorStack';
-import InstitutionalAdminStack from './InstitutionalAdminStack';
-import SystemAdminStack from './SystemAdminStack';
-import ParentStack from './ParentStack';
 import RoleSidebar from '../components/RoleSidebar';
+import ScreenLoader from '../components/ScreenLoader';
 import { SidebarNavContext } from './SidebarNavContext';
+import { storage } from '../utils/storage';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
+// Lazy-loaded role stacks for optimal bundle splitting and fast initial page loads
+const SessionStack = lazy(() => import('./SessionStack'));
+const CoordinatorStack = lazy(() => import('./CoordinatorStack'));
+const ProgramDirectorStack = lazy(() => import('./ProgramDirectorStack'));
+const DirectorStack = lazy(() => import('./DirectorStack'));
+const InstitutionalAdminStack = lazy(() => import('./InstitutionalAdminStack'));
+const SystemAdminStack = lazy(() => import('./SystemAdminStack'));
+const ParentStack = lazy(() => import('./ParentStack'));
 
 const Stack = createNativeStackNavigator();
 
 // Roles whose navigation lives in a persistent docked sidebar instead of
 // the top navbar tabs.
-const SIDEBAR_ROLES = new Set<Role>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADMIN]);
+const SIDEBAR_ROLES = new Set<string>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADMIN]);
 
-const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
+const STACK_BY_ROLE: Record<string, React.ComponentType> = {
   [ROLES.TEACHER]: SessionStack,
   [ROLES.THERAPIST]: SessionStack,
   [ROLES.COORDINATOR]: CoordinatorStack,
@@ -51,14 +56,6 @@ function getActiveRoute(
   return route as { name: string; params?: Record<string, any> } | undefined;
 }
 
-function getActiveRouteName(
-  state: NavigationState | PartialState<NavigationState> | undefined,
-): string | undefined {
-  return getActiveRoute(state)?.name;
-}
-
-import { storage } from '../utils/storage';
-
 /** Push the current screen name into the browser URL bar (web only). */
 function syncUrlToScreen(state: NavigationState | undefined): void {
   if (Platform.OS !== 'web' || !state) return;
@@ -72,8 +69,6 @@ function syncUrlToScreen(state: NavigationState | undefined): void {
     window.history.replaceState(null, '', `/${route.name}${query}`);
   }
 }
-
-import { ErrorBoundary } from '../components/ErrorBoundary';
 
 function AppNavigator() {
   const { session } = useAuth();
@@ -89,24 +84,23 @@ function AppNavigator() {
     );
   }
 
+  // Resolves the role's stack; configured custom roles fall back to SessionStack
   const RoleStack = STACK_BY_ROLE[session.role] || STACK_BY_ROLE[ROLES.TEACHER];
-
-  if (SIDEBAR_ROLES.has(session.role)) {
-    return (
-      <ErrorBoundary screenName={`${session.role} Navigator`}>
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-          <RoleSidebar role={session.role} />
-          <View style={{ flex: 1 }}>
-            <RoleStack />
-          </View>
-        </View>
-      </ErrorBoundary>
-    );
-  }
 
   return (
     <ErrorBoundary screenName={`${session.role} Navigator`}>
-      <RoleStack />
+      <Suspense fallback={<ScreenLoader />}>
+        {SIDEBAR_ROLES.has(session.role) ? (
+          <View style={{ flex: 1, flexDirection: 'row' }}>
+            <RoleSidebar role={session.role} />
+            <View style={{ flex: 1 }}>
+              <RoleStack />
+            </View>
+          </View>
+        ) : (
+          <RoleStack />
+        )}
+      </Suspense>
     </ErrorBoundary>
   );
 }
@@ -123,7 +117,6 @@ export default function RootNavigator() {
   React.useEffect(() => {
     if (Platform.OS !== 'web' || !session || !navRef.current) return;
     if (deepLinkRestored.current) {
-      // Session changed later (role switch/logout) — just re-sync the URL.
       syncUrlToScreen(navRef.current.getState() as NavigationState);
       return;
     }
@@ -161,7 +154,6 @@ export default function RootNavigator() {
           setNavVersion((v) => v + 1);
         }}
         onReady={() => {
-          // Sync URL for the very first screen since onStateChange only fires on changes.
           if (Platform.OS === 'web' && navRef.current) {
             syncUrlToScreen(navRef.current.getState());
           }

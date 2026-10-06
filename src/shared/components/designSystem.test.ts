@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import * as DesignSystem from './index';
-import { Button } from './Button';
-import { Input } from './Input';
-import { Card } from './Card';
-import { Badge } from './Badge';
-import { ModalSheet } from './ModalSheet';
-import { DataGrid } from './DataGrid';
 import {
   Skeleton,
   SkeletonText,
@@ -24,6 +18,12 @@ describe('Design System Primitives', () => {
     expect(DesignSystem.ModalSheet).toBeDefined();
     expect(DesignSystem.DataGrid).toBeDefined();
     expect(DesignSystem.Skeleton).toBeDefined();
+    expect(DesignSystem.EmptyState).toBeDefined();
+    expect(DesignSystem.ProgressBar).toBeDefined();
+    expect(DesignSystem.Avatar).toBeDefined();
+    expect(DesignSystem.SearchInput).toBeDefined();
+    expect(DesignSystem.Tabs).toBeDefined();
+    expect(DesignSystem.Select).toBeDefined();
   });
 
   it('provides Skeleton subcomponents attached to Skeleton', () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,69 +7,94 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
+import { colors, radius, spacing, shadows, typography } from '../../theme';
 import { resetPassword, requestResetCode } from '../../api/sessionApi';
+import { toApiError } from '../../api/http/errors';
+import { Button, FormField } from '../../shared/components';
 
 type RootStackParamList = { Login: undefined; ForgotPassword: undefined };
 
 export default function ForgotPasswordScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [step, setStep] = useState<'request' | 'reset' | 'done'>('request');
+
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null);
+  const [generalError, setGeneralError] = useState<string | null>(null);
+  const [generalSuccess, setGeneralSuccess] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
-  const newPasswordRef = React.useRef<TextInput>(null);
-  const confirmPasswordRef = React.useRef<TextInput>(null);
+  const newPasswordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const handleRequestCode = async () => {
+    setGeneralError(null);
+    setGeneralSuccess(null);
     const trimmedEmail = email.trim();
-    if (!trimmedEmail || !trimmedEmail.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+
+    if (!trimmedEmail) {
+      setEmailError('Email is required');
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+    setEmailError(null);
+
     setLoading(true);
     try {
       await requestResetCode({ email: trimmedEmail });
-      Alert.alert(
-        'Reset Link Sent',
+      setGeneralSuccess(
         'If an account exists with this email address, you will receive a password reset link.',
       );
       setStep('reset');
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const msg =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        (status === 500
-          ? 'The password reset service is temporarily unavailable. Please try again later.'
-          : 'Could not send reset code. Please try again.');
-      Alert.alert('Request Failed', msg);
+    } catch (err: unknown) {
+      const apiErr = toApiError(err);
+      setGeneralError(apiErr.message || 'Could not send reset code. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleReset = async () => {
+    setGeneralError(null);
+    let hasErr = false;
+
     if (!code.trim()) {
-      Alert.alert('Missing Key', 'Please enter the reset key from your email.');
-      return;
+      setCodeError('Please enter the reset key from your email');
+      hasErr = true;
+    } else {
+      setCodeError(null);
     }
+
     if (newPassword.length < 8) {
-      Alert.alert('Weak Password', 'New password must be at least 8 characters.');
-      return;
+      setPasswordError('New password must be at least 8 characters');
+      hasErr = true;
+    } else {
+      setPasswordError(null);
     }
+
     if (newPassword !== confirmPassword) {
-      Alert.alert('Passwords Do Not Match', 'Please re-enter the same password in both fields.');
-      return;
+      setConfirmPasswordError('Passwords do not match');
+      hasErr = true;
+    } else {
+      setConfirmPasswordError(null);
     }
+
+    if (hasErr) return;
+
     setLoading(true);
     try {
       await resetPassword({
@@ -78,13 +103,11 @@ export default function ForgotPasswordScreen() {
         password_confirm: confirmPassword,
       });
       setStep('done');
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        'Failed to reset password. Please verify the key and try again.';
-      Alert.alert('Reset Failed', msg);
+    } catch (err: unknown) {
+      const apiErr = toApiError(err);
+      setGeneralError(
+        apiErr.message || 'Failed to reset password. Please verify the key and try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -101,7 +124,7 @@ export default function ForgotPasswordScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to Sign In"
           >
-            <Feather name="arrow-left" size={16} color={colors.statusInProgressText} />
+            <Feather name="arrow-left" size={16} color={colors.primaryBlue} />
             <Text style={styles.backText}>Back to Sign In</Text>
           </TouchableOpacity>
 
@@ -114,13 +137,29 @@ export default function ForgotPasswordScreen() {
             {step === 'done' && 'Your password has been successfully reset.'}
           </Text>
 
+          {generalError && (
+            <View style={styles.bannerError} accessibilityRole="alert">
+              <Feather name="alert-triangle" size={16} color={colors.error} />
+              <Text style={styles.bannerErrorText}>{generalError}</Text>
+            </View>
+          )}
+
+          {generalSuccess && (
+            <View style={styles.bannerSuccess} accessibilityRole="alert">
+              <Feather name="check-circle" size={16} color={colors.success} />
+              <Text style={styles.bannerSuccessText}>{generalSuccess}</Text>
+            </View>
+          )}
+
           {step === 'request' && (
             <>
-              <View style={styles.field}>
-                <Text nativeID="forgotEmailLabel" style={typography.label}>
-                  Email Address
-                </Text>
-                <View style={styles.inputRow}>
+              <FormField
+                label="Email Address"
+                required
+                error={emailError}
+                style={{ width: '100%' }}
+              >
+                <View style={[styles.inputRow, !!emailError && styles.inputRowError]}>
                   <Feather name="mail" size={16} color={colors.mutedText} />
                   <TextInput
                     style={styles.input}
@@ -132,36 +171,32 @@ export default function ForgotPasswordScreen() {
                     returnKeyType="go"
                     onSubmitEditing={handleRequestCode}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(val) => {
+                      setEmail(val);
+                      if (emailError) setEmailError(null);
+                    }}
                     editable={!loading}
                     accessibilityLabel="Email Address"
-                    aria-label="Email Address"
-                    aria-labelledby="forgotEmailLabel"
                   />
                 </View>
-              </View>
-              <TouchableOpacity
-                style={styles.primaryBtn}
+              </FormField>
+
+              <Button
+                label={loading ? 'Sending...' : 'Send Reset Code'}
                 onPress={handleRequestCode}
+                loading={loading}
                 disabled={loading}
-                accessibilityRole="button"
-                accessibilityLabel="Send Reset Code"
-                accessibilityState={{ busy: loading, disabled: loading }}
-              >
-                <Text style={styles.primaryBtnText}>
-                  {loading ? 'Sending...' : 'Send Reset Code'}
-                </Text>
-              </TouchableOpacity>
+                fullWidth
+                variant="primary"
+                size="lg"
+              />
             </>
           )}
 
           {step === 'reset' && (
             <>
-              <View style={styles.field}>
-                <Text nativeID="resetKeyLabel" style={typography.label}>
-                  Reset Key
-                </Text>
-                <View style={styles.inputRow}>
+              <FormField label="Reset Key" required error={codeError} style={{ width: '100%' }}>
+                <View style={[styles.inputRow, !!codeError && styles.inputRowError]}>
                   <Feather name="key" size={16} color={colors.mutedText} />
                   <TextInput
                     style={styles.input}
@@ -173,19 +208,23 @@ export default function ForgotPasswordScreen() {
                     onSubmitEditing={() => newPasswordRef.current?.focus()}
                     blurOnSubmit={false}
                     value={code}
-                    onChangeText={setCode}
+                    onChangeText={(val) => {
+                      setCode(val);
+                      if (codeError) setCodeError(null);
+                    }}
                     editable={!loading}
                     accessibilityLabel="Reset Key"
-                    aria-label="Reset Key"
-                    aria-labelledby="resetKeyLabel"
                   />
                 </View>
-              </View>
-              <View style={styles.field}>
-                <Text nativeID="newPasswordLabel" style={typography.label}>
-                  New Password
-                </Text>
-                <View style={styles.inputRow}>
+              </FormField>
+
+              <FormField
+                label="New Password"
+                required
+                error={passwordError}
+                style={{ width: '100%' }}
+              >
+                <View style={[styles.inputRow, !!passwordError && styles.inputRowError]}>
                   <Feather name="lock" size={16} color={colors.mutedText} />
                   <TextInput
                     ref={newPasswordRef}
@@ -197,19 +236,23 @@ export default function ForgotPasswordScreen() {
                     onSubmitEditing={() => confirmPasswordRef.current?.focus()}
                     blurOnSubmit={false}
                     value={newPassword}
-                    onChangeText={setNewPassword}
+                    onChangeText={(val) => {
+                      setNewPassword(val);
+                      if (passwordError) setPasswordError(null);
+                    }}
                     editable={!loading}
                     accessibilityLabel="New Password"
-                    aria-label="New Password"
-                    aria-labelledby="newPasswordLabel"
                   />
                 </View>
-              </View>
-              <View style={styles.field}>
-                <Text nativeID="confirmPasswordLabel" style={typography.label}>
-                  Confirm New Password
-                </Text>
-                <View style={styles.inputRow}>
+              </FormField>
+
+              <FormField
+                label="Confirm New Password"
+                required
+                error={confirmPasswordError}
+                style={{ width: '100%' }}
+              >
+                <View style={[styles.inputRow, !!confirmPasswordError && styles.inputRowError]}>
                   <Feather name="lock" size={16} color={colors.mutedText} />
                   <TextInput
                     ref={confirmPasswordRef}
@@ -220,43 +263,41 @@ export default function ForgotPasswordScreen() {
                     returnKeyType="go"
                     onSubmitEditing={handleReset}
                     value={confirmPassword}
-                    onChangeText={setConfirmPassword}
+                    onChangeText={(val) => {
+                      setConfirmPassword(val);
+                      if (confirmPasswordError) setConfirmPasswordError(null);
+                    }}
                     editable={!loading}
                     accessibilityLabel="Confirm New Password"
-                    aria-label="Confirm New Password"
-                    aria-labelledby="confirmPasswordLabel"
                   />
                 </View>
-              </View>
-              <TouchableOpacity
-                style={styles.primaryBtn}
+              </FormField>
+
+              <Button
+                label={loading ? 'Resetting...' : 'Reset Password'}
                 onPress={handleReset}
+                loading={loading}
                 disabled={loading}
-                accessibilityRole="button"
-                accessibilityLabel="Reset Password"
-                accessibilityState={{ busy: loading, disabled: loading }}
-              >
-                <Text style={styles.primaryBtnText}>
-                  {loading ? 'Resetting...' : 'Reset Password'}
-                </Text>
-              </TouchableOpacity>
+                fullWidth
+                variant="primary"
+                size="lg"
+              />
             </>
           )}
 
           {step === 'done' && (
             <>
-              <Feather name="check-circle" size={48} color={colors.statusApprovedText} />
+              <Feather name="check-circle" size={48} color={colors.success} />
               <Text accessibilityRole="text" style={[typography.body, { textAlign: 'center' }]}>
                 You can now sign in with your new password.
               </Text>
-              <TouchableOpacity
-                style={styles.primaryBtn}
+              <Button
+                label="Back to Sign In"
                 onPress={() => navigation.goBack()}
-                accessibilityRole="button"
-                accessibilityLabel="Back to Sign In"
-              >
-                <Text style={styles.primaryBtnText}>Back to Sign In</Text>
-              </TouchableOpacity>
+                fullWidth
+                variant="primary"
+                size="lg"
+              />
             </>
           )}
         </View>
@@ -275,16 +316,59 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 440,
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
+    ...shadows.md,
   },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
-  backText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 13 },
-  field: { width: '100%', gap: spacing.xs },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  backText: {
+    color: colors.primaryBlue,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  bannerError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.errorLight,
+    borderWidth: 1,
+    borderColor: colors.promptFP,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    width: '100%',
+  },
+  bannerErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.errorDark,
+    fontWeight: '500',
+  },
+  bannerSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.successLight,
+    borderWidth: 1,
+    borderColor: colors.statusApprovedBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    width: '100%',
+  },
+  bannerSuccessText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.successDark,
+    fontWeight: '500',
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -293,15 +377,16 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+    backgroundColor: '#FFFFFF',
+    height: 44,
   },
-  input: { flex: 1, paddingVertical: spacing.md, color: colors.navyText },
-  primaryBtn: {
-    width: '100%',
-    backgroundColor: colors.primaryYellow,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
+  inputRowError: {
+    borderColor: colors.error,
   },
-  primaryBtnText: { fontWeight: '700', color: colors.navyText },
+  input: {
+    flex: 1,
+    color: colors.navyText,
+    fontSize: 14,
+    height: '100%',
+  },
 });
