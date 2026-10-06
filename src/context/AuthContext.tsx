@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
-import { setAccessToken } from '../api/token';
+import { setAccessToken, getAccessTokenExpiryMs } from '../api/token';
+import { setTokenRefreshHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
 
 export const ROLES = {
@@ -76,6 +77,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restoreSession();
   }, []);
 
+  // Let the http client refresh transparently when a request fails with 401 or
+  // the backend's 400 "expired JWT access token".
+  useEffect(() => {
+    setTokenRefreshHandler(() => authApi.refresh());
+    return () => setTokenRefreshHandler(null);
+  }, []);
+
   const loginWithCredentials = async (email: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
@@ -111,6 +119,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       showToast('You have been signed out.', 'info');
     }
   };
+
+  const logoutRef = useRef(logout);
+  logoutRef.current = logout;
+
+  // Access tokens last 15 minutes and the backend rejects refresh requests once
+  // they have expired, so refresh proactively before `exp`.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const schedule = () => {
+      const expMs = getAccessTokenExpiryMs();
+      const leadMs = 60_000;
+      const delay = expMs ? Math.max(5_000, expMs - Date.now() - leadMs) : 60_000;
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        const ok = await authApi.refresh();
+        if (cancelled) return;
+        if (ok) {
+          schedule();
+          return;
+        }
+        const stillValid = getAccessTokenExpiryMs();
+        if (stillValid && stillValid > Date.now()) {
+          schedule(); // transient failure while the current token is still usable
+          return;
+        }
+        logoutRef.current();
+      }, delay);
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [session]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
