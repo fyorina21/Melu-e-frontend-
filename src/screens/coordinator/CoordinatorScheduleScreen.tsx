@@ -26,8 +26,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
-import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
-import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
+import { getOperationalSchedule, getUnassignedAlerts, reassignStudentsLive, markTeacherUnavailableLive } from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorSchedule'>;
@@ -43,6 +42,7 @@ interface Teacher {
   room: string;
   students: string[];
   studentIds: string[];
+  assignmentIdsByStudent: Record<string, string[]>; // student_id -> upcoming assignment ids
   sessions: number;
   trials: number;
   independence: number;
@@ -54,23 +54,36 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 type Cell = { station: string; room: string } | null;
 
-interface MetricsRow {
-  teacherId: string;
-  teacherName: string;
-  sessions: number;
-  trials: number;
-  independencePercent: number;
-  incidents: number;
+interface UnassignedAlert {
+  student_id: string;
+  student_name: string;
+  session_block_name: string;
+  is_current_block: boolean;
 }
 
-interface WeekAppointment {
-  therapistId: string;
-  therapistName: string;
-  roomName: string;
-  studentIds?: string[];
-  studentNames: string[];
-  status?: string;
-}
+const pad = (n: number) => String(n).padStart(2, '0');
+const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const errMsg = (err: any, fallback: string) => err?.response?.data?.error || fallback;
+
+const weekDates = (): string[] => {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  return DAYS.map((_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return ymd(d);
+  });
+};
+
+const dateRange = (from: string, to: string): string[] => {
+  const out: string[] = [];
+  const end = new Date(`${to}T00:00:00`);
+  for (let d = new Date(`${from}T00:00:00`); d <= end && out.length < 31; d.setDate(d.getDate() + 1)) {
+    out.push(ymd(d));
+  }
+  return out;
+};
 
 function StationChip({ station }: { station: string }) {
   const isStation1 = station === 'Station 1';
@@ -102,6 +115,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [reassignVisible, setReassignVisible] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [cellModal, setCellModal] = useState<{ teacher: Teacher; day: string; cell: { station: string; room: string } } | null>(null);
+  const [alerts, setAlerts] = useState<UnassignedAlert[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
 
   // Unavailable modal state
   const [unavailableFrom, setUnavailableFrom] = useState('');
@@ -109,49 +125,85 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [unavailableReason, setUnavailableReason] = useState('');
 
   const load = useCallback(async () => {
+    // 1. Weekly schedule: one index call per weekday (backend returns one date per call)
     try {
-      const [{ data: metrics }, { data: week }] = await Promise.all([
-        getTeacherPerformanceMetrics({}),
-        getOperationalSchedule({}),
-      ]);
-      const rows = (Array.isArray(metrics) ? metrics : []) as MetricsRow[];
-      const weekRows = (week ?? {}) as Record<number, WeekAppointment[]>;
+      const dates = weekDates();
+      const today = ymd(new Date());
+      const results = await Promise.all(dates.map((date) => getOperationalSchedule({ date })));
+      const days: any[] = results.map((r) => r.data ?? {});
+      const todayIdx = Math.max(dates.indexOf(today), 0);
 
-      const nextTeachers: Teacher[] = [];
       const nextSchedule: Record<string, Record<string, Cell>> = {};
-      rows.forEach((m, i) => {
-        const appts = Object.values(weekRows).flat().filter((a) => a.therapistId === m.teacherId);
-        const first = appts[0];
-        const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
-        const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
-        nextTeachers.push({
-          id: m.teacherId,
-          name: m.teacherName,
-          station: i % 2 === 0 ? 'Station 1' : 'Station 2',
-          room: first?.roomName ?? 'Room 1',
-          students: studentNames,
-          studentIds,
-          sessions: m.sessions,
-          trials: m.trials,
-          independence: m.independencePercent,
-          incidents: m.incidents,
-          available: true,
+      const nextTeachers: Teacher[] = ((days[0]?.teachers ?? []) as any[]).map((t) => {
+        const names = new Map<string, string>();
+        const assignmentIdsByStudent: Record<string, string[]> = {};
+        let station = '';
+        let room = '';
+        let sessions = 0;
+        nextSchedule[t.teacher_id] = {};
+
+        DAYS.forEach((day, di) => {
+          const dayTeacher = ((days[di]?.teachers ?? []) as any[]).find((x) => x.teacher_id === t.teacher_id);
+          const assignments: any[] = (dayTeacher?.blocks ?? []).flatMap((b: any) => b.assignments ?? []);
+          const first = assignments[0];
+          nextSchedule[t.teacher_id][day] = first
+            ? { station: first.station_name ?? '—', room: first.room_name ?? '—' }
+            : null;
+          if (first && !station) {
+            station = first.station_name ?? '';
+            room = first.room_name ?? '';
+          }
+          sessions += assignments.length;
+          assignments.forEach((a) => {
+            names.set(a.student_id, a.student_name ?? 'Student');
+            if (dates[di] >= today) {
+              if (!assignmentIdsByStudent[a.student_id]) assignmentIdsByStudent[a.student_id] = [];
+              assignmentIdsByStudent[a.student_id].push(a.id);
+            }
+          });
         });
-        nextSchedule[m.teacherId] = Object.fromEntries(
-          DAYS.map((day, di) => {
-            const dayAppt = (weekRows[di] ?? []).find((a) => a.therapistId === m.teacherId);
-            return [
-              day,
-              dayAppt ? { station: i % 2 === 0 ? 'Station 1' : 'Station 2', room: dayAppt.roomName } : null,
-            ];
-          }),
-        );
+
+        const todayTeacher = ((days[todayIdx]?.teachers ?? []) as any[]).find((x) => x.teacher_id === t.teacher_id);
+        return {
+          id: t.teacher_id,
+          name: t.teacher_name,
+          station: station || '—',
+          room: room || '—',
+          students: Array.from(names.values()),
+          studentIds: Array.from(names.keys()),
+          assignmentIdsByStudent,
+          sessions, // assignments this week; no backend metrics endpoint exists
+          trials: 0,
+          independence: 0,
+          incidents: 0,
+          available: (todayTeacher ?? t).is_available !== false,
+        };
       });
       setTeachers(nextTeachers);
       setScheduleData(nextSchedule);
     } catch (err) {
       setTeachers([]);
       setScheduleData({});
+      Alert.alert('Error', errMsg(err, 'Failed to load the schedule. Please try again.'));
+    }
+
+    // 2. Students with no assigned teacher
+    setAlertsLoading(true);
+    setAlertsError(null);
+    try {
+      const { data } = await getUnassignedAlerts({});
+      const list: UnassignedAlert[] = data?.alerts ?? [];
+      const byStudent = new Map<string, UnassignedAlert>();
+      list.forEach((a) => {
+        const existing = byStudent.get(a.student_id);
+        if (!existing || (a.is_current_block && !existing.is_current_block)) byStudent.set(a.student_id, a);
+      });
+      setAlerts(Array.from(byStudent.values()));
+    } catch (err) {
+      setAlerts([]);
+      setAlertsError('Failed to load unassigned student alerts.');
+    } finally {
+      setAlertsLoading(false);
     }
   }, []);
 
@@ -162,20 +214,31 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const filteredTeachers =
     teacherFilter === 'all' ? teachers : teachers.filter((t) => t.id === teacherFilter);
 
-  const unassignedTeachers = teachers.filter((t) => t.students.length === 0);
-
   const handleMarkUnavailable = () => {
     if (!unavailableModal) return;
-    setTeachers((prev) => prev.map((t) => (t.id === unavailableModal.id ? { ...t, available: false } : t)));
-    markTeacherUnavailable(unavailableModal.id, {
-      date: unavailableFrom,
-      reason: unavailableReason || 'Unavailable',
-    }).catch(() => {});
-    Alert.alert('Done', `${unavailableModal.name} marked as unavailable.`);
-    setUnavailableModal(null);
-    setUnavailableFrom('');
-    setUnavailableTo('');
-    setUnavailableReason('');
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!datePattern.test(unavailableFrom) || !datePattern.test(unavailableTo) || unavailableTo < unavailableFrom) {
+      Alert.alert('Invalid dates', 'Enter FROM and TO as YYYY-MM-DD, with TO on or after FROM.');
+      return;
+    }
+    const teacher = unavailableModal;
+    const reason = unavailableReason.trim() || 'Unavailable';
+    Promise.all(
+      dateRange(unavailableFrom, unavailableTo).map((date) =>
+        markTeacherUnavailableLive({ teacher_id: teacher.id, date, reason }),
+      ),
+    )
+      .then(() => {
+        Alert.alert('Done', `${teacher.name} marked as unavailable.`);
+        setUnavailableModal(null);
+        setUnavailableFrom('');
+        setUnavailableTo('');
+        setUnavailableReason('');
+        load();
+      })
+      .catch((err) => {
+        Alert.alert('Error', errMsg(err, 'Failed to mark teacher as unavailable. Please try again.'));
+      });
   };
 
   const handleReassignSubmit = (payload: { fromTherapistId: string; toTherapistId: string; studentIds: string[] }) => {
@@ -184,20 +247,25 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       Alert.alert('No students selected', 'Select at least one student to reassign.');
       return;
     }
-    const fromName = teachers.find((t) => t.id === fromTherapistId)?.name ?? 'Source teacher';
+    const source = teachers.find((t) => t.id === fromTherapistId);
+    const fromName = source?.name ?? 'Source teacher';
     const toName = teachers.find((t) => t.id === toTherapistId)?.name ?? 'Target teacher';
-    reassignStudents({ fromTherapistId, toTherapistId, studentIds })
+    const missing = studentIds.filter((sid) => !source?.assignmentIdsByStudent[sid]?.length);
+    if (!source || missing.length > 0) {
+      Alert.alert('Cannot reassign', 'Some selected students have no upcoming scheduled assignment to move.');
+      return;
+    }
+    const assignments = studentIds.flatMap((sid) =>
+      source.assignmentIdsByStudent[sid].map((assignment_id) => ({ assignment_id, new_teacher_id: toTherapistId })),
+    );
+    reassignStudentsLive({ assignments })
       .then(() => {
-        // Reflect the persisted change by reloading the schedule source of truth.
         setReassignVisible(false);
         Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
         load();
       })
-      .catch(() => {
-        // Even if the API fails, keep the UI responsive and re-sync from the store.
-        setReassignVisible(false);
-        Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
-        load();
+      .catch((err) => {
+        Alert.alert('Reassignment failed', errMsg(err, 'Reassignment failed. Please try again.'));
       });
   };
 
@@ -254,13 +322,15 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         </View>
 
         {/* Unassigned Alert */}
-        {unassignedTeachers.length > 0 && (
+        {alertsLoading && <Text style={styles.unassignedText}>Loading alerts…</Text>}
+        {alertsError && <Text style={styles.errorText}>{alertsError}</Text>}
+        {alerts.length > 0 && (
           <View style={styles.unassignedAlert}>
             <AlertTriangle size={20} color="#EAB308" />
             <View style={{ flex: 1 }}>
-              {unassignedTeachers.map((t) => (
-                <Text key={t.id} style={styles.unassignedText}>
-                  ⚠ {t.name} has no students assigned. Please reassign.
+              {alerts.map((a) => (
+                <Text key={a.student_id} style={styles.unassignedText}>
+                  ⚠ {a.student_name} has no assigned teacher ({a.session_block_name}).
                 </Text>
               ))}
             </View>
