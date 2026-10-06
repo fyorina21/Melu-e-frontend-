@@ -190,7 +190,7 @@ export default function ForgotPasswordScreen() {
                   <TextInput
                     ref={newPasswordRef}
                     style={styles.input}
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     placeholderTextColor={colors.mutedText}
                     secureTextEntry
                     returnKeyType="next"

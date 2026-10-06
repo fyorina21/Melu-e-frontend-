@@ -11,13 +11,6 @@ export default [
       '**/*.config.js',
       '**/*.config.ts',
       '**/scripts/**',
-      'fix*.js',
-      'fix*.py',
-      'update*.js',
-      'test-*.js',
-      'clean-fix.js',
-      'replace.py',
-      'append-api.py',
     ],
   },
   {
@@ -45,8 +38,24 @@ export default [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/consistent-type-imports': [
+        'warn',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
       'prefer-const': 'warn',
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['../../../*'],
+              message: 'Avoid deep relative imports — use @/ path aliases instead.',
+            },
+          ],
+        },
+      ],
     },
   },
 ];
