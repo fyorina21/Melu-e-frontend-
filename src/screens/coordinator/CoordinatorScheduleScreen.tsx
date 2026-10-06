@@ -106,6 +106,18 @@ function KpiCard({ label, value, unit = '' }: { label: string; value: number | s
   );
 }
 
+function SuccessNotice({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <View style={styles.successBanner}>
+      <CheckCircle size={16} color="#166534" />
+      <Text style={styles.successBannerText}>{message}</Text>
+      <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <X size={14} color="#166534" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [scheduleData, setScheduleData] = useState<Record<string, Record<string, Cell>>>({});
@@ -123,6 +135,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [unavailableFrom, setUnavailableFrom] = useState('');
   const [unavailableTo, setUnavailableTo] = useState('');
   const [unavailableReason, setUnavailableReason] = useState('');
+  const [unavailableSubmitting, setUnavailableSubmitting] = useState(false);
+  const [unavailableStatus, setUnavailableStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [reassignFromId, setReassignFromId] = useState<string | null>(null);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignSuccess, setReassignSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     // 1. Weekly schedule: one index call per weekday (backend returns one date per call)
@@ -218,33 +235,41 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     if (!unavailableModal) return;
     const datePattern = /^\d{4}-\d{2}-\d{2}$/;
     if (!datePattern.test(unavailableFrom) || !datePattern.test(unavailableTo) || unavailableTo < unavailableFrom) {
-      Alert.alert('Invalid dates', 'Enter FROM and TO as YYYY-MM-DD, with TO on or after FROM.');
+      setUnavailableStatus({ type: 'error', message: 'Enter FROM and TO as YYYY-MM-DD, with TO on or after FROM.' });
       return;
     }
     const teacher = unavailableModal;
     const reason = unavailableReason.trim() || 'Unavailable';
+    const dates = dateRange(unavailableFrom, unavailableTo);
+    setUnavailableSubmitting(true);
+    setUnavailableStatus(null);
     Promise.all(
-      dateRange(unavailableFrom, unavailableTo).map((date) =>
-        markTeacherUnavailableLive({ teacher_id: teacher.id, date, reason }),
-      ),
+      dates.map((date) => markTeacherUnavailableLive({ teacher_id: teacher.id, date, reason })),
     )
       .then(() => {
-        Alert.alert('Done', `${teacher.name} marked as unavailable.`);
         setUnavailableModal(null);
         setUnavailableFrom('');
         setUnavailableTo('');
         setUnavailableReason('');
+        setUnavailableStatus({
+          type: 'success',
+          message:
+            dates.length === 1
+              ? `${teacher.name} marked as unavailable on ${dates[0]}.`
+              : `${teacher.name} marked as unavailable from ${dates[0]} to ${dates[dates.length - 1]}.`,
+        });
         load();
       })
       .catch((err) => {
-        Alert.alert('Error', errMsg(err, 'Failed to mark teacher as unavailable. Please try again.'));
-      });
+        setUnavailableStatus({ type: 'error', message: errMsg(err, 'Failed to mark teacher as unavailable. Please try again.') });
+      })
+      .finally(() => setUnavailableSubmitting(false));
   };
 
   const handleReassignSubmit = (payload: { fromTherapistId: string; toTherapistId: string; studentIds: string[] }) => {
     const { fromTherapistId, toTherapistId, studentIds } = payload;
     if (studentIds.length === 0) {
-      Alert.alert('No students selected', 'Select at least one student to reassign.');
+      setReassignError('Select at least one student to move.');
       return;
     }
     const source = teachers.find((t) => t.id === fromTherapistId);
@@ -252,20 +277,22 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     const toName = teachers.find((t) => t.id === toTherapistId)?.name ?? 'Target teacher';
     const missing = studentIds.filter((sid) => !source?.assignmentIdsByStudent[sid]?.length);
     if (!source || missing.length > 0) {
-      Alert.alert('Cannot reassign', 'Some selected students have no upcoming scheduled assignment to move.');
+      setReassignError('Some selected students have no upcoming scheduled assignment to move.');
       return;
     }
     const assignments = studentIds.flatMap((sid) =>
       source.assignmentIdsByStudent[sid].map((assignment_id) => ({ assignment_id, new_teacher_id: toTherapistId })),
     );
+    setReassignError(null);
     reassignStudentsLive({ assignments })
       .then(() => {
         setReassignVisible(false);
-        Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
+        setReassignFromId(null);
+        setReassignSuccess(`${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
         load();
       })
       .catch((err) => {
-        Alert.alert('Reassignment failed', errMsg(err, 'Reassignment failed. Please try again.'));
+        setReassignError(errMsg(err, 'Reassignment failed. Please try again.'));
       });
   };
 
@@ -321,9 +348,14 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Confirmations */}
+        {unavailableStatus?.type === 'success' && (
+          <SuccessNotice message={unavailableStatus.message} onDismiss={() => setUnavailableStatus(null)} />
+        )}
+        {reassignSuccess && <SuccessNotice message={reassignSuccess} onDismiss={() => setReassignSuccess(null)} />}
+
         {/* Unassigned Alert */}
-        {alertsLoading && <Text style={styles.unassignedText}>Loading alerts…</Text>}
-        {alertsError && <Text style={styles.errorText}>{alertsError}</Text>}
+        {alertsLoading && <Text style={styles.unassignedText}>Loading alerts…</Text>}        {alertsError && <Text style={styles.errorText}>{alertsError}</Text>}
         {alerts.length > 0 && (
           <View style={styles.unassignedAlert}>
             <AlertTriangle size={20} color="#EAB308" />
@@ -515,7 +547,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.reassignButton, teacher.students.length === 0 && { opacity: 0.4 }]}
-                    onPress={() => setReassignVisible(true)}
+                    onPress={() => {
+                      setReassignError(null);
+                      setReassignSuccess(null);
+                      setReassignFromId(teacher.id);
+                      setReassignVisible(true);
+                    }}
                     disabled={teacher.students.length === 0}
                     activeOpacity={0.8}
                   >
@@ -752,6 +789,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                     />
                   </View>
                 </View>
+                {unavailableStatus?.type === 'error' && (
+                  <View style={[styles.errorRow, { paddingHorizontal: spacing.xl ?? spacing.lg }]}>
+                    <AlertTriangle size={14} color="#EF4444" />
+                    <Text style={styles.errorText}>{unavailableStatus.message}</Text>
+                  </View>
+                )}
                 <View style={styles.modalFooterRow}>
                   <TouchableOpacity
                     style={styles.cancelOutlineButton}
@@ -763,13 +806,19 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   <TouchableOpacity
                     style={[
                       styles.confirmAmberButton,
-                      (!unavailableFrom || !unavailableTo || !unavailableReason.trim()) && { opacity: 0.4 },
+                      (unavailableSubmitting || !unavailableFrom || !unavailableTo || !unavailableReason.trim()) && {
+                        opacity: 0.4,
+                      },
                     ]}
                     onPress={handleMarkUnavailable}
-                    disabled={!unavailableFrom || !unavailableTo || !unavailableReason.trim()}
+                    disabled={
+                      unavailableSubmitting || !unavailableFrom || !unavailableTo || !unavailableReason.trim()
+                    }
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.confirmAmberText}>Confirm</Text>
+                    <Text style={styles.confirmAmberText}>
+                      {unavailableSubmitting ? 'Saving…' : 'Confirm'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -783,7 +832,13 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         visible={reassignVisible}
         therapistOptions={reassignOptions}
         appointments={reassignAppointments}
-        onClose={() => setReassignVisible(false)}
+        initialFromTherapistId={reassignFromId}
+        error={reassignError}
+        onClose={() => {
+          setReassignVisible(false);
+          setReassignFromId(null);
+          setReassignError(null);
+        }}
         onSubmit={handleReassignSubmit}
       />
     </SafeAreaView>
@@ -820,6 +875,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   unassignedText: { fontSize: 13, fontWeight: '600', color: '#854D0E' },
+
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  successBannerText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#166534' },
 
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   filterLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1 },

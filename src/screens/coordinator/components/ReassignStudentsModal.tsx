@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
@@ -23,6 +23,8 @@ interface Props {
   therapistOptions?: ReassignOption[];
   appointments?: AppointmentLike[]; // current day's appointments
   capacityPerAppointment?: number;
+  initialFromTherapistId?: string | null;
+  error?: string | null;
   onClose: () => void;
   onSubmit: (payload: { fromTherapistId: string; toTherapistId: string; studentIds: string[] }) => void;
 }
@@ -32,13 +34,16 @@ export default function ReassignStudentsModal({
   therapistOptions = [],
   appointments = [],
   capacityPerAppointment,
+  initialFromTherapistId = null,
+  error = null,
   onClose,
   onSubmit,
 }: Props) {
-  const [fromTherapistId, setFromTherapistId] = useState<string | null>(null);
+  const [fromTherapistId, setFromTherapistId] = useState<string | null>(initialFromTherapistId);
   const [toTherapistId, setToTherapistId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [liveCapacity, setLiveCapacity] = useState<number>(capacityPerAppointment ?? 2);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (capacityPerAppointment) {
@@ -55,11 +60,12 @@ export default function ReassignStudentsModal({
 
   useEffect(() => {
     if (visible) {
-      setFromTherapistId(null);
+      setFromTherapistId(initialFromTherapistId ?? null);
       setToTherapistId(null);
       setSelected([]);
+      setSubmitError(null);
     }
-  }, [visible]);
+  }, [visible, initialFromTherapistId]);
 
   const teachersWithAppointments = useMemo(
     () =>
@@ -97,16 +103,20 @@ export default function ReassignStudentsModal({
   const overCapacity = capacityInfo ? selected.length > capacityInfo.remaining : false;
 
   const toggleStudent = (id: string) => {
+    setSubmitError(null);
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const handleSubmit = () => {
-    if (!fromTherapistId || !toTherapistId) { Alert.alert('Missing info', 'Choose a source and target teacher.'); return; }
-    if (selected.length === 0) { Alert.alert('Missing info', 'Select at least one student to move.'); return; }
-    if (fromTherapistId === toTherapistId) { Alert.alert('Invalid move', 'Source and target must be different teachers.'); return; }
-    if (overCapacity) { Alert.alert('Over capacity', `Target teacher only has ${capacityInfo?.remaining} slot(s) available.`); return; }
+    if (!fromTherapistId || !toTherapistId) { setSubmitError('Choose a source and target teacher.'); return; }
+    if (selected.length === 0) { setSubmitError('Select at least one student to move.'); return; }
+    if (fromTherapistId === toTherapistId) { setSubmitError('Source and target must be different teachers.'); return; }
+    if (overCapacity) { setSubmitError(`Target teacher only has ${capacityInfo?.remaining} slot(s) available.`); return; }
+    setSubmitError(null);
     onSubmit({ fromTherapistId, toTherapistId, studentIds: selected });
   };
+
+  const displayError = submitError ?? error ?? null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -183,6 +193,13 @@ export default function ReassignStudentsModal({
             )}
           </ScrollView>
 
+          {displayError && (
+            <View style={styles.errorRow}>
+              <Feather name="alert-circle" size={14} color="#EF4444" />
+              <Text style={styles.errorText}>{displayError}</Text>
+            </View>
+          )}
+
           <View style={styles.footer}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -216,4 +233,12 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontWeight: '600', color: colors.navyText },
   saveBtn: { flex: 2, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   saveBtnText: { fontWeight: '700', color: colors.navyText },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  errorText: { flex: 1, fontSize: 12, color: '#EF4444' },
 });
