@@ -28,8 +28,8 @@ export interface StudentProfileData {
   therapyGroup: string;
   status: string;
   headshotUrl: string | null;
-  currentFocusStudentGoalId: string | null;
-  goals: StudentGoal[];
+  currentFocusStudentGoalId?: string | null;
+  goals?: StudentGoal[];
   customFields?: Record<string, any>;
 }
 
@@ -82,6 +82,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
   }
 
   if (!profile) return <ScreenLoader />;
+
+  // Backend /profile payload has no `goals` array — never assume it exists.
+  const goals = profile.goals ?? [];
 
   const Section = ({ icon, title, children }: { icon: React.ComponentProps<typeof Feather>['name']; title: string; children: React.ReactNode }) => (
     <View style={styles.card}>
@@ -147,8 +150,8 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         )}
 
         <Section icon="bar-chart-2" title="Goals">
-          {profile.goals.length === 0 && <Text style={typography.caption}>No goals defined yet.</Text>}
-          {profile.goals.map((g) => (
+          {goals.length === 0 && <Text style={typography.caption}>No goals defined yet.</Text>}
+          {goals.map((g) => (
             <View key={g.id} style={styles.goalRow}>
               <View style={{ flex: 1 }}>
                 <Text style={typography.bodyBold}>{g.name}</Text>
