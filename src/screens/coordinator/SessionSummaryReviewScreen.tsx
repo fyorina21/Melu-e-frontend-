@@ -47,41 +47,51 @@ interface Summary {
   notes: string;
 }
 
+interface ApiSummaryStudent {
+  id: string;
+  name: string;
+}
+
 interface ApiSummaryRow {
   id: string;
-  sessionId: string;
-  teacherName: string;
-  stationName: string;
-  roomName?: string;
-  date: string;
-  bodyPreview: string;
   status: string;
-  studentNames: string[];
-  independencePercent: number;
-  trialsTotal?: number;
-  trialsCorrect?: number;
-  incidentCount?: number;
+  qualitative_notes?: string | null;
+  submitted_at?: string | null;
+  session?: {
+    teacher?: { id?: string; name?: string | null };
+    station?: { id?: string; name?: string | null };
+    room?: { id?: string; name?: string | null };
+    students?: ApiSummaryStudent[];
+  };
 }
 
 const STATUS_FROM_API: Record<string, SummaryStatus> = {
+  // backend enum values (SessionSummary.status)
+  submitted: 'pending',
+  reviewed: 'approved',
+  draft: 'pending',
+  // legacy display values, kept as a fallback
   Pending: 'pending',
   Approved: 'approved',
   'Revision Required': 'revision-required',
 };
 
+const fmtDate = (iso?: string | null) => (iso ? iso.slice(0, 10) : '');
+
 function mapSummary(row: ApiSummaryRow): Summary {
+  const session = row.session ?? {};
   return {
     id: row.id,
-    teacher: row.teacherName,
-    station: row.stationName,
-    room: row.roomName ?? '',
-    date: row.date,
-    students: row.studentNames ?? [],
-    trials: row.trialsTotal ?? 0,
-    independence: row.independencePercent ?? 0,
-    incidents: row.incidentCount ?? 0,
+    teacher: session.teacher?.name ?? '',
+    station: session.station?.name ?? '',
+    room: session.room?.name ?? '',
+    date: fmtDate(row.submitted_at),
+    students: (session.students ?? []).map((s) => s.name).filter(Boolean),
+    trials: 0,
+    independence: 0,
+    incidents: 0,
     status: STATUS_FROM_API[row.status] ?? 'pending',
-    notes: row.bodyPreview ?? '',
+    notes: row.qualitative_notes ?? '',
   };
 }
 
@@ -153,8 +163,8 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     load();
   }, [load]);
 
-  const allStudents = Array.from(new Set(summaries.flatMap((s) => s.students))).sort();
-  const allTeachers = Array.from(new Set(summaries.map((s) => s.teacher))).sort();
+  const allStudents = Array.from(new Set(summaries.flatMap((s) => s.students))).filter(Boolean).sort();
+  const allTeachers = Array.from(new Set(summaries.map((s) => s.teacher))).filter(Boolean).sort();
 
   const filtered = summaries.filter((s) => {
     const matchSearch =
