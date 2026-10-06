@@ -159,11 +159,23 @@ function createHttpClient(): AxiosInstance {
         if (!url.startsWith('/')) url = `/${url}`;
 
         try {
+          // Axios has already run transformRequest by the time the error is
+          // built, so `cfg.data` is a serialized JSON string — the mock router
+          // expects the parsed body object.
+          let body = cfg.data;
+          if (typeof body === 'string' && body.length > 0) {
+            try {
+              body = JSON.parse(body);
+            } catch {
+              // leave non-JSON payloads untouched
+            }
+          }
+
           let mockRes: { data: unknown; headers?: unknown };
           if (method === 'get' || method === 'delete') {
             mockRes = await (mockHttp[method] as any)(url, { params: cfg.params });
           } else {
-            mockRes = await (mockHttp[method] as any)(url, cfg.data, { params: cfg.params });
+            mockRes = await (mockHttp[method] as any)(url, body, { params: cfg.params });
           }
           return {
             data: mockRes.data,

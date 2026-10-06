@@ -2615,7 +2615,7 @@ export const MOCK_ROUTES: MockRoute[] = [
       const sid = requiredParam(ctx, 'studentId');
       const student = mockDb.findById('students', sid);
       if (!student) throw notFound(sid);
-      const { goalId, name, station, slot } = bodyAs<{ goalId?: string; name?: string; station?: number | string; slot?: number | string }>(ctx);
+      const { goalId, name, domain, station, slot } = bodyAs<{ goalId?: string; name?: string; domain?: string; station?: number | string; slot?: number | string }>(ctx);
       let goalName = name;
       let bankGoal: MockGoal | null = null;
       if (goalId) {
@@ -2624,6 +2624,20 @@ export const MOCK_ROUTES: MockRoute[] = [
           if (bankGoal.status === 'inactive') {
             throw new ApiError('Goal is inactive', 409);
           }
+          goalName = bankGoal.name;
+        } else {
+          // Assigned a goal the shared bank does not know about yet (the bank
+          // seeds empty) — persist it so roster/session screens can resolve it.
+          bankGoal = {
+            id: goalId,
+            name: name || 'Assigned Goal',
+            domain: domain || '',
+            description: '',
+            masteryCriteria: '',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          };
+          mockDb.insert('goalBank', bankGoal);
           goalName = bankGoal.name;
         }
       }

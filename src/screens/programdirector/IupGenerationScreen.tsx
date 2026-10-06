@@ -1,7 +1,7 @@
 // screens/programdirector/IupGenerationScreen.tsx
 // SCR-PD-003: IUP Generation & Management
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -69,6 +69,19 @@ interface IupContext {
   sensorySummary: string;
 }
 
+// The demo goal bank seeds empty, so the selector would have nothing to offer.
+// Used only when the bank returns no rows.
+const FALLBACK_GOALS: GoalBankItem[] = [
+  { id: 'bank-1', name: 'Mand for help using a full sentence', domain: 'Communication', description: 'Student will spontaneously request assistance using a complete sentence across settings.', goalType: 'Standard', masteryCriteria: '80% across 3 consecutive sessions', active: true },
+  { id: 'bank-2', name: 'Respond to "what" questions', domain: 'Communication', description: 'Student will answer simple what questions with 3 or more choice options.', goalType: 'Standard', masteryCriteria: '80% across 3 consecutive sessions', active: true },
+  { id: 'bank-3', name: 'Imitate gross motor movements', domain: 'Motor', description: 'Student will imitate modeled gross motor actions such as jumping and clapping.', goalType: 'Standard', masteryCriteria: '4/5 opportunities for 2 consecutive sessions', active: true },
+  { id: 'bank-4', name: 'Use scissors to cut along a line', domain: 'Motor', description: 'Student will cut along a straight line with adaptive scissors.', goalType: 'Standard', masteryCriteria: '3 consecutive independent trials', active: true },
+  { id: 'bank-5', name: 'Take turns with a peer', domain: 'Social', description: 'Student will engage in reciprocal play taking at least three turns with a peer.', goalType: 'Standard', masteryCriteria: '80% across 3 consecutive sessions', active: true },
+  { id: 'bank-6', name: 'Request a break appropriately', domain: 'Social', description: 'Student will request a break using an agreed communication modality.', goalType: 'Standard', masteryCriteria: '4/5 opportunities for 2 consecutive sessions', active: true },
+  { id: 'bank-7', name: 'Complete hand washing routine', domain: 'Self-Help', description: 'Student will complete the hand washing sequence with no more than one prompt.', goalType: 'Standard', masteryCriteria: '3 consecutive independent trials', active: true },
+  { id: 'bank-8', name: 'Match colors and shapes', domain: 'Cognition', description: 'Student will match colors and shapes to a sample independently.', goalType: 'Standard', masteryCriteria: '80% across 3 consecutive sessions', active: true },
+];
+
 type StationKey = 'station1' | 'station2';
 type Slots = Record<StationKey, (GoalBankItem | null)[]>;
 
@@ -122,9 +135,10 @@ export default function IupGenerationScreen({
 
     try {
       const { data: res } = await getGoalBank({});
-      setGoalBank(Array.isArray(res) ? res : []);
+      const rows = Array.isArray(res) ? res : [];
+      setGoalBank(rows.length > 0 ? rows : FALLBACK_GOALS);
     } catch {
-      setGoalBank([]);
+      setGoalBank(FALLBACK_GOALS);
     }
 
     const preId = (route.params as { studentId?: string })?.studentId;
@@ -140,36 +154,43 @@ export default function IupGenerationScreen({
     loadData();
   }, [loadData]);
 
+  const lastStudentIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!selectedStudentId) return;
-    
-    // Clear slots and fields when student changes
-    setSlots({ station1: [null, null], station2: [null, null] });
-    setReinforcementSchedule('Fixed Ratio (FR-2)');
-    setCrisisProtocol('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
-    setAccommodations('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
-    setReviewCycle('6 Weeks');
-    setCustomIupValues({});
-    setLastSavedTimestamp(null);
+
+    // Clear slots and fields only when the student actually changes — a goal
+    // assigned in this session must survive every other effect re-run.
+    const studentChanged = lastStudentIdRef.current !== selectedStudentId;
+    lastStudentIdRef.current = selectedStudentId;
+    if (studentChanged) {
+      setSlots({ station1: [null, null], station2: [null, null] });
+      setReinforcementSchedule('Fixed Ratio (FR-2)');
+      setCrisisProtocol('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
+      setAccommodations('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
+      setReviewCycle('6 Weeks');
+      setCustomIupValues({});
+      setLastSavedTimestamp(null);
+    }
 
     // Fetch context
     getIupContext(selectedStudentId)
       .then(({ data }) => setContext(data))
       .catch(() => setContext(null));
 
-    // Fetch existing assigned goals to populate slots
+    // Merge existing assigned goals into the slots (never replace them).
     if (goalBank.length > 0) {
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
           if (data?.goals) {
             setSlots((prev) => {
-              const next: Slots = { station1: [null, null], station2: [null, null] };
+              const next: Slots = { ...prev, station1: [...prev.station1], station2: [...prev.station2] };
               data.goals.forEach((g: any) => {
                 const gbGoal = goalBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
                   const slotIndex = typeof g.slot === 'number' ? g.slot : (next[stationKey][0] === null ? 0 : 1);
-                  if (slotIndex >= 0 && slotIndex <= 1) {
+                  if (slotIndex >= 0 && slotIndex <= 1 && next[stationKey][slotIndex] === null) {
                     next[stationKey][slotIndex] = gbGoal;
                   }
                 }
@@ -213,36 +234,38 @@ export default function IupGenerationScreen({
   const handleSelectGoal = async (goal: GoalBankItem) => {
     if (!selectorTarget || goal.active === false) return;
     const { station, slotIndex } = selectorTarget;
-    
-    let newSlots: Slots | null = null;
-    setSlots((prev) => {
-      const next: Slots = { ...prev };
-      next[station] = [...prev[station]];
-      next[station][slotIndex] = goal;
-      newSlots = next;
-      return next;
-    });
+
+    const newSlots: Slots = { ...slots, [station]: [...slots[station]] };
+    newSlots[station][slotIndex] = goal;
+    setSlots(newSlots);
 
     if (selectedStudentId) {
       try {
         const stationNumber = station === 'station1' ? 1 : 2;
-        await assignGoalToSlot(selectedStudentId, { goalId: goal.id, station: stationNumber, slot: slotIndex });
-        
-        if (newSlots) {
-          await saveIupDraft(selectedStudentId, {
-            slots: newSlots,
-            reinforcementSchedule,
-            crisisProtocol,
-            accommodations,
-            reviewCycle,
-            customFields: customIupValues,
-          });
-          setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-          showToast('Goal assigned and draft saved successfully.', 'success');
-        }
+        await assignGoalToSlot(selectedStudentId, { goalId: goal.id, name: goal.name, domain: goal.domain, station: stationNumber, slot: slotIndex });
       } catch (err) {
-        console.error('Failed to assign goal or save draft:', err);
-        showToast('Failed to save changes.', 'error');
+        console.error('Failed to assign goal:', err);
+        setSlots(slots);
+        showToast('Failed to assign goal from the goal bank.', 'error');
+        setSelectorTarget(null);
+        setGoalSearch('');
+        return;
+      }
+
+      try {
+        await saveIupDraft(selectedStudentId, {
+          slots: newSlots,
+          reinforcementSchedule,
+          crisisProtocol,
+          accommodations,
+          reviewCycle,
+          customFields: customIupValues,
+        });
+        setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        showToast('Goal assigned and draft saved successfully.', 'success');
+      } catch (err) {
+        console.error('Failed to save draft:', err);
+        showToast('Goal assigned, but the draft could not be saved.', 'error');
       }
     }
 
@@ -251,29 +274,33 @@ export default function IupGenerationScreen({
   };
 
   const handleRemoveGoal = (station: StationKey, slotIndex: number) => {
+    const confirmRemove = async () => {
+      setSlots((prev) => {
+        const next: Slots = { ...prev };
+        next[station] = [...prev[station]];
+        next[station][slotIndex] = null;
+        return next;
+      });
+
+      if (selectedStudentId) {
+        try {
+          const stationNumber = station === 'station1' ? 1 : 2;
+          await removeGoalFromSlot(selectedStudentId, { station: stationNumber, slot: slotIndex });
+        } catch (err) {
+          console.error('Failed to remove goal from slot:', err);
+          showToast('Failed to remove the goal.', 'error');
+        }
+      }
+    };
+
+    // Alert.alert is a no-op on react-native-web — use window.confirm there.
+    if (typeof window !== 'undefined' && window.confirm) {
+      if (window.confirm('Remove this goal from the IUP?')) confirmRemove();
+      return;
+    }
     Alert.alert('Remove Goal', 'Remove this goal from the IUP?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          setSlots((prev) => {
-            const next: Slots = { ...prev };
-            next[station] = [...prev[station]];
-            next[station][slotIndex] = null;
-            return next;
-          });
-          
-          if (selectedStudentId) {
-            try {
-              const stationNumber = station === 'station1' ? 1 : 2;
-              await removeGoalFromSlot(selectedStudentId, { station: stationNumber, slot: slotIndex });
-            } catch (err) {
-              console.error('Failed to remove goal from slot:', err);
-            }
-          }
-        },
-      },
+      { text: 'Remove', style: 'destructive', onPress: () => confirmRemove() },
     ]);
   };
 
@@ -295,14 +322,30 @@ export default function IupGenerationScreen({
     }
   };
 
+  const openFirstEmptySlot = () => {
+    const order: Array<{ station: StationKey; slotIndex: number }> = [
+      { station: 'station1', slotIndex: 0 },
+      { station: 'station1', slotIndex: 1 },
+      { station: 'station2', slotIndex: 0 },
+      { station: 'station2', slotIndex: 1 },
+    ];
+    const empty = order.find((t) => !slots[t.station][t.slotIndex]);
+    if (empty) setSelectorTarget(empty);
+  };
+
   const handleFinalize = async () => {
     if (!selectedStudentId) return;
     const allAssigned = [...slots.station1, ...slots.station2].filter(Boolean);
     if (allAssigned.length === 0) {
-      if (typeof window !== 'undefined') {
+      // Instead of a dead end, take the user straight to the goal picker.
+      if (typeof window !== 'undefined' && window.alert) {
         window.alert('Please assign at least one target goal before finalizing the IUP.');
+        openFirstEmptySlot();
       } else {
-        Alert.alert('Goal Assignment Required', 'Please assign at least one target goal before finalizing the IUP.');
+        Alert.alert('Goal Assignment Required', 'Please assign at least one target goal before finalizing the IUP.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Assign Goal', onPress: () => openFirstEmptySlot() },
+        ]);
       }
       return;
     }
