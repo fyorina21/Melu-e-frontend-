@@ -53,7 +53,9 @@ export const authApi = {
       remember_device: payload.rememberDevice,
     });
     const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
-    if (token) await setAccessToken(token);
+    // Persist only when "remember this device" was ticked. Unchecked means the
+    // session lives for this app run only and is gone after a restart.
+    if (token) await setAccessToken(token, !!payload.rememberDevice);
     return {
       ...data,
       token: token || '',

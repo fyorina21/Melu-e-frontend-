@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
@@ -220,7 +220,7 @@ function ResetPasswordModal({ visible, staff, onClose, onSuccess }: ResetPasswor
         <View style={[styles.modalSheet, { maxWidth: 440, width: '100%', alignSelf: 'center' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs }}>
             <View style={{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' }}>
-              <Feather name="key" size={18} color="#D97706" />
+              <Ionicons name="key" size={18} color="#D97706" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={typography.h2}>Manage Credentials</Text>
@@ -801,7 +801,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
                 accessibilityLabel="Manage credentials and password"
                 onPress={() => setCredentialTarget(s)}
               >
-                <Feather name="key" size={14} color="#D97706" />
+                <Ionicons name="key" size={14} color="#D97706" />
               </TouchableOpacity>
               
               {/* Toggle switch icon: Green (Active/On) vs Red (Inactive/Off) */}
