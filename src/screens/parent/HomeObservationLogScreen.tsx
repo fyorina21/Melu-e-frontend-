@@ -7,6 +7,7 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { parentApi } from '../../api';
+import { http } from '../../api/http/client';
 import type { ParentStackParamList } from '../../types';
 import ScreenLoader from '../../components/ScreenLoader';
 
@@ -280,20 +281,34 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
   const [childName, setChildName] = useState<string>('');
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const rows = await parentApi.observations({});
-      setObservations(Array.isArray(rows) ? rows.map(toObservation) : []);
+      let studentId: string | undefined;
+      try {
+        const dash = await parentApi.dashboard();
+        studentId =
+          (dash as any)?.studentId ??
+          (dash as any)?.data?.students?.[0]?.id ??
+          (dash as any)?.data?.studentId;
+      } catch (err) {
+        Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
+        return;
+      }
+      if (studentId) {
+        try {
+          const rows = await http.get(`/parent/students/${studentId}/home_observations`);
+          setObservations(Array.isArray(rows) ? rows.map(toObservation) : []);
+        } catch (err) {
+          Alert.alert('Error', 'Failed to load observations. Please try again.');
+        }
+      } else {
+        Alert.alert('Error', 'Student ID not available. Please try again.');
+      }
     } catch (err) {
-      setObservations([]);
+      Alert.alert('Error', 'Failed to load data. Please try again.');
     } finally {
       setLoading(false);
     }
-    try {
-      const dash = await parentApi.dashboard();
-      const rawChild = (dash as any)?.childSummary ?? (dash as any)?.data?.students?.[0];
-      const name = rawChild?.fullName ?? rawChild?.name ?? (rawChild?.first_name ? `${rawChild.first_name} ${rawChild.last_name || ''}`.trim() : '');
-      if (name) setChildName(name);
-    } catch {}
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -308,17 +323,38 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
     });
   };
 
-  const handleSubmitObservation = async (payload: ObsPayload) => {
-    setShowAddModal(false);
+const handleSubmitObservation = async (payload: ObsPayload) => {
     try {
-      await parentApi.createObservation({
-        behavior: payload.text,
-        context: `${payload.location}${payload.duration ? ` · ${payload.duration}` : ''}`,
-        notes: `Category: ${payload.category}`,
-      });
+      // Get studentId from dashboard - try multiple possible fields
+      let studentId: string | undefined;
+      try {
+        const dash = await parentApi.dashboard();
+        studentId =
+          (dash as any)?.studentId ??
+          (dash as any)?.data?.students?.[0]?.id ??
+          (dash as any)?.data?.studentId;
+      } catch (err) {
+        Alert.alert('Error', 'Failed to extract student ID. Please try again.');
+        return;
+      }
+      const context = `${payload.location}${payload.duration ? ` · ${payload.duration}` : ''}`;
+      if (studentId) {
+        // Use http client directly with correct endpoint /parent/students/:student_id/home_observations
+        await http.post(`/parent/students/${studentId}/home_observations`, {
+          behavior: payload.text,
+          context,
+          notes: `Category: ${payload.category}`,
+        } as any);
+      } else {
+        // Student ID not available in screen - cannot construct /:student_id endpoint
+        Alert.alert('Error', 'Cannot submit observation: student ID not available. Please contact support.');
+        return;
+      }
       await load();
-    } catch (err) {}
-    Alert.alert('Observation submitted!');
+      Alert.alert('Observation submitted!');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to submit observation. Please try again.');
+    }
   };
 
   const handleSubmitStrategy = () => {

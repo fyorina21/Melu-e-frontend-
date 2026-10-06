@@ -227,7 +227,10 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
         {
           text: 'Escalate',
           onPress: async () => {
-            try { await escalateTeacherConversation(activeId, { to: 'coordinator' }); } catch (err) {}
+            try { await escalateTeacherConversation(activeId, { to: 'coordinator' }); } catch (err) {
+        Alert.alert('Error', 'Failed to escalate conversation. Please try again.');
+        showToast('Failed to escalate conversation', 'error');
+      }
             Alert.alert('Escalation sent');
             showToast('Conversation escalated to Coordinator', 'success');
           },
@@ -241,7 +244,10 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
       { text: 'Cancel', style: 'cancel' },
       {
         onPress: async () => {
-          try { await markTeacherConversationResolved(activeId); } catch (err) {}
+          try { await markTeacherConversationResolved(activeId); } catch (err) {
+        Alert.alert('Error', 'Failed to mark conversation as resolved. Please try again.');
+        showToast('Failed to mark conversation as resolved', 'error');
+      }
           setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, resolved: true } : c)));
           Alert.alert('Conversation marked as resolved');
           showToast('Conversation marked as resolved', 'success');
@@ -435,7 +441,10 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
         });
       }
       if (logs.length > 0) setActiveLogs(logs);
-    } catch (err) {}
+} catch (err) {
+      Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
+      showToast('Failed to load dashboard', 'error');
+    }
   }, []);
 
   useEffect(() => { loadList(); }, [loadList]);
@@ -486,7 +495,10 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
     );
     setConversations(updated);
     setNewMessage('');
-    try { await parentApi.sendMessage(selectedId, msg.text); } catch (err) {}
+    try { await parentApi.sendMessage(selectedId, msg.text); } catch (err) {
+        Alert.alert('Error', 'Failed to send message. Please try again.');
+        showToast('Failed to send message', 'error');
+      }
     showToast('Message sent', 'success');
   };
 
@@ -506,7 +518,10 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
   const handleResolve = async () => {
     setShowResolveConfirm(false);
     if (selectedId) {
-      try { await parentApi.setConversationResolved(selectedId, true); } catch (err) {}
+      try { await parentApi.setConversationResolved(selectedId, true); } catch (err) {
+        Alert.alert('Error', 'Failed to mark conversation as resolved. Please try again.');
+        showToast('Failed to mark conversation as resolved', 'error');
+      }
     }
     Alert.alert('Conversation marked as resolved');
     showToast('Conversation marked as resolved', 'success');

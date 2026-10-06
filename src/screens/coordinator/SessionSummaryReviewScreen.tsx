@@ -142,8 +142,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
   const load = useCallback(async () => {
     try {
       const { data } = await getPendingSummaries({});
-      setSummaries((Array.isArray(data) ? data : []).map(mapSummary));
+      setSummaries((data?.session_summaries || []).map(mapSummary));
     } catch (err) {
+      showToast('Failed to load pending summaries. Please try again.', 'error');
       setSummaries([]);
     }
   }, []);
@@ -183,10 +184,20 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
 
   const approveSelected = async () => {
     try {
-      await bulkApproveSummaries(selectedIds);
-    } catch (err) {}
-    setSummaries((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'approved' } : s)));
-    showToast(`${selectedIds.length} session${selectedIds.length > 1 ? 's' : ''} approved`);
+      const result = await bulkApproveSummaries(selectedIds);
+      if (result.failedCount > 0) {
+        showToast(`${result.failedCount} summary${result.failedCount > 1 ? 's' : ''} failed to approve`, 'error');
+        setSummaries((prev) =>
+          prev.map((s) => (result.successful.includes(s.id) ? { ...s, status: 'approved' } : s))
+        );
+        return;
+      }
+      setSummaries((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'approved' } : s)));
+      showToast(`${selectedIds.length} session${selectedIds.length > 1 ? 's' : ''} approved`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to approve summaries', 'error');
+      return;
+    }
     setSelectedIds([]);
     setShowBulkConfirm(false);
   };
@@ -194,7 +205,10 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
   const approveSingle = async (summary: Summary) => {
     try {
       await approveSummary(summary.id, { notes: coordinatorNotes });
-    } catch (err) {}
+    } catch (err) {
+      showToast('Failed to approve session', 'error');
+      return;
+    }
     setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'approved' } : s)));
     showToast(`Session by ${summary.teacher} approved`);
     setSelectedSummary(null);
@@ -208,15 +222,13 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
       return;
     }
     try {
-      await requestSummaryChanges(summary.id, { section: requestSection, reason: requestReason });
-    } catch (err) {}
-    setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'revision-required' } : s)));
-    showToast(`Changes requested for ${summary.teacher}'s session`, 'info');
-    setSelectedSummary(null);
-    setRequestReason('');
-    setRequestSection('Notes');
-    setShowRequestForm(false);
-    setCoordinatorNotes('');
+      await requestSummaryChanges(summary.id);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to request changes', 'error');
+      return;
+    }
+    showToast('Requesting changes is not supported by the backend yet', 'error');
+    return;
   };
 
   const openReview = (summary: Summary) => {
