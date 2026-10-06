@@ -113,7 +113,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [overview, setOverview] = useState<ProgressOverview | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(true);
   const [flagged, setFlagged] = useState(false);
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagReason, setFlagReason] = useState('');
