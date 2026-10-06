@@ -1,4 +1,3 @@
-
 interface SessionTimerState {
   sessionId: string | null;
   startedAt: number | null;
@@ -36,7 +35,18 @@ export function resumeSessionTimer(sessionId: string, durationSeconds: number): 
     state = { sessionId, startedAt: Date.now(), pausedRemaining: null, durationSeconds };
     return;
   }
-  state = { ...state, startedAt: Date.now(), pausedRemaining: null };
+  if (state.startedAt !== null) {
+    // Timer is already running
+    return;
+  }
+  const currentRemaining = state.pausedRemaining ?? state.durationSeconds ?? durationSeconds;
+  const elapsedAlready = Math.max(0, durationSeconds - currentRemaining);
+  state = {
+    ...state,
+    durationSeconds,
+    startedAt: Date.now() - elapsedAlready * 1000,
+    pausedRemaining: null,
+  };
 }
 
 export function pauseSessionTimer(): void {

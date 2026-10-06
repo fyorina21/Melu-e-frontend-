@@ -8,6 +8,7 @@
 // screens' `activeTab` props.
 import type {
   Role,
+  AuthSession,
   ParentStackParamList,
   DirectorStackParamList,
   SystemAdminStackParamList,
@@ -16,9 +17,53 @@ import type {
   CoordinatorStackParamList,
 } from '../types';
 
+export const MODULE_TO_TABS: Record<string, string[]> = {
+  iups: ['IUP Creation & Goal Assignment'],
+  assessments: ['Assessments'],
+  sessions: ['Daily Notes'],
+  behavior_incidents: ['ABC Log'],
+  parent_portal: ['Parents'],
+  students: ['Enrollment Wizard'],
+  reports: ['Reports & Oversight'],
+  staff: ['Staff Scheduling'],
+  admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
+};
+
+/**
+ * Returns dynamic tabs for the current session.
+ * For configured roles, ONLY the modules in the permission config are visible (no dashboard).
+ */
+export function getTabsForSession(
+  session: AuthSession | null | undefined,
+  defaultRoleTabs: string[],
+): string[] {
+  if (!session) return defaultRoleTabs;
+
+  if (session.modules && Array.isArray(session.modules) && session.modules.length > 0) {
+    const dynamicTabs: string[] = [];
+
+    for (const mod of session.modules) {
+      const tabs = MODULE_TO_TABS[mod.toLowerCase()];
+      if (tabs) {
+        for (const t of tabs) {
+          if (!dynamicTabs.includes(t)) {
+            dynamicTabs.push(t);
+          }
+        }
+      }
+    }
+
+    if (dynamicTabs.length > 0) {
+      return dynamicTabs;
+    }
+  }
+
+  return defaultRoleTabs;
+}
+
 export const ROLE_TABS: Record<Role, string[]> = {
   teacher: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
-  therapist: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
+  therapist: ['IUP Creation & Goal Assignment'],
   coordinator: [
     'Dashboard',
     'Live Sessions',
@@ -30,7 +75,14 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Staff Management & Linking',
     'IUP Creation & Goal Assignment',
   ],
-  director: ['Dashboard', 'Staff Scheduling', 'Goal Mastery Approval', 'Parent Communication', 'Report & Oversight', 'Student Progress'],
+  director: [
+    'Dashboard',
+    'Staff Scheduling',
+    'Goal Mastery Approval',
+    'Parent Communication',
+    'Report & Oversight',
+    'Student Progress',
+  ],
   program_director: [
     'Dashboard',
     'Enrollment Wizard',
@@ -44,8 +96,14 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Parent Communication',
     'Reports',
   ],
-  institutional_admin: ['Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
-  system_admin: ['Staff account management', 'Role Management'],
+  institutional_admin: [
+    'Goal Domains',
+    'Schedule & Capacity',
+    'ABC Dropdown Lists',
+    'Trial Logging Format',
+    'Form Builder',
+  ],
+  system_admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 
@@ -83,6 +141,11 @@ export const TEACHER_ROUTE_BY_TAB: Record<string, string> = {
   'ABC Log': 'AbcLog',
   Parents: 'ParentCommunication',
   Notifications: 'Notifications',
+  'IUP Creation & Goal Assignment': 'IupGeneration',
+  IUPs: 'IupGeneration',
+  'Enrollment Wizard': 'StudentEnrollmentWizard',
+  'Student Profile': 'StudentProfile',
+  'Reports & Oversight': 'AssessmentSummaryReport',
 };
 
 export const PARENT_ROUTE_BY_TAB: Record<string, keyof ParentStackParamList> = {
@@ -111,13 +174,18 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
 };
 
 export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
-   
-   'Admin Panel': 'StaffAccountManagement',
-   'Staff account management': 'StaffAccountManagement',
-   'Role Management': 'RoleManagement',
-   
-   'Audit Log': 'AuditLog',
- };
+  'Admin Panel': 'StaffAccountManagement',
+  'Staff Accounts': 'StaffAccountManagement',
+  'Staff account management': 'StaffAccountManagement',
+  'Staff Management': 'StaffAccountManagement',
+  Staff: 'StaffAccountManagement',
+  'Role Management': 'RoleManagement',
+  Roles: 'RoleManagement',
+  'Permission Configuration': 'PermissionConfiguration',
+  Permissions: 'PermissionConfiguration',
+  'Audit Log': 'AuditLog',
+  Audit: 'AuditLog',
+};
 
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
   // Canonical tabs
@@ -206,13 +274,21 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
 export function routeMapForRole(role: Role): Record<string, string> | undefined {
   switch (role) {
     case 'teacher':
-    case 'therapist': return TEACHER_ROUTE_BY_TAB;
-    case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
-    case 'program_director': return PD_ROUTE_BY_TAB;
-    case 'director': return DIRECTOR_ROUTE_BY_TAB;
-    case 'institutional_admin': return IA_ROUTE_BY_TAB;
-    case 'system_admin': return SYS_ROUTE_BY_TAB;
-    case 'parent': return PARENT_ROUTE_BY_TAB;
-    default: return undefined;
+    case 'therapist':
+      return TEACHER_ROUTE_BY_TAB;
+    case 'coordinator':
+      return COORDINATOR_ROUTE_BY_TAB;
+    case 'program_director':
+      return PD_ROUTE_BY_TAB;
+    case 'director':
+      return DIRECTOR_ROUTE_BY_TAB;
+    case 'institutional_admin':
+      return IA_ROUTE_BY_TAB;
+    case 'system_admin':
+      return SYS_ROUTE_BY_TAB;
+    case 'parent':
+      return PARENT_ROUTE_BY_TAB;
+    default:
+      return undefined;
   }
 }

@@ -17,8 +17,11 @@ export interface LoginResponse {
   token?: string;
   access_token?: string;
   role?: string;
+  roles?: string[];
   homeRoute?: string;
   home_route?: string;
+  modules?: string[];
+  permissions?: string[];
 }
 
 export interface CreateAccountRequest {
@@ -88,8 +91,24 @@ export const authApi = {
     return loadToken();
   },
 
-  async me(): Promise<{ id: string; name: string; email: string; role: string; roles?: string[] }> {
-    const { data } = await http.get<{ id: string; name: string; email: string; role: string; roles?: string[] }>('/auth/me');
+  async me(): Promise<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    roles?: string[];
+    modules?: string[];
+    permissions?: string[];
+  }> {
+    const { data } = await http.get<{
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      roles?: string[];
+      modules?: string[];
+      permissions?: string[];
+    }>('/auth/me');
     return data;
   },
 };

@@ -147,9 +147,7 @@ export default function GoalDomainDefinitionsScreen({
   };
 
   const handleUpdateDomainField = (id: string, field: 'name' | 'description', val: string) => {
-    setDomains((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: val } : d))
-    );
+    setDomains((prev) => prev.map((d) => (d.id === id ? { ...d, [field]: val } : d)));
   };
 
   const handleDeleteDomain = (id: string) => {
@@ -173,8 +171,13 @@ export default function GoalDomainDefinitionsScreen({
       await saveGoalDomains(domains);
       await loadAll();
       Alert.alert('Success', 'Goal Domains saved and updated in Goal Banks.');
-    } catch {
-      Alert.alert('Success', 'Goal Domains configuration saved.');
+    } catch (err: any) {
+      console.error('Failed to save goal domains:', err);
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to save goal domains. Please try again.';
+      Alert.alert('Save Failed', msg);
     }
   };
 
@@ -203,9 +206,7 @@ export default function GoalDomainDefinitionsScreen({
   };
 
   const updateTemplateStepDesc = (id: string, description: string) => {
-    setFormSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, description } : s))
-    );
+    setFormSteps((prev) => prev.map((s) => (s.id === id ? { ...s, description } : s)));
   };
 
   const deleteTemplateStep = (id: string) => {
@@ -247,9 +248,17 @@ export default function GoalDomainDefinitionsScreen({
     try {
       await saveTaskAnalysisTemplate(editingTemplateId, payload as unknown as Payload);
       await loadAll();
-    } catch {}
-    setShowTemplateEditor(false);
-    setEditingTemplateId(null);
+      setShowTemplateEditor(false);
+      setEditingTemplateId(null);
+      Alert.alert('Success', 'Task Analysis template saved successfully.');
+    } catch (err: any) {
+      console.error('Failed to save template:', err);
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to save Task Analysis template. Please try again.';
+      Alert.alert('Save Failed', msg);
+    }
   };
 
   const handleDeleteTemplate = (template: TaskAnalysisTemplate) => {
@@ -265,17 +274,26 @@ export default function GoalDomainDefinitionsScreen({
             try {
               await deleteTaskAnalysisTemplate(template.id);
               await loadAll();
-            } catch {}
+              Alert.alert('Success', `Template "${template.name}" deleted successfully.`);
+            } catch (err: any) {
+              console.error('Failed to delete template:', err);
+              const msg =
+                err?.response?.data?.error || err?.message || 'Failed to delete template.';
+              Alert.alert('Delete Failed', msg);
+            }
           },
         },
-      ]
+      ],
     );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Goal Domains" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="Goal Domains"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Page Header */}
         <View style={styles.pageHeader}>
@@ -286,7 +304,8 @@ export default function GoalDomainDefinitionsScreen({
             <View>
               <Text style={styles.pageTitle}>Goal Domains & Task Analysis</Text>
               <Text style={styles.pageSubtitle}>
-                Unified clinical workbench for goal categories, milestones & task analysis step templates
+                Unified clinical workbench for goal categories, milestones & task analysis step
+                templates
               </Text>
             </View>
           </View>
@@ -458,10 +477,7 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
                 </View>
                 <View style={styles.addFormBtnRow}>
-                  <TouchableOpacity
-                    style={styles.confirmAddBtn}
-                    onPress={handleConfirmAddDomain}
-                  >
+                  <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddDomain}>
                     <Text style={styles.confirmAddBtnText}>Add Domain</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -496,10 +512,7 @@ export default function GoalDomainDefinitionsScreen({
             <View style={styles.tableCard}>
               <View style={styles.tableCardHeader}>
                 <Text style={styles.cardHeaderTitle}>Step-by-Step Task Analysis Routines</Text>
-                <TouchableOpacity
-                  style={styles.headerAddBtn}
-                  onPress={() => openTemplateEditor()}
-                >
+                <TouchableOpacity style={styles.headerAddBtn} onPress={() => openTemplateEditor()}>
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add New Template</Text>
                 </TouchableOpacity>
@@ -532,10 +545,7 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
 
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity
-                      onPress={() => openTemplateEditor(t)}
-                      style={{ padding: 4 }}
-                    >
+                    <TouchableOpacity onPress={() => openTemplateEditor(t)} style={{ padding: 4 }}>
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -684,7 +694,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -788,7 +804,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   activePillText: { fontSize: 11, fontWeight: '700', color: '#166534' },
-  actionsCol: { width: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  actionsCol: {
+    width: 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
 
   addDomainLinkBtn: {
     flexDirection: 'row',
@@ -894,7 +916,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.navyText,
   },
-  stepActionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: 4 },
+  stepActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: 4,
+  },
   addStepBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -910,7 +937,12 @@ const styles = StyleSheet.create({
   },
   addStepBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
 
-  editorActionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  editorActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   saveTemplateBtn: {
     flexDirection: 'row',
     alignItems: 'center',

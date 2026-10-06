@@ -1,6 +1,6 @@
 // Persistent, in-flow sidebar used by institutional admin and system admin.
 // It is always open, not closable, and lists only that role's links.
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import React, { useContext } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -19,6 +19,19 @@ function activeRouteName(state: NavigationState | undefined): string | undefined
   return route?.name;
 }
 
+const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
+  'Staff Accounts': 'users',
+  'Staff account management': 'users',
+  'Role Management': 'shield',
+  'Permission Configuration': 'lock',
+  'Audit Log': 'activity',
+  'Goal Domains': 'target',
+  'Schedule & Capacity': 'calendar',
+  'ABC Dropdown Lists': 'list',
+  'Trial Logging Format': 'check-circle',
+  'Form Builder': 'file-plus',
+};
+
 export default function RoleSidebar({ role }: { role: Role }) {
   const { navRef, version } = useContext(SidebarNavContext);
   const tabs = ROLE_TABS[role] ?? [];
@@ -26,9 +39,7 @@ export default function RoleSidebar({ role }: { role: Role }) {
 
   const current = activeRouteName(navRef.current?.getState());
   void version; // re-render on navigation state changes
-  const activeTab = current
-    ? tabs.find((tab) => routeMap?.[tab] === current)
-    : undefined;
+  const activeTab = current ? tabs.find((tab) => routeMap?.[tab] === current) : undefined;
 
   const handlePress = (tab: string) => {
     const route = routeMap?.[tab];
@@ -41,13 +52,23 @@ export default function RoleSidebar({ role }: { role: Role }) {
       <View style={styles.list}>
         {tabs.map((tab) => {
           const active = tab === activeTab;
+          const iconName = TAB_ICONS[tab] ?? 'circle';
           return (
             <TouchableOpacity
               key={tab}
               style={[styles.item, active && styles.itemActive]}
               onPress={() => handlePress(tab)}
+              accessibilityRole="button"
+              accessibilityLabel={tab}
             >
-              <Text style={[styles.itemText, active && styles.itemTextActive]}>{tab}</Text>
+              <View style={styles.itemContent}>
+                <Feather
+                  name={iconName}
+                  size={16}
+                  color={active ? colors.navyText : colors.mutedText}
+                />
+                <Text style={[styles.itemText, active && styles.itemTextActive]}>{tab}</Text>
+              </View>
               {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
             </TouchableOpacity>
           );
@@ -83,6 +104,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.md,
+  },
+  itemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
   },
   itemActive: { backgroundColor: colors.primaryYellow },
   itemText: { fontSize: 14, fontWeight: '500', color: colors.bodyText },

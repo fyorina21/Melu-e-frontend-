@@ -70,17 +70,47 @@ interface HistoryEntry {
 }
 
 export const FORM_METADATA: Record<string, { id: string; revision: string; pages: string }> = {
-  'Enrollment Wizard': { id: 'FRM-ENR-001', revision: 'Rev 2.4 · 2026-09-19', pages: 'Page 1 of 3' },
+  'Enrollment Wizard': {
+    id: 'FRM-ENR-001',
+    revision: 'Rev 2.4 · 2026-09-19',
+    pages: 'Page 1 of 3',
+  },
   'IUP Form': { id: 'FRM-IUP-001', revision: 'Rev 1.8 · 2026-09-19', pages: 'Page 1 of 2' },
-  'ABLLS Assessment Form': { id: 'FRM-ABLLS-001', revision: 'Rev 3.1 · 2026-09-19', pages: 'Page 1 of 1' },
-  'Behavioral Assessment': { id: 'FRM-BEH-001', revision: 'Rev 2.0 · 2026-09-19', pages: 'Page 1 of 1' },
-  'Preference Assessment': { id: 'FRM-PREF-001', revision: 'Rev 1.5 · 2026-09-19', pages: 'Page 1 of 1' },
-  'Sensory Assessment': { id: 'FRM-SEN-001', revision: 'Rev 1.6 · 2026-09-19', pages: 'Page 1 of 1' },
-  'Social Skills Questionnaire': { id: 'FRM-SOC-001', revision: 'Rev 1.2 · 2026-09-19', pages: 'Page 1 of 1' },
-  'Behavior Incident Form': { id: 'FRM-BIF-001', revision: 'Rev 1.4 · 2026-09-19', pages: 'Page 1 of 1' },
+  'ABLLS Assessment Form': {
+    id: 'FRM-ABLLS-001',
+    revision: 'Rev 3.1 · 2026-09-19',
+    pages: 'Page 1 of 1',
+  },
+  'Behavioral Assessment': {
+    id: 'FRM-BEH-001',
+    revision: 'Rev 2.0 · 2026-09-19',
+    pages: 'Page 1 of 1',
+  },
+  'Preference Assessment': {
+    id: 'FRM-PREF-001',
+    revision: 'Rev 1.5 · 2026-09-19',
+    pages: 'Page 1 of 1',
+  },
+  'Sensory Assessment': {
+    id: 'FRM-SEN-001',
+    revision: 'Rev 1.6 · 2026-09-19',
+    pages: 'Page 1 of 1',
+  },
+  'Social Skills Questionnaire': {
+    id: 'FRM-SOC-001',
+    revision: 'Rev 1.2 · 2026-09-19',
+    pages: 'Page 1 of 1',
+  },
+  'Behavior Incident Form': {
+    id: 'FRM-BIF-001',
+    revision: 'Rev 1.4 · 2026-09-19',
+    pages: 'Page 1 of 1',
+  },
 };
 
-export default function FormBuilderScreen({ navigation }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
+export default function FormBuilderScreen({
+  navigation,
+}: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
   const { showToast } = useToast();
   const [selectedForm, setSelectedForm] = useState<string>(FORMS[0]);
   const [fields, setFields] = useState<FormField[]>([]);
@@ -176,12 +206,16 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       const loadedSections: string[] = Array.isArray(data?.customSections)
         ? data.customSections
         : Array.isArray(data?.sections)
-        ? data.sections
-        : [];
+          ? data.sections
+          : [];
       setCustomSections(loadedSections);
-      const loadedDeleted: string[] = Array.isArray(data?.deletedSections) ? data.deletedSections : [];
+      const loadedDeleted: string[] = Array.isArray(data?.deletedSections)
+        ? data.deletedSections
+        : [];
       setDeletedSections(loadedDeleted);
-    } catch (err) {
+    } catch (err: any) {
+      console.warn('Failed to load form config from server:', err);
+      showToast('Could not load remote form template, using default template', 'info');
       setFields([]);
       setIsDefault(true);
       setHistory([]);
@@ -242,7 +276,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       history,
       isDefault: false,
     })
-      .then(() => showToast(`Created skill type "${trimmed}". Click "Add" inside it to add items.`, 'success'))
+      .then(() =>
+        showToast(
+          `Created skill type "${trimmed}". Click "Add" inside it to add items.`,
+          'success',
+        ),
+      )
       .catch(() => showToast(`Created skill type "${trimmed}" — click Save to persist`, 'info'));
   };
 
@@ -276,7 +315,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       history,
       isDefault: false,
     })
-      .then(() => showToast(`Created info type "${trimmed}". Click "Add" inside it to add fields.`, 'success'))
+      .then(() =>
+        showToast(
+          `Created info type "${trimmed}". Click "Add" inside it to add fields.`,
+          'success',
+        ),
+      )
       .catch(() => showToast(`Created info type "${trimmed}" — click Save to persist`, 'info'));
   };
 
@@ -306,7 +350,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     }
 
     const alreadyExists = availableSections.some(
-      (s) => s.toLowerCase() === newName.toLowerCase() && s.toLowerCase() !== oldName.toLowerCase()
+      (s) => s.toLowerCase() === newName.toLowerCase() && s.toLowerCase() !== oldName.toLowerCase(),
     );
     if (alreadyExists) {
       showToast(`${typeLabel} "${newName}" already exists`, 'error');
@@ -332,7 +376,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     updatedDeleted = updatedDeleted.filter((s) => s.toLowerCase() !== newName.toLowerCase());
 
     // Update all fields belonging to the renamed type
-    const updatedFields = fields.map((f) => (f.section === oldName ? { ...f, section: newName } : f));
+    const updatedFields = fields.map((f) =>
+      f.section === oldName ? { ...f, section: newName } : f,
+    );
 
     if (addingToSection === oldName) setAddingToSection(newName);
     if (newFieldSection === oldName) setNewFieldSection(newName);
@@ -350,7 +396,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       history,
       isDefault: false,
     })
-      .then(() => showToast(`Renamed ${typeLabel.toLowerCase()} "${oldName}" to "${newName}"`, 'success'))
+      .then(() =>
+        showToast(`Renamed ${typeLabel.toLowerCase()} "${oldName}" to "${newName}"`, 'success'),
+      )
       .catch(() => showToast(`Renamed to "${newName}" — click Save to persist`, 'info'));
   };
 
@@ -391,8 +439,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             matchingItems.length > 0
               ? `Deleted ${typeLabel.toLowerCase()} "${sec}" and its items`
               : `Removed ${typeLabel.toLowerCase()} "${sec}"`,
-            'info'
-          )
+            'info',
+          ),
         )
         .catch(() => showToast(`${typeLabel} removed — click Save to persist`, 'info'));
     };
@@ -408,7 +456,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             style: 'destructive',
             onPress: performDelete,
           },
-        ]
+        ],
       );
     } else {
       performDelete();
@@ -486,10 +534,28 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
   const inferSection = (label: string): string => {
     const l = label.toLowerCase();
-    if (l.includes('parent') || l.includes('guardian') || l.includes('mother') || l.includes('father') || l.includes('emergency') || l.includes('family') || l.includes('contact')) {
+    if (
+      l.includes('parent') ||
+      l.includes('guardian') ||
+      l.includes('mother') ||
+      l.includes('father') ||
+      l.includes('emergency') ||
+      l.includes('family') ||
+      l.includes('contact')
+    ) {
       return 'Parent Info';
     }
-    if (l.includes('medical') || l.includes('allerg') || l.includes('doctor') || l.includes('health') || l.includes('insurance') || l.includes('medication') || l.includes('diet') || l.includes('hospital') || l.includes('physician')) {
+    if (
+      l.includes('medical') ||
+      l.includes('allerg') ||
+      l.includes('doctor') ||
+      l.includes('health') ||
+      l.includes('insurance') ||
+      l.includes('medication') ||
+      l.includes('diet') ||
+      l.includes('hospital') ||
+      l.includes('physician')
+    ) {
       return 'Medical Info';
     }
     return 'Student Info';
@@ -501,17 +567,17 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setFields((prev) =>
       prev.map((f) => {
         if (f.id !== id) return f;
-        const current = f.section || (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
+        const current =
+          f.section || (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
         const curIdx = sections.indexOf(current);
         const nextIdx = curIdx >= 0 ? (curIdx + 1) % sections.length : 0;
         const nextSection = sections[nextIdx];
         return { ...f, section: nextSection };
-      })
+      }),
     );
     setIsDefault(false);
     showToast('Domain / Target section updated — click Save to persist', 'info');
   };
-
 
   const moveFieldUp = (id: string) => {
     const idx = fields.findIndex((f) => f.id === id);
@@ -579,7 +645,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
         : undefined;
 
     const effectiveSection = addingToSection ?? newFieldSection;
-    const targetSection = effectiveSection && effectiveSection !== 'General' ? effectiveSection : (availableSections.length > 0 ? effectiveSection : undefined);
+    const targetSection =
+      effectiveSection && effectiveSection !== 'General'
+        ? effectiveSection
+        : availableSections.length > 0
+          ? effectiveSection
+          : undefined;
 
     const newId = getNextIdForSection(selectedForm, targetSection, fields);
 
@@ -619,7 +690,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setAddingToSection(null);
 
     // Auto-save with updated fields
-    saveFormConfig(selectedForm, { fields: updatedFields, customSections, deletedSections, history: updatedHistory, isDefault: false })
+    saveFormConfig(selectedForm, {
+      fields: updatedFields,
+      customSections,
+      deletedSections,
+      history: updatedHistory,
+      isDefault: false,
+    })
       .then(() => showToast(`Field "${trimmedLabel}" added and saved`, 'success'))
       .catch(() => showToast(`Field added — click Save to persist`, 'info'));
   };
@@ -630,7 +707,10 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setEditType(field.type);
     setEditOptions(field.options ? field.options.join(', ') : '');
     setEditRequired(field.required);
-    setEditSection(field.section || (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General'));
+    setEditSection(
+      field.section ||
+        (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General'),
+    );
     setEditLevel(field.level || '');
     setEditPlaceholder(field.placeholder || '');
     setEditHelpText(field.helpText || '');
@@ -657,8 +737,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     const resolvedOptions = selectedPreset
       ? selectedPreset.options
       : editType === 'Dropdown' || editType === 'Radio'
-      ? parsedOptions
-      : undefined;
+        ? parsedOptions
+        : undefined;
 
     const updatedFields = fields.map((f) =>
       f.id === editingField.id
@@ -674,7 +754,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             helpText: editHelpText.trim() || undefined,
             defaultValue: editDefaultValue.trim() || undefined,
           }
-        : f
+        : f,
     );
     setFields(updatedFields);
 
@@ -693,7 +773,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     setIsDefault(false);
 
     // Auto-save immediately
-    saveFormConfig(selectedForm, { fields: updatedFields, customSections, deletedSections, history: updatedHistory, isDefault: false })
+    saveFormConfig(selectedForm, {
+      fields: updatedFields,
+      customSections,
+      deletedSections,
+      history: updatedHistory,
+      isDefault: false,
+    })
       .then(() => showToast('Field updated and saved', 'success'))
       .catch(() => showToast('Field updated — click Save to persist', 'info'));
   };
@@ -705,7 +791,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
           return { ...f, options: presetOptions };
         }
         return f;
-      })
+      }),
     );
     setIsDefault(false);
     showToast(`Applied preset options to items — click Save to persist`, 'success');
@@ -721,11 +807,19 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       return;
     }
     try {
-      await saveFormConfig(selectedForm, { fields, customSections, deletedSections, history, isDefault: false });
+      await saveFormConfig(selectedForm, {
+        fields,
+        customSections,
+        deletedSections,
+        history,
+        isDefault: false,
+      });
       await load();
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
-    } catch (err) {
-      showToast('Failed to save form configuration', 'error');
+    } catch (err: any) {
+      console.error('Failed to save form config:', err);
+      const msg = err?.response?.data?.error || err?.message || 'Failed to save form configuration';
+      showToast(msg, 'error');
     }
   };
 
@@ -745,19 +839,24 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               setDeletedSections([]);
               await load();
               showToast(`Reset ${selectedForm} to default template`, 'info');
-            } catch (err) {
-              showToast('Failed to reset form', 'error');
+            } catch (err: any) {
+              console.error('Failed to reset form config:', err);
+              const msg = err?.response?.data?.error || err?.message || 'Failed to reset form';
+              showToast(msg, 'error');
             }
           },
         },
-      ]
+      ],
     );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Forms" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="Forms"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header Title & Subtitle */}
         <View style={styles.header}>
@@ -771,10 +870,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
         {/* Top Control Row */}
         <View style={styles.topControlRow}>
-          <TouchableOpacity
-            style={styles.selectDropdown}
-            onPress={() => setShowFormModal(true)}
-          >
+          <TouchableOpacity style={styles.selectDropdown} onPress={() => setShowFormModal(true)}>
             <Text style={styles.selectDropdownText}>{selectedForm}</Text>
             <Feather name="chevron-down" size={16} color="#475569" />
           </TouchableOpacity>
@@ -797,7 +893,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
           <View style={{ flex: 1 }} />
 
           <View style={[styles.badge, isDefault ? styles.badgeDefault : styles.badgeCustom]}>
-            <Text style={[styles.badgeText, isDefault ? styles.badgeTextDefault : styles.badgeTextCustom]}>
+            <Text
+              style={[
+                styles.badgeText,
+                isDefault ? styles.badgeTextDefault : styles.badgeTextCustom,
+              ]}
+            >
               {isDefault ? 'Using Default Template' : 'Custom Template'}
             </Text>
           </View>
@@ -809,7 +910,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <View style={styles.formMetaLeft}>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>FORM ID:</Text>
-                <Text style={styles.metaValue}>{FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001'}</Text>
+                <Text style={styles.metaValue}>
+                  {FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001'}
+                </Text>
               </View>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>FORM NAME:</Text>
@@ -820,11 +923,15 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <View style={styles.formMetaRight}>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>REVISION:</Text>
-                <Text style={styles.metaValue}>{FORM_METADATA[selectedForm]?.revision || 'Rev 1.0 · 2026-09-19'}</Text>
+                <Text style={styles.metaValue}>
+                  {FORM_METADATA[selectedForm]?.revision || 'Rev 1.0 · 2026-09-19'}
+                </Text>
               </View>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>PAGE:</Text>
-                <Text style={styles.metaValue}>{FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1'}</Text>
+                <Text style={styles.metaValue}>
+                  {FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1'}
+                </Text>
               </View>
             </View>
           </View>
@@ -865,7 +972,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <View style={styles.abllsPresetBar}>
               <View style={styles.abllsPresetHeader}>
                 <Feather name="sliders" size={14} color="#0369A1" />
-                <Text style={styles.abllsPresetTitle}>Apply Scoring Scale Preset to All ABLLS Skill Items:</Text>
+                <Text style={styles.abllsPresetTitle}>
+                  Apply Scoring Scale Preset to All ABLLS Skill Items:
+                </Text>
               </View>
               <View style={styles.presetButtonsRow}>
                 {SCORE_SCALE_PRESETS.map((preset) => (
@@ -881,409 +990,579 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             </View>
           )}
 
-          {availableSections.length > 0 ? (() => {
-            const allSectionNames = Array.from(
-              new Set([
-                ...availableSections,
-                ...fields.map((f) => f.section).filter(Boolean) as string[],
-                'General',
-              ])
-            ).filter((s) => !deletedSections.includes(s));
-            const grouped: Record<string, FormField[]> = {};
-            fields.forEach((f) => {
-              const sec = f.section || (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
-              if (!grouped[sec]) grouped[sec] = [];
-              grouped[sec].push(f);
-            });
+          {availableSections.length > 0
+            ? (() => {
+                const allSectionNames = Array.from(
+                  new Set([
+                    ...availableSections,
+                    ...(fields.map((f) => f.section).filter(Boolean) as string[]),
+                    'General',
+                  ]),
+                ).filter((s) => !deletedSections.includes(s));
+                const grouped: Record<string, FormField[]> = {};
+                fields.forEach((f) => {
+                  const sec =
+                    f.section ||
+                    (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
+                  if (!grouped[sec]) grouped[sec] = [];
+                  grouped[sec].push(f);
+                });
 
-            return allSectionNames
-              .filter((sec) => (grouped[sec] && grouped[sec].length > 0) || customSections.includes(sec) || addingToSection === sec)
-              .map((sec) => {
-                const nextId = getNextIdForSection(selectedForm, sec, fields);
-                const sectionItems = grouped[sec] || [];
-                const isCustomSection = customSections.includes(sec);
+                return allSectionNames
+                  .filter(
+                    (sec) =>
+                      (grouped[sec] && grouped[sec].length > 0) ||
+                      customSections.includes(sec) ||
+                      addingToSection === sec,
+                  )
+                  .map((sec) => {
+                    const nextId = getNextIdForSection(selectedForm, sec, fields);
+                    const sectionItems = grouped[sec] || [];
+                    const isCustomSection = customSections.includes(sec);
 
-                return (
-                  <View key={sec} style={styles.sectionContainer}>
-                    {/* Section Header with + Add button, Edit button, and Delete button */}
-                    <View style={styles.sectionHeader}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                        <Feather name="folder" size={13} color="#0369A1" />
-                        <Text style={styles.sectionHeaderText}>{sec}</Text>
-                        <Text style={styles.sectionHeaderCount}>
-                          {sectionItems.length} item{sectionItems.length !== 1 ? 's' : ''}
-                        </Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <TouchableOpacity
-                          style={styles.sectionAddBtn}
-                          onPress={() => {
-                            setAddingToSection(sec);
-                            setNewFieldSection(sec);
-                            const isAblls = selectedForm === 'ABLLS Assessment Form';
-                            setNewFieldType(selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking' ? 'Text' : isAblls ? 'Radio' : 'Text');
-                            setNewFieldLabel('');
-                            setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
-                            setNewFieldPlaceholder('');
-                            setNewFieldRequired(true);
-                            setShowAddFieldBox(true);
-                          }}
-                        >
-                          <Feather name="plus" size={11} color="#0284C7" />
-                          <Text style={styles.sectionAddBtnText}>Add</Text>
-                        </TouchableOpacity>
+                    return (
+                      <View key={sec} style={styles.sectionContainer}>
+                        {/* Section Header with + Add button, Edit button, and Delete button */}
+                        <View style={styles.sectionHeader}>
+                          <View
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}
+                          >
+                            <Feather name="folder" size={13} color="#0369A1" />
+                            <Text style={styles.sectionHeaderText}>{sec}</Text>
+                            <Text style={styles.sectionHeaderCount}>
+                              {sectionItems.length} item{sectionItems.length !== 1 ? 's' : ''}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <TouchableOpacity
+                              style={styles.sectionAddBtn}
+                              onPress={() => {
+                                setAddingToSection(sec);
+                                setNewFieldSection(sec);
+                                const isAblls = selectedForm === 'ABLLS Assessment Form';
+                                setNewFieldType(
+                                  selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
+                                    ? 'Text'
+                                    : isAblls
+                                      ? 'Radio'
+                                      : 'Text',
+                                );
+                                setNewFieldLabel('');
+                                setNewFieldOptions(
+                                  isAblls
+                                    ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
+                                    : '',
+                                );
+                                setNewFieldPlaceholder('');
+                                setNewFieldRequired(true);
+                                setShowAddFieldBox(true);
+                              }}
+                            >
+                              <Feather name="plus" size={11} color="#0284C7" />
+                              <Text style={styles.sectionAddBtnText}>Add</Text>
+                            </TouchableOpacity>
 
-                        {/* Edit option for ALL sections (new custom + old presets) */}
-                        <TouchableOpacity
-                          style={styles.sectionEditBtn}
-                          onPress={() => handleOpenEditSkillType(sec)}
-                          accessibilityLabel={`Edit ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
-                        >
-                          <Feather name="edit-2" size={11} color="#0284C7" />
-                          <Text style={styles.sectionEditBtnText}>Edit</Text>
-                        </TouchableOpacity>
+                            {/* Edit option for ALL sections (new custom + old presets) */}
+                            <TouchableOpacity
+                              style={styles.sectionEditBtn}
+                              onPress={() => handleOpenEditSkillType(sec)}
+                              accessibilityLabel={`Edit ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
+                            >
+                              <Feather name="edit-2" size={11} color="#0284C7" />
+                              <Text style={styles.sectionEditBtnText}>Edit</Text>
+                            </TouchableOpacity>
 
-                        {/* Delete option for ALL sections (new custom + old presets) */}
-                        <TouchableOpacity
-                          style={styles.sectionDeleteBtn}
-                          onPress={() => handleDeleteSkillType(sec)}
-                          accessibilityLabel={`Delete ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
-                        >
-                          <Feather name="trash-2" size={13} color="#EF4444" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    {/* Empty state helper if folder has 0 items */}
-                    {sectionItems.length === 0 && addingToSection !== sec && (
-                      <View style={styles.emptySectionBox}>
-                        <Feather name="inbox" size={18} color="#94A3B8" />
-                        <Text style={styles.emptySectionText}>
-                          {selectedForm === 'Enrollment Wizard'
-                            ? 'Empty info type folder (0 items).'
-                            : selectedForm === 'ABLLS Assessment Form'
-                            ? 'Empty skill type folder (0 items).'
-                            : 'Empty folder (0 items).'}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.emptySectionAddBtn}
-                          onPress={() => {
-                            setAddingToSection(sec);
-                            setNewFieldSection(sec);
-                            const isAblls = selectedForm === 'ABLLS Assessment Form';
-                            setNewFieldType(selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking' ? 'Text' : isAblls ? 'Radio' : 'Text');
-                            setNewFieldLabel('');
-                            setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
-                            setNewFieldPlaceholder('');
-                            setNewFieldRequired(true);
-                            setShowAddFieldBox(true);
-                          }}
-                        >
-                          <Feather name="plus" size={12} color="#0284C7" />
-                          <Text style={styles.emptySectionAddBtnText}>Add First Item to {sec}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    {sectionItems.map((field) => (
-                      <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
-                        <View style={styles.typeBadge}>
-                          <Text style={styles.typeBadgeText}>{field.type}</Text>
+                            {/* Delete option for ALL sections (new custom + old presets) */}
+                            <TouchableOpacity
+                              style={styles.sectionDeleteBtn}
+                              onPress={() => handleDeleteSkillType(sec)}
+                              accessibilityLabel={`Delete ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
+                            >
+                              <Feather name="trash-2" size={13} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
 
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <Text style={styles.fieldLabelText}>
-                              {field.label} {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
+                        {/* Empty state helper if folder has 0 items */}
+                        {sectionItems.length === 0 && addingToSection !== sec && (
+                          <View style={styles.emptySectionBox}>
+                            <Feather name="inbox" size={18} color="#94A3B8" />
+                            <Text style={styles.emptySectionText}>
+                              {selectedForm === 'Enrollment Wizard'
+                                ? 'Empty info type folder (0 items).'
+                                : selectedForm === 'ABLLS Assessment Form'
+                                  ? 'Empty skill type folder (0 items).'
+                                  : 'Empty folder (0 items).'}
                             </Text>
-                            {field.level && (
-                              <View style={styles.levelPill}>
-                                <Text style={styles.levelPillText}>{field.level}</Text>
+                            <TouchableOpacity
+                              style={styles.emptySectionAddBtn}
+                              onPress={() => {
+                                setAddingToSection(sec);
+                                setNewFieldSection(sec);
+                                const isAblls = selectedForm === 'ABLLS Assessment Form';
+                                setNewFieldType(
+                                  selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
+                                    ? 'Text'
+                                    : isAblls
+                                      ? 'Radio'
+                                      : 'Text',
+                                );
+                                setNewFieldLabel('');
+                                setNewFieldOptions(
+                                  isAblls
+                                    ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
+                                    : '',
+                                );
+                                setNewFieldPlaceholder('');
+                                setNewFieldRequired(true);
+                                setShowAddFieldBox(true);
+                              }}
+                            >
+                              <Feather name="plus" size={12} color="#0284C7" />
+                              <Text style={styles.emptySectionAddBtnText}>
+                                Add First Item to {sec}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                        {sectionItems.map((field) => (
+                          <View
+                            key={field.id}
+                            style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}
+                          >
+                            <View style={styles.typeBadge}>
+                              <Text style={styles.typeBadgeText}>{field.type}</Text>
+                            </View>
+
+                            <View style={{ flex: 1 }}>
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <Text style={styles.fieldLabelText}>
+                                  {field.label}{' '}
+                                  {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
+                                </Text>
+                                {field.level && (
+                                  <View style={styles.levelPill}>
+                                    <Text style={styles.levelPillText}>{field.level}</Text>
+                                  </View>
+                                )}
+                              </View>
+                              {field.options && field.options.length > 0 && (
+                                <Text style={styles.fieldOptionsText} numberOfLines={1}>
+                                  Options: {field.options.join(', ')}
+                                </Text>
+                              )}
+                            </View>
+
+                            <View style={styles.rowRightControls}>
+                              <TouchableOpacity
+                                onPress={() => moveFieldUp(field.id)}
+                                style={styles.iconBtn}
+                                accessibilityLabel="Move Up"
+                              >
+                                <Feather name="arrow-up" size={15} color="#475569" />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => moveFieldDown(field.id)}
+                                style={styles.iconBtn}
+                                accessibilityLabel="Move Down"
+                              >
+                                <Feather name="arrow-down" size={15} color="#475569" />
+                              </TouchableOpacity>
+                              <Text style={styles.controlLabel}>Required</Text>
+                              <Switch
+                                value={field.required}
+                                onValueChange={() => toggleRequired(field.id)}
+                                trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                                thumbColor="#FFFFFF"
+                                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                              />
+                              <TouchableOpacity
+                                onPress={() => openEditModal(field)}
+                                style={styles.iconBtn}
+                              >
+                                <Feather name="edit-2" size={15} color="#0284C7" />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => toggleVisible(field.id)}
+                                style={styles.iconBtn}
+                              >
+                                <Feather
+                                  name={field.visible ? 'eye' : 'eye-off'}
+                                  size={16}
+                                  color={field.visible ? '#0284C7' : '#94A3B8'}
+                                />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => handleDeleteField(field.id)}
+                                style={styles.iconBtn}
+                              >
+                                <Feather name="trash-2" size={16} color="#F87171" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
+
+                        {/* Inline add form pinned to this section */}
+                        {showAddFieldBox && addingToSection === sec && (
+                          <View
+                            style={[
+                              styles.inlineAddContainer,
+                              { borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
+                            ]}
+                          >
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Feather name="folder" size={12} color="#0284C7" />
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                                Adding to: {sec}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.levelPill,
+                                  { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' },
+                                ]}
+                              >
+                                <Text style={[styles.levelPillText, { color: '#1D4ED8' }]}>
+                                  Suggested ID: {nextId}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={{ marginBottom: 10 }}>
+                              <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                              <View style={styles.typeSelectorRow}>
+                                {FIELD_TYPES.map((type) => {
+                                  const isSelected = newFieldType === type;
+                                  return (
+                                    <TouchableOpacity
+                                      key={type}
+                                      style={[
+                                        styles.typeSelectPill,
+                                        isSelected && styles.typeSelectPillActive,
+                                      ]}
+                                      onPress={() => setNewFieldType(type)}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.typeSelectPillText,
+                                          isSelected && styles.typeSelectPillTextActive,
+                                        ]}
+                                      >
+                                        {type}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+
+                            <View style={styles.inlineAddRow}>
+                              <View style={[styles.inlineFieldCol, { flex: 2 }]}>
+                                <Text style={styles.inlineFieldLabel}>Label</Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder={`e.g. ${nextId}: description`}
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldLabel}
+                                  onChangeText={(val: string) => setNewFieldLabel(val)}
+                                />
+                              </View>
+                              <View style={styles.inlineToggleCol}>
+                                <Text style={styles.inlineFieldLabel}>Required</Text>
+                                <Switch
+                                  value={newFieldRequired}
+                                  onValueChange={(val: boolean) => setNewFieldRequired(val)}
+                                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                                  thumbColor="#FFFFFF"
+                                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                                />
+                              </View>
+                            </View>
+
+                            {/* Dropdown Input Specification */}
+                            {newFieldType === 'Dropdown' && (
+                              <View style={styles.inlineOptionsRow}>
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    What are the dropdown options going to be?
+                                  </Text>
+                                  <View style={styles.presetChipsRow}>
+                                    {getPresetsForForm(selectedForm).map((p) => (
+                                      <TouchableOpacity
+                                        key={p.short}
+                                        style={styles.presetChip}
+                                        onPress={() => setNewFieldOptions(p.options.join(', '))}
+                                      >
+                                        <Text style={styles.presetChipText}>{p.short}</Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </View>
+                                </View>
+                                <Text style={styles.inlineFieldPromptHint}>
+                                  Enter choices separated by comma (e.g. Option 1, Option 2, Option
+                                  3)
+                                </Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder="e.g. Low, Medium, High or Option 1, Option 2, Option 3"
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldOptions}
+                                  onChangeText={(val: string) => setNewFieldOptions(val)}
+                                />
                               </View>
                             )}
-                          </View>
-                          {field.options && field.options.length > 0 && (
-                            <Text style={styles.fieldOptionsText} numberOfLines={1}>
-                              Options: {field.options.join(', ')}
-                            </Text>
-                          )}
-                        </View>
 
-                        <View style={styles.rowRightControls}>
-                          <TouchableOpacity onPress={() => moveFieldUp(field.id)} style={styles.iconBtn} accessibilityLabel="Move Up">
-                            <Feather name="arrow-up" size={15} color="#475569" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => moveFieldDown(field.id)} style={styles.iconBtn} accessibilityLabel="Move Down">
-                            <Feather name="arrow-down" size={15} color="#475569" />
-                          </TouchableOpacity>
-                          <Text style={styles.controlLabel}>Required</Text>
-                          <Switch
-                            value={field.required}
-                            onValueChange={() => toggleRequired(field.id)}
-                            trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
-                            thumbColor="#FFFFFF"
-                            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                          />
-                          <TouchableOpacity onPress={() => openEditModal(field)} style={styles.iconBtn}>
-                            <Feather name="edit-2" size={15} color="#0284C7" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => toggleVisible(field.id)} style={styles.iconBtn}>
-                            <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color={field.visible ? '#0284C7' : '#94A3B8'} />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDeleteField(field.id)} style={styles.iconBtn}>
-                            <Feather name="trash-2" size={16} color="#F87171" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
-
-                    {/* Inline add form pinned to this section */}
-                    {showAddFieldBox && addingToSection === sec && (
-                      <View style={[styles.inlineAddContainer, { borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' }]}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                          <Feather name="folder" size={12} color="#0284C7" />
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
-                            Adding to: {sec}
-                          </Text>
-                          <View style={[styles.levelPill, { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' }]}>
-                            <Text style={[styles.levelPillText, { color: '#1D4ED8' }]}>
-                              Suggested ID: {nextId}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={{ marginBottom: 10 }}>
-                          <Text style={styles.inlineFieldLabel}>Field Type</Text>
-                          <View style={styles.typeSelectorRow}>
-                            {FIELD_TYPES.map((type) => {
-                              const isSelected = newFieldType === type;
-                              return (
-                                <TouchableOpacity
-                                  key={type}
-                                  style={[styles.typeSelectPill, isSelected && styles.typeSelectPillActive]}
-                                  onPress={() => setNewFieldType(type)}
+                            {/* Radio Input Specification */}
+                            {newFieldType === 'Radio' && (
+                              <View style={styles.inlineOptionsRow}>
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: 4,
+                                  }}
                                 >
-                                  <Text style={[styles.typeSelectPillText, isSelected && styles.typeSelectPillTextActive]}>
-                                    {type}
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    What are the radio choices going to be?
                                   </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </View>
-
-                        <View style={styles.inlineAddRow}>
-                          <View style={[styles.inlineFieldCol, { flex: 2 }]}>
-                            <Text style={styles.inlineFieldLabel}>Label</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder={`e.g. ${nextId}: description`}
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldLabel}
-                              onChangeText={(val: string) => setNewFieldLabel(val)}
-                            />
-                          </View>
-                          <View style={styles.inlineToggleCol}>
-                            <Text style={styles.inlineFieldLabel}>Required</Text>
-                            <Switch
-                              value={newFieldRequired}
-                              onValueChange={(val: boolean) => setNewFieldRequired(val)}
-                              trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
-                              thumbColor="#FFFFFF"
-                              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                            />
-                          </View>
-                        </View>
-
-                        {/* Dropdown Input Specification */}
-                        {newFieldType === 'Dropdown' && (
-                          <View style={styles.inlineOptionsRow}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <Text style={styles.inlineFieldPromptTitle}>What are the dropdown options going to be?</Text>
-                              <View style={styles.presetChipsRow}>
-                                {getPresetsForForm(selectedForm).map((p) => (
-                                  <TouchableOpacity
-                                    key={p.short}
-                                    style={styles.presetChip}
-                                    onPress={() => setNewFieldOptions(p.options.join(', '))}
-                                  >
-                                    <Text style={styles.presetChipText}>{p.short}</Text>
-                                  </TouchableOpacity>
-                                ))}
+                                  <View style={styles.presetChipsRow}>
+                                    {getPresetsForForm(selectedForm).map((p) => (
+                                      <TouchableOpacity
+                                        key={p.short}
+                                        style={styles.presetChip}
+                                        onPress={() => setNewFieldOptions(p.options.join(', '))}
+                                      >
+                                        <Text style={styles.presetChipText}>{p.short}</Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </View>
+                                </View>
+                                <Text style={styles.inlineFieldPromptHint}>
+                                  Enter choices separated by comma (e.g. Yes, No, N/A)
+                                </Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldOptions}
+                                  onChangeText={(val: string) => setNewFieldOptions(val)}
+                                />
                               </View>
-                            </View>
-                            <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder="e.g. Low, Medium, High or Option 1, Option 2, Option 3"
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldOptions}
-                              onChangeText={(val: string) => setNewFieldOptions(val)}
-                            />
-                          </View>
-                        )}
+                            )}
 
-                        {/* Radio Input Specification */}
-                        {newFieldType === 'Radio' && (
-                          <View style={styles.inlineOptionsRow}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <Text style={styles.inlineFieldPromptTitle}>What are the radio choices going to be?</Text>
-                              <View style={styles.presetChipsRow}>
-                                {getPresetsForForm(selectedForm).map((p) => (
-                                  <TouchableOpacity
-                                    key={p.short}
-                                    style={styles.presetChip}
-                                    onPress={() => setNewFieldOptions(p.options.join(', '))}
-                                  >
-                                    <Text style={styles.presetChipText}>{p.short}</Text>
-                                  </TouchableOpacity>
-                                ))}
+                            {/* Number Input Specification */}
+                            {newFieldType === 'Number' && (
+                              <View style={styles.inlineOptionsRow}>
+                                <Text style={styles.inlineFieldPromptTitle}>
+                                  What is the number input going to be?
+                                </Text>
+                                <Text style={styles.inlineFieldPromptHint}>
+                                  Specify expected format, range, or units (e.g. Score 0-100, Age in
+                                  years, Count of trials, Duration in min)
+                                </Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in min"
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldPlaceholder}
+                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                />
                               </View>
+                            )}
+
+                            {/* Date Input Specification */}
+                            {newFieldType === 'Date' && (
+                              <View style={styles.inlineOptionsRow}>
+                                <Text style={styles.inlineFieldPromptTitle}>
+                                  What is the date input going to be?
+                                </Text>
+                                <Text style={styles.inlineFieldPromptHint}>
+                                  Specify date format or purpose (e.g. Assessment Date, Target
+                                  Completion Date, YYYY-MM-DD)
+                                </Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldPlaceholder}
+                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                />
+                              </View>
+                            )}
+
+                            {/* File Input Specification */}
+                            {newFieldType === 'File' && (
+                              <View style={styles.inlineOptionsRow}>
+                                <Text style={styles.inlineFieldPromptTitle}>
+                                  What is the file input going to be?
+                                </Text>
+                                <Text style={styles.inlineFieldPromptHint}>
+                                  Specify expected document or attachment (e.g. PDF Medical Report,
+                                  Consent Form, Evaluation Image)
+                                </Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldPlaceholder}
+                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                />
+                              </View>
+                            )}
+
+                            {/* Text Input Specification */}
+                            {newFieldType === 'Text' && (
+                              <View style={styles.inlineOptionsRow}>
+                                <Text style={styles.inlineFieldPromptTitle}>
+                                  Input placeholder / hint (optional)
+                                </Text>
+                                <Text style={styles.inlineFieldPromptHint}>
+                                  Guidance shown inside the text input
+                                </Text>
+                                <TextInput
+                                  style={styles.inlineTextInput}
+                                  placeholder="e.g. Enter notes, observations, or student details..."
+                                  placeholderTextColor="#94A3B8"
+                                  value={newFieldPlaceholder}
+                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                />
+                              </View>
+                            )}
+                            <View style={styles.inlineButtonRow}>
+                              <TouchableOpacity
+                                style={styles.confirmAddBtn}
+                                onPress={handleConfirmAddField}
+                              >
+                                <Text style={styles.confirmAddBtnText}>Add Field</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.cancelAddBtn}
+                                onPress={() => {
+                                  setShowAddFieldBox(false);
+                                  setAddingToSection(null);
+                                }}
+                              >
+                                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+                              </TouchableOpacity>
                             </View>
-                            <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Yes, No, N/A)</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldOptions}
-                              onChangeText={(val: string) => setNewFieldOptions(val)}
-                            />
                           </View>
                         )}
-
-                        {/* Number Input Specification */}
-                        {newFieldType === 'Number' && (
-                          <View style={styles.inlineOptionsRow}>
-                            <Text style={styles.inlineFieldPromptTitle}>What is the number input going to be?</Text>
-                            <Text style={styles.inlineFieldPromptHint}>Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count of trials, Duration in min)</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in min"
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldPlaceholder}
-                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                            />
-                          </View>
-                        )}
-
-                        {/* Date Input Specification */}
-                        {newFieldType === 'Date' && (
-                          <View style={styles.inlineOptionsRow}>
-                            <Text style={styles.inlineFieldPromptTitle}>What is the date input going to be?</Text>
-                            <Text style={styles.inlineFieldPromptHint}>Specify date format or purpose (e.g. Assessment Date, Target Completion Date, YYYY-MM-DD)</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldPlaceholder}
-                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                            />
-                          </View>
-                        )}
-
-                        {/* File Input Specification */}
-                        {newFieldType === 'File' && (
-                          <View style={styles.inlineOptionsRow}>
-                            <Text style={styles.inlineFieldPromptTitle}>What is the file input going to be?</Text>
-                            <Text style={styles.inlineFieldPromptHint}>Specify expected document or attachment (e.g. PDF Medical Report, Consent Form, Evaluation Image)</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldPlaceholder}
-                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                            />
-                          </View>
-                        )}
-
-                        {/* Text Input Specification */}
-                        {newFieldType === 'Text' && (
-                          <View style={styles.inlineOptionsRow}>
-                            <Text style={styles.inlineFieldPromptTitle}>Input placeholder / hint (optional)</Text>
-                            <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
-                            <TextInput
-                              style={styles.inlineTextInput}
-                              placeholder="e.g. Enter notes, observations, or student details..."
-                              placeholderTextColor="#94A3B8"
-                              value={newFieldPlaceholder}
-                              onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                            />
-                          </View>
-                        )}
-                        <View style={styles.inlineButtonRow}>
-                          <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
-                            <Text style={styles.confirmAddBtnText}>Add Field</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.cancelAddBtn} onPress={() => {
-                            setShowAddFieldBox(false);
-                            setAddingToSection(null);
-                          }}>
-                            <Text style={styles.cancelAddBtnText}>Cancel</Text>
-                          </TouchableOpacity>
-                        </View>
                       </View>
+                    );
+                  });
+              })()
+            : fields.map((field) => (
+                <View
+                  key={field.id}
+                  style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}
+                >
+                  <View style={styles.typeBadge}>
+                    <Text style={styles.typeBadgeText}>{field.type}</Text>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <Text style={styles.fieldLabelText}>
+                        {field.label}{' '}
+                        {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
+                      </Text>
+                      {getSectionsForForm(selectedForm).length > 0 && (
+                        <TouchableOpacity
+                          style={styles.sectionPill}
+                          onPress={() => cycleSection(field.id)}
+                        >
+                          <Feather name="folder" size={10} color="#0284C7" />
+                          <Text style={styles.sectionPillText}>
+                            {field.section ||
+                              (selectedForm === 'Enrollment Wizard'
+                                ? inferSection(field.label)
+                                : 'General')}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {field.options && field.options.length > 0 && (
+                      <Text style={styles.fieldOptionsText} numberOfLines={1}>
+                        Options: {field.options.join(', ')}
+                      </Text>
                     )}
                   </View>
-                );
-              });
-          })() : fields.map((field) => (
-            <View key={field.id} style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}>
-              <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>{field.type}</Text>
-              </View>
 
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <Text style={styles.fieldLabelText}>
-                    {field.label} {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
-                  </Text>
-                  {getSectionsForForm(selectedForm).length > 0 && (
+                  <View style={styles.rowRightControls}>
                     <TouchableOpacity
-                      style={styles.sectionPill}
-                      onPress={() => cycleSection(field.id)}
+                      onPress={() => moveFieldUp(field.id)}
+                      style={styles.iconBtn}
+                      accessibilityLabel="Move Up"
                     >
-                      <Feather name="folder" size={10} color="#0284C7" />
-                      <Text style={styles.sectionPillText}>
-                        {field.section || (selectedForm === 'Enrollment Wizard' ? inferSection(field.label) : 'General')}
-                      </Text>
+                      <Feather name="arrow-up" size={15} color="#475569" />
                     </TouchableOpacity>
-                  )}
+                    <TouchableOpacity
+                      onPress={() => moveFieldDown(field.id)}
+                      style={styles.iconBtn}
+                      accessibilityLabel="Move Down"
+                    >
+                      <Feather name="arrow-down" size={15} color="#475569" />
+                    </TouchableOpacity>
+                    <Text style={styles.controlLabel}>Required</Text>
+                    <Switch
+                      value={field.required}
+                      onValueChange={() => toggleRequired(field.id)}
+                      trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                      thumbColor="#FFFFFF"
+                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                    />
+
+                    <TouchableOpacity onPress={() => openEditModal(field)} style={styles.iconBtn}>
+                      <Feather name="edit-2" size={15} color="#0284C7" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => toggleVisible(field.id)}
+                      style={styles.iconBtn}
+                    >
+                      <Feather
+                        name={field.visible ? 'eye' : 'eye-off'}
+                        size={16}
+                        color={field.visible ? '#0284C7' : '#94A3B8'}
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handleDeleteField(field.id)}
+                      style={styles.iconBtn}
+                    >
+                      <Feather name="trash-2" size={16} color="#F87171" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                {field.options && field.options.length > 0 && (
-                  <Text style={styles.fieldOptionsText} numberOfLines={1}>
-                    Options: {field.options.join(', ')}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.rowRightControls}>
-                <TouchableOpacity onPress={() => moveFieldUp(field.id)} style={styles.iconBtn} accessibilityLabel="Move Up">
-                  <Feather name="arrow-up" size={15} color="#475569" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => moveFieldDown(field.id)} style={styles.iconBtn} accessibilityLabel="Move Down">
-                  <Feather name="arrow-down" size={15} color="#475569" />
-                </TouchableOpacity>
-                <Text style={styles.controlLabel}>Required</Text>
-                <Switch
-                  value={field.required}
-                  onValueChange={() => toggleRequired(field.id)}
-                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
-                  thumbColor="#FFFFFF"
-                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                />
-
-                <TouchableOpacity onPress={() => openEditModal(field)} style={styles.iconBtn}>
-                  <Feather name="edit-2" size={15} color="#0284C7" />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => toggleVisible(field.id)} style={styles.iconBtn}>
-                  <Feather name={field.visible ? 'eye' : 'eye-off'} size={16} color={field.visible ? '#0284C7' : '#94A3B8'} />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => handleDeleteField(field.id)} style={styles.iconBtn}>
-                  <Feather name="trash-2" size={16} color="#F87171" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+              ))}
 
           {/* Inline Add Field Box */}
           {!showAddFieldBox ? (
@@ -1339,7 +1618,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                         style={[styles.typeSelectPill, isSelected && styles.typeSelectPillActive]}
                         onPress={() => setNewFieldType(type)}
                       >
-                        <Text style={[styles.typeSelectPillText, isSelected && styles.typeSelectPillTextActive]}>
+                        <Text
+                          style={[
+                            styles.typeSelectPillText,
+                            isSelected && styles.typeSelectPillTextActive,
+                          ]}
+                        >
                           {type}
                         </Text>
                       </TouchableOpacity>
@@ -1379,10 +1663,18 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                     {availableSections.map((sec) => (
                       <TouchableOpacity
                         key={sec}
-                        style={[styles.sectionChip, newFieldSection === sec && styles.sectionChipActive]}
+                        style={[
+                          styles.sectionChip,
+                          newFieldSection === sec && styles.sectionChipActive,
+                        ]}
                         onPress={() => setNewFieldSection(sec)}
                       >
-                        <Text style={[styles.sectionChipText, newFieldSection === sec && styles.sectionChipTextActive]}>
+                        <Text
+                          style={[
+                            styles.sectionChipText,
+                            newFieldSection === sec && styles.sectionChipTextActive,
+                          ]}
+                        >
                           {sec}
                         </Text>
                       </TouchableOpacity>
@@ -1394,8 +1686,17 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Dropdown Input Specification */}
               {newFieldType === 'Dropdown' && (
                 <View style={styles.inlineOptionsRow}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={styles.inlineFieldPromptTitle}>What are the dropdown options going to be?</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text style={styles.inlineFieldPromptTitle}>
+                      What are the dropdown options going to be?
+                    </Text>
                     <View style={styles.presetChipsRow}>
                       {getPresetsForForm(selectedForm).map((p) => (
                         <TouchableOpacity
@@ -1408,7 +1709,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                       ))}
                     </View>
                   </View>
-                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)
+                  </Text>
                   <TextInput
                     style={styles.inlineTextInput}
                     placeholder="e.g. Option 1, Option 2, Option 3 or Low, Medium, High"
@@ -1422,8 +1725,17 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Radio Input Specification */}
               {newFieldType === 'Radio' && (
                 <View style={styles.inlineOptionsRow}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={styles.inlineFieldPromptTitle}>What are the radio choices going to be?</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text style={styles.inlineFieldPromptTitle}>
+                      What are the radio choices going to be?
+                    </Text>
                     <View style={styles.presetChipsRow}>
                       {getPresetsForForm(selectedForm).map((p) => (
                         <TouchableOpacity
@@ -1436,7 +1748,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                       ))}
                     </View>
                   </View>
-                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Yes, No, N/A)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Enter choices separated by comma (e.g. Yes, No, N/A)
+                  </Text>
                   <TextInput
                     style={styles.inlineTextInput}
                     placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
@@ -1450,8 +1764,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Number Input Specification */}
               {newFieldType === 'Number' && (
                 <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>What is the number input going to be?</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count of trials, Duration in min)</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What is the number input going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count
+                    of trials, Duration in min)
+                  </Text>
                   <TextInput
                     style={styles.inlineTextInput}
                     placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in minutes"
@@ -1465,8 +1784,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Date Input Specification */}
               {newFieldType === 'Date' && (
                 <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>What is the date input going to be?</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Specify date format or purpose (e.g. Assessment Date, Target Completion Date, YYYY-MM-DD)</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What is the date input going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify date format or purpose (e.g. Assessment Date, Target Completion Date,
+                    YYYY-MM-DD)
+                  </Text>
                   <TextInput
                     style={styles.inlineTextInput}
                     placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
@@ -1480,8 +1804,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* File Input Specification */}
               {newFieldType === 'File' && (
                 <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>What is the file input going to be?</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Specify expected document or attachment (e.g. PDF Medical Report, Consent Form, Evaluation Image)</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What is the file input going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify expected document or attachment (e.g. PDF Medical Report, Consent Form,
+                    Evaluation Image)
+                  </Text>
                   <TextInput
                     style={styles.inlineTextInput}
                     placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
@@ -1495,8 +1824,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Text Input Specification */}
               {newFieldType === 'Text' && (
                 <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>Input placeholder / hint (optional)</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    Input placeholder / hint (optional)
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Guidance shown inside the text input
+                  </Text>
                   <TextInput
                     style={styles.inlineTextInput}
                     placeholder="e.g. Enter notes, observations, or student details..."
@@ -1512,7 +1845,10 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   <Text style={styles.confirmAddBtnText}>Add Field</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.cancelAddBtn} onPress={() => setShowAddFieldBox(false)}>
+                <TouchableOpacity
+                  style={styles.cancelAddBtn}
+                  onPress={() => setShowAddFieldBox(false)}
+                >
                   <Text style={styles.cancelAddBtnText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
@@ -1551,29 +1887,52 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
           {history.map((item, idx) => (
             <View key={idx} style={styles.tableDataRow}>
               <Text style={[styles.tableDataCell, { flex: 1.2 }]}>{item.date}</Text>
-              <Text style={[styles.tableDataCell, { flex: 1, fontWeight: '700' }]}>{item.user}</Text>
+              <Text style={[styles.tableDataCell, { flex: 1, fontWeight: '700' }]}>
+                {item.user}
+              </Text>
               <Text style={[styles.tableDataCell, { flex: 1.5 }]}>{item.field}</Text>
-              <Text style={[styles.tableDataCell, { flex: 1, color: '#EF4444' }]}>{item.oldValue}</Text>
-              <Text style={[styles.tableDataCell, { flex: 1, color: '#22C55E' }]}>{item.newValue}</Text>
+              <Text style={[styles.tableDataCell, { flex: 1, color: '#EF4444' }]}>
+                {item.oldValue}
+              </Text>
+              <Text style={[styles.tableDataCell, { flex: 1, color: '#22C55E' }]}>
+                {item.newValue}
+              </Text>
             </View>
           ))}
         </View>
       </ScrollView>
 
       {/* Select Form Modal */}
-      <Modal visible={showFormModal} transparent animationType="fade" onRequestClose={() => setShowFormModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowFormModal(false)}>
+      <Modal
+        visible={showFormModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFormModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFormModal(false)}
+        >
           <View style={styles.dropdownModalBox}>
             {FORMS.map((form) => (
               <TouchableOpacity
                 key={form}
-                style={[styles.dropdownOption, selectedForm === form && styles.dropdownOptionActive]}
+                style={[
+                  styles.dropdownOption,
+                  selectedForm === form && styles.dropdownOptionActive,
+                ]}
                 onPress={() => {
                   setSelectedForm(form);
                   setShowFormModal(false);
                 }}
               >
-                <Text style={[styles.dropdownOptionText, selectedForm === form && styles.dropdownOptionTextActive]}>
+                <Text
+                  style={[
+                    styles.dropdownOptionText,
+                    selectedForm === form && styles.dropdownOptionTextActive,
+                  ]}
+                >
                   {form}
                 </Text>
               </TouchableOpacity>
@@ -1583,19 +1942,32 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       </Modal>
 
       {/* Select Field Type Modal */}
-      <Modal visible={showTypeModal} transparent animationType="fade" onRequestClose={() => setShowTypeModal(false)}>
+      <Modal
+        visible={showTypeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTypeModal(false)}
+      >
         <Pressable style={styles.modalOverlay} onPress={() => setShowTypeModal(false)}>
           <Pressable style={styles.dropdownModalBox} onPress={(e) => e.stopPropagation()}>
             {FIELD_TYPES.map((type) => (
               <TouchableOpacity
                 key={type}
-                style={[styles.dropdownOption, newFieldType === type && styles.dropdownOptionActive]}
+                style={[
+                  styles.dropdownOption,
+                  newFieldType === type && styles.dropdownOptionActive,
+                ]}
                 onPress={() => {
                   setNewFieldType(type);
                   setShowTypeModal(false);
                 }}
               >
-                <Text style={[styles.dropdownOptionText, newFieldType === type && styles.dropdownOptionTextActive]}>
+                <Text
+                  style={[
+                    styles.dropdownOptionText,
+                    newFieldType === type && styles.dropdownOptionTextActive,
+                  ]}
+                >
                   {type}
                 </Text>
               </TouchableOpacity>
@@ -1605,13 +1977,20 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       </Modal>
 
       {/* Form Preview Modal — Live Interactive Dynamic Form */}
-      <Modal visible={showPreviewModal} transparent animationType="fade" onRequestClose={() => setShowPreviewModal(false)}>
+      <Modal
+        visible={showPreviewModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPreviewModal(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Live Form Preview — {selectedForm}</Text>
-                <Text style={styles.modalSubtitle}>Interactive preview of active fields & toggles</Text>
+                <Text style={styles.modalSubtitle}>
+                  Interactive preview of active fields & toggles
+                </Text>
               </View>
               <TouchableOpacity onPress={() => setShowPreviewModal(false)}>
                 <Feather name="x" size={18} color="#64748B" />
@@ -1628,7 +2007,10 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             </ScrollView>
 
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowPreviewModal(false)}>
+              <TouchableOpacity
+                style={styles.closeModalBtn}
+                onPress={() => setShowPreviewModal(false)}
+              >
                 <Text style={styles.closeModalBtnText}>Done</Text>
               </TouchableOpacity>
             </View>
@@ -1637,13 +2019,20 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       </Modal>
 
       {/* Edit Field Modal */}
-      <Modal visible={editingField !== null} transparent animationType="fade" onRequestClose={() => setEditingField(null)}>
+      <Modal
+        visible={editingField !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingField(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Edit Field / Options</Text>
-                <Text style={styles.modalSubtitle}>Customize label, scoring options, and requirement</Text>
+                <Text style={styles.modalSubtitle}>
+                  Customize label, scoring options, and requirement
+                </Text>
               </View>
               <TouchableOpacity onPress={() => setEditingField(null)}>
                 <Feather name="x" size={18} color="#64748B" />
@@ -1676,7 +2065,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                         style={[styles.typeSelectPill, isSelected && styles.typeSelectPillActive]}
                         onPress={() => setEditType(type)}
                       >
-                        <Text style={[styles.typeSelectPillText, isSelected && styles.typeSelectPillTextActive]}>
+                        <Text
+                          style={[
+                            styles.typeSelectPillText,
+                            isSelected && styles.typeSelectPillTextActive,
+                          ]}
+                        >
                           {type}
                         </Text>
                       </TouchableOpacity>
@@ -1688,15 +2082,27 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {availableSections.length > 0 && (
                 <View style={styles.editFormGroup}>
                   <Text style={styles.inlineFieldLabel}>Domain / Section</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 2 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginTop: 2 }}
+                  >
                     <View style={styles.sectionChipRow}>
                       {availableSections.map((sec) => (
                         <TouchableOpacity
                           key={sec}
-                          style={[styles.sectionChip, editSection === sec && styles.sectionChipActive]}
+                          style={[
+                            styles.sectionChip,
+                            editSection === sec && styles.sectionChipActive,
+                          ]}
                           onPress={() => setEditSection(sec)}
                         >
-                          <Text style={[styles.sectionChipText, editSection === sec && styles.sectionChipTextActive]}>
+                          <Text
+                            style={[
+                              styles.sectionChipText,
+                              editSection === sec && styles.sectionChipTextActive,
+                            ]}
+                          >
                             {sec}
                           </Text>
                         </TouchableOpacity>
@@ -1709,8 +2115,17 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Dropdown Options */}
               {editType === 'Dropdown' && (
                 <View style={styles.editFormGroup}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={styles.inlineFieldPromptTitle}>What are the dropdown options going to be?</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text style={styles.inlineFieldPromptTitle}>
+                      What are the dropdown options going to be?
+                    </Text>
                     <View style={styles.presetChipsRow}>
                       {getPresetsForForm(selectedForm).map((p) => (
                         <TouchableOpacity
@@ -1723,7 +2138,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                       ))}
                     </View>
                   </View>
-                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)
+                  </Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editOptions}
@@ -1737,8 +2154,17 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Radio Choices */}
               {editType === 'Radio' && (
                 <View style={styles.editFormGroup}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={styles.inlineFieldPromptTitle}>What are the radio choices going to be?</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text style={styles.inlineFieldPromptTitle}>
+                      What are the radio choices going to be?
+                    </Text>
                     <View style={styles.presetChipsRow}>
                       {getPresetsForForm(selectedForm).map((p) => (
                         <TouchableOpacity
@@ -1751,7 +2177,9 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                       ))}
                     </View>
                   </View>
-                  <Text style={styles.inlineFieldPromptHint}>Enter choices separated by comma (e.g. Yes, No, N/A)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Enter choices separated by comma (e.g. Yes, No, N/A)
+                  </Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editOptions}
@@ -1766,12 +2194,19 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {selectedForm === 'ABLLS Assessment Form' && (
                 <View style={styles.editFormGroup}>
                   <Text style={styles.inlineFieldLabel}>Scoring Scale Presets</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginTop: 4 }}
+                  >
                     <View style={styles.sectionChipRow}>
                       {SCORE_SCALE_PRESETS.map((p) => (
                         <TouchableOpacity
                           key={p.label}
-                          style={[styles.sectionChip, editLevel === p.label && styles.sectionChipActive]}
+                          style={[
+                            styles.sectionChip,
+                            editLevel === p.label && styles.sectionChipActive,
+                          ]}
                           onPress={() => {
                             const isDeselecting = editLevel === p.label;
                             setEditLevel(isDeselecting ? '' : p.label);
@@ -1780,7 +2215,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                             }
                           }}
                         >
-                          <Text style={[styles.sectionChipText, editLevel === p.label && styles.sectionChipTextActive]}>
+                          <Text
+                            style={[
+                              styles.sectionChipText,
+                              editLevel === p.label && styles.sectionChipTextActive,
+                            ]}
+                          >
                             {p.short}
                           </Text>
                         </TouchableOpacity>
@@ -1798,8 +2238,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Number Input Specification */}
               {editType === 'Number' && (
                 <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>What is the number input going to be?</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count of trials, Duration in min)</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What is the number input going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count
+                    of trials, Duration in min)
+                  </Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editPlaceholder}
@@ -1813,8 +2258,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Date Input Specification */}
               {editType === 'Date' && (
                 <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>What is the date input going to be?</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Specify date format or purpose (e.g. Assessment Date, Target Completion Date, YYYY-MM-DD)</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What is the date input going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify date format or purpose (e.g. Assessment Date, Target Completion Date,
+                    YYYY-MM-DD)
+                  </Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editPlaceholder}
@@ -1828,8 +2278,13 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* File Input Specification */}
               {editType === 'File' && (
                 <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>What is the file input going to be?</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Specify expected document or attachment (e.g. PDF Medical Report, Consent Form, Evaluation Image)</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What is the file input going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify expected document or attachment (e.g. PDF Medical Report, Consent Form,
+                    Evaluation Image)
+                  </Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editPlaceholder}
@@ -1843,8 +2298,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               {/* Text Input Specification */}
               {editType === 'Text' && (
                 <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>Input placeholder / hint (optional)</Text>
-                  <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    Input placeholder / hint (optional)
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Guidance shown inside the text input
+                  </Text>
                   <TextInput
                     style={[styles.inlineTextInput, { height: 40 }]}
                     value={editPlaceholder}
@@ -1880,7 +2339,14 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               </View>
 
               {/* Required Switch */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: 4,
+                }}
+              >
                 <Text style={styles.inlineFieldLabel}>Mark as Required Field</Text>
                 <Switch
                   value={editRequired}
@@ -1904,7 +2370,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       </Modal>
 
       {/* Select Field Type Modal for Edit */}
-      <Modal visible={showEditTypeModal} transparent animationType="fade" onRequestClose={() => setShowEditTypeModal(false)}>
+      <Modal
+        visible={showEditTypeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEditTypeModal(false)}
+      >
         <Pressable style={styles.modalOverlay} onPress={() => setShowEditTypeModal(false)}>
           <Pressable style={styles.dropdownModalBox} onPress={(e) => e.stopPropagation()}>
             {FIELD_TYPES.map((type) => (
@@ -1916,7 +2387,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   setShowEditTypeModal(false);
                 }}
               >
-                <Text style={[styles.dropdownOptionText, editType === type && styles.dropdownOptionTextActive]}>
+                <Text
+                  style={[
+                    styles.dropdownOptionText,
+                    editType === type && styles.dropdownOptionTextActive,
+                  ]}
+                >
                   {type}
                 </Text>
               </TouchableOpacity>
@@ -1941,7 +2417,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   <Text style={styles.modalTitle}>Add a Skill Type</Text>
                 </View>
                 <Text style={styles.modalSubtitle}>
-                  Creates an ABLLS skill domain with full scoring features matching Vocal Imitation, Motor Imitation, and Visual Performance.
+                  Creates an ABLLS skill domain with full scoring features matching Vocal Imitation,
+                  Motor Imitation, and Visual Performance.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowAddSkillTypeModal(false)}>
@@ -1957,14 +2434,16 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                     key={st}
                     style={[
                       styles.skillPresetChip,
-                      newSkillTypeName.toLowerCase() === st.toLowerCase() && styles.skillPresetChipActive,
+                      newSkillTypeName.toLowerCase() === st.toLowerCase() &&
+                        styles.skillPresetChipActive,
                     ]}
                     onPress={() => setNewSkillTypeName(st)}
                   >
                     <Text
                       style={[
                         styles.skillPresetChipText,
-                        newSkillTypeName.toLowerCase() === st.toLowerCase() && styles.skillPresetChipTextActive,
+                        newSkillTypeName.toLowerCase() === st.toLowerCase() &&
+                          styles.skillPresetChipTextActive,
                       ]}
                     >
                       {st}
@@ -1986,10 +2465,23 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               </View>
 
               {newSkillTypeName.trim().length > 0 && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD', padding: 8, borderRadius: 6, marginTop: 2 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    backgroundColor: '#F0F9FF',
+                    borderWidth: 1,
+                    borderColor: '#BAE6FD',
+                    padding: 8,
+                    borderRadius: 6,
+                    marginTop: 2,
+                  }}
+                >
                   <Feather name="info" size={14} color="#0284C7" />
                   <Text style={{ fontSize: 11, color: '#0369A1', fontWeight: '600' }}>
-                    Assigned Domain Code: {getDomainLetterForAblls(newSkillTypeName.trim(), fields)} · First Item ID: {getDomainLetterForAblls(newSkillTypeName.trim(), fields)}1
+                    Assigned Domain Code: {getDomainLetterForAblls(newSkillTypeName.trim(), fields)}{' '}
+                    · First Item ID: {getDomainLetterForAblls(newSkillTypeName.trim(), fields)}1
                   </Text>
                 </View>
               )}
@@ -2032,7 +2524,8 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                   <Text style={styles.modalTitle}>Add a Info Type</Text>
                 </View>
                 <Text style={styles.modalSubtitle}>
-                  Creates a new enrollment information category like Student Info, Parent Info, and Medical Info with its own customizable fields.
+                  Creates a new enrollment information category like Student Info, Parent Info, and
+                  Medical Info with its own customizable fields.
                 </Text>
               </View>
               <TouchableOpacity
@@ -2053,14 +2546,16 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                     key={it}
                     style={[
                       styles.skillPresetChip,
-                      newInfoTypeName.toLowerCase() === it.toLowerCase() && styles.skillPresetChipActive,
+                      newInfoTypeName.toLowerCase() === it.toLowerCase() &&
+                        styles.skillPresetChipActive,
                     ]}
                     onPress={() => setNewInfoTypeName(it)}
                   >
                     <Text
                       style={[
                         styles.skillPresetChipText,
-                        newInfoTypeName.toLowerCase() === it.toLowerCase() && styles.skillPresetChipTextActive,
+                        newInfoTypeName.toLowerCase() === it.toLowerCase() &&
+                          styles.skillPresetChipTextActive,
                       ]}
                     >
                       {it}
@@ -2117,15 +2612,19 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Feather name="edit-2" size={18} color="#0284C7" />
                   <Text style={styles.modalTitle}>
-                    {selectedForm === 'Enrollment Wizard' ? 'Edit Info Type' : selectedForm === 'ABLLS Assessment Form' ? 'Edit Skill Type' : 'Edit Section'}
+                    {selectedForm === 'Enrollment Wizard'
+                      ? 'Edit Info Type'
+                      : selectedForm === 'ABLLS Assessment Form'
+                        ? 'Edit Skill Type'
+                        : 'Edit Section'}
                   </Text>
                 </View>
                 <Text style={styles.modalSubtitle}>
                   {selectedForm === 'Enrollment Wizard'
                     ? 'Rename this info type category. All fields belonging to it will update automatically.'
                     : selectedForm === 'ABLLS Assessment Form'
-                    ? 'Rename this skill type domain. All items belonging to it will update automatically.'
-                    : 'Rename this section. All items belonging to it will update automatically.'}
+                      ? 'Rename this skill type domain. All items belonging to it will update automatically.'
+                      : 'Rename this section. All items belonging to it will update automatically.'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -2141,13 +2640,21 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <View style={styles.modalBody}>
               <View style={styles.editFormGroup}>
                 <Text style={styles.inlineFieldLabel}>
-                  {selectedForm === 'Enrollment Wizard' ? 'Info Type / Category Name' : selectedForm === 'ABLLS Assessment Form' ? 'Skill Type / Domain Name' : 'Section Name'}
+                  {selectedForm === 'Enrollment Wizard'
+                    ? 'Info Type / Category Name'
+                    : selectedForm === 'ABLLS Assessment Form'
+                      ? 'Skill Type / Domain Name'
+                      : 'Section Name'}
                 </Text>
                 <TextInput
                   style={styles.inlineTextInput}
                   value={editSkillTypeName}
                   onChangeText={setEditSkillTypeName}
-                  placeholder={selectedForm === 'Enrollment Wizard' ? 'Enter info type name...' : 'Enter name...'}
+                  placeholder={
+                    selectedForm === 'Enrollment Wizard'
+                      ? 'Enter info type name...'
+                      : 'Enter name...'
+                  }
                   placeholderTextColor="#94A3B8"
                   autoFocus
                 />

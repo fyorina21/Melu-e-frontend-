@@ -11,9 +11,9 @@
 //   - log requests through an opt-in hook
 
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
-import { apiBaseUrl, env, isDemoMode } from '../config/env';
+import { apiBaseUrl, env } from '../config/env';
 import { getAccessToken, setAccessToken } from '../token';
-import { toApiError, ApiError } from './errors';
+import { toApiError } from './errors';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -33,6 +33,7 @@ export type Logger = (entry: {
 }) => void;
 
 let refreshHandler: RefreshHandler | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 let logger: Logger | null = null;
 
 /** Register a callback that returns a fresh access token (or null if refresh fails). */
@@ -123,37 +124,83 @@ function createHttpClient(): AxiosInstance {
         });
       }
 
-      // Transparent single-attempt refresh on 401 or expired JWT
+      // Transparent single-attempt refresh on 401 or expired JWT with mutex & queue
       const status = axiosError.response?.status;
       const respData = axiosError.response?.data as any;
-      const errorMsg = String(respData?.error || respData?.message || axiosError.message || '').toLowerCase();
+      const errorMsg = String(
+        respData?.error || respData?.message || axiosError.message || '',
+      ).toLowerCase();
       const isExpiredJwt =
         status === 401 ||
-        (status === 400 && (errorMsg.includes('expired') || errorMsg.includes('jwt') || errorMsg.includes('token')));
+        (status === 400 &&
+          (errorMsg.includes('expired') || errorMsg.includes('jwt') || errorMsg.includes('token')));
 
       const shouldRefresh = isExpiredJwt && cfg && !cfg._retry && !!refreshHandler;
       if (shouldRefresh) {
         cfg._retry = true;
+
+        // If a previous concurrent request already refreshed the token while this request
+        // was in flight, reuse the newer token directly.
+        const currentToken = getAccessToken();
+        const rawAuthHeader =
+          typeof cfg.headers?.Authorization === 'string'
+            ? cfg.headers.Authorization
+            : typeof (cfg.headers as any)?.authorization === 'string'
+              ? (cfg.headers as any).authorization
+              : '';
+        const sentToken = rawAuthHeader.replace(/^Bearer\s+/i, '');
+
+        if (currentToken && sentToken && currentToken !== sentToken) {
+          cfg.headers = cfg.headers ?? {};
+          if (typeof (cfg.headers as any).set === 'function') {
+            (cfg.headers as any).set('Authorization', `Bearer ${currentToken}`);
+          } else {
+            cfg.headers.Authorization = `Bearer ${currentToken}`;
+          }
+          return instance(cfg);
+        }
+
         try {
-          const token = await refreshHandler!();
+          if (!refreshPromise) {
+            refreshPromise = (async () => {
+              try {
+                const newToken = await refreshHandler!();
+                if (newToken) {
+                  await setAccessToken(newToken);
+                } else {
+                  await setAccessToken(null);
+                }
+                return newToken;
+              } catch (err) {
+                await setAccessToken(null);
+                throw err;
+              } finally {
+                refreshPromise = null;
+              }
+            })();
+          }
+
+          const token = await refreshPromise;
           if (!token) {
-            await setAccessToken(null);
             return Promise.reject(toApiError(error));
           }
-          await setAccessToken(token);
+
           cfg.headers = cfg.headers ?? {};
-          cfg.headers.Authorization = `Bearer ${token}`;
+          if (typeof (cfg.headers as any).set === 'function') {
+            (cfg.headers as any).set('Authorization', `Bearer ${token}`);
+          } else {
+            cfg.headers.Authorization = `Bearer ${token}`;
+          }
           return instance(cfg);
-        } catch (refreshError) {
-          await setAccessToken(null);
+        } catch (_refreshError) {
           return Promise.reject(toApiError(error));
         }
       }
 
-      if (isExpiredJwt) {
+      if (isExpiredJwt && !refreshPromise) {
         await setAccessToken(null);
       }
-      
+
       return Promise.reject(toApiError(error));
     },
   );

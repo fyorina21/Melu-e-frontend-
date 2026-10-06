@@ -1,7 +1,11 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
 import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
-import type { NavigationContainerRef, NavigationState, PartialState } from '@react-navigation/native';
+import type {
+  NavigationContainerRef,
+  NavigationState,
+  PartialState,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth, ROLES } from '../context/AuthContext';
 import type { Role } from '../types';
@@ -69,15 +73,19 @@ function syncUrlToScreen(state: NavigationState | undefined): void {
   }
 }
 
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
 function AppNavigator() {
   const { session } = useAuth();
 
   if (!session) {
     return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-      </Stack.Navigator>
+      <ErrorBoundary screenName="Auth Navigator">
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        </Stack.Navigator>
+      </ErrorBoundary>
     );
   }
 
@@ -85,20 +93,25 @@ function AppNavigator() {
 
   if (SIDEBAR_ROLES.has(session.role)) {
     return (
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        <RoleSidebar role={session.role} />
-        <View style={{ flex: 1 }}>
-          <RoleStack />
+      <ErrorBoundary screenName={`${session.role} Navigator`}>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <RoleSidebar role={session.role} />
+          <View style={{ flex: 1 }}>
+            <RoleStack />
+          </View>
         </View>
-      </View>
+      </ErrorBoundary>
     );
   }
 
-  return <RoleStack />;
+  return (
+    <ErrorBoundary screenName={`${session.role} Navigator`}>
+      <RoleStack />
+    </ErrorBoundary>
+  );
 }
 
 export default function RootNavigator() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const navRef = React.useRef<NavigationContainerRef<any>>(null);
   const { session } = useAuth();
   const deepLinkRestored = React.useRef(false);
@@ -127,7 +140,9 @@ export default function RootNavigator() {
       const searchParams = new URLSearchParams(window.location.search);
       const sid =
         searchParams.get('studentId') ||
-        (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null) ||
+        (typeof localStorage !== 'undefined'
+          ? localStorage.getItem('last_assessment_student_id')
+          : null) ||
         'student-a';
       nav.navigate(target, { studentId: sid });
     } catch {

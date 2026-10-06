@@ -37,12 +37,8 @@ interface ScheduleBlock {
   endTime: TimeValue;
 }
 
-const HOURS = Array.from({ length: 12 }, (_, i) =>
-  String(i + 1).padStart(2, '0')
-);
-const MINUTES = Array.from({ length: 60 }, (_, i) =>
-  String(i).padStart(2, '0')
-);
+const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 const PERIODS: ('AM' | 'PM')[] = ['AM', 'PM'];
 
 // Helper to format TimeValue back to standard string for backend
@@ -125,8 +121,7 @@ export default function ScheduleCapacityConfigScreen({
       if (data) {
         if (data.morningStart) setMorningStart(parseTimeString(data.morningStart));
         if (data.morningEnd) setMorningEnd(parseTimeString(data.morningEnd));
-        if (data.afternoonStart)
-          setAfternoonStart(parseTimeString(data.afternoonStart));
+        if (data.afternoonStart) setAfternoonStart(parseTimeString(data.afternoonStart));
         if (data.afternoonEnd) setAfternoonEnd(parseTimeString(data.afternoonEnd));
         setPreTherapyDuration(String(data.preTherapyDuration ?? '30'));
         setCapacity(String(data.capacity ?? '2'));
@@ -137,7 +132,7 @@ export default function ScheduleCapacityConfigScreen({
               ...b,
               startTime: parseTimeString(b.startTime),
               endTime: parseTimeString(b.endTime),
-            }))
+            })),
           );
         }
       }
@@ -154,7 +149,7 @@ export default function ScheduleCapacityConfigScreen({
     type: 'round' | 'block',
     target: string,
     currentVal: TimeValue,
-    subField?: 'startTime' | 'endTime'
+    subField?: 'startTime' | 'endTime',
   ) => {
     setActivePickerField({ type, target, subField });
     setTempTime(currentVal);
@@ -172,11 +167,7 @@ export default function ScheduleCapacityConfigScreen({
       else if (target === 'afternoonStart') setAfternoonStart(tempTime);
       else if (target === 'afternoonEnd') setAfternoonEnd(tempTime);
     } else if (type === 'block' && subField) {
-      setBlocks((prev) =>
-        prev.map((b) =>
-          b.id === target ? { ...b, [subField]: tempTime } : b
-        )
-      );
+      setBlocks((prev) => prev.map((b) => (b.id === target ? { ...b, [subField]: tempTime } : b)));
     }
     setPickerVisible(false);
   };
@@ -184,12 +175,12 @@ export default function ScheduleCapacityConfigScreen({
   const handleSave = async () => {
     const cap = Number(capacity);
     const expiry = Number(draftExpiry);
-    if (cap < 1) {
-      Alert.alert('Capacity must be at least 1');
+    if (isNaN(cap) || cap < 1) {
+      Alert.alert('Validation Error', 'Capacity must be at least 1 student.');
       return;
     }
-    if (expiry < 1 || expiry > 30) {
-      Alert.alert('Draft expiry must be 1-30 days');
+    if (isNaN(expiry) || expiry < 1 || expiry > 30) {
+      Alert.alert('Validation Error', 'Draft expiry must be between 1 and 30 days.');
       return;
     }
     try {
@@ -207,20 +198,22 @@ export default function ScheduleCapacityConfigScreen({
           endTime: formatTimeString(b.endTime),
         })),
       });
-    } catch (err) {
-      // Fallback save UI state
+      Alert.alert('Success', 'Session Schedule & Capacity configuration saved successfully.');
+    } catch (err: any) {
+      console.error('Failed to save schedule capacity config:', err);
+      const errMsg =
+        err?.response?.data?.error ||
+        (Array.isArray(err?.response?.data?.errors)
+          ? err.response.data.errors.join(', ')
+          : err?.response?.data?.errors) ||
+        err?.message ||
+        'Failed to save configuration. Please try again.';
+      Alert.alert('Save Failed', errMsg);
     }
-    Alert.alert('Configuration saved');
   };
 
   // Time Selector Component for tabular inline display
-  const TimePickerSelector = ({
-    value,
-    onPress,
-  }: {
-    value: TimeValue;
-    onPress: () => void;
-  }) => (
+  const TimePickerSelector = ({ value, onPress }: { value: TimeValue; onPress: () => void }) => (
     <TouchableOpacity style={styles.timeInputContainer} onPress={onPress}>
       <Text style={styles.timeValueText}>
         {value.hour}:{value.minute} {value.period}
@@ -231,7 +224,10 @@ export default function ScheduleCapacityConfigScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Schedule" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Schedule"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Top Header & Breadcrumb */}
         <View style={styles.topHeader}>
@@ -264,12 +260,19 @@ export default function ScheduleCapacityConfigScreen({
             <Feather name="info" size={18} color="#1E40AF" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.infoBannerTitle}>How Scheduling & Capacity Configuration Works</Text>
-            <Text style={styles.infoBannerText}>
-              • <Text style={{ fontWeight: '700' }}>Session Schedule & Rounds:</Text> Defines the institutional timetable for morning and afternoon therapy blocks. Therapists utilize the Pre-Therapy Duration (in minutes) prior to direct student instruction for classroom setup and material preparation.
+            <Text style={styles.infoBannerTitle}>
+              How Scheduling & Capacity Configuration Works
             </Text>
             <Text style={styles.infoBannerText}>
-              • <Text style={{ fontWeight: '700' }}>Staff-to-Student Capacity:</Text> Establishes the maximum allowable student caseload assigned to a single therapist during any active session block to maintain clinical safety and quality of care.
+              • <Text style={{ fontWeight: '700' }}>Session Schedule & Rounds:</Text> Defines the
+              institutional timetable for morning and afternoon therapy blocks. Therapists utilize
+              the Pre-Therapy Duration (in minutes) prior to direct student instruction for
+              classroom setup and material preparation.
+            </Text>
+            <Text style={styles.infoBannerText}>
+              • <Text style={{ fontWeight: '700' }}>Staff-to-Student Capacity:</Text> Establishes
+              the maximum allowable student caseload assigned to a single therapist during any
+              active session block to maintain clinical safety and quality of care.
             </Text>
           </View>
         </View>
@@ -287,9 +290,7 @@ export default function ScheduleCapacityConfigScreen({
               <Text style={styles.label}>Morning Round Start</Text>
               <TimePickerSelector
                 value={morningStart}
-                onPress={() =>
-                  openTimePicker('round', 'morningStart', morningStart)
-                }
+                onPress={() => openTimePicker('round', 'morningStart', morningStart)}
               />
             </View>
 
@@ -308,9 +309,7 @@ export default function ScheduleCapacityConfigScreen({
               <Text style={styles.label}>Afternoon Round Start</Text>
               <TimePickerSelector
                 value={afternoonStart}
-                onPress={() =>
-                  openTimePicker('round', 'afternoonStart', afternoonStart)
-                }
+                onPress={() => openTimePicker('round', 'afternoonStart', afternoonStart)}
               />
             </View>
 
@@ -318,9 +317,7 @@ export default function ScheduleCapacityConfigScreen({
               <Text style={styles.label}>Afternoon Round End</Text>
               <TimePickerSelector
                 value={afternoonEnd}
-                onPress={() =>
-                  openTimePicker('round', 'afternoonEnd', afternoonEnd)
-                }
+                onPress={() => openTimePicker('round', 'afternoonEnd', afternoonEnd)}
               />
             </View>
           </View>
@@ -350,7 +347,9 @@ export default function ScheduleCapacityConfigScreen({
                 onChangeText={setCapacity}
                 keyboardType="number-pad"
               />
-              <Text style={styles.fieldHint}>Recommended standard ratio is 2 students per therapist.</Text>
+              <Text style={styles.fieldHint}>
+                Recommended standard ratio is 2 students per therapist.
+              </Text>
             </View>
           </View>
 
@@ -366,12 +365,12 @@ export default function ScheduleCapacityConfigScreen({
                 keyboardType="number-pad"
               />
               <Text style={styles.fieldHint}>
-                Unsubmitted Session Summaries and Daily Notes saved in draft status will be automatically flagged or archived after this period.
+                Unsubmitted Session Summaries and Daily Notes saved in draft status will be
+                automatically flagged or archived after this period.
               </Text>
             </View>
           </View>
         </View>
-
 
         {/* Card 3: Session Block Definitions */}
         <View style={styles.card}>
@@ -390,17 +389,13 @@ export default function ScheduleCapacityConfigScreen({
                 <View style={{ flex: 3, paddingRight: 12 }}>
                   <TimePickerSelector
                     value={b.startTime}
-                    onPress={() =>
-                      openTimePicker('block', b.id, b.startTime, 'startTime')
-                    }
+                    onPress={() => openTimePicker('block', b.id, b.startTime, 'startTime')}
                   />
                 </View>
                 <View style={{ flex: 3 }}>
                   <TimePickerSelector
                     value={b.endTime}
-                    onPress={() =>
-                      openTimePicker('block', b.id, b.endTime, 'endTime')
-                    }
+                    onPress={() => openTimePicker('block', b.id, b.endTime, 'endTime')}
                   />
                 </View>
               </View>
@@ -438,10 +433,7 @@ export default function ScheduleCapacityConfigScreen({
                   {HOURS.map((h) => (
                     <TouchableOpacity
                       key={h}
-                      style={[
-                        styles.pickerItem,
-                        tempTime.hour === h && styles.pickerItemActive,
-                      ]}
+                      style={[styles.pickerItem, tempTime.hour === h && styles.pickerItemActive]}
                       onPress={() => setTempTime({ ...tempTime, hour: h })}
                     >
                       <Text
@@ -466,10 +458,7 @@ export default function ScheduleCapacityConfigScreen({
                   {MINUTES.map((m) => (
                     <TouchableOpacity
                       key={m}
-                      style={[
-                        styles.pickerItem,
-                        tempTime.minute === m && styles.pickerItemActive,
-                      ]}
+                      style={[styles.pickerItem, tempTime.minute === m && styles.pickerItemActive]}
                       onPress={() => setTempTime({ ...tempTime, minute: m })}
                     >
                       <Text
@@ -492,10 +481,7 @@ export default function ScheduleCapacityConfigScreen({
                   {PERIODS.map((p) => (
                     <TouchableOpacity
                       key={p}
-                      style={[
-                        styles.pickerItem,
-                        tempTime.period === p && styles.pickerItemActive,
-                      ]}
+                      style={[styles.pickerItem, tempTime.period === p && styles.pickerItemActive]}
                       onPress={() => setTempTime({ ...tempTime, period: p })}
                     >
                       <Text
@@ -514,16 +500,10 @@ export default function ScheduleCapacityConfigScreen({
 
             {/* Modal Actions */}
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setPickerVisible(false)}
-              >
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setPickerVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleConfirmTime}
-              >
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmTime}>
                 <Text style={styles.confirmBtnText}>Set Time</Text>
               </TouchableOpacity>
             </View>

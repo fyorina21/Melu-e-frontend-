@@ -40,6 +40,8 @@ export interface AuthSession {
   roles?: Role[];
   userName: string;
   email?: string;
+  modules?: string[];
+  permissions?: string[];
 }
 
 // ---- Domain models ----

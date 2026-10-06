@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  type ReactNode,
+} from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
 import { setAccessToken } from '../api/token';
@@ -17,8 +25,14 @@ export const ROLES = {
 
 export function normalizeRole(rawRole?: string): Role {
   if (!rawRole) return 'teacher';
-  const lower = rawRole.toLowerCase().trim().replace(/[\s-]+/g, '_');
-  if (lower === 'therapist' || lower === 'teacher' || lower === 'clinical_staff') {
+  const lower = rawRole
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, '_');
+  if (lower === 'therapist') {
+    return 'therapist';
+  }
+  if (lower === 'teacher' || lower === 'clinical_staff') {
     return 'teacher';
   }
   if (lower === 'coordinator' || lower === 'therapy_coordinator') {
@@ -26,7 +40,11 @@ export function normalizeRole(rawRole?: string): Role {
   }
   if (lower === 'director') return 'director';
   if (lower === 'program_director') return 'program_director';
-  if (lower === 'institutional_admin' || lower === 'institutional_administrator' || lower === 'admin') {
+  if (
+    lower === 'institutional_admin' ||
+    lower === 'institutional_administrator' ||
+    lower === 'admin'
+  ) {
     return 'institutional_admin';
   }
   if (lower === 'system_admin' || lower === 'system_administrator' || lower === 'sysadmin') {
@@ -61,7 +79,11 @@ function resolveRoles(rawRoles?: string[], primary?: string, fallback?: string):
 
 interface AuthContextValue {
   session: AuthSession | null;
-  loginWithCredentials: (email: string, password: string, rememberDevice?: boolean) => Promise<boolean>;
+  loginWithCredentials: (
+    email: string,
+    password: string,
+    rememberDevice?: boolean,
+  ) => Promise<boolean>;
   switchRole: (role: Role) => void;
   logout: () => void;
 }
@@ -86,6 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               roles,
               userName: user.name,
               email: user.email,
+              modules: user.modules,
+              permissions: user.permissions,
             });
           } catch (meErr) {
             console.warn('Failed to restore session (token expired or invalid):', meErr);
@@ -121,6 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         roles,
         userName: user.name,
         email: user.email,
+        modules: user.modules,
+        permissions: user.permissions,
       });
       showToast(`Welcome back, ${user.name}!`, 'success');
       return true;
@@ -170,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       switchRole,
       logout,
     }),
-    [session]
+    [session],
   );
 
   if (loading) {

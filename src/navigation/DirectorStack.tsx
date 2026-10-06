@@ -11,50 +11,36 @@ import DirectorStudentProgressScreen from '../screens/director/DirectorStudentPr
 import ReportBuilderScreen from '../screens/director/ReportBuilderScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
 const Stack = createNativeStackNavigator<DirectorStackParamList>();
 
 export default function DirectorStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen
-        name="DirectorDashboard"
-        component={DirectorDashboardScreen}
-      />
+    <ErrorBoundary screenName="Director Navigator">
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="DirectorDashboard" component={DirectorDashboardScreen} />
 
-      <Stack.Screen
-        name="DirectorScheduling"
-        component={DirectorSchedulingScreen}
-      />
+        <Stack.Screen name="DirectorScheduling" component={DirectorSchedulingScreen} />
 
-      <Stack.Screen
-        name="GoalMasteryApproval"
-        component={GoalMasteryApprovalScreen}
-      />
+        <Stack.Screen name="GoalMasteryApproval" component={GoalMasteryApprovalScreen} />
 
-      <Stack.Screen
-        name="DirectorParentCommunication"
-        component={DirectorParentCommunicationScreen}
-      />
+        <Stack.Screen
+          name="DirectorParentCommunication"
+          component={DirectorParentCommunicationScreen}
+        />
 
-      <Stack.Screen
-        name="ReportsOversight"
-        component={ReportsOversightScreen}
-      />
+        <Stack.Screen name="ReportsOversight" component={ReportsOversightScreen} />
 
-      <Stack.Screen
-        name="DirectorStudentProgress"
-        component={DirectorStudentProgressScreen}
-      />
+        <Stack.Screen name="DirectorStudentProgress" component={DirectorStudentProgressScreen} />
 
-      <Stack.Screen
-        name="ReportBuilder"
-        component={ReportBuilderScreen}
-      />
+        <Stack.Screen name="ReportBuilder" component={ReportBuilderScreen} />
 
-      <Stack.Screen
-        name="AssessmentSummaryReport"
-        component={AssessmentSummaryReportScreen as never}
-      />
-    </Stack.Navigator>
+        <Stack.Screen
+          name="AssessmentSummaryReport"
+          component={AssessmentSummaryReportScreen as never}
+        />
+      </Stack.Navigator>
+    </ErrorBoundary>
   );
 }

@@ -1,7 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Dimensions,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -80,14 +88,28 @@ function getCountdown(startTimeStr?: string, current: Date = new Date()): string
     if (period === 'PM' && hours < 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
 
-    target = new Date(current.getFullYear(), current.getMonth(), current.getDate(), hours, minutes, seconds);
+    target = new Date(
+      current.getFullYear(),
+      current.getMonth(),
+      current.getDate(),
+      hours,
+      minutes,
+      seconds,
+    );
   } else {
     const time24Match = startTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
     if (time24Match) {
       const hours = parseInt(time24Match[1], 10);
       const minutes = parseInt(time24Match[2], 10);
       const seconds = time24Match[3] ? parseInt(time24Match[3], 10) : 0;
-      target = new Date(current.getFullYear(), current.getMonth(), current.getDate(), hours, minutes, seconds);
+      target = new Date(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate(),
+        hours,
+        minutes,
+        seconds,
+      );
     } else {
       const parsed = new Date(startTimeStr);
       if (!isNaN(parsed.getTime())) {
@@ -123,114 +145,258 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   const [loadError, setLoadError] = useState(false);
   const [now, setNow] = useState(new Date());
 
-const load = useCallback(async () => {
-     try {
-       const { data: res } = await getTeacherDashboard();
-       setData(res);
-       setLoadError(false);
-     } catch (err) {
-       setLoadError(true);
-     }
-   }, []);
+  const load = useCallback(async () => {
+    try {
+      const { data: res } = await getTeacherDashboard();
+      setData(res);
+      setLoadError(false);
+    } catch (err) {
+      setLoadError(true);
+    }
+  }, []);
 
-   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-   useEffect(() => {
-     const timer = setInterval(() => setNow(new Date()), 1000);
-     return () => clearInterval(timer);
-   }, []);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-   const handleStartSession = () => navigation?.navigate?.('SessionDataCollection');
+  const handleStartSession = () => navigation?.navigate?.('SessionDataCollection');
 
-   if (loadError) return <ScreenError onRetry={load} />;
-   if (!data) return <ScreenLoader />;
+  if (loadError) return <ScreenError onRetry={load} />;
+  if (!data) return <ScreenLoader />;
 
-   const hasData = data.todaySchedule.students.length > 0 || data.assessmentTasks.length > 0 || data.pendingMasteryChecks.length > 0 || data.notifications.length > 0;
+  const hasData =
+    (data?.todaySchedule?.students?.length ?? 0) > 0 ||
+    (data?.assessmentTasks?.length ?? 0) > 0 ||
+    (data?.pendingMasteryChecks?.length ?? 0) > 0 ||
+    (data?.notifications?.length ?? 0) > 0;
 
-   if (!hasData) {
-     return (
-       <SafeAreaView style={styles.safe}>
-         <AppNavbar activeTab="Dashboard" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
-         <View style={styles.emptyContainer}>
-           <Text style={styles.emptyText}>No data available. Start a session to see dashboard information.</Text>
-         </View>
-       </SafeAreaView>
-     );
-   }
+  if (
+    !hasData &&
+    session?.role !== 'therapist' &&
+    (!session?.modules || session.modules.length === 0)
+  ) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar
+          activeTab="Dashboard"
+          onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+        />
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>
+            No data available. Start a session to see dashboard information.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const dateStr = now.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
-   return (
+  return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Dashboard" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Dashboard"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={typography.h1}>Good Morning, {session?.userName || 'Teacher A'}!</Text>
-            <Text style={typography.body}>{dateStr}</Text>
+            <Text style={typography.h1}>
+              Good Morning,{' '}
+              {session?.userName || (session?.role === 'therapist' ? 'Therapist' : 'Teacher A')}!
+            </Text>
+            <Text style={typography.body}>
+              {dateStr} · {session?.role === 'therapist' ? 'Therapist' : 'Teacher'} Workspace
+            </Text>
           </View>
           <View style={styles.clockPill}>
-            <Feather name="clock" size={14} color={colors.mutedText} style={{ marginRight: spacing.xs }} />
+            <Feather
+              name="clock"
+              size={14}
+              color={colors.mutedText}
+              style={{ marginRight: spacing.xs }}
+            />
             <Text style={styles.clockText}>{timeStr}</Text>
           </View>
         </View>
 
-        {/* TOP SECTION: Today's Schedule + Quick Actions Side-by-Side */}
+        {/* TOP SECTION: Today's Schedule or Role Workspace + Quick Actions */}
         <View style={styles.topSectionRow}>
           <View style={[styles.card, styles.flexColumn]}>
-            <View style={styles.cardHeaderRow}>
-              <Feather name="calendar" size={18} color={colors.statusInProgressText} />
-              <Text style={typography.h3}>Today's Schedule</Text>
-            </View>
-            <View style={styles.scheduleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.bodyBold}>{data.todaySchedule.stationName}</Text>
-                <Text style={typography.caption}>{data.todaySchedule.roomName}</Text>
-              </View>
-              <View style={styles.startsInPill}>
-                <Text style={styles.startsInText}>{getCountdown(data.todaySchedule.startTime, now)}</Text>
-              </View>
-            </View>
-            <View style={styles.timeRow}>
-              <Feather name="clock" size={14} color={colors.mutedText} />
-              <Text style={typography.body}>{data.todaySchedule.startTime} – {data.todaySchedule.endTime}</Text>
-            </View>
-            <Text style={typography.label}>ASSIGNED STUDENTS</Text>
-            <View style={styles.studentChipsRow}>
-              {data.todaySchedule.students.map((s) => (
-                <View key={s.id} style={styles.studentChip}>
-                  <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{s.initial}</Text></View>
-                  <Text style={styles.studentChipText}>{s.name}</Text>
+            {data.todaySchedule && data.todaySchedule.students.length > 0 ? (
+              <>
+                <View style={styles.cardHeaderRow}>
+                  <Feather name="calendar" size={18} color={colors.statusInProgressText} />
+                  <Text style={typography.h3}>Today's Schedule</Text>
                 </View>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.startSessionBtn} onPress={handleStartSession} activeOpacity={0.8}>
-              <Feather name="play" size={16} color={colors.navyText} />
-              <Text style={styles.startSessionBtnText}>Start Session</Text>
-            </TouchableOpacity>
+                <View style={styles.scheduleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={typography.bodyBold}>{data.todaySchedule.stationName}</Text>
+                    <Text style={typography.caption}>{data.todaySchedule.roomName}</Text>
+                  </View>
+                  <View style={styles.startsInPill}>
+                    <Text style={styles.startsInText}>
+                      {getCountdown(data.todaySchedule.startTime, now)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.timeRow}>
+                  <Feather name="clock" size={14} color={colors.mutedText} />
+                  <Text style={typography.body}>
+                    {data.todaySchedule.startTime} – {data.todaySchedule.endTime}
+                  </Text>
+                </View>
+                <Text style={typography.label}>ASSIGNED STUDENTS</Text>
+                <View style={styles.studentChipsRow}>
+                  {data.todaySchedule.students.map((s) => (
+                    <View key={s.id} style={styles.studentChip}>
+                      <View style={styles.studentAvatar}>
+                        <Text style={styles.studentAvatarText}>{s.initial}</Text>
+                      </View>
+                      <Text style={styles.studentChipText}>{s.name}</Text>
+                    </View>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={styles.startSessionBtn}
+                  onPress={handleStartSession}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="play" size={16} color={colors.navyText} />
+                  <Text style={styles.startSessionBtnText}>Start Session</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.cardHeaderRow}>
+                  <Feather name="user-check" size={18} color={colors.statusInProgressText} />
+                  <Text style={typography.h3}>
+                    {session?.role === 'therapist' ? 'Therapist Workspace' : 'Clinical Workspace'}
+                  </Text>
+                </View>
+                <View style={{ marginVertical: spacing.sm, gap: 4 }}>
+                  <Text style={typography.bodyBold}>
+                    Role: {session?.role === 'therapist' ? 'Therapist' : 'Clinical Staff'}
+                  </Text>
+                  <Text style={typography.caption}>
+                    {session?.modules && session.modules.length > 0
+                      ? `Active Modules: ${session.modules.map((m) => m.toUpperCase()).join(', ')}`
+                      : 'Clinical Role'}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    typography.caption,
+                    { color: colors.mutedText, marginBottom: spacing.md },
+                  ]}
+                >
+                  Your visible pages and actions are managed by the Permission Configuration. Select
+                  a clinical module to begin.
+                </Text>
+                {!session?.modules || session.modules.includes('iups') ? (
+                  <TouchableOpacity
+                    style={styles.startSessionBtn}
+                    onPress={() => navigation?.navigate?.('IupGeneration' as never)}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="file-text" size={16} color={colors.navyText} />
+                    <Text style={styles.startSessionBtnText}>Manage IUPs & Goals</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.startSessionBtn}
+                    onPress={handleStartSession}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="play" size={16} color={colors.navyText} />
+                    <Text style={styles.startSessionBtnText}>Open Therapy Workspace</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
 
           <View style={styles.flexColumn}>
             <Text style={[typography.label, styles.sectionLabel]}>QUICK ACTIONS</Text>
             <View style={styles.quickActionsGrid}>
-              <TouchableOpacity style={styles.quickActionCard} onPress={handleStartSession} activeOpacity={0.7}>
-                <Feather name="play" size={22} color={colors.primaryYellowDark} />
-                <Text style={styles.quickActionText}>Start Session</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionCard} onPress={() => navigation?.navigate?.('AssessmentDashboard')} activeOpacity={0.7}>
-                <Feather name="clipboard" size={22} color={colors.statusInProgressText} />
-                <Text style={styles.quickActionText}>Assessments</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionCard} onPress={() => navigation?.navigate?.('SessionDataCollection')} activeOpacity={0.7}>
-                <Feather name="award" size={22} color="#8B5CF6" />
-                <Text style={styles.quickActionText}>Mastery Checks</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionCard} onPress={() => handleTeacherTabPress(navigation, 'Parents')} activeOpacity={0.7}>
-                <Feather name="message-circle" size={22} color="#22C55E" />
-                <Text style={styles.quickActionText}>Parent Communication</Text>
-              </TouchableOpacity>
+              {(!session?.modules || session.modules.includes('sessions')) && (
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={handleStartSession}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="play" size={22} color={colors.primaryYellowDark} />
+                  <Text style={styles.quickActionText}>Start Session</Text>
+                </TouchableOpacity>
+              )}
+              {(!session?.modules || session.modules.includes('assessments')) && (
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => navigation?.navigate?.('AssessmentDashboard')}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="clipboard" size={22} color={colors.statusInProgressText} />
+                  <Text style={styles.quickActionText}>Assessments</Text>
+                </TouchableOpacity>
+              )}
+              {(!session?.modules || session.modules.includes('iups')) && (
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => navigation?.navigate?.('IupGeneration' as never)}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="file-text" size={22} color="#0284C7" />
+                  <Text style={styles.quickActionText}>IUP & Goals</Text>
+                </TouchableOpacity>
+              )}
+              {(!session?.modules ||
+                session.modules.includes('iups') ||
+                session.modules.includes('sessions')) && (
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => navigation?.navigate?.('SessionDataCollection')}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="award" size={22} color="#8B5CF6" />
+                  <Text style={styles.quickActionText}>Mastery Checks</Text>
+                </TouchableOpacity>
+              )}
+              {(!session?.modules || session.modules.includes('parent_portal')) && (
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => handleTeacherTabPress(navigation, 'Parents')}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="message-circle" size={22} color="#22C55E" />
+                  <Text style={styles.quickActionText}>Parent Communication</Text>
+                </TouchableOpacity>
+              )}
+              {session?.modules?.includes('behavior_incidents') && (
+                <TouchableOpacity
+                  style={styles.quickActionCard}
+                  onPress={() => navigation?.navigate?.('AbcLog')}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="activity" size={22} color="#DC2626" />
+                  <Text style={styles.quickActionText}>ABC Log</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -244,27 +410,50 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
                 <Feather name="clipboard" size={18} color={colors.statusInProgressText} />
                 <Text style={typography.h3}>Assessment Tasks</Text>
               </View>
-              <View style={styles.reviewPill}><Text style={styles.reviewPillText}>6-Week Review</Text></View>
+              <View style={styles.reviewPill}>
+                <Text style={styles.reviewPillText}>6-Week Review</Text>
+              </View>
             </View>
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               {data.assessmentTasks.map((t) => (
                 <View key={t.id} style={styles.taskRow}>
                   <View style={styles.taskHeaderRow}>
-                    <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{t.studentInitial}</Text></View>
+                    <View style={styles.studentAvatar}>
+                      <Text style={styles.studentAvatarText}>{t.studentInitial}</Text>
+                    </View>
                     <View style={{ flex: 1 }}>
                       <Text style={typography.bodyBold}>{t.studentName}</Text>
                       <Text style={typography.caption}>{t.assessmentName}</Text>
                     </View>
-                    <View style={[styles.statusBadge, t.status === 'In Progress' ? styles.statusBadgeProgress : styles.statusBadgeNotStarted]}>
-                      <Text style={[styles.statusBadgeText, t.status === 'In Progress' && { color: colors.statusInProgressText }]}>{t.status}</Text>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        t.status === 'In Progress'
+                          ? styles.statusBadgeProgress
+                          : styles.statusBadgeNotStarted,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusBadgeText,
+                          t.status === 'In Progress' && { color: colors.statusInProgressText },
+                        ]}
+                      >
+                        {t.status}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.progressRow}>
                     <Text style={typography.caption}>Progress</Text>
                     <Text style={typography.caption}>{t.progress}%</Text>
                   </View>
-                  <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${t.progress}%` }]} /></View>
-                  <TouchableOpacity style={styles.touchableLink} onPress={() => navigation?.navigate?.('AssessmentDashboard')}>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${t.progress}%` }]} />
+                  </View>
+                  <TouchableOpacity
+                    style={styles.touchableLink}
+                    onPress={() => navigation?.navigate?.('AssessmentDashboard')}
+                  >
                     <Text style={styles.linkText}>Continue ›</Text>
                   </TouchableOpacity>
                 </View>
@@ -279,7 +468,9 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
                 <Feather name="award" size={18} color="#8B5CF6" />
                 <Text style={typography.h3}>Pending Mastery Checks</Text>
               </View>
-              <View style={styles.readyPill}><Text style={styles.readyPillText}>{data.pendingMasteryChecks.length} Ready</Text></View>
+              <View style={styles.readyPill}>
+                <Text style={styles.readyPillText}>{data.pendingMasteryChecks.length} Ready</Text>
+              </View>
             </View>
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               {data.pendingMasteryChecks.map((m) => (
@@ -287,11 +478,31 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
                   <View style={{ flex: 1 }}>
                     <Text style={typography.bodyBold}>{m.goalName}</Text>
                     <Text style={typography.caption}>• {m.studentName}</Text>
-                    <View style={[styles.pendingTag, m.pendingLabel.includes('Director') && styles.pendingTagDirector]}>
-                      <Text style={[styles.pendingTagText, m.pendingLabel.includes('Director') && { color: '#8B5CF6' }]}>{m.pendingLabel}</Text>
+                    <View
+                      style={[
+                        styles.pendingTag,
+                        m.pendingLabel.includes('Director') && styles.pendingTagDirector,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.pendingTagText,
+                          m.pendingLabel.includes('Director') && { color: '#8B5CF6' },
+                        ]}
+                      >
+                        {m.pendingLabel}
+                      </Text>
                     </View>
                   </View>
-                  <TouchableOpacity style={styles.reviewBtn} onPress={() => navigation?.navigate?.('GoalMasteryCheck', { studentId: m.studentId, goalId: m.goalId })}>
+                  <TouchableOpacity
+                    style={styles.reviewBtn}
+                    onPress={() =>
+                      navigation?.navigate?.('GoalMasteryCheck', {
+                        studentId: m.studentId,
+                        goalId: m.goalId,
+                      })
+                    }
+                  >
                     <Text style={styles.reviewBtnText}>Review</Text>
                   </TouchableOpacity>
                 </View>
@@ -302,12 +513,17 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
           {/* Card 3: Notifications */}
           <View style={[styles.card, styles.threeCardItem, styles.fixedBottomCard]}>
             <View style={styles.cardHeaderRowBetween}>
-              <TouchableOpacity style={styles.cardHeaderRow} onPress={() => navigation?.navigate?.('Notifications')}>
+              <TouchableOpacity
+                style={styles.cardHeaderRow}
+                onPress={() => navigation?.navigate?.('Notifications')}
+              >
                 <Feather name="bell" size={18} color="#EAB308" />
                 <Text style={typography.h3}>Notifications</Text>
               </TouchableOpacity>
               <View style={styles.unreadPill}>
-                <Text style={styles.unreadPillText}>{data.notifications.filter((n) => n.unread).length} Unread</Text>
+                <Text style={styles.unreadPillText}>
+                  {data.notifications.filter((n) => n.unread).length} Unread
+                </Text>
               </View>
             </View>
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
@@ -315,10 +531,17 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
                 const icon = NOTIF_ICON[n.type] || NOTIF_ICON.alert;
                 return (
                   <View key={n.id} style={styles.notifRow}>
-                    <Feather name={icon.name} size={16} color={icon.color} style={{ marginTop: 2 }} />
+                    <Feather
+                      name={icon.name}
+                      size={16}
+                      color={icon.color}
+                      style={{ marginTop: 2 }}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={typography.bodyBold}>{n.title}</Text>
-                      <Text style={typography.caption}>{n.source} · {n.timeAgo}</Text>
+                      <Text style={typography.caption}>
+                        {n.source} · {n.timeAgo}
+                      </Text>
                     </View>
                     {n.unread && <View style={styles.unreadDot} />}
                   </View>
@@ -334,41 +557,123 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: spacing.md, gap: spacing.md, maxWidth: 1280, alignSelf: 'center', width: '100%' },
+  content: {
+    padding: spacing.md,
+    gap: spacing.md,
+    maxWidth: 1280,
+    alignSelf: 'center',
+    width: '100%',
+  },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  clockPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  clockPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
   clockText: { fontWeight: '700', color: colors.navyText, fontVariant: ['tabular-nums'] },
-  
+
   topSectionRow: { flexDirection: 'row', gap: spacing.md, width: '100%' },
   flexColumn: { flex: 1 },
   threeCardsRow: { flexDirection: 'row', gap: spacing.md, width: '100%' },
   threeCardItem: { flex: 1 },
 
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+  },
   fixedBottomCard: { height: 310 }, // Enforces equal height across bottom cards on tablets
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  cardHeaderRowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  
+  cardHeaderRowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+
   scrollArea: { flex: 1 },
 
-  scheduleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: spacing.xs },
-  startsInPill: { backgroundColor: '#E0F2FE', paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+  scheduleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginTop: spacing.xs,
+  },
+  startsInPill: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
   startsInText: { fontSize: 12, fontWeight: '600', color: '#0284C7' },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginVertical: spacing.xs },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginVertical: spacing.xs,
+  },
   studentChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  studentChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: '#F1F5F9', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 4 },
-  studentAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#38BDF8', alignItems: 'center', justifyContent: 'center' },
+  studentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: '#F1F5F9',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  studentAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   studentAvatarText: { color: colors.white, fontWeight: '700', fontSize: 11 },
   studentChipText: { fontWeight: '600', color: colors.navyText, fontSize: 12 },
-  startSessionBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FACC15', borderRadius: radius.md, paddingVertical: 12, marginTop: spacing.sm },
+  startSessionBtn: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FACC15',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    marginTop: spacing.sm,
+  },
   startSessionBtnText: { fontWeight: '700', color: '#1E293B', fontSize: 14 },
 
   sectionLabel: { color: '#64748B', fontSize: 12, fontWeight: '700', marginBottom: spacing.xs },
   quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  quickActionCard: { width: '48.5%', backgroundColor: colors.bgCard, borderRadius: radius.md, paddingVertical: 18, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
+  quickActionCard: {
+    width: '48.5%',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
   quickActionText: { fontSize: 13, fontWeight: '600', color: '#334155', textAlign: 'center' },
 
-  reviewPill: { backgroundColor: '#FEF3C7', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
+  reviewPill: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
   reviewPillText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
   taskRow: { paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 2 },
   taskHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -377,24 +682,67 @@ const styles = StyleSheet.create({
   statusBadgeNotStarted: { backgroundColor: '#F1F5F9' },
   statusBadgeText: { fontSize: 11, fontWeight: '600', color: '#64748B' },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  progressTrack: { height: 6, borderRadius: radius.pill, backgroundColor: '#F1F5F9', overflow: 'hidden' },
+  progressTrack: {
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: '#F1F5F9',
+    overflow: 'hidden',
+  },
   progressFill: { height: '100%', backgroundColor: '#38BDF8' },
   touchableLink: { paddingVertical: 4 },
   linkText: { color: '#0284C7', fontWeight: '600', fontSize: 13 },
 
-  readyPill: { backgroundColor: '#F3E8FF', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
+  readyPill: {
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
   readyPillText: { fontSize: 11, fontWeight: '700', color: '#9333EA' },
-  masteryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  pendingTag: { alignSelf: 'flex-start', backgroundColor: '#FFEDD5', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, marginTop: 2 },
+  masteryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  pendingTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFEDD5',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    marginTop: 2,
+  },
   pendingTagDirector: { backgroundColor: '#F3E8FF' },
   pendingTagText: { fontSize: 10, fontWeight: '700', color: '#C2410C' },
-  reviewBtn: { backgroundColor: '#334155', borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 8, minHeight: 36, justifyContent: 'center' },
+  reviewBtn: {
+    backgroundColor: '#334155',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
   reviewBtnText: { color: colors.white, fontWeight: '600', fontSize: 12 },
 
-unreadPill: { backgroundColor: '#FEE2E2', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
-   unreadPillText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
-   notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0EA5E9', marginTop: 4 },
-   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
-   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
- });
+  unreadPill: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  unreadPillText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0EA5E9', marginTop: 4 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+  emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+});

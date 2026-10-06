@@ -19,12 +19,7 @@ import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import IconButton from '../../components/IconButton';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import {
-  getRoles,
-  createRole,
-  updateRole,
-  deleteRole,
-} from '../../api/SystemAdminApi';
+import { getRoles, createRole, updateRole, deleteRole } from '../../api/SystemAdminApi';
 
 type Props = NativeStackScreenProps<SystemAdminStackParamList, 'RoleManagement'>;
 
@@ -56,34 +51,15 @@ function toRow(role: RoleRecord): RoleRow {
   };
 }
 
-function Badge({
-  children,
-  system,
-}: {
-  children: React.ReactNode;
-  system?: boolean;
-}) {
+function Badge({ children, system }: { children: React.ReactNode; system?: boolean }) {
   return (
-    <View
-      style={[
-        styles.badge,
-        system ? styles.badgeSystem : styles.badgeCustom,
-      ]}
-    >
-      <Text
-        style={
-          system ? styles.badgeSystemText : styles.badgeCustomText
-        }
-      >
-        {children}
-      </Text>
+    <View style={[styles.badge, system ? styles.badgeSystem : styles.badgeCustom]}>
+      <Text style={system ? styles.badgeSystemText : styles.badgeCustomText}>{children}</Text>
     </View>
   );
 }
 
-export default function RoleManagementScreen({
-  navigation,
-}: Props) {
+export default function RoleManagementScreen({ navigation }: Props) {
   const { showToast } = useToast();
 
   const [roles, setRoles] = useState<RoleRow[]>([]);
@@ -108,21 +84,14 @@ export default function RoleManagementScreen({
     try {
       const { data } = await getRoles();
 
-      const rawRoles = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.roles)
-          ? data.roles
-          : [];
+      const rawRoles = Array.isArray(data) ? data : Array.isArray(data?.roles) ? data.roles : [];
 
       const list = rawRoles as RoleRecord[];
 
       setRoles(list.map(toRow));
     } catch {
       setRoles([]);
-      showToast(
-        'Could not load roles. Check your connection and try again.',
-        'error',
-      );
+      showToast('Could not load roles. Check your connection and try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -148,9 +117,7 @@ export default function RoleManagementScreen({
 
       const updated = toRow(data as RoleRecord);
 
-      setRoles((rs) =>
-        rs.map((r) => (r.id === id ? updated : r)),
-      );
+      setRoles((rs) => rs.map((r) => (r.id === id ? updated : r)));
 
       setEditingRole(null);
 
@@ -176,10 +143,7 @@ export default function RoleManagementScreen({
         description: newRole.description.trim(),
       });
 
-      setRoles((rs) => [
-        ...rs,
-        toRow(data as RoleRecord),
-      ]);
+      setRoles((rs) => [...rs, toRow(data as RoleRecord)]);
 
       setNewRole({
         name: '',
@@ -212,10 +176,7 @@ export default function RoleManagementScreen({
     }
   };
 
-  const renderRowActions = (
-    role: RoleRow,
-    busy: boolean,
-  ) => (
+  const renderRowActions = (role: RoleRow, busy: boolean) => (
     <View style={styles.actionsCell}>
       <IconButton
         onPress={() => {
@@ -228,11 +189,15 @@ export default function RoleManagementScreen({
         disabled={busy}
         label={`Edit ${role.name}`}
       >
-        <Feather
-          name="edit-2"
-          size={16}
-          color={colors.primaryBlue}
-        />
+        <Feather name="edit-2" size={16} color={colors.primaryBlue} />
+      </IconButton>
+
+      <IconButton
+        onPress={() => navigation?.navigate?.('PermissionConfiguration')}
+        disabled={busy}
+        label={`Configure permissions for ${role.name}`}
+      >
+        <Feather name="shield" size={16} color="#0284C7" />
       </IconButton>
 
       {!role.system && (
@@ -241,11 +206,7 @@ export default function RoleManagementScreen({
           disabled={busy}
           label={`Delete ${role.name}`}
         >
-          <Feather
-            name="trash-2"
-            size={16}
-            color={colors.statusRevisionText}
-          />
+          <Feather name="trash-2" size={16} color={colors.statusRevisionText} />
         </IconButton>
       )}
     </View>
@@ -254,9 +215,7 @@ export default function RoleManagementScreen({
   const navbar = (
     <AppNavbar
       activeTab="Role Management"
-      onTabPress={(tab) =>
-        navigation?.navigate?.(SYS_ROUTE_BY_TAB[tab])
-      }
+      onTabPress={(tab) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[tab])}
     />
   );
 
@@ -265,10 +224,7 @@ export default function RoleManagementScreen({
   // can confirm what is actually stored.
   const handleRefresh = async () => {
     await load();
-    showToast(
-      'Role list refreshed from the server.',
-      'success',
-    );
+    showToast('Role list refreshed from the server.', 'success');
   };
 
   if (loading) {
@@ -289,8 +245,7 @@ export default function RoleManagementScreen({
           <Text style={typography.h2}>Role Management</Text>
 
           <Text style={typography.caption}>
-            SCR-SYS-002 • Configure staff roles and their
-            descriptions
+            SCR-SYS-002 • Configure staff roles and their descriptions
           </Text>
         </View>
 
@@ -298,81 +253,45 @@ export default function RoleManagementScreen({
           <View style={styles.cardHeader}>
             <Text style={typography.bodyBold}>Roles</Text>
 
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => setAddingRole(true)}
-              accessibilityRole="button"
-              disabled={addingRole}
-            >
-              <Feather
-                name="plus"
-                size={14}
-                color={colors.primaryBlue}
-              />
+            <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+              <TouchableOpacity
+                style={[styles.addBtn, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}
+                onPress={() => navigation?.navigate?.('PermissionConfiguration')}
+                accessibilityRole="button"
+              >
+                <Feather name="shield" size={14} color="#0284C7" />
+                <Text style={[styles.addBtnText, { color: '#0284C7' }]}>Configure Permissions</Text>
+              </TouchableOpacity>
 
-              <Text style={styles.addBtnText}>
-                Add Role
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={() => setAddingRole(true)}
+                accessibilityRole="button"
+                disabled={addingRole}
+              >
+                <Feather name="plus" size={14} color={colors.primaryBlue} />
+
+                <Text style={styles.addBtnText}>Add Role</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.table}>
             <View style={styles.tableHeader}>
-              <Text
-                style={[
-                  styles.headerText,
-                  styles.colName,
-                ]}
-              >
-                Role Name
-              </Text>
+              <Text style={[styles.headerText, styles.colName]}>Role Name</Text>
 
-              <Text
-                style={[
-                  styles.headerText,
-                  styles.colDescription,
-                ]}
-              >
-                Description
-              </Text>
+              <Text style={[styles.headerText, styles.colDescription]}>Description</Text>
 
-              <Text
-                style={[
-                  styles.headerText,
-                  styles.colCount,
-                ]}
-              >
-                Staff Count
-              </Text>
+              <Text style={[styles.headerText, styles.colCount]}>Staff Count</Text>
 
-              <Text
-                style={[
-                  styles.headerText,
-                  styles.colType,
-                ]}
-              >
-                Type
-              </Text>
+              <Text style={[styles.headerText, styles.colType]}>Type</Text>
 
-              <Text
-                style={[
-                  styles.headerText,
-                  styles.colActions,
-                ]}
-              >
-                Actions
-              </Text>
+              <Text style={[styles.headerText, styles.colActions]}>Actions</Text>
             </View>
 
             {roles.length === 0 && !addingRole && (
               <View style={styles.tableRow}>
-                <Text
-                  style={[
-                    styles.cellText,
-                    styles.colFull,
-                    { textAlign: 'center' },
-                  ]}
-                >
+                <Text style={[styles.cellText, styles.colFull, { textAlign: 'center' }]}>
                   No roles found.
                 </Text>
               </View>
@@ -380,19 +299,8 @@ export default function RoleManagementScreen({
 
             {roles.map((role) =>
               editingRole === role.id ? (
-                <View
-                  key={role.id}
-                  style={[
-                    styles.tableRow,
-                    styles.addingRow,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.colName,
-                      styles.inputCell,
-                    ]}
-                  >
+                <View key={role.id} style={[styles.tableRow, styles.addingRow]}>
+                  <View style={[styles.colName, styles.inputCell]}>
                     <TextInput
                       style={styles.input}
                       value={editForm.name}
@@ -403,19 +311,12 @@ export default function RoleManagementScreen({
                         }))
                       }
                       placeholder="Role name"
-                      placeholderTextColor={
-                        colors.mutedText
-                      }
+                      placeholderTextColor={colors.mutedText}
                       autoFocus
                     />
                   </View>
 
-                  <View
-                    style={[
-                      styles.colDescription,
-                      styles.inputCell,
-                    ]}
-                  >
+                  <View style={[styles.colDescription, styles.inputCell]}>
                     <TextInput
                       style={styles.input}
                       value={editForm.description}
@@ -426,31 +327,16 @@ export default function RoleManagementScreen({
                         }))
                       }
                       placeholder="Description"
-                      placeholderTextColor={
-                        colors.mutedText
-                      }
+                      placeholderTextColor={colors.mutedText}
                     />
                   </View>
 
-                  <Text
-                    style={[
-                      styles.cellText,
-                      styles.colCount,
-                      { textAlign: 'center' },
-                    ]}
-                  >
+                  <Text style={[styles.cellText, styles.colCount, { textAlign: 'center' }]}>
                     {role.count}
                   </Text>
 
-                  <View
-                    style={[
-                      styles.colType,
-                      styles.centerCell,
-                    ]}
-                  >
-                    <Badge system={role.system}>
-                      {role.system ? 'System' : 'Custom'}
-                    </Badge>
+                  <View style={[styles.colType, styles.centerCell]}>
+                    <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
                   </View>
 
                   <View style={styles.actionsCell}>
@@ -460,104 +346,45 @@ export default function RoleManagementScreen({
                       label={`Save ${role.name}`}
                     >
                       {busyId === role.id ? (
-                        <ActivityIndicator
-                          size="small"
-                          color={colors.statusApprovedText}
-                        />
+                        <ActivityIndicator size="small" color={colors.statusApprovedText} />
                       ) : (
-                        <Feather
-                          name="check"
-                          size={18}
-                          color={
-                            colors.statusApprovedText
-                          }
-                        />
+                        <Feather name="check" size={18} color={colors.statusApprovedText} />
                       )}
                     </IconButton>
 
                     <IconButton
-                      onPress={() =>
-                        setEditingRole(null)
-                      }
+                      onPress={() => setEditingRole(null)}
                       disabled={busyId === role.id}
                       label="Cancel editing role"
                     >
-                      <Feather
-                        name="x"
-                        size={18}
-                        color={
-                          colors.statusRevisionText
-                        }
-                      />
+                      <Feather name="x" size={18} color={colors.statusRevisionText} />
                     </IconButton>
                   </View>
                 </View>
               ) : (
-                <View
-                  key={role.id}
-                  style={styles.tableRow}
-                >
-                  <Text
-                    style={[
-                      styles.cellTextBold,
-                      styles.colName,
-                    ]}
-                  >
-                    {role.name}
-                  </Text>
+                <View key={role.id} style={styles.tableRow}>
+                  <Text style={[styles.cellTextBold, styles.colName]}>{role.name}</Text>
 
-                  <Text
-                    style={[
-                      styles.cellText,
-                      styles.colDescription,
-                    ]}
-                    numberOfLines={2}
-                  >
+                  <Text style={[styles.cellText, styles.colDescription]} numberOfLines={2}>
                     {role.description}
                   </Text>
 
-                  <Text
-                    style={[
-                      styles.cellText,
-                      styles.colCount,
-                      { textAlign: 'center' },
-                    ]}
-                  >
+                  <Text style={[styles.cellText, styles.colCount, { textAlign: 'center' }]}>
                     {role.count}
                   </Text>
 
-                  <View
-                    style={[
-                      styles.colType,
-                      styles.centerCell,
-                    ]}
-                  >
-                    <Badge system={role.system}>
-                      {role.system ? 'System' : 'Custom'}
-                    </Badge>
+                  <View style={[styles.colType, styles.centerCell]}>
+                    <Badge system={role.system}>{role.system ? 'System' : 'Custom'}</Badge>
                   </View>
 
-                  {renderRowActions(
-                    role,
-                    busyId === role.id,
-                  )}
+                  {renderRowActions(role, busyId === role.id)}
                 </View>
               ),
             )}
 
             {addingRole && (
-              <View
-                style={[
-                  styles.tableRow,
-                  styles.addingRow,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.colName,
-                    styles.inputCell,
-                  ]}
-                >
+              <View style={[styles.tableRow, styles.addingRow]}>
+                <View style={[styles.colName, styles.inputCell]}>
                   <TextInput
                     style={styles.input}
                     value={newRole.name}
@@ -568,19 +395,12 @@ export default function RoleManagementScreen({
                       }))
                     }
                     placeholder="Role name"
-                    placeholderTextColor={
-                      colors.mutedText
-                    }
+                    placeholderTextColor={colors.mutedText}
                     autoFocus
                   />
                 </View>
 
-                <View
-                  style={[
-                    styles.colDescription,
-                    styles.inputCell,
-                  ]}
-                >
+                <View style={[styles.colDescription, styles.inputCell]}>
                   <TextInput
                     style={styles.input}
                     value={newRole.description}
@@ -591,52 +411,22 @@ export default function RoleManagementScreen({
                       }))
                     }
                     placeholder="Description"
-                    placeholderTextColor={
-                      colors.mutedText
-                    }
+                    placeholderTextColor={colors.mutedText}
                   />
                 </View>
 
-                <Text
-                  style={[
-                    styles.cellText,
-                    styles.colCount,
-                    { textAlign: 'center' },
-                  ]}
-                >
-                  0
-                </Text>
+                <Text style={[styles.cellText, styles.colCount, { textAlign: 'center' }]}>0</Text>
 
-                <View
-                  style={[
-                    styles.colType,
-                    styles.centerCell,
-                  ]}
-                >
+                <View style={[styles.colType, styles.centerCell]}>
                   <Badge>Custom</Badge>
                 </View>
 
                 <View style={styles.actionsCell}>
-                  <IconButton
-                    onPress={addRole}
-                    disabled={busyId === 'new'}
-                    label="Save new role"
-                  >
+                  <IconButton onPress={addRole} disabled={busyId === 'new'} label="Save new role">
                     {busyId === 'new' ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={
-                          colors.statusApprovedText
-                        }
-                      />
+                      <ActivityIndicator size="small" color={colors.statusApprovedText} />
                     ) : (
-                      <Feather
-                        name="check"
-                        size={18}
-                        color={
-                          colors.statusApprovedText
-                        }
-                      />
+                      <Feather name="check" size={18} color={colors.statusApprovedText} />
                     )}
                   </IconButton>
 
@@ -651,13 +441,7 @@ export default function RoleManagementScreen({
                     disabled={busyId === 'new'}
                     label="Cancel adding role"
                   >
-                    <Feather
-                      name="x"
-                      size={18}
-                      color={
-                        colors.statusRevisionText
-                      }
-                    />
+                    <Feather name="x" size={18} color={colors.statusRevisionText} />
                   </IconButton>
                 </View>
               </View>
@@ -671,15 +455,9 @@ export default function RoleManagementScreen({
           disabled={loading}
           accessibilityRole="button"
         >
-          <Feather
-            name="save"
-            size={16}
-            color={colors.navyText}
-          />
+          <Feather name="save" size={16} color={colors.navyText} />
 
-          <Text style={styles.saveMainBtnText}>
-            Save Changes
-          </Text>
+          <Text style={styles.saveMainBtnText}>Save Changes</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

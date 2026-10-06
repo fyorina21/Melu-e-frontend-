@@ -81,14 +81,32 @@ const LIKERT_SCORE: Record<string, number> = {
 };
 
 const MASS_FUNCTIONS: Record<string, 'Sensory' | 'Escape' | 'Attention' | 'Tangible'> = {
-  M1: 'Sensory', M2: 'Escape', M3: 'Attention', M4: 'Tangible',
-  M5: 'Sensory', M6: 'Escape', M7: 'Attention', M8: 'Tangible',
-  M9: 'Escape', M10: 'Sensory', M11: 'Attention', M12: 'Tangible',
+  M1: 'Sensory',
+  M2: 'Escape',
+  M3: 'Attention',
+  M4: 'Tangible',
+  M5: 'Sensory',
+  M6: 'Escape',
+  M7: 'Attention',
+  M8: 'Tangible',
+  M9: 'Escape',
+  M10: 'Sensory',
+  M11: 'Attention',
+  M12: 'Tangible',
 };
 
-const FAST_CATEGORIES: Record<string, 'Social - Positive' | 'Social - Negative' | 'Automatic - Positive' | 'Automatic - Negative'> = {
-  F1: 'Social - Positive', F2: 'Social - Negative', F3: 'Automatic - Positive', F4: 'Automatic - Negative',
-  F5: 'Automatic - Positive', F6: 'Social - Negative', F7: 'Social - Positive', F8: 'Social - Positive',
+const FAST_CATEGORIES: Record<
+  string,
+  'Social - Positive' | 'Social - Negative' | 'Automatic - Positive' | 'Automatic - Negative'
+> = {
+  F1: 'Social - Positive',
+  F2: 'Social - Negative',
+  F3: 'Automatic - Positive',
+  F4: 'Automatic - Negative',
+  F5: 'Automatic - Positive',
+  F6: 'Social - Negative',
+  F7: 'Social - Positive',
+  F8: 'Social - Positive',
 };
 
 // True only when the shared record actually holds data worth showing.
@@ -98,7 +116,12 @@ function hasBehaviorData(a: BehaviorAssessmentData | null): boolean {
     Object.keys(a.massAnswers ?? {}).some((k) => !!a.massAnswers?.[k]) ||
     Object.keys(a.fastAnswers ?? {}).some((k) => a.fastAnswers?.[k] !== undefined) ||
     (a.records?.length ?? 0) > 0 ||
-    Boolean(a.draftRecord && (a.draftRecord.frequency?.trim() || a.draftRecord.trigger?.trim() || a.draftRecord.duration?.trim()))
+    Boolean(
+      a.draftRecord &&
+      (a.draftRecord.frequency?.trim() ||
+        a.draftRecord.trigger?.trim() ||
+        a.draftRecord.duration?.trim()),
+    )
   );
 }
 
@@ -122,7 +145,10 @@ function getFastCategory(answers: Record<string, boolean>): string {
     const cat = FAST_CATEGORIES[id];
     if (cat && val === true) totals[cat] += 1;
   });
-  return Object.keys(totals).reduce((max, k) => (totals[k] > totals[max] ? k : max), 'Social - Positive');
+  return Object.keys(totals).reduce(
+    (max, k) => (totals[k] > totals[max] ? k : max),
+    'Social - Positive',
+  );
 }
 
 export default function DailyNotesScreen({ navigation, route }: Props) {
@@ -142,12 +168,15 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
   // Behavior Assessment (shared with the BehaviorAssessment screen)
   const routeSid = route?.params?.studentId;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const localSid =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
   const initialStudentId = routeSid || localSid || undefined;
 
   const [studentId, setStudentId] = useState<string | undefined>(initialStudentId);
   const [behaviorAssessment, setBehaviorAssessment] = useState<BehaviorAssessmentData | null>(null);
-  const [studentOptions, setStudentOptions] = useState<{ id: string; name: string; initial: string }[]>([]);
+  const [studentOptions, setStudentOptions] = useState<
+    { id: string; name: string; initial: string }[]
+  >([]);
 
   // Dropdown states
   const [dateFilter, setDateFilter] = useState('This Month');
@@ -210,7 +239,9 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
     try {
       const res = await getBehaviorAssessment(studentId);
       const raw = res.data;
-      const innerData = (raw?.data && typeof raw.data === 'object' ? raw.data : raw) as BehaviorAssessmentData;
+      const innerData = (
+        raw?.data && typeof raw.data === 'object' ? raw.data : raw
+      ) as BehaviorAssessmentData;
       const status = raw?.status ?? innerData?.status;
 
       let localData: any = null;
@@ -223,9 +254,10 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
       const mergedMass = { ...(localData?.massAnswers ?? {}), ...(innerData?.massAnswers ?? {}) };
       const mergedFast = { ...(localData?.fastAnswers ?? {}), ...(innerData?.fastAnswers ?? {}) };
-      const mergedRecords = (innerData?.records && innerData.records.length > 0)
-        ? innerData.records
-        : (localData?.records ?? []);
+      const mergedRecords =
+        innerData?.records && innerData.records.length > 0
+          ? innerData.records
+          : (localData?.records ?? []);
       const draftRecord = innerData?.draftRecord ?? localData?.draftRecord;
       const finalStatus = status || localData?.status || 'in_progress';
 
@@ -256,7 +288,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
   useFocusEffect(
     useCallback(() => {
       fetchBehavior();
-    }, [fetchBehavior])
+    }, [fetchBehavior]),
   );
 
   useEffect(() => {
@@ -273,9 +305,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
     if (search.trim() !== '') {
       const query = search.toLowerCase().trim();
-      const matchesStudent = r.students.some((st) =>
-        st.toLowerCase().includes(query)
-      );
+      const matchesStudent = r.students.some((st) => st.toLowerCase().includes(query));
       const matchesStation = r.station.toLowerCase().includes(query);
       const matchesRoom = r.room.toLowerCase().includes(query);
 
@@ -299,13 +329,16 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
     ];
     downloadTextFile(
       `WeeklySummary_${summary.weekRange.replace(/[^a-z0-9]/gi, '_')}.html`,
-      lines.map((l) => `<p>${l}</p>`).join('')
+      lines.map((l) => `<p>${l}</p>`).join(''),
     );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Daily Notes" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Daily Notes"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <ScrollView contentContainerStyle={styles.content} nestedScrollEnabled>
         {/* Title Header */}
@@ -397,7 +430,9 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           </View>
 
           {/* Status Filter Dropdown */}
-          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'status' ? 1001 : 1 }]}>
+          <View
+            style={[styles.dropdownContainer, { zIndex: openDropdown === 'status' ? 1001 : 1 }]}
+          >
             <TouchableOpacity
               style={[
                 styles.dropdownTrigger,
@@ -438,7 +473,9 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           </View>
 
           {/* Student Selector Dropdown */}
-          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'student' ? 1001 : 1 }]}>
+          <View
+            style={[styles.dropdownContainer, { zIndex: openDropdown === 'student' ? 1001 : 1 }]}
+          >
             <TouchableOpacity
               style={[
                 styles.dropdownTrigger,
@@ -514,17 +551,28 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                     {Object.keys(behaviorAssessment?.massAnswers ?? {}).length} MASS answered
                   </Text>
                   <Text style={styles.behaviorAssessmentSubtype}>
-                    {Object.values(behaviorAssessment?.fastAnswers ?? {}).filter(Boolean).length} FAST yes
+                    {Object.values(behaviorAssessment?.fastAnswers ?? {}).filter(Boolean).length}{' '}
+                    FAST yes
                   </Text>
                   <Text style={styles.behaviorAssessmentSubtype}>
                     {behaviorAssessment?.records?.length ?? 0} ABC incidents
                   </Text>
                   {behaviorAssessment?.status === 'submitted' ? (
-                    <Text style={[styles.behaviorAssessmentSubtype, { color: '#0284C7', fontWeight: '600' }]}>
+                    <Text
+                      style={[
+                        styles.behaviorAssessmentSubtype,
+                        { color: '#0284C7', fontWeight: '600' },
+                      ]}
+                    >
                       Submitted for review
                     </Text>
                   ) : (
-                    <Text style={[styles.behaviorAssessmentSubtype, { color: '#D97706', fontWeight: '600' }]}>
+                    <Text
+                      style={[
+                        styles.behaviorAssessmentSubtype,
+                        { color: '#D97706', fontWeight: '600' },
+                      ]}
+                    >
                       Draft
                     </Text>
                   )}
@@ -562,25 +610,43 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   </View>
                 )}
 
-                {behaviorAssessment?.draftRecord && (behaviorAssessment.draftRecord.frequency?.trim() || behaviorAssessment.draftRecord.trigger?.trim() || behaviorAssessment.draftRecord.duration?.trim()) && (
-                  <View style={styles.behaviorAssessmentNote}>
-                    <Text style={styles.behaviorAssessmentNoteLabel}>In-Progress Draft Incident</Text>
-                    <Text style={styles.behaviorAssessmentNoteText}>
-                      {behaviorAssessment.draftRecord.behavior} · {behaviorAssessment.draftRecord.frequency || 'No frequency'}
-                      {behaviorAssessment.draftRecord.duration ? ` · ${behaviorAssessment.draftRecord.duration}` : ''}
-                      {behaviorAssessment.draftRecord.intensity ? ` · ${behaviorAssessment.draftRecord.intensity} intensity` : ''}
-                      {behaviorAssessment.draftRecord.trigger ? ` · Trigger: ${behaviorAssessment.draftRecord.trigger}` : ''}
-                    </Text>
-                  </View>
-                )}
+                {behaviorAssessment?.draftRecord &&
+                  (behaviorAssessment.draftRecord.frequency?.trim() ||
+                    behaviorAssessment.draftRecord.trigger?.trim() ||
+                    behaviorAssessment.draftRecord.duration?.trim()) && (
+                    <View style={styles.behaviorAssessmentNote}>
+                      <Text style={styles.behaviorAssessmentNoteLabel}>
+                        In-Progress Draft Incident
+                      </Text>
+                      <Text style={styles.behaviorAssessmentNoteText}>
+                        {behaviorAssessment.draftRecord.behavior} ·{' '}
+                        {behaviorAssessment.draftRecord.frequency || 'No frequency'}
+                        {behaviorAssessment.draftRecord.duration
+                          ? ` · ${behaviorAssessment.draftRecord.duration}`
+                          : ''}
+                        {behaviorAssessment.draftRecord.intensity
+                          ? ` · ${behaviorAssessment.draftRecord.intensity} intensity`
+                          : ''}
+                        {behaviorAssessment.draftRecord.trigger
+                          ? ` · Trigger: ${behaviorAssessment.draftRecord.trigger}`
+                          : ''}
+                      </Text>
+                    </View>
+                  )}
 
                 <TouchableOpacity
                   style={styles.openBehaviorBtn}
-                  onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: studentId ?? 'student-a' })}
+                  onPress={() =>
+                    navigation?.navigate?.('BehaviorAssessment', {
+                      studentId: studentId ?? 'student-a',
+                    })
+                  }
                 >
                   <Feather name="edit-3" size={13} color="#0284C7" />
                   <Text style={styles.openBehaviorBtnText}>
-                    {behaviorAssessment?.status === 'submitted' ? 'View / Edit Assessment →' : 'Continue Editing Draft →'}
+                    {behaviorAssessment?.status === 'submitted'
+                      ? 'View / Edit Assessment →'
+                      : 'Continue Editing Draft →'}
                   </Text>
                 </TouchableOpacity>
               </>
@@ -635,8 +701,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                       r.status === 'Approved'
                         ? 'approved'
                         : r.status === 'Revision Required'
-                        ? 'revision'
-                        : 'pending'
+                          ? 'revision'
+                          : 'pending'
                     }
                     label={r.status}
                   />
@@ -676,9 +742,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                             await resubmitSessionNote(r.id, { notes: '' });
                             showToast('Session resubmitted for coordinator review', 'success');
                             load();
-                          } catch {
-                            showToast('Resubmitted for review', 'success');
-                            load();
+                          } catch (err: any) {
+                            showToast(err?.message || 'Failed to resubmit session note', 'error');
                           }
                         }}
                       >
@@ -1130,7 +1195,12 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 4,
   },
-  behaviorAssessmentNoteLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  behaviorAssessmentNoteLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+  },
   behaviorAssessmentNoteText: { fontSize: 13, color: '#334155', lineHeight: 18 },
   behaviorAssessmentEmpty: { fontSize: 13, color: '#94A3B8', paddingVertical: 8 },
   openBehaviorBtn: {

@@ -11,12 +11,13 @@ const ROUTE_BY_TAB: Record<string, keyof SessionStackParamList> = {
   // Attendance: 'Attendance',
   Parents: 'ParentCommunication',
   Notifications: 'Notifications',
+  'IUP Creation & Goal Assignment': 'IupGeneration',
+  'Enrollment Wizard': 'StudentEnrollmentWizard',
+  'Student Profile': 'StudentProfile',
+  'Reports & Oversight': 'AssessmentSummaryReport',
 };
 
-export function handleTeacherTabPress(
-  navigation: NavigationProp<ParamListBase>,
-  tab: string
-) {
+export function handleTeacherTabPress(navigation: NavigationProp<ParamListBase>, tab: string) {
   const route = ROUTE_BY_TAB[tab];
   if (route) {
     // All mapped tabs go to routes with no params, so the union of route

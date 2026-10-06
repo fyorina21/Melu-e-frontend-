@@ -21,9 +21,7 @@ import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import StudentSessionCard from './components/StudentSessionCard';
 import BehaviorIncidentModal from './components/BehaviorIncidentModal';
-import type {
-  IncidentPayload,
-} from './components/BehaviorIncidentModal';
+import type { IncidentPayload } from './components/BehaviorIncidentModal';
 import {
   getSessionRoster,
   startSession,
@@ -33,11 +31,7 @@ import {
   recordBehaviorIncident,
   swapStudents,
 } from '../../api/sessionApi';
-import type {
-  SessionStackParamList,
-  SessionRoster,
-  Payload,
-} from '../../types';
+import type { SessionStackParamList, SessionRoster, Payload } from '../../types';
 import {
   startSessionTimer,
   resumeSessionTimer,
@@ -46,10 +40,7 @@ import {
   isTimerRunning,
 } from '../../stores/sessionTimerStore';
 
-type Props = NativeStackScreenProps<
-  SessionStackParamList,
-  'SessionDataCollection'
->;
+type Props = NativeStackScreenProps<SessionStackParamList, 'SessionDataCollection'>;
 
 interface IncidentModalState {
   studentId: string;
@@ -58,10 +49,7 @@ interface IncidentModalState {
   goalName?: string;
 }
 
-export default function SessionDataCollectionScreen({
-  route,
-  navigation,
-}: Props) {
+export default function SessionDataCollectionScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
   const { session: authSession, logout } = useAuth();
   const { showToast } = useToast();
@@ -69,98 +57,95 @@ export default function SessionDataCollectionScreen({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [session, setSession] = useState<SessionRoster | null>(null);
-  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(
-    null
-  );
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
   const [isRunning, setIsRunning] = useState(isTimerRunning());
-  const [incidentModal, setIncidentModal] =
-    useState<IncidentModalState | null>(null);
+  const [incidentModal, setIncidentModal] = useState<IncidentModalState | null>(null);
   const [localIncidents, setLocalIncidents] = useState<IncidentPayload[]>([]);
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  const loadRoster = useCallback(async (silent = false) => {
-    try {
-      // Start the session on the backend asynchronously so it doesn't block roster fetching
-      startSession(sessionId).catch(() => {});
+  const loadRoster = useCallback(
+    async (silent = false) => {
+      try {
+        // Start the session on the backend asynchronously so it doesn't block roster fetching
+        startSession(sessionId).catch(() => {});
 
-      const { data } = await getSessionRoster(sessionId);
+        const { data } = await getSessionRoster(sessionId);
 
-      const rawStudents = (
-        Array.isArray(data?.students)
-          ? data.students
-          : Array.isArray(data)
-          ? data
-          : []
-      ).filter((s: any) => {
-        const isAssessment = s.status === 'in_assessment' || s.status === 'draft' || s.status === 'pending_review' || s.status === 'registered';
-        return !isAssessment;
-      });
+        const rawStudents = (
+          Array.isArray(data?.students) ? data.students : Array.isArray(data) ? data : []
+        ).filter((s: any) => {
+          const isAssessment =
+            s.status === 'in_assessment' ||
+            s.status === 'draft' ||
+            s.status === 'pending_review' ||
+            s.status === 'registered';
+          return !isAssessment;
+        });
 
-      const parsedRoster: SessionRoster = {
-        teacherName: data?.teacherName || 'Teacher',
-        stationName: data?.stationName || 'Station 1',
-        roomName: data?.roomName || 'Room 101',
-        blockDurationMinutes: Number(data?.blockDurationMinutes || 90),
-        students: rawStudents.map((s: any, idx: number) => {
-          const sName = String(s.name || s.fullName || 'Student').trim();
-          const sInitial = String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
-          return {
-            id: String(s.id),
-            name: sName,
-            initial: sInitial,
-            program: String(s.program || 'Regular'),
-            active: typeof s.active === 'boolean' ? s.active : idx === 0,
-            goals: Array.isArray(s.goals)
-              ? s.goals.map((g: any) => ({
-                  id: String(g.id),
-                  name: String(g.name || 'Goal'),
-                  category: g.category || 'Adaptive',
-                  goalType: g.goalType || 'standard',
-                  totalTrials: Number(g.totalTrials || 0),
-                  independencePercent: Number(g.independencePercent || 0),
-                  trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
-                }))
-              : [],
-            trials: Array.isArray(s.trials) ? s.trials : [],
-          };
-        }),
-      };
+        const parsedRoster: SessionRoster = {
+          teacherName: data?.teacherName || 'Teacher',
+          stationName: data?.stationName || 'Station 1',
+          roomName: data?.roomName || 'Room 101',
+          blockDurationMinutes: Number(data?.blockDurationMinutes || 90),
+          students: rawStudents.map((s: any, idx: number) => {
+            const sName = String(s.name || s.fullName || 'Student').trim();
+            const sInitial = String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
+            return {
+              id: String(s.id),
+              name: sName,
+              initial: sInitial,
+              program: String(s.program || 'Regular'),
+              active: typeof s.active === 'boolean' ? s.active : idx === 0,
+              goals: Array.isArray(s.goals)
+                ? s.goals.map((g: any) => ({
+                    id: String(g.id),
+                    name: String(g.name || 'Goal'),
+                    category: g.category || 'Adaptive',
+                    goalType: g.goalType || 'standard',
+                    totalTrials: Number(g.totalTrials || 0),
+                    independencePercent: Number(g.independencePercent || 0),
+                    trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
+                  }))
+                : [],
+              trials: Array.isArray(s.trials) ? s.trials : [],
+            };
+          }),
+        };
 
-      if (parsedRoster.students.length > 0 && !parsedRoster.students.some((s) => s.active)) {
-        parsedRoster.students[0].active = true;
-      }
-
-      setSession((prev) => {
-        if (prev && parsedRoster.students.length > 0) {
-          const activeStudentId = prev.students.find((s) => s.active)?.id;
-          if (activeStudentId && parsedRoster.students.some((s) => s.id === activeStudentId)) {
-            parsedRoster.students = parsedRoster.students.map((s) => ({
-              ...s,
-              active: s.id === activeStudentId,
-            }));
-          }
+        if (parsedRoster.students.length > 0 && !parsedRoster.students.some((s) => s.active)) {
+          parsedRoster.students[0].active = true;
         }
-        return parsedRoster;
-      });
 
-      startSessionTimer(
-        sessionId,
-        (parsedRoster.blockDurationMinutes || 90) * 60
-      );
+        setSession((prev) => {
+          if (prev && parsedRoster.students.length > 0) {
+            const activeStudentId = prev.students.find((s) => s.active)?.id;
+            if (activeStudentId && parsedRoster.students.some((s) => s.id === activeStudentId)) {
+              parsedRoster.students = parsedRoster.students.map((s) => ({
+                ...s,
+                active: s.id === activeStudentId,
+              }));
+            }
+          }
+          return parsedRoster;
+        });
 
-      setSecondsRemaining(remainingSeconds());
-      setIsRunning(isTimerRunning());
-    } catch (err) {
-      if (!silent) {
-        setSession(null);
-        setLoadError(true);
+        startSessionTimer(sessionId, (parsedRoster.blockDurationMinutes || 90) * 60);
+
+        setSecondsRemaining(remainingSeconds());
+        setIsRunning(isTimerRunning());
+      } catch (err) {
+        if (!silent) {
+          setSession(null);
+          setLoadError(true);
+        }
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [sessionId]);
+    },
+    [sessionId],
+  );
 
   useEffect(() => {
     loadRoster();
@@ -193,7 +178,7 @@ export default function SessionDataCollectionScreen({
     studentId: string,
     goalId: string | undefined,
     level: string,
-    stepId?: string
+    stepId?: string,
   ) => {
     if (isLogging.current) return;
     isLogging.current = true;
@@ -205,26 +190,16 @@ export default function SessionDataCollectionScreen({
       showToast('Trial logged successfully', 'success');
       await loadRoster(true);
     } catch (err) {
-      Alert.alert(
-        'Sync failed',
-        'Trial saved locally, will retry when online.'
-      );
+      Alert.alert('Sync failed', 'Trial saved locally, will retry when online.');
     } finally {
       isLogging.current = false;
     }
   };
 
-  const handleOpenIncidentModal = (
-    studentId: string,
-    goalId: string | undefined
-  ) => {
-    const student = session?.students.find(
-      (s) => s.id === studentId
-    );
+  const handleOpenIncidentModal = (studentId: string, goalId: string | undefined) => {
+    const student = session?.students.find((s) => s.id === studentId);
 
-    const goal = student?.goals?.find(
-      (g) => g.id === goalId
-    ) || student?.goals?.[0];
+    const goal = student?.goals?.find((g) => g.id === goalId) || student?.goals?.[0];
 
     const activeGoalId = goalId || goal?.id;
 
@@ -238,31 +213,33 @@ export default function SessionDataCollectionScreen({
 
   const handleCancelIncident = (hadChanges: boolean) => {
     if (hadChanges) {
-      Alert.alert(
-        'Discard incident?',
-        'Any entered data will be lost.',
-        [
-          {
-            text: 'Keep editing',
-            style: 'cancel',
-          },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => setIncidentModal(null),
-          },
-        ]
-      );
+      Alert.alert('Discard incident?', 'Any entered data will be lost.', [
+        {
+          text: 'Keep editing',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => setIncidentModal(null),
+        },
+      ]);
     } else {
       setIncidentModal(null);
     }
   };
 
-  const handleSaveIncident = async (
-    incidentData: IncidentPayload
-  ) => {
-    const studentId = incidentModal?.studentId || (incidentData as any).student_id || (incidentData as any).studentId || '';
-    const studentGoalId = incidentModal?.studentGoalId || (incidentData as any).student_goal_id || (incidentData as any).studentGoalId || '';
+  const handleSaveIncident = async (incidentData: IncidentPayload) => {
+    const studentId =
+      incidentModal?.studentId ||
+      (incidentData as any).student_id ||
+      (incidentData as any).studentId ||
+      '';
+    const studentGoalId =
+      incidentModal?.studentGoalId ||
+      (incidentData as any).student_goal_id ||
+      (incidentData as any).studentGoalId ||
+      '';
     const payload = {
       ...incidentData,
       student_id: studentId,
@@ -272,19 +249,14 @@ export default function SessionDataCollectionScreen({
     };
 
     try {
-      await recordBehaviorIncident(
-        sessionId,
-        payload as unknown as Payload
-      );
+      await recordBehaviorIncident(sessionId, payload as unknown as Payload);
       await loadRoster();
     } catch (err) {
       // Demo/offline fallback: incident recorded locally
     }
 
     // Track incident locally for session summary
-    const student = session?.students.find(
-      (s) => s.id === incidentModal?.studentId
-    );
+    const student = session?.students.find((s) => s.id === incidentModal?.studentId);
     const fullIncident = {
       ...incidentData,
       studentName: student?.name ?? 'Unknown Student',
@@ -296,10 +268,7 @@ export default function SessionDataCollectionScreen({
     showToast('Behavior incident logged successfully', 'success');
   };
 
-  const handleMasteryCheck = (
-    studentId: string,
-    goalId: string | undefined
-  ) => {
+  const handleMasteryCheck = (studentId: string, goalId: string | undefined) => {
     navigation?.navigate?.('GoalMasteryCheck', {
       studentId,
       goalId: goalId ?? '',
@@ -313,11 +282,7 @@ export default function SessionDataCollectionScreen({
       // Continue with local swap if backend is unavailable.
     }
     // Swap the order of the two students locally so the change is visible.
-    setSession((prev) =>
-      prev
-        ? { ...prev, students: [...prev.students].reverse() }
-        : prev
-    );
+    setSession((prev) => (prev ? { ...prev, students: [...prev.students].reverse() } : prev));
     showToast('Students swapped successfully', 'success');
   };
 
@@ -331,14 +296,11 @@ export default function SessionDataCollectionScreen({
               active: s.id === studentId,
             })),
           }
-        : prev
+        : prev,
     );
   };
 
-  const handleViewGoalProgress = (
-    studentId: string,
-    goalId: string
-  ) => {
+  const handleViewGoalProgress = (studentId: string, goalId: string) => {
     navigation?.navigate?.('GoalProgress', {
       studentId,
       goalId,
@@ -358,73 +320,60 @@ export default function SessionDataCollectionScreen({
     });
   };
 
-if (loadError) return <ScreenError onRetry={loadRoster} />;
+  if (loadError) return <ScreenError onRetry={loadRoster} />;
 
-   if (
-     loading ||
-     !session ||
-     secondsRemaining === null
-   ) {
-     return <ScreenLoader />;
-   }
+  if (loading || !session || secondsRemaining === null) {
+    return <ScreenLoader />;
+  }
 
-   if (session.students.length === 0) {
-     return (
-       <SafeAreaView style={styles.safe}>
-         <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+  if (session.students.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar
+          activeTab="Session"
+          onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+        />
 
-         <View style={styles.header}>
-           <View>
-             <Text style={typography.h1}>Today's Session</Text>
-             <Text style={typography.body}>
-               {session.teacherName} • {session.stationName} •{' '}
-               {session.roomName}
-             </Text>
-           </View>
-         </View>
+        <View style={styles.header}>
+          <View>
+            <Text style={typography.h1}>Today's Session</Text>
+            <Text style={typography.body}>
+              {session.teacherName} • {session.stationName} • {session.roomName}
+            </Text>
+          </View>
+        </View>
 
-         <ScrollView contentContainerStyle={styles.scrollContent}>
-           <Text style={[typography.h2, styles.studentsHeading]}>Students</Text>
-           <View style={styles.emptyContainer}>
-             <View style={styles.emptyIconCircle}>
-               <Feather name="users" size={26} color={colors.mutedText} />
-             </View>
-             <Text style={styles.emptyTitle}>No student assigned yet</Text>
-             <Text style={styles.emptyText}>
-               A student appears here once their assessment is completed and an IUP goal has been assigned.
-             </Text>
-           </View>
-         </ScrollView>
-       </SafeAreaView>
-     );
-   }
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={[typography.h2, styles.studentsHeading]}>Students</Text>
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Feather name="users" size={26} color={colors.mutedText} />
+            </View>
+            <Text style={styles.emptyTitle}>No student assigned yet</Text>
+            <Text style={styles.emptyText}>
+              A student appears here once their assessment is completed and an IUP goal has been
+              assigned.
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
-   const minutes = String(
-     Math.floor(secondsRemaining / 60)
-   ).padStart(2, '0');
+  const minutes = String(Math.floor(secondsRemaining / 60)).padStart(2, '0');
 
-   const seconds = String(
-     secondsRemaining % 60
-   ).padStart(2, '0');
+  const seconds = String(secondsRemaining % 60).padStart(2, '0');
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Session"
-        onTabPress={(tab) =>
-          handleTeacherTabPress(navigation, tab)
-        }
-      />
+      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <View>
-          <Text style={typography.h1}>
-            Today's Session
-          </Text>
+          <Text style={typography.h1}>Today's Session</Text>
 
           <Text style={typography.body}>
-            {session.teacherName} • {session.stationName} •{' '}
-            {session.roomName}
+            {session.teacherName} • {session.stationName} • {session.roomName}
           </Text>
         </View>
 
@@ -445,17 +394,9 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
           <TouchableOpacity
             style={styles.playPauseBtn}
             onPress={handleToggleTimer}
-            accessibilityLabel={
-              isRunning
-                ? 'Pause timer'
-                : 'Resume timer'
-            }
+            accessibilityLabel={isRunning ? 'Pause timer' : 'Resume timer'}
           >
-            <Feather
-              name={isRunning ? 'pause' : 'play'}
-              size={16}
-              color={colors.white}
-            />
+            <Feather name={isRunning ? 'pause' : 'play'} size={16} color={colors.white} />
           </TouchableOpacity>
         </View>
       </View>
@@ -463,26 +404,15 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={[styles.studentsRow, isLandscape && styles.studentsRowLandscape]}>
           {session.students.map((student) => (
-            <TouchableOpacity
-              key={student.id}
-              style={styles.studentCardWrapper}
-              activeOpacity={0.9}
-              onPress={() => handleActivate(student.id)}
-            >
+            <View key={student.id} style={styles.studentCardWrapper}>
               <StudentSessionCard
                 student={student}
                 onSelectPromptLevel={handleSelectPromptLevel}
-                onRecordIncident={
-                  handleOpenIncidentModal
-                }
+                onRecordIncident={handleOpenIncidentModal}
                 onMasteryCheck={handleMasteryCheck}
                 onActivate={handleActivate}
-                onViewGoalProgress={
-                  handleViewGoalProgress
-                }
-                onViewProfile={
-                  handleViewProfile
-                }
+                onViewGoalProgress={handleViewGoalProgress}
+                onViewProfile={handleViewProfile}
                 onUndo={async (goalId) => {
                   if (!goalId) return;
                   try {
@@ -493,28 +423,18 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
                   }
                 }}
               />
-            </TouchableOpacity>
+            </View>
           ))}
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.secondaryBtn}
-          onPress={handleSwapStudents}
-        >
-          <Text style={styles.secondaryBtnText}>
-            ⇄ Swap Students
-          </Text>
+        <TouchableOpacity style={styles.secondaryBtn} onPress={handleSwapStudents}>
+          <Text style={styles.secondaryBtnText}>⇄ Swap Students</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={handleSessionSummary}
-        >
-          <Text style={styles.primaryBtnText}>
-            📄 Session Summary
-          </Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleSessionSummary}>
+          <Text style={styles.primaryBtnText}>📄 Session Summary</Text>
         </TouchableOpacity>
       </View>
 
@@ -633,40 +553,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-primaryBtnText: {
-     fontWeight: '700',
-     color: colors.navyText,
-   },
-   emptyContainer: {
-     justifyContent: 'center',
-     alignItems: 'center',
-     padding: spacing.xl,
-     gap: spacing.sm,
-     backgroundColor: colors.bgCard,
-     borderRadius: radius.lg,
-     borderWidth: 1,
-     borderColor: colors.border,
-   },
-   studentsHeading: { marginBottom: spacing.md },
-   emptyIconCircle: {
-     width: 56,
-     height: 56,
-     borderRadius: 28,
-     backgroundColor: colors.bgApp,
-     alignItems: 'center',
-     justifyContent: 'center',
-     marginBottom: spacing.xs,
-   },
-   emptyTitle: {
-     fontSize: 18,
-     fontWeight: '700',
-     color: colors.navyText,
-     textAlign: 'center',
-   },
-   emptyText: {
-     fontSize: 14,
-     color: colors.mutedText,
-     textAlign: 'center',
-     lineHeight: 20,
-   },
- });
+  primaryBtnText: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    gap: spacing.sm,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  studentsHeading: { marginBottom: spacing.md },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.bgApp,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.mutedText,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+});

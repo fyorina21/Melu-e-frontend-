@@ -9,7 +9,12 @@
     "web": "expo start --web --port 8081",
     "dev:all": "node scripts/dev-all.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src app",
+    "lint:fix": "eslint src app --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\" \"app/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,md}\" \"app/**/*.{ts,tsx}\"",
+    "prepare": "husky"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -41,6 +46,14 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "^19.1.10",
+    "@typescript-eslint/eslint-plugin": "^8.71.1",
+    "@typescript-eslint/parser": "^8.71.1",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.9",
     "vitest": "^4.1.11"
   },
   "private": true
