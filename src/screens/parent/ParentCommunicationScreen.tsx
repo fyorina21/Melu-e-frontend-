@@ -77,12 +77,6 @@ const PARENT_TEMPLATES = [
   { label: 'Availability update', text: 'Just a heads up — my child will be absent on the following dates: [dates]. Please let me know if this affects anything.' },
 ];
 
-const PARENT_LOG: LogEntry[] = [
-  { date: 'Aug 18, 2026', from: 'Teacher A', preview: 'Weekly session summary shared — 14/20 trials independent.', status: 'Shared' },
-  { date: 'Aug 10, 2026', from: 'Coordinator', preview: 'Goal progress chart shared — Request Items up to 78% independence.', status: 'Shared' },
-  { date: 'Aug 02, 2026', from: 'Teacher A', preview: 'Home observation request acknowledged by parent.', status: 'Resolved' },
-];
-
 const TEACHER_COLOR = '#38BDF8';
 const DIRECTOR_COLOR = '#A855F7';
 const COORDINATOR_COLOR = '#FBBF24';
@@ -320,21 +314,30 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
               </View>
 
               <ScrollView contentContainerStyle={styles.messagesList}>
-                {thread.map((m) => {
-                  const isMe = m.sender === 'teacher' || m.sender === 'team' || (m as any).from === 'team' || (m as any).from === 'teacher';
-                  return (
-                    <View key={m.id} style={[styles.msgWrap, isMe ? styles.msgWrapMe : styles.msgWrapOther]}>
-                      <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleOther]}>
-                        <Text style={[styles.msgSenderLabel, { color: isMe ? '#E0F2FE' : '#64748B' }]}>{m.senderLabel}</Text>
-                        <Text style={[styles.msgText, { color: isMe ? '#FFFFFF' : '#0F172A' }]}>{m.text}</Text>
-                        {m.attachments?.map((a) => (
-                          <View key={a.id} style={styles.attachmentBadge}><Feather name="file" size={12} color="#0284C7" /><Text style={styles.attachmentName}>{a.name}</Text></View>
-                        ))}
-                        <Text style={[styles.msgTime, { color: isMe ? '#BAE6FD' : '#94A3B8' }]}>{m.timestamp}</Text>
+                {thread.length === 0 ? (
+                  <View style={{ padding: spacing.xl, alignItems: 'center', justifyContent: 'center' }}>
+                    <Feather name="message-circle" size={32} color={colors.mutedText} />
+                    <Text style={[typography.body, { color: colors.mutedText, marginTop: spacing.sm, textAlign: 'center' }]}>
+                      No messages in this thread yet. Send a message below to communicate with the family.
+                    </Text>
+                  </View>
+                ) : (
+                  thread.map((m) => {
+                    const isMe = m.sender === 'teacher' || m.sender === 'team' || (m as any).from === 'team' || (m as any).from === 'teacher';
+                    return (
+                      <View key={m.id} style={[styles.msgWrap, isMe ? styles.msgWrapMe : styles.msgWrapOther]}>
+                        <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleOther]}>
+                          <Text style={[styles.msgSenderLabel, { color: isMe ? '#E0F2FE' : '#64748B' }]}>{m.senderLabel}</Text>
+                          <Text style={[styles.msgText, { color: isMe ? '#FFFFFF' : '#0F172A' }]}>{m.text}</Text>
+                          {m.attachments?.map((a) => (
+                            <View key={a.id} style={styles.attachmentBadge}><Feather name="file" size={12} color="#0284C7" /><Text style={styles.attachmentName}>{a.name}</Text></View>
+                          ))}
+                          <Text style={[styles.msgTime, { color: isMe ? '#BAE6FD' : '#94A3B8' }]}>{m.timestamp}</Text>
+                        </View>
                       </View>
-                    </View>
-                  );
-                })}
+                    );
+                  })
+                )}
               </ScrollView>
 
               {pendingAttachments.length > 0 && (
@@ -568,18 +571,27 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
               {activeTab === 'chat' ? (
                 <>
                   <ScrollView ref={messagesEndRef} contentContainerStyle={styles.messagesList}>
-                    {selected.messages.map((m, idx) => {
-                      const isMe = m.from === 'parent';
-                      return (
-                        <View key={idx} style={[styles.msgWrap, isMe ? styles.msgWrapMe : styles.msgWrapOther]}>
-                          <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleOther]}>
-                            <Text style={[styles.msgSenderLabel, { color: isMe ? '#FDE68A' : '#64748B' }]}>{m.senderName} ({m.senderRole})</Text>
-                            <Text style={[styles.msgText, { color: isMe ? '#1F2937' : '#1F2937' }]}>{m.text}</Text>
-                            <Text style={[styles.msgTime, { color: isMe ? '#78350F' : '#94A3B8' }]}>{m.time}</Text>
+                    {selected.messages.length === 0 ? (
+                      <View style={{ padding: spacing.xl, alignItems: 'center', justifyContent: 'center' }}>
+                        <Feather name="message-circle" size={32} color={colors.mutedText} />
+                        <Text style={[typography.body, { color: colors.mutedText, marginTop: spacing.sm, textAlign: 'center' }]}>
+                          No messages in this thread yet. Send a message below to start communicating with the team.
+                        </Text>
+                      </View>
+                    ) : (
+                      selected.messages.map((m, idx) => {
+                        const isMe = m.from === 'parent';
+                        return (
+                          <View key={idx} style={[styles.msgWrap, isMe ? styles.msgWrapMe : styles.msgWrapOther]}>
+                            <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleOther]}>
+                              <Text style={[styles.msgSenderLabel, { color: isMe ? '#FDE68A' : '#64748B' }]}>{m.senderName} ({m.senderRole})</Text>
+                              <Text style={[styles.msgText, { color: isMe ? '#1F2937' : '#1F2937' }]}>{m.text}</Text>
+                              <Text style={[styles.msgTime, { color: isMe ? '#78350F' : '#94A3B8' }]}>{m.time}</Text>
+                            </View>
                           </View>
-                        </View>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </ScrollView>
 
                   <View style={styles.inputBar}>
@@ -591,15 +603,21 @@ function ParentCommunicationPanel({ navigation }: { navigation: any }) {
               ) : (
                 <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
                   <Text style={typography.bodyBold}>Past Reports & Logs Shared</Text>
-                  {(activeLogs.length > 0 ? activeLogs : (activeChildName ? [{ date: 'Recently', from: 'Lead Therapist', preview: `Session summary shared for ${activeChildName}.`, status: 'Shared' }] : PARENT_LOG)).map((log: any, idx: number) => (
-                    <View key={idx} style={styles.logCard}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={typography.bodyBold}>{log.preview}</Text>
-                        <Text style={typography.caption}>Sent by {log.from} on {log.date}</Text>
+                  {activeLogs.length > 0 ? (
+                    activeLogs.map((log: any, idx: number) => (
+                      <View key={idx} style={styles.logCard}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={typography.bodyBold}>{log.preview}</Text>
+                          <Text style={typography.caption}>Sent by {log.from} on {log.date}</Text>
+                        </View>
+                        <Feather name="chevron-right" size={16} color={colors.mutedText} />
                       </View>
-                      <Feather name="chevron-right" size={16} color={colors.mutedText} />
-                    </View>
-                  ))}
+                    ))
+                  ) : (
+                    <Text style={[typography.body, { color: colors.mutedText, textAlign: 'center', padding: spacing.xl }]}>
+                      No shared reports or activity logs recorded yet.
+                    </Text>
+                  )}
                 </ScrollView>
               )}
             </>

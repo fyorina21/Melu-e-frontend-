@@ -6,7 +6,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherNotifications, markNotificationRead } from '../../api/teacherExtrasApi';
-import NotificationsList from './NotificationsList';
+import NotificationsList, { toAppNotification } from './NotificationsList';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'Notifications'>;
@@ -18,8 +18,12 @@ export default function TeacherNotificationsScreen({ navigation }: Props) {
       <AppNavbar activeTab="Notifications" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
       <NotificationsList
         title="Notifications"
-        subtitle="MR-52 — reminders and alerts for your sessions"
-        fetchData={async () => (await getTeacherNotifications()).data}
+        subtitle="Reminders and alerts for your sessions"
+        fetchData={async () => {
+          const res = await getTeacherNotifications();
+          const list = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+          return list.map(toAppNotification);
+        }}
         demoData={[]}
         markRead={markNotificationRead}
       />

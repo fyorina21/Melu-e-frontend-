@@ -34,15 +34,90 @@ const FILTER_LABEL_TO_TYPE: Record<string, AppNotification['type'] | 'unread' | 
 
 const FILTERS = ['All', 'Unread', 'Announcements', 'Goals', 'Appointments', 'Alerts', 'Archived'];
 
+export function toAppNotification(raw: any): AppNotification {
+  if (!raw) {
+    return {
+      id: String(Date.now()),
+      type: 'announcement',
+      title: 'Notification',
+      body: '',
+      date: 'Recently',
+      read: false,
+    };
+  }
+
+  if (raw.title && raw.body && raw.date && raw.type && ['announcement', 'goal', 'appointment', 'alert'].includes(raw.type)) {
+    return {
+      id: String(raw.id),
+      type: raw.type,
+      title: raw.title,
+      body: raw.body,
+      date: raw.date,
+      read: Boolean(raw.read),
+    };
+  }
+
+  const typeMap: Record<string, AppNotification['type']> = {
+    mastery_approval: 'goal',
+    goal: 'goal',
+    draft_reminder: 'alert',
+    alert: 'alert',
+    session_submission: 'appointment',
+    appointment: 'appointment',
+    parent_communication: 'announcement',
+    announcement: 'announcement',
+    IupSignatureRequest: 'alert',
+  };
+
+  const payload = typeof raw.payload === 'object' && raw.payload !== null ? raw.payload : {};
+  const rawType = String(raw.type || 'announcement');
+  const type: AppNotification['type'] = typeMap[rawType] || 'announcement';
+
+  const defaultTitles: Record<string, string> = {
+    draft_reminder: 'Draft Reminder',
+    mastery_approval: 'Goal Mastery Check',
+    session_submission: 'Session Update',
+    parent_communication: 'Parent Message',
+    IupSignatureRequest: 'IUP Signature Request',
+  };
+
+  const title =
+    payload.title ||
+    payload.heading ||
+    defaultTitles[rawType] ||
+    rawType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) ||
+    'Notification';
+  const body =
+    payload.body ||
+    payload.summary ||
+    payload.message ||
+    payload.note ||
+    'New update available from Melu-e.';
+  const dateStr = raw.created_at || raw.createdAt;
+  const date = dateStr
+    ? new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Recently';
+  const read = Boolean(raw.read || raw.read_at || raw.readAt);
+
+  return {
+    id: String(raw.id),
+    type,
+    title,
+    body,
+    date,
+    read,
+  };
+}
+
 interface Props {
   title: string;
   subtitle: string;
   fetchData: () => Promise<AppNotification[]>;
-  demoData: AppNotification[];
+  demoData?: AppNotification[];
   markRead: (id: string) => Promise<unknown>;
 }
 
-export default function NotificationsList({ title, subtitle, fetchData, demoData, markRead }: Props) {
+export default function NotificationsList({ title, subtitle, fetchData, markRead }: Props) {
   const [items, setItems] = useState<AppNotification[]>([]);
   const [filter, setFilter] = useState('All');
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
@@ -52,11 +127,12 @@ export default function NotificationsList({ title, subtitle, fetchData, demoData
 
   const load = useCallback(async () => {
     try {
-      setItems(await fetchData());
+      const data = await fetchData();
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      setItems(demoData);
+      setItems([]);
     }
-  }, [fetchData, demoData]);
+  }, [fetchData]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -132,7 +208,11 @@ export default function NotificationsList({ title, subtitle, fetchData, demoData
             </View>
           );
         })}
-        {filtered.length === 0 && <Text style={[typography.body, { color: colors.mutedText, textAlign: 'center', padding: spacing.xl }]}>No notifications{filter !== 'All' ? ` in "${filter}"` : ''}.</Text>}
+        {filtered.length === 0 && (
+          <Text style={[typography.body, { color: colors.mutedText, textAlign: 'center', padding: spacing.xl }]}>
+            {filter !== 'All' ? `No notifications in "${filter}".` : "No notifications. You're all caught up."}
+          </Text>
+        )}
       </ScrollView>
     </View>
   );

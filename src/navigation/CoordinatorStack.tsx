@@ -17,6 +17,7 @@ import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollm
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
+import ChildProgressScreen from '../screens/parent/ChildProgressScreen';
 
 const Stack = createNativeStackNavigator<CoordinatorStackParamList>();
 
@@ -39,6 +40,7 @@ export default function CoordinatorStack() {
       <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
       <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen as never} />
       <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen as never} />
+      <Stack.Screen name="ChildProgress" component={ChildProgressScreen as never} />
     </Stack.Navigator>
   );
 }

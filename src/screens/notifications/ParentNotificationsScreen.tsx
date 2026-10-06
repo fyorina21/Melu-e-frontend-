@@ -6,7 +6,7 @@ import { colors } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getParentNotifications, markParentNotificationRead } from '../../api/parentApi';
-import NotificationsList, { type AppNotification } from './NotificationsList';
+import NotificationsList, { toAppNotification, type AppNotification } from './NotificationsList';
 import type { ParentStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<ParentStackParamList, 'Notifications'>;
@@ -18,7 +18,11 @@ export default function ParentNotificationsScreen({ navigation }: Props) {
       <NotificationsList
         title="Notifications"
         subtitle="Clinic announcements and updates for your child"
-        fetchData={async () => (await getParentNotifications()).data}
+        fetchData={async () => {
+          const res = await getParentNotifications();
+          const list = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+          return list.map(toAppNotification);
+        }}
         demoData={[]}
         markRead={markParentNotificationRead}
       />

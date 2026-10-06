@@ -7,10 +7,14 @@
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const net = require('net');
+const fs = require('fs');
 const os = require('os');
 
 const FRONTEND_DIR = path.resolve(__dirname, '..');
-const BACKEND_DIR = path.resolve(FRONTEND_DIR, '../melue-foundation/melue-backend');
+const localBackend = path.resolve(FRONTEND_DIR, '../backend/melue-backend');
+const BACKEND_DIR = fs.existsSync(localBackend)
+  ? localBackend
+  : path.resolve(FRONTEND_DIR, '../melue-foundation/melue-backend');
 
 const isWindows = os.platform() === 'win32';
 

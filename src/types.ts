@@ -179,6 +179,7 @@ export type SessionStackParamList = {
   StudentProfile: { studentId: string };
   StudentEnrollmentWizard: undefined;
   IupGeneration: { studentId?: string } | undefined;
+  ChildProgress?: undefined;
 };
 
 export type CoordinatorStackParamList = {
@@ -198,6 +199,7 @@ export type CoordinatorStackParamList = {
   StudentEnrollmentWizard: undefined;
   AssessmentDashboard: undefined;
   SessionDataCollection: { sessionId?: string } | undefined;
+  ChildProgress?: undefined;
 };
 
 export type DirectorStackParamList = {
