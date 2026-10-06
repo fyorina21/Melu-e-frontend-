@@ -10,24 +10,47 @@ import {
   Modal,
   Alert,
 } from 'react-native';
-import {
-  Calendar,
-  X,
-  AlertTriangle,
-  Download,
-  ChevronDown,
-  Eye,
-  UserMinus,
-  ArrowRightLeft,
-  CheckCircle,
-  Clock,
-} from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
+
+type IconProps = { size?: number; color?: string; style?: any };
+const Calendar = (props: IconProps) => (
+  <Feather name="calendar" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const X = (props: IconProps) => (
+  <Feather name="x" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const AlertTriangle = (props: IconProps) => (
+  <Feather name="alert-triangle" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Download = (props: IconProps) => (
+  <Feather name="download" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const ChevronDown = (props: IconProps) => (
+  <Feather name="chevron-down" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Eye = (props: IconProps) => (
+  <Feather name="eye" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const UserMinus = (props: IconProps) => (
+  <Feather name="user-minus" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const ArrowRightLeft = (props: IconProps) => (
+  <Feather name="repeat" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const CheckCircle = (props: IconProps) => (
+  <Feather name="check-circle" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Clock = (props: IconProps) => (
+  <Feather name="clock" size={props.size ?? 12} color={props.color} style={props.style} />
+);
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
 import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
+import { FlashList } from '@shopify/flash-list';
+import { Card, Badge, Button } from '../../shared/components';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorSchedule'>;
@@ -76,12 +99,22 @@ function StationChip({ station }: { station: string }) {
   const isStation1 = station === 'Station 1';
   return (
     <View style={[styles.stationChip, { backgroundColor: isStation1 ? colors.bgApp : '#FEF9C3' }]}>
-      <Text style={[styles.stationChipText, { color: isStation1 ? colors.navyText : '#A16207' }]}>{station}</Text>
+      <Text style={[styles.stationChipText, { color: isStation1 ? colors.navyText : '#A16207' }]}>
+        {station}
+      </Text>
     </View>
   );
 }
 
-function KpiCard({ label, value, unit = '' }: { label: string; value: number | string; unit?: string }) {
+function KpiCard({
+  label,
+  value,
+  unit = '',
+}: {
+  label: string;
+  value: number | string;
+  unit?: string;
+}) {
   return (
     <View style={styles.kpiCard}>
       <Text style={styles.kpiLabel}>{label}</Text>
@@ -101,7 +134,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const [unavailableModal, setUnavailableModal] = useState<Teacher | null>(null);
   const [reassignVisible, setReassignVisible] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
-  const [cellModal, setCellModal] = useState<{ teacher: Teacher; day: string; cell: { station: string; room: string } } | null>(null);
+  const [cellModal, setCellModal] = useState<{
+    teacher: Teacher;
+    day: string;
+    cell: { station: string; room: string };
+  } | null>(null);
 
   // Unavailable modal state
   const [unavailableFrom, setUnavailableFrom] = useState('');
@@ -120,7 +157,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       const nextTeachers: Teacher[] = [];
       const nextSchedule: Record<string, Record<string, Cell>> = {};
       rows.forEach((m, i) => {
-        const appts = Object.values(weekRows).flat().filter((a) => a.therapistId === m.teacherId);
+        const appts = Object.values(weekRows)
+          .flat()
+          .filter((a) => a.therapistId === m.teacherId);
         const first = appts[0];
         const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
         const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
@@ -142,7 +181,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
             const dayAppt = (weekRows[di] ?? []).find((a) => a.therapistId === m.teacherId);
             return [
               day,
-              dayAppt ? { station: i % 2 === 0 ? 'Station 1' : 'Station 2', room: dayAppt.roomName } : null,
+              dayAppt
+                ? { station: i % 2 === 0 ? 'Station 1' : 'Station 2', room: dayAppt.roomName }
+                : null,
             ];
           }),
         );
@@ -166,7 +207,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
   const handleMarkUnavailable = () => {
     if (!unavailableModal) return;
-    setTeachers((prev) => prev.map((t) => (t.id === unavailableModal.id ? { ...t, available: false } : t)));
+    setTeachers((prev) =>
+      prev.map((t) => (t.id === unavailableModal.id ? { ...t, available: false } : t)),
+    );
     markTeacherUnavailable(unavailableModal.id, {
       date: unavailableFrom,
       reason: unavailableReason || 'Unavailable',
@@ -178,7 +221,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
     setUnavailableReason('');
   };
 
-  const handleReassignSubmit = (payload: { fromTherapistId: string; toTherapistId: string; studentIds: string[] }) => {
+  const handleReassignSubmit = (payload: {
+    fromTherapistId: string;
+    toTherapistId: string;
+    studentIds: string[];
+  }) => {
     const { fromTherapistId, toTherapistId, studentIds } = payload;
     if (studentIds.length === 0) {
       Alert.alert('No students selected', 'Select at least one student to reassign.');
@@ -190,13 +237,19 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       .then(() => {
         // Reflect the persisted change by reloading the schedule source of truth.
         setReassignVisible(false);
-        Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
+        Alert.alert(
+          'Reassignment saved',
+          `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`,
+        );
         load();
       })
       .catch(() => {
         // Even if the API fails, keep the UI responsive and re-sync from the store.
         setReassignVisible(false);
-        Alert.alert('Reassignment saved', `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`);
+        Alert.alert(
+          'Reassignment saved',
+          `${studentIds.length} student(s) moved from ${fromName} to ${toName}.`,
+        );
         load();
       });
   };
@@ -235,7 +288,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const selectedFilterLabel =
     teacherFilter === 'all'
       ? 'All Teachers'
-      : teachers.find((t) => t.id === teacherFilter)?.name ?? 'All Teachers';
+      : (teachers.find((t) => t.id === teacherFilter)?.name ?? 'All Teachers');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -245,7 +298,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Operational Management</Text>
-            <Text style={styles.headerSubtitle}>Teacher schedules, assignments & performance logistics</Text>
+            <Text style={styles.headerSubtitle}>
+              Teacher schedules, assignments & performance logistics
+            </Text>
           </View>
           <TouchableOpacity style={styles.exportButton} onPress={handleExport} activeOpacity={0.8}>
             <Download size={16} color={DARK_TEXT} />
@@ -270,7 +325,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         {/* Teacher Filter */}
         <View style={styles.filterRow}>
           <Text style={styles.filterLabel}>FILTER:</Text>
-          <TouchableOpacity style={styles.selectBox} onPress={() => setFilterOpen((v) => !v)} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.selectBox}
+            onPress={() => setFilterOpen((v) => !v)}
+            activeOpacity={0.8}
+          >
             <Text style={styles.selectText}>{selectedFilterLabel}</Text>
             <ChevronDown size={16} color="#9CA3AF" />
           </TouchableOpacity>
@@ -283,7 +342,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   setFilterOpen(false);
                 }}
               >
-                <Text style={[styles.selectOptionText, teacherFilter === 'all' && { color: SKY, fontWeight: '700' }]}>
+                <Text
+                  style={[
+                    styles.selectOptionText,
+                    teacherFilter === 'all' && { color: SKY, fontWeight: '700' },
+                  ]}
+                >
                   All Teachers
                 </Text>
               </TouchableOpacity>
@@ -296,7 +360,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                     setFilterOpen(false);
                   }}
                 >
-                  <Text style={[styles.selectOptionText, teacherFilter === t.id && { color: SKY, fontWeight: '700' }]}>
+                  <Text
+                    style={[
+                      styles.selectOptionText,
+                      teacherFilter === t.id && { color: SKY, fontWeight: '700' },
+                    ]}
+                  >
                     {t.name}
                   </Text>
                 </TouchableOpacity>
@@ -326,7 +395,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                 <View key={teacher.id} style={styles.gridRow}>
                   <View style={[styles.teacherCell, styles.gridFirstCol]}>
                     <View style={styles.avatarSmall}>
-                      <Text style={styles.avatarSmallText}>{teacher.name.charAt(teacher.name.length - 1)}</Text>
+                      <Text style={styles.avatarSmallText}>
+                        {teacher.name.charAt(teacher.name.length - 1)}
+                      </Text>
                     </View>
                     <View>
                       <Text style={styles.gridTeacherName}>{teacher.name}</Text>
@@ -367,105 +438,127 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
         {/* Performance Metrics */}
         <Text style={styles.sectionHeading}>PERFORMANCE METRICS</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-          {filteredTeachers.map((teacher) => (
-            <View
-              key={teacher.id}
-              style={[
-                styles.card,
-                styles.metricCard,
-                !teacher.available && { borderColor: '#FECACA', backgroundColor: '#FFFBFA' },
-              ]}
-            >
-              <View style={styles.metricHeader}>
-                <View style={styles.metricHeaderLeft}>
-                  <View style={styles.avatarMedium}>
-                    <Text style={styles.avatarMediumText}>{teacher.name.charAt(teacher.name.length - 1)}</Text>
+        <View style={{ width: '100%' }}>
+          <FlashList
+            data={filteredTeachers}
+            keyExtractor={(teacher) => teacher.id}
+            renderItem={({ item: teacher }) => (
+              <View
+                style={[
+                  styles.card,
+                  styles.metricCard,
+                  { marginBottom: spacing.md },
+                  !teacher.available && { borderColor: '#FECACA', backgroundColor: '#FFFBFA' },
+                ]}
+              >
+                <View style={styles.metricHeader}>
+                  <View style={styles.metricHeaderLeft}>
+                    <View style={styles.avatarMedium}>
+                      <Text style={styles.avatarMediumText}>
+                        {teacher.name.charAt(teacher.name.length - 1)}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={styles.metricTeacherName}>{teacher.name}</Text>
+                      <Text style={styles.metricTeacherMeta}>
+                        {teacher.station} · {teacher.room}
+                      </Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.metricTeacherName}>{teacher.name}</Text>
-                    <Text style={styles.metricTeacherMeta}>
-                      {teacher.station} · {teacher.room}
+                  <View
+                    style={[
+                      styles.availabilityBadge,
+                      { backgroundColor: !teacher.available ? '#FEE2E2' : '#DCFCE7' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.availabilityBadgeText,
+                        { color: !teacher.available ? '#DC2626' : '#16A34A' },
+                      ]}
+                    >
+                      {!teacher.available ? 'Unavailable' : 'Available'}
                     </Text>
                   </View>
                 </View>
-                <View
-                  style={[
-                    styles.availabilityBadge,
-                    { backgroundColor: !teacher.available ? '#FEE2E2' : '#DCFCE7' },
-                  ]}
-                >
-                  <Text style={[styles.availabilityBadgeText, { color: !teacher.available ? '#DC2626' : '#16A34A' }]}>
-                    {!teacher.available ? 'Unavailable' : 'Available'}
-                  </Text>
+
+                <View>
+                  <Text style={styles.assignedLabel}>Assigned Students</Text>
+                  {teacher.students.length === 0 ? (
+                    <View style={styles.noStudentsBox}>
+                      <Text style={styles.noStudentsText}>No students assigned</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.chipWrap}>
+                      {teacher.students.map((s) => (
+                        <View key={s} style={styles.grayChip}>
+                          <Text style={styles.grayChipText}>{s}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
-              </View>
 
-              <View>
-                <Text style={styles.assignedLabel}>Assigned Students</Text>
-                {teacher.students.length === 0 ? (
-                  <View style={styles.noStudentsBox}>
-                    <Text style={styles.noStudentsText}>No students assigned</Text>
-                  </View>
-                ) : (
-                  <View style={styles.chipWrap}>
-                    {teacher.students.map((s) => (
-                      <View key={s} style={styles.grayChip}>
-                        <Text style={styles.grayChipText}>{s}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
+                <View style={styles.kpiGrid}>
+                  <KpiCard label="Sessions" value={teacher.sessions} />
+                  <KpiCard label="Trials" value={teacher.trials} />
+                  <KpiCard label="Indep." value={teacher.independence} unit="%" />
+                  <KpiCard label="Incidents" value={teacher.incidents} />
+                </View>
 
-              <View style={styles.kpiGrid}>
-                <KpiCard label="Sessions" value={teacher.sessions} />
-                <KpiCard label="Trials" value={teacher.trials} />
-                <KpiCard label="Indep." value={teacher.independence} unit="%" />
-                <KpiCard label="Incidents" value={teacher.incidents} />
-              </View>
-
-              <View style={{ gap: spacing.sm }}>
-                <TouchableOpacity
-                  style={styles.summaryButton}
-                  onPress={() => setSelectedTeacher(teacher)}
-                  activeOpacity={0.8}
-                >
-                  <Eye size={14} color="#4B5563" />
-                  <Text style={styles.summaryButtonText}>View Teacher Summary</Text>
-                </TouchableOpacity>
-                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <View style={{ gap: spacing.sm }}>
                   <TouchableOpacity
-                    style={styles.unavailableButton}
-                    onPress={() => setUnavailableModal(teacher)}
+                    style={styles.summaryButton}
+                    onPress={() => setSelectedTeacher(teacher)}
                     activeOpacity={0.8}
                   >
-                    <UserMinus size={14} color="#EA580C" />
-                    <Text style={styles.unavailableButtonText}>Mark Unavailable</Text>
+                    <Eye size={14} color="#4B5563" />
+                    <Text style={styles.summaryButtonText}>View Teacher Summary</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.reassignButton, teacher.students.length === 0 && { opacity: 0.4 }]}
-                    onPress={() => setReassignVisible(true)}
-                    disabled={teacher.students.length === 0}
-                    activeOpacity={0.8}
-                  >
-                    <ArrowRightLeft size={14} color={colors.primaryYellowDark} />
-                    <Text style={styles.reassignButtonText}>Reassign Students</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    <TouchableOpacity
+                      style={styles.unavailableButton}
+                      onPress={() => setUnavailableModal(teacher)}
+                      activeOpacity={0.8}
+                    >
+                      <UserMinus size={14} color="#EA580C" />
+                      <Text style={styles.unavailableButtonText}>Mark Unavailable</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.reassignButton,
+                        teacher.students.length === 0 && { opacity: 0.4 },
+                      ]}
+                      onPress={() => setReassignVisible(true)}
+                      disabled={teacher.students.length === 0}
+                      activeOpacity={0.8}
+                    >
+                      <ArrowRightLeft size={14} color={colors.primaryYellowDark} />
+                      <Text style={styles.reassignButtonText}>Reassign Students</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          ))}
+            )}
+          />
         </View>
       </ScrollView>
 
       {/* Cell Detail Modal */}
-      <Modal visible={cellModal !== null} animationType="fade" transparent onRequestClose={() => setCellModal(null)}>
+      <Modal
+        visible={cellModal !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCellModal(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { maxWidth: 340 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Assignment Detail</Text>
-              <TouchableOpacity onPress={() => setCellModal(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setCellModal(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
@@ -506,7 +599,11 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   </View>
                 </View>
                 <View style={styles.modalFooterSingle}>
-                  <TouchableOpacity style={styles.closeDarkButton} onPress={() => setCellModal(null)} activeOpacity={0.8}>
+                  <TouchableOpacity
+                    style={styles.closeDarkButton}
+                    onPress={() => setCellModal(null)}
+                    activeOpacity={0.8}
+                  >
                     <Text style={styles.closeDarkButtonText}>Close</Text>
                   </TouchableOpacity>
                 </View>
@@ -517,7 +614,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       </Modal>
 
       {/* Teacher Summary Modal */}
-      <Modal visible={selectedTeacher !== null} animationType="fade" transparent onRequestClose={() => setSelectedTeacher(null)}>
+      <Modal
+        visible={selectedTeacher !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSelectedTeacher(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -534,7 +636,10 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setSelectedTeacher(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setSelectedTeacher(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
@@ -552,7 +657,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                     </View>
                     <View style={[styles.statTile, { backgroundColor: colors.bgApp }]}>
                       <Text style={styles.statTileLabel}>Avg Independence</Text>
-                      <Text style={[styles.statTileValue, { color: colors.primaryYellowDark }]}>{selectedTeacher.independence}%</Text>
+                      <Text style={[styles.statTileValue, { color: colors.primaryYellowDark }]}>
+                        {selectedTeacher.independence}%
+                      </Text>
                     </View>
                     <View
                       style={[
@@ -605,8 +712,15 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                       ) : (
                         <AlertTriangle size={16} color="#DC2626" />
                       )}
-                      <Text style={[styles.availabilityRowText, { color: selectedTeacher.available ? '#15803D' : '#DC2626' }]}>
-                        {selectedTeacher.available ? 'Available this week' : 'Marked as unavailable'}
+                      <Text
+                        style={[
+                          styles.availabilityRowText,
+                          { color: selectedTeacher.available ? '#15803D' : '#DC2626' },
+                        ]}
+                      >
+                        {selectedTeacher.available
+                          ? 'Available this week'
+                          : 'Marked as unavailable'}
                       </Text>
                     </View>
                   </View>
@@ -627,7 +741,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
       </Modal>
 
       {/* Mark Unavailable Modal */}
-      <Modal visible={unavailableModal !== null} animationType="fade" transparent onRequestClose={() => setUnavailableModal(null)}>
+      <Modal
+        visible={unavailableModal !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setUnavailableModal(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -635,7 +754,10 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                 <UserMinus size={16} color="#F97316" />
                 <Text style={styles.modalTitle}>Mark Teacher Unavailable</Text>
               </View>
-              <TouchableOpacity onPress={() => setUnavailableModal(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setUnavailableModal(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
@@ -643,8 +765,8 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
               <>
                 <View style={styles.modalBody}>
                   <Text style={styles.descriptionText}>
-                    Mark <Text style={{ fontWeight: '700' }}>{unavailableModal.name}</Text> as unavailable for a date range.
-                    Their schedule will show a warning indicator.
+                    Mark <Text style={{ fontWeight: '700' }}>{unavailableModal.name}</Text> as
+                    unavailable for a date range. Their schedule will show a warning indicator.
                   </Text>
                   <View style={{ flexDirection: 'row', gap: spacing.md }}>
                     <View style={{ flex: 1 }}>
@@ -693,7 +815,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
                   <TouchableOpacity
                     style={[
                       styles.confirmAmberButton,
-                      (!unavailableFrom || !unavailableTo || !unavailableReason.trim()) && { opacity: 0.4 },
+                      (!unavailableFrom || !unavailableTo || !unavailableReason.trim()) && {
+                        opacity: 0.4,
+                      },
                     ]}
                     onPress={handleMarkUnavailable}
                     disabled={!unavailableFrom || !unavailableTo || !unavailableReason.trim()}
@@ -800,21 +924,65 @@ const styles = StyleSheet.create({
   metricCard: { flexGrow: 1, minWidth: 300, maxWidth: '100%' },
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardTitle: { fontSize: 16, fontWeight: '700', color: DARK_TEXT },
-  sectionHeading: { fontSize: 12, fontWeight: '700', color: '#6B7280', letterSpacing: 1, marginBottom: -spacing.xs },
+  sectionHeading: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 1,
+    marginBottom: -spacing.xs,
+  },
 
-  gridHeaderRow: { flexDirection: 'row', backgroundColor: '#F9FAFB', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#F3F4F6' },
+  gridHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#F3F4F6',
+  },
   gridRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  gridCellHeader: { fontSize: 11, fontWeight: '600', color: '#6B7280', letterSpacing: 1, paddingVertical: spacing.md, textAlign: 'center' },
-  gridFirstCol: { width: 150, paddingLeft: spacing.md, textAlign: 'left', textAlignVertical: 'center' },
+  gridCellHeader: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 1,
+    paddingVertical: spacing.md,
+    textAlign: 'center',
+  },
+  gridFirstCol: {
+    width: 150,
+    paddingLeft: spacing.md,
+    textAlign: 'left',
+    textAlignVertical: 'center',
+  },
   gridDayCol: { width: 110 },
-  teacherCell: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, paddingRight: spacing.sm },
+  teacherCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingRight: spacing.sm,
+  },
   gridTeacherName: { fontSize: 14, fontWeight: '500', color: DARK_TEXT },
   dayCell: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: spacing.md },
   roomText: { fontSize: 11, color: '#9CA3AF' },
   emptyCellText: { color: '#D1D5DB', fontSize: 14 },
-  avatarSmall: { width: 28, height: 28, borderRadius: 14, backgroundColor: DARK_TEXT, alignItems: 'center', justifyContent: 'center' },
+  avatarSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: DARK_TEXT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarSmallText: { color: colors.white, fontSize: 12, fontWeight: '700' },
-  avatarMedium: { width: 40, height: 40, borderRadius: 20, backgroundColor: DARK_TEXT, alignItems: 'center', justifyContent: 'center' },
+  avatarMedium: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: DARK_TEXT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarMediumText: { color: colors.white, fontSize: 15, fontWeight: '700' },
   unavailableInline: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   unavailableInlineText: { fontSize: 11, color: '#EF4444' },
@@ -822,7 +990,12 @@ const styles = StyleSheet.create({
   stationChip: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
   stationChipText: { fontSize: 12, fontWeight: '500' },
 
-  metricHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  metricHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   metricHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   metricTeacherName: { fontSize: 15, fontWeight: '600', color: DARK_TEXT },
   metricTeacherMeta: { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
@@ -831,7 +1004,12 @@ const styles = StyleSheet.create({
 
   assignedLabel: { fontSize: 12, color: '#9CA3AF', marginBottom: 6 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  grayChip: { backgroundColor: '#F3F4F6', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
+  grayChip: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   grayChipText: { fontSize: 12, color: '#4B5563' },
   noStudentsBox: {
     backgroundColor: '#FEFCE8',
@@ -919,7 +1097,11 @@ const styles = StyleSheet.create({
   flagHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   modalTitle: { fontSize: 16, fontWeight: '700', color: DARK_TEXT },
   modalSubtitle: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
-  modalBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
+  modalBody: {
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.md,
+  },
   modalFooterSingle: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingBottom: spacing.lg },
   modalFooterRow: {
     flexDirection: 'row',
@@ -945,7 +1127,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statTileLabel: { fontSize: 11, color: '#9CA3AF', marginBottom: 4 },
-  statTileValue: { fontSize: 22, fontWeight: '700', color: DARK_TEXT, fontVariant: ['tabular-nums'] },
+  statTileValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: DARK_TEXT,
+    fontVariant: ['tabular-nums'],
+  },
 
   studentRow: {
     flexDirection: 'row',
@@ -956,7 +1143,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
   },
-  studentAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: SKY, alignItems: 'center', justifyContent: 'center' },
+  studentAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: SKY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   studentAvatarText: { color: colors.white, fontSize: 11, fontWeight: '700' },
   studentRowName: { fontSize: 14, color: colors.bodyText },
 
@@ -971,8 +1165,20 @@ const styles = StyleSheet.create({
   availabilityRowText: { fontSize: 14, fontWeight: '600' },
 
   descriptionText: { fontSize: 13, color: '#4B5563', lineHeight: 19 },
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1, marginBottom: 6 },
-  notesSectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1, marginBottom: spacing.xs },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  notesSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
   textInput: {
     borderWidth: 1,
     borderColor: colors.border,

@@ -162,8 +162,11 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
   'Staff Scheduling': 'DirectorScheduling',
   'Goal Mastery Approval': 'GoalMasteryApproval',
   'Parent Communication': 'DirectorParentCommunication',
+  'Reports & Oversight': 'ReportsOversight',
   'Report & Oversight': 'ReportsOversight',
   'Student Progress': 'DirectorStudentProgress',
+  Assessments: 'AssessmentSummaryReport',
+  'Assessment Summary Report': 'AssessmentSummaryReport',
   // Legacy aliases (existing screens / internal links)
   Scheduling: 'DirectorScheduling',
   Approvals: 'GoalMasteryApproval',
@@ -225,6 +228,7 @@ export const PD_ROUTE_BY_TAB: Record<string, keyof ProgramDirectorStackParamList
   'Clinical Quality Monitoring': 'GoalBankManagement',
   'Parent Communication': 'PdParentCommunication',
   Reports: 'GraphChartView',
+  'Reports & Oversight': 'GraphChartView',
   // Legacy aliases (existing screens / internal links)
   Caseload: 'StudentCaseload',
   Assessments: 'AssessmentSummaryReport',
@@ -251,6 +255,8 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   'Operational Management': 'CoordinatorSchedule',
   'Parent Communication': 'CoordinatorParentCommunication',
   'Student Registration': 'StudentEnrollment',
+  'Enrollment Wizard': 'StudentEnrollmentWizard',
+  Enrollment: 'StudentEnrollmentWizard',
   'Staff Management & Linking': 'WorkloadDashboard',
   'IUP Creation & Goal Assignment': 'IupGeneration',
   // Legacy aliases (existing screens / internal links)
@@ -261,7 +267,6 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   Schedule: 'CoordinatorSchedule',
   Operational: 'CoordinatorSchedule',
   Parents: 'CoordinatorParentCommunication',
-  Enrollment: 'StudentEnrollment',
   Registration: 'StudentEnrollment',
   Workload: 'WorkloadDashboard',
   Staff: 'WorkloadDashboard',

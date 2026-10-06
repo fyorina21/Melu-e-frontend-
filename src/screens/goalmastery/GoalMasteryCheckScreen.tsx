@@ -1,5 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+  Platform,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
@@ -65,11 +75,19 @@ const PROMPT_OPTIONS: PromptType[] = [
   'Gestural (G)',
 ];
 
+import { storage } from '../../utils/storage';
+
 export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   const { session: authSession } = useAuth();
-  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
-  const urlGid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('goalId') : null;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const urlGid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('goalId')
+      : null;
+  const localSid = storage.getSync('last_assessment_student_id');
 
   const initialSid = route?.params?.studentId || urlSid || localSid || '';
   const initialGid = route?.params?.goalId || urlGid || '';
@@ -116,7 +134,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         }
       })
       .catch(() => {});
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [activeStudentId]);
 
   // 2. Fetch available goals for active student
@@ -136,7 +156,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         }
       })
       .catch(() => {});
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [activeStudentId, activeGoalId]);
 
   // 3. Load mastery check details from backend
@@ -162,7 +184,10 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         setTeacherCNotes(masteryData.teacherC.notes || '');
       }
 
-      if (masteryData?.statusLabel === 'Pending Director Review' || masteryData?.statusLabel === 'Approved') {
+      if (
+        masteryData?.statusLabel === 'Pending Director Review' ||
+        masteryData?.statusLabel === 'Approved'
+      ) {
         setIsSubmitted(true);
       } else {
         setIsSubmitted(false);
@@ -170,7 +195,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         try {
-          localStorage.setItem('last_assessment_student_id', activeStudentId);
+          storage.setSync('last_assessment_student_id', activeStudentId);
           const url = `/GoalMasteryCheck?studentId=${encodeURIComponent(activeStudentId)}&goalId=${encodeURIComponent(gid)}`;
           window.history.replaceState(null, '', url);
         } catch {}
@@ -189,13 +214,13 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   }, [load, activeStudentId, activeGoalId]);
 
   // Validation Logic
-  const isTeacherBValid = teacherBOutcome && (
-    teacherBOutcome !== 'failed' || (teacherBOutcome === 'failed' && teacherBPrompt !== '')
-  );
+  const isTeacherBValid =
+    teacherBOutcome &&
+    (teacherBOutcome !== 'failed' || (teacherBOutcome === 'failed' && teacherBPrompt !== ''));
 
-  const isTeacherCValid = teacherCOutcome && (
-    teacherCOutcome !== 'failed' || (teacherCOutcome === 'failed' && teacherCPrompt !== '')
-  );
+  const isTeacherCValid =
+    teacherCOutcome &&
+    (teacherCOutcome !== 'failed' || (teacherCOutcome === 'failed' && teacherCPrompt !== ''));
 
   const canSubmit = isTeacherBValid && isTeacherCValid && !isSubmitted;
 
@@ -256,7 +281,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     );
   }
 
-  const currentStatus = isSubmitted ? 'Pending Director Review' : (data.statusLabel || 'Draft');
+  const currentStatus = isSubmitted ? 'Pending Director Review' : data.statusLabel || 'Draft';
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -290,13 +315,21 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                   {studentOptions.map((opt) => (
                     <TouchableOpacity
                       key={opt.id}
-                      style={[styles.dropdownItem, opt.id === activeStudentId && styles.dropdownItemSelected]}
+                      style={[
+                        styles.dropdownItem,
+                        opt.id === activeStudentId && styles.dropdownItemSelected,
+                      ]}
                       onPress={() => {
                         setActiveStudentId(opt.id);
                         setStudentDropdownOpen(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, opt.id === activeStudentId && styles.dropdownItemTextSelected]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          opt.id === activeStudentId && styles.dropdownItemTextSelected,
+                        ]}
+                      >
                         {opt.name}
                       </Text>
                     </TouchableOpacity>
@@ -327,13 +360,21 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                   {goalOptions.map((opt) => (
                     <TouchableOpacity
                       key={opt.id}
-                      style={[styles.dropdownItem, opt.id === activeGoalId && styles.dropdownItemSelected]}
+                      style={[
+                        styles.dropdownItem,
+                        opt.id === activeGoalId && styles.dropdownItemSelected,
+                      ]}
                       onPress={() => {
                         setActiveGoalId(opt.id);
                         setGoalDropdownOpen(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, opt.id === activeGoalId && styles.dropdownItemTextSelected]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          opt.id === activeGoalId && styles.dropdownItemTextSelected,
+                        ]}
+                      >
                         {opt.name}
                       </Text>
                     </TouchableOpacity>
@@ -354,8 +395,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
             </View>
             <View>
               <Text style={styles.studentName}>{data.studentName}</Text>
-              <Text style={styles.metaDetail}>Goal: <Text style={styles.metaValue}>{data.goalName}</Text></Text>
-              <Text style={styles.metaDetail}>Station: <Text style={styles.metaValue}>{data.station}</Text></Text>
+              <Text style={styles.metaDetail}>
+                Goal: <Text style={styles.metaValue}>{data.goalName}</Text>
+              </Text>
+              <Text style={styles.metaDetail}>
+                Station: <Text style={styles.metaValue}>{data.station}</Text>
+              </Text>
             </View>
           </View>
 
@@ -401,13 +446,24 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 <Text style={styles.detailValue}>{data.primaryTeacher.criteriaMet}</Text>
               </View>
 
-              <Text style={styles.detailLine}><Text style={styles.boldLabel}>Date Achieved:</Text> {data.primaryTeacher.dateAchieved}</Text>
-              <Text style={styles.detailLine}><Text style={styles.boldLabel}>Total Trials:</Text> {data.primaryTeacher.totalTrials}</Text>
-              <Text style={styles.detailLine}><Text style={styles.boldLabel}>Independence:</Text> {data.primaryTeacher.independenceRate}</Text>
+              <Text style={styles.detailLine}>
+                <Text style={styles.boldLabel}>Date Achieved:</Text>{' '}
+                {data.primaryTeacher.dateAchieved}
+              </Text>
+              <Text style={styles.detailLine}>
+                <Text style={styles.boldLabel}>Total Trials:</Text>{' '}
+                {data.primaryTeacher.totalTrials}
+              </Text>
+              <Text style={styles.detailLine}>
+                <Text style={styles.boldLabel}>Independence:</Text>{' '}
+                {data.primaryTeacher.independenceRate}
+              </Text>
 
               <Text style={styles.notesLabel}>Notes</Text>
               <View style={styles.readOnlyNotes}>
-                <Text style={styles.notesText}>{data.primaryTeacher.notes || 'No session notes recorded.'}</Text>
+                <Text style={styles.notesText}>
+                  {data.primaryTeacher.notes || 'No session notes recorded.'}
+                </Text>
               </View>
             </View>
           </View>
@@ -423,7 +479,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 <Text style={styles.teacherNameText}>{data.teacherB.name}</Text>
               </View>
 
-              <Text style={styles.fieldLabel}>Outcome <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.fieldLabel}>
+                Outcome <Text style={styles.required}>*</Text>
+              </Text>
               <View style={styles.radioGroup}>
                 {OUTCOME_OPTIONS.map((opt) => (
                   <TouchableOpacity
@@ -437,7 +495,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                     }}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.radioCircle, teacherBOutcome === opt.id && styles.radioCircleSelected]}>
+                    <View
+                      style={[
+                        styles.radioCircle,
+                        teacherBOutcome === opt.id && styles.radioCircleSelected,
+                      ]}
+                    >
                       {teacherBOutcome === opt.id && <View style={styles.radioInnerDot} />}
                     </View>
                     <Text style={styles.radioLabel}>{opt.label}</Text>
@@ -447,7 +510,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
               {teacherBOutcome === 'failed' && (
                 <View style={styles.dropdownContainer}>
-                  <Text style={styles.fieldLabel}>Prompt Used <Text style={styles.required}>*</Text></Text>
+                  <Text style={styles.fieldLabel}>
+                    Prompt Used <Text style={styles.required}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     disabled={isSubmitted}
                     style={styles.selectBox}
@@ -463,14 +528,20 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                     <View style={styles.dropdownMenu}>
                       <TouchableOpacity
                         style={styles.dropdownItem}
-                        onPress={() => { setTeacherBPrompt(''); setShowTeacherBPromptDropdown(false); }}
+                        onPress={() => {
+                          setTeacherBPrompt('');
+                          setShowTeacherBPromptDropdown(false);
+                        }}
                       >
                         <Text style={styles.dropdownItemTextPlaceholder}>Select prompt</Text>
                       </TouchableOpacity>
                       {PROMPT_OPTIONS.map((prompt) => (
                         <TouchableOpacity
                           key={prompt}
-                          style={[styles.dropdownItem, teacherBPrompt === prompt && styles.dropdownItemSelected]}
+                          style={[
+                            styles.dropdownItem,
+                            teacherBPrompt === prompt && styles.dropdownItemSelected,
+                          ]}
                           onPress={() => {
                             setTeacherBPrompt(prompt);
                             setShowTeacherBPromptDropdown(false);
@@ -490,7 +561,10 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 multiline
                 editable={!isSubmitted}
                 value={teacherBNotes}
-                onChangeText={(v) => { setTouched(true); setTeacherBNotes(v); }}
+                onChangeText={(v) => {
+                  setTouched(true);
+                  setTeacherBNotes(v);
+                }}
                 placeholder="Enter verification notes..."
                 placeholderTextColor="#94A3B8"
               />
@@ -510,7 +584,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 <Text style={styles.teacherNameText}>{data.teacherC.name}</Text>
               </View>
 
-              <Text style={styles.fieldLabel}>Outcome <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.fieldLabel}>
+                Outcome <Text style={styles.required}>*</Text>
+              </Text>
               <View style={styles.radioGroup}>
                 {OUTCOME_OPTIONS.map((opt) => (
                   <TouchableOpacity
@@ -524,7 +600,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                     }}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.radioCircle, teacherCOutcome === opt.id && styles.radioCircleSelected]}>
+                    <View
+                      style={[
+                        styles.radioCircle,
+                        teacherCOutcome === opt.id && styles.radioCircleSelected,
+                      ]}
+                    >
                       {teacherCOutcome === opt.id && <View style={styles.radioInnerDot} />}
                     </View>
                     <Text style={styles.radioLabel}>{opt.label}</Text>
@@ -534,7 +615,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
               {teacherCOutcome === 'failed' && (
                 <View style={styles.dropdownContainer}>
-                  <Text style={styles.fieldLabel}>Prompt Used <Text style={styles.required}>*</Text></Text>
+                  <Text style={styles.fieldLabel}>
+                    Prompt Used <Text style={styles.required}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     disabled={isSubmitted}
                     style={styles.selectBox}
@@ -550,14 +633,20 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                     <View style={styles.dropdownMenu}>
                       <TouchableOpacity
                         style={styles.dropdownItem}
-                        onPress={() => { setTeacherCPrompt(''); setShowTeacherCPromptDropdown(false); }}
+                        onPress={() => {
+                          setTeacherCPrompt('');
+                          setShowTeacherCPromptDropdown(false);
+                        }}
                       >
                         <Text style={styles.dropdownItemTextPlaceholder}>Select prompt</Text>
                       </TouchableOpacity>
                       {PROMPT_OPTIONS.map((prompt) => (
                         <TouchableOpacity
                           key={prompt}
-                          style={[styles.dropdownItem, teacherCPrompt === prompt && styles.dropdownItemSelected]}
+                          style={[
+                            styles.dropdownItem,
+                            teacherCPrompt === prompt && styles.dropdownItemSelected,
+                          ]}
                           onPress={() => {
                             setTeacherCPrompt(prompt);
                             setShowTeacherCPromptDropdown(false);
@@ -577,7 +666,10 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                 multiline
                 editable={!isSubmitted}
                 value={teacherCNotes}
-                onChangeText={(v) => { setTouched(true); setTeacherCNotes(v); }}
+                onChangeText={(v) => {
+                  setTouched(true);
+                  setTeacherCNotes(v);
+                }}
                 placeholder="Enter verification notes..."
                 placeholderTextColor="#94A3B8"
               />
@@ -593,7 +685,11 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
             <Text style={styles.cancelBtnText}>{isSubmitted ? 'Close' : 'Cancel'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.submitBtn, canSubmit && styles.submitBtnActive, isSubmitted && styles.submitBtnDisabled]}
+            style={[
+              styles.submitBtn,
+              canSubmit && styles.submitBtnActive,
+              isSubmitted && styles.submitBtnDisabled,
+            ]}
             disabled={!canSubmit}
             onPress={handleSubmit}
           >
@@ -623,7 +719,7 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backText: { fontSize: 14, color: '#334155', fontWeight: '500' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
-  
+
   headerPickersRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   pickerContainer: { position: 'relative', zIndex: 110 },
   pickerBtn: {
@@ -653,7 +749,14 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   studentInfoLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#F97316', alignItems: 'center', justifyContent: 'center' },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   studentName: { fontSize: 20, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
   metaDetail: { fontSize: 13, color: '#64748B' },
   metaValue: { color: '#334155', fontWeight: '500' },
@@ -663,12 +766,24 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 11, color: '#64748B', marginBottom: 2 },
   metaValueText: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
   metaSubText: { fontSize: 11, color: '#64748B' },
-  statusPill: { backgroundColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  statusPill: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
   pendingPill: { backgroundColor: '#FDE047' },
   statusPillText: { fontSize: 12, fontWeight: '700', color: '#1E293B' },
 
   columnsRow: { flexDirection: 'row', gap: 16 },
-  columnCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
+  columnCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
   primaryTeacherCard: { backgroundColor: '#FEFCE8', borderColor: '#FDE047' },
   primaryCardHeader: { backgroundColor: '#FACC15', paddingVertical: 12, alignItems: 'center' },
   primaryCardTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
@@ -679,7 +794,13 @@ const styles = StyleSheet.create({
   teacherNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   teacherNameText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
 
-  badge100: { backgroundColor: '#BFDBFE', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, alignSelf: 'flex-start' },
+  badge100: {
+    backgroundColor: '#BFDBFE',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
   badge100Text: { fontSize: 12, fontWeight: '700', color: '#1D4ED8' },
 
   detailSection: { marginTop: 4 },
@@ -689,7 +810,14 @@ const styles = StyleSheet.create({
   boldLabel: { fontWeight: '700', color: '#334155' },
 
   notesLabel: { fontSize: 12, color: '#64748B', marginTop: 4 },
-  readOnlyNotes: { minHeight: 80, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 8 },
+  readOnlyNotes: {
+    minHeight: 80,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 6,
+    padding: 8,
+  },
   notesText: { fontSize: 12, color: '#334155' },
 
   fieldLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginTop: 4 },
@@ -697,7 +825,15 @@ const styles = StyleSheet.create({
 
   radioGroup: { gap: 10 },
   radioOption: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  radioCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#64748B', alignItems: 'center', justifyContent: 'center' },
+  radioCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#64748B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   radioCircleSelected: { borderColor: '#0284C7' },
   radioInnerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#0284C7' },
   radioLabel: { fontSize: 13, color: '#1E293B', fontWeight: '500' },
@@ -740,13 +876,37 @@ const styles = StyleSheet.create({
   dropdownItemTextSelected: { fontWeight: '700', color: '#0284C7' },
   dropdownItemTextPlaceholder: { fontSize: 13, color: '#64748B' },
 
-  textInput: { minHeight: 70, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, padding: 8, fontSize: 13, textAlignVertical: 'top', backgroundColor: '#FFFFFF' },
+  textInput: {
+    minHeight: 70,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 13,
+    textAlignVertical: 'top',
+    backgroundColor: '#FFFFFF',
+  },
   cardFooterDate: { fontSize: 12, color: '#64748B', marginTop: 'auto', paddingTop: 8 },
 
   footerActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 8 },
-  cancelBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 24, paddingVertical: 10, minWidth: 100, alignItems: 'center' },
+  cancelBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    minWidth: 100,
+    alignItems: 'center',
+  },
   cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  submitBtn: { backgroundColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' },
+  submitBtn: {
+    backgroundColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
   submitBtnActive: { backgroundColor: '#FACC15' },
   submitBtnDisabled: { opacity: 0.6 },
   submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },

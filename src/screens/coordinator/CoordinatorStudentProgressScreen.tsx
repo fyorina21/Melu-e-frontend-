@@ -9,24 +9,53 @@ import {
   SafeAreaView,
   Modal,
 } from 'react-native';
-import {
-  Search,
-  Flag,
-  Printer,
-  ChevronDown,
-  X,
-  Eye,
-  AlertTriangle,
-  CheckCircle,
-  Target,
-  Activity,
-  FileText,
-  Save,
-} from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
+
+type IconProps = { size?: number; color?: string; style?: any; fill?: string; [key: string]: any };
+const Search = (props: IconProps) => (
+  <Feather name="search" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Flag = (props: IconProps) => (
+  <Feather name="flag" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Printer = (props: IconProps) => (
+  <Feather name="printer" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const ChevronDown = (props: IconProps) => (
+  <Feather name="chevron-down" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const X = (props: IconProps) => (
+  <Feather name="x" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Eye = (props: IconProps) => (
+  <Feather name="eye" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const AlertTriangle = (props: IconProps) => (
+  <Feather name="alert-triangle" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const CheckCircle = (props: IconProps) => (
+  <Feather name="check-circle" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Target = (props: IconProps) => (
+  <Feather name="target" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Activity = (props: IconProps) => (
+  <Feather name="activity" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const FileText = (props: IconProps) => (
+  <Feather name="file-text" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Save = (props: IconProps) => (
+  <Feather name="save" size={props.size ?? 16} color={props.color} style={props.style} />
+);
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
-import { getEnrollmentStudents, getStudentProgressOverview, flagStudent } from '../../api/coordinatorApi';
+import {
+  getEnrollmentStudents,
+  getStudentProgressOverview,
+  flagStudent,
+} from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 
@@ -158,7 +187,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
   const selectedStudent = students.find((s) => s.id === selectedStudentId) ?? null;
 
   const filteredStudents = students.filter((s) =>
-    (s.fullName ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    (s.fullName ?? '').toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const handleFlagConfirm = async () => {
@@ -230,7 +259,10 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Text style={styles.selectedChipText}>{selectedStudent.fullName}</Text>
               </View>
             )}
-            <TouchableOpacity onPress={() => setShowDropdown((d) => !d)} hitSlop={{ top: 8, bottom: 8 }}>
+            <TouchableOpacity
+              onPress={() => setShowDropdown((d) => !d)}
+              hitSlop={{ top: 8, bottom: 8 }}
+            >
               <ChevronDown size={16} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
@@ -243,14 +275,22 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                   filteredStudents.map((s) => (
                     <TouchableOpacity
                       key={s.id}
-                      style={[styles.dropdownItem, selectedStudentId === s.id && styles.dropdownItemActive]}
+                      style={[
+                        styles.dropdownItem,
+                        selectedStudentId === s.id && styles.dropdownItemActive,
+                      ]}
                       onPress={() => {
                         setSelectedStudentId(s.id);
                         setSearchQuery('');
                         setShowDropdown(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemName, selectedStudentId === s.id && { color: colors.navyText }]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemName,
+                          selectedStudentId === s.id && { color: colors.navyText },
+                        ]}
+                      >
                         {s.fullName}
                       </Text>
                       <Text style={styles.dropdownItemStation}>{s.programType}</Text>
@@ -269,7 +309,9 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
               <Search size={24} color="#9CA3AF" />
             </View>
             <Text style={styles.emptyTitle}>Select a student to view progress</Text>
-            <Text style={styles.emptySubtitle}>Choose from the dropdown above to load full progress data.</Text>
+            <Text style={styles.emptySubtitle}>
+              Choose from the dropdown above to load full progress data.
+            </Text>
           </View>
         )}
 
@@ -292,7 +334,9 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                         <Text style={styles.skyChipText}>{selectedStudent.programType}</Text>
                       </View>
                       <View style={styles.amberChip}>
-                        <Text style={styles.amberChipText}>{selectedStudent.therapyGroup} group</Text>
+                        <Text style={styles.amberChipText}>
+                          {selectedStudent.therapyGroup} group
+                        </Text>
                       </View>
                       <View style={styles.grayChip}>
                         <Text style={styles.grayChipText}>{selectedStudent.status}</Text>
@@ -303,12 +347,21 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
               </View>
               <View style={styles.profileActions}>
                 <TouchableOpacity
-                  style={[styles.actionButton, flagged ? styles.flaggedButton : styles.outlineButton]}
+                  style={[
+                    styles.actionButton,
+                    flagged ? styles.flaggedButton : styles.outlineButton,
+                  ]}
                   onPress={() => (flagged ? setFlagged(false) : setShowFlagModal(true))}
                   activeOpacity={0.8}
                 >
-                  <Flag size={16} color={flagged ? '#DC2626' : '#4B5563'} fill={flagged ? '#DC2626' : 'none'} />
-                  <Text style={[styles.actionButtonText, { color: flagged ? '#DC2626' : '#4B5563' }]}>
+                  <Flag
+                    size={16}
+                    color={flagged ? '#DC2626' : '#4B5563'}
+                    fill={flagged ? '#DC2626' : 'none'}
+                  />
+                  <Text
+                    style={[styles.actionButtonText, { color: flagged ? '#DC2626' : '#4B5563' }]}
+                  >
                     {flagged ? 'Flagged' : 'Flag Student'}
                   </Text>
                 </TouchableOpacity>
@@ -326,30 +379,38 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
             {/* Assessment Summary */}
             <Text style={styles.sectionHeading}>ASSESSMENT SUMMARY</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-              {overview
-                ? [
-                    { label: 'Skills Assessment', status: overview.assessmentSummary.skills },
-                    { label: 'Behavior Assessment', status: overview.assessmentSummary.behavior },
-                    { label: 'Preferences Assessment', status: overview.assessmentSummary.preferences },
-                  ].map((item) => {
-                    const progress = STATUS_PERCENT[item.status] ?? 0;
-                    const color = progress === 100 ? '#22C55E' : progress > 0 ? SKY : '#9CA3AF';
-                    return (
-                <View key={item.label} style={[styles.card, { flexGrow: 1, minWidth: 250 }]}>
-                  <View style={styles.assessmentHeader}>
-                    <Text style={styles.assessmentLabel}>{item.label}</Text>
-                    <StatusBadge status={item.status} />
-                  </View>
-                  <View style={styles.barTrackTall}>
-                    <View style={[styles.barFillTall, { width: `${progress}%`, backgroundColor: color }]} />
-                  </View>
-                  <Text style={styles.assessmentPct}>{progress}% complete</Text>
-                </View>
-                    );
-                  })
-                : (
-                  <Text style={styles.emptyDropdownText}>Loading assessment data...</Text>
-                )}
+              {overview ? (
+                [
+                  { label: 'Skills Assessment', status: overview.assessmentSummary.skills },
+                  { label: 'Behavior Assessment', status: overview.assessmentSummary.behavior },
+                  {
+                    label: 'Preferences Assessment',
+                    status: overview.assessmentSummary.preferences,
+                  },
+                ].map((item) => {
+                  const progress = STATUS_PERCENT[item.status] ?? 0;
+                  const color = progress === 100 ? '#22C55E' : progress > 0 ? SKY : '#9CA3AF';
+                  return (
+                    <View key={item.label} style={[styles.card, { flexGrow: 1, minWidth: 250 }]}>
+                      <View style={styles.assessmentHeader}>
+                        <Text style={styles.assessmentLabel}>{item.label}</Text>
+                        <StatusBadge status={item.status} />
+                      </View>
+                      <View style={styles.barTrackTall}>
+                        <View
+                          style={[
+                            styles.barFillTall,
+                            { width: `${progress}%`, backgroundColor: color },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.assessmentPct}>{progress}% complete</Text>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.emptyDropdownText}>Loading assessment data...</Text>
+              )}
             </View>
 
             {/* Current Goals */}
@@ -359,7 +420,10 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Text style={styles.cardTitle}>Current Goals</Text>
               </View>
               {(overview?.goals ?? []).slice(0, 6).map((goal, i, arr) => (
-                <View key={goal.id} style={[styles.tableRow, i < arr.length - 1 && styles.tableRowBorder]}>
+                <View
+                  key={goal.id}
+                  style={[styles.tableRow, i < arr.length - 1 && styles.tableRowBorder]}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.goalCellName}>{goal.name}</Text>
                   </View>
@@ -384,7 +448,10 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Text style={styles.cardTitle}>Session History</Text>
               </View>
               {(overview?.sessionHistory ?? []).map((session, i, arr) => (
-                <View key={session.id} style={[styles.tableRow, i < arr.length - 1 && styles.tableRowBorder]}>
+                <View
+                  key={session.id}
+                  style={[styles.tableRow, i < arr.length - 1 && styles.tableRowBorder]}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.goalCellName}>{session.date}</Text>
                     <Text style={styles.goalCellDomain}>
@@ -422,38 +489,51 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
               </View>
               {chartGoals.length > 0 ? (
                 <>
-              <View style={styles.legendRow}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: SKY }]} />
-                  <Text style={styles.legendText}>{chartGoals[0]?.name ?? 'Goal 1'}</Text>
-                </View>
-                {chartGoals[1] && (
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: AMBER }]} />
-                    <Text style={styles.legendText}>{chartGoals[1].name}</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.chartArea}>
-                {(chartGoals[0]?.trend ?? []).map((v1, wi) => {
-                  const v2 = chartGoals[1]?.trend?.[wi];
-                  return (
-                    <View key={wi} style={styles.chartCol}>
-                      <View style={styles.barsRow}>
-                        <View style={[styles.chartBar, { height: `${(v1 / maxChartValue) * 100}%`, backgroundColor: SKY }]}>
-                          <Text style={styles.chartBarValue}>{v1}%</Text>
-                        </View>
-                        {v2 !== undefined && (
-                          <View style={[styles.chartBar, { height: `${(v2 / maxChartValue) * 100}%`, backgroundColor: AMBER }]}>
-                            <Text style={styles.chartBarValueDark}>{v2}%</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.chartWeekLabel}>Wk {wi + 1}</Text>
+                  <View style={styles.legendRow}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: SKY }]} />
+                      <Text style={styles.legendText}>{chartGoals[0]?.name ?? 'Goal 1'}</Text>
                     </View>
-                  );
-                })}
-              </View>
+                    {chartGoals[1] && (
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: AMBER }]} />
+                        <Text style={styles.legendText}>{chartGoals[1].name}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.chartArea}>
+                    {(chartGoals[0]?.trend ?? []).map((v1, wi) => {
+                      const v2 = chartGoals[1]?.trend?.[wi];
+                      return (
+                        <View key={wi} style={styles.chartCol}>
+                          <View style={styles.barsRow}>
+                            <View
+                              style={[
+                                styles.chartBar,
+                                { height: `${(v1 / maxChartValue) * 100}%`, backgroundColor: SKY },
+                              ]}
+                            >
+                              <Text style={styles.chartBarValue}>{v1}%</Text>
+                            </View>
+                            {v2 !== undefined && (
+                              <View
+                                style={[
+                                  styles.chartBar,
+                                  {
+                                    height: `${(v2 / maxChartValue) * 100}%`,
+                                    backgroundColor: AMBER,
+                                  },
+                                ]}
+                              >
+                                <Text style={styles.chartBarValueDark}>{v2}%</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.chartWeekLabel}>Wk {wi + 1}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 </>
               ) : (
                 <Text style={styles.emptyDropdownText}>No goal trend data yet.</Text>
@@ -467,19 +547,26 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Text style={styles.cardTitle}>Behavior Incidents</Text>
               </View>
               {(overview?.incidents ?? []).map((incident, i) => (
-                <View key={`${incident.date}-${i}`} style={[styles.incidentTrendRow, { alignItems: 'flex-start' }]}>
+                <View
+                  key={`${incident.date}-${i}`}
+                  style={[styles.incidentTrendRow, { alignItems: 'flex-start' }]}
+                >
                   <Text style={styles.incidentWeekLabel}>{incident.date}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: DARK_TEXT }}>{incident.type}</Text>
-                    <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{incident.detail}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: DARK_TEXT }}>
+                      {incident.type}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                      {incident.detail}
+                    </Text>
                   </View>
                 </View>
               ))}
-              {!overview && (
-                <Text style={styles.emptyDropdownText}>Loading incident data...</Text>
-              )}
+              {!overview && <Text style={styles.emptyDropdownText}>Loading incident data...</Text>}
               {overview && (overview.incidents.length ?? 0) === 0 && (
-                <Text style={styles.emptyDropdownText}>{overview.incidentSummary || 'No incidents recorded.'}</Text>
+                <Text style={styles.emptyDropdownText}>
+                  {overview.incidentSummary || 'No incidents recorded.'}
+                </Text>
               )}
             </View>
 
@@ -509,7 +596,11 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                     <Text style={styles.savedText}>Notes saved</Text>
                   </View>
                 )}
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveNotes} activeOpacity={0.8}>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSaveNotes}
+                  activeOpacity={0.8}
+                >
                   <Save size={16} color={DARK_TEXT} />
                   <Text style={styles.saveButtonText}>Save Notes</Text>
                 </TouchableOpacity>
@@ -520,19 +611,25 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
       </ScrollView>
 
       {/* Session Modal */}
-      <Modal visible={selectedSession !== null} animationType="fade" transparent onRequestClose={() => setSelectedSession(null)}>
+      <Modal
+        visible={selectedSession !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSelectedSession(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Session Notes</Text>
                 {selectedSession && (
-                  <Text style={styles.modalSubtitle}>
-                    {selectedSession.date}
-                  </Text>
+                  <Text style={styles.modalSubtitle}>{selectedSession.date}</Text>
                 )}
               </View>
-              <TouchableOpacity onPress={() => setSelectedSession(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setSelectedSession(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
@@ -546,7 +643,9 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                   <View style={styles.sessionStatsGrid}>
                     <View style={[styles.sessionStatTile, { backgroundColor: colors.bgApp }]}>
                       <Text style={styles.statTileLabel}>Independence</Text>
-                      <Text style={[styles.statTileValue, { color: colors.primaryYellowDark }]}>{selectedSession.independencePercent ?? 0}%</Text>
+                      <Text style={[styles.statTileValue, { color: colors.primaryYellowDark }]}>
+                        {selectedSession.independencePercent ?? 0}%
+                      </Text>
                     </View>
                   </View>
                   <Text style={styles.notesSectionLabel}>SESSION NOTES</Text>
@@ -568,7 +667,12 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
       </Modal>
 
       {/* Flag Modal */}
-      <Modal visible={showFlagModal} animationType="fade" transparent onRequestClose={() => setShowFlagModal(false)}>
+      <Modal
+        visible={showFlagModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowFlagModal(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -576,14 +680,18 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
                 <Flag size={16} color="#EF4444" />
                 <Text style={styles.modalTitle}>Flag Student</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowFlagModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setShowFlagModal(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
               <Text style={styles.flagDescription}>
                 This will create a priority alert for{' '}
-                <Text style={{ fontWeight: '700' }}>{selectedStudent?.fullName}</Text>. All supervisors will be notified.
+                <Text style={{ fontWeight: '700' }}>{selectedStudent?.fullName}</Text>. All
+                supervisors will be notified.
               </Text>
               <Text style={styles.notesSectionLabel}>
                 REASON FOR FLAG <Text style={{ color: '#F87171' }}>*</Text>
@@ -643,7 +751,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
           'ACTIVE GOALS & MASTERY METRICS:',
           ...(overview?.goals || []).map(
             (g, i) =>
-              `${i + 1}. [${g.domain || 'Goal'}] ${g.name}\n   Status: ${g.status || 'Active'} | Independence: ${g.percent}%\n`
+              `${i + 1}. [${g.domain || 'Goal'}] ${g.name}\n   Status: ${g.status || 'Active'} | Independence: ${g.percent}%\n`,
           ),
           '----------------------------------------------------------------',
           `INCIDENT SUMMARY: ${overview?.incidentSummary || 'No recent behavioral escalations.'}`,
@@ -681,7 +789,13 @@ const styles = StyleSheet.create({
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardTitle: { fontSize: 16, fontWeight: '700', color: DARK_TEXT },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1 },
-  sectionHeading: { fontSize: 12, fontWeight: '700', color: '#6B7280', letterSpacing: 1, marginBottom: -spacing.xs },
+  sectionHeading: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 1,
+    marginBottom: -spacing.xs,
+  },
 
   searchRow: {
     flexDirection: 'row',
@@ -693,7 +807,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   searchInput: { flex: 1, paddingVertical: spacing.sm + 2, fontSize: 14, color: DARK_TEXT },
-  selectedChip: { backgroundColor: colors.bgApp, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: 999 },
+  selectedChip: {
+    backgroundColor: colors.bgApp,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
   selectedChipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
   dropdown: {
     backgroundColor: colors.bgCard,
@@ -713,7 +832,12 @@ const styles = StyleSheet.create({
   dropdownItemActive: { backgroundColor: colors.bgApp },
   dropdownItemName: { fontSize: 14, color: DARK_TEXT },
   dropdownItemStation: { fontSize: 12, color: '#9CA3AF' },
-  emptyDropdownText: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontSize: 13, color: '#9CA3AF' },
+  emptyDropdownText: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
 
   emptyState: { alignItems: 'center', paddingVertical: 64 },
   emptyIconWrap: {
@@ -729,16 +853,45 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: spacing.xs },
 
   profileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  profileLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, minWidth: 260 },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: SKY, alignItems: 'center', justifyContent: 'center' },
+  profileLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    minWidth: 260,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: SKY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: { color: colors.white, fontSize: 22, fontWeight: '700' },
   studentName: { fontSize: 18, fontWeight: '600', color: DARK_TEXT },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  grayChip: { backgroundColor: '#F3F4F6', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, alignSelf: 'flex-start' },
+  grayChip: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+  },
   grayChipText: { fontSize: 12, color: '#4B5563' },
-  skyChip: { backgroundColor: colors.bgApp, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
+  skyChip: {
+    backgroundColor: colors.bgApp,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   skyChipText: { fontSize: 12, color: colors.navyText },
-  amberChip: { backgroundColor: '#FEF9C3', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999 },
+  amberChip: {
+    backgroundColor: '#FEF9C3',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   amberChipText: { fontSize: 12, color: '#A16207' },
   profileActions: { flexDirection: 'row', gap: spacing.sm },
   actionButton: {
@@ -754,21 +907,42 @@ const styles = StyleSheet.create({
   flaggedButton: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
   actionButtonText: { fontSize: 13, fontWeight: '600' },
 
-  assessmentHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  assessmentHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   assessmentLabel: { fontSize: 14, fontWeight: '500', color: colors.bodyText, flexShrink: 1 },
   barTrackTall: { height: 8, borderRadius: 999, backgroundColor: '#F3F4F6', overflow: 'hidden' },
   barFillTall: { height: '100%', borderRadius: 999 },
   assessmentPct: { fontSize: 12, color: '#9CA3AF', marginTop: 6 },
 
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, alignSelf: 'flex-start' },
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+  },
   badgeText: { fontSize: 12, fontWeight: '500' },
 
   miniBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  miniBarTrack: { width: 80, height: 6, borderRadius: 999, backgroundColor: '#E5E7EB', overflow: 'hidden' },
+  miniBarTrack: {
+    width: 80,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
   miniBarFill: { height: '100%', borderRadius: 999 },
   miniBarText: { fontSize: 12, color: '#4B5563', fontVariant: ['tabular-nums'] },
 
-  tableRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
   tableRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   goalCellName: { fontSize: 14, fontWeight: '600', color: DARK_TEXT },
   goalCellDomain: { fontSize: 12, color: '#6B7280', marginTop: 2 },
@@ -793,16 +967,34 @@ const styles = StyleSheet.create({
     height: 220,
     paddingTop: spacing.sm,
   },
-  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: spacing.xs },
+  chartCol: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+    gap: spacing.xs,
+  },
   barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, flex: 1 },
-  chartBar: { width: 12, borderRadius: 3, justifyContent: 'flex-start', alignItems: 'center', minHeight: 18 },
+  chartBar: {
+    width: 12,
+    borderRadius: 3,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    minHeight: 18,
+  },
   chartBarValue: { fontSize: 8, fontWeight: '700', color: colors.white, marginTop: 2 },
   chartBarValueDark: { fontSize: 8, fontWeight: '700', color: DARK_TEXT, marginTop: 2 },
   chartWeekLabel: { fontSize: 10, color: '#6B7280' },
 
   incidentTrendRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   incidentWeekLabel: { fontSize: 13, color: '#6B7280', width: 60 },
-  incidentBarTrack: { flex: 1, height: 24, borderRadius: radius.md, backgroundColor: '#F3F4F6', overflow: 'hidden' },
+  incidentBarTrack: {
+    flex: 1,
+    height: 24,
+    borderRadius: radius.md,
+    backgroundColor: '#F3F4F6',
+    overflow: 'hidden',
+  },
   incidentBarFill: { height: '100%', borderRadius: radius.md },
   incidentCount: { fontSize: 13, fontWeight: '700', width: 16, textAlign: 'right' },
   incidentWord: { fontSize: 11, color: '#9CA3AF', width: 58 },
@@ -819,7 +1011,12 @@ const styles = StyleSheet.create({
     color: colors.bodyText,
     backgroundColor: colors.bgCard,
   },
-  notesFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36 },
+  notesFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 36,
+  },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   savedText: { fontSize: 12, color: '#16A34A' },
   saveButton: {
@@ -860,7 +1057,11 @@ const styles = StyleSheet.create({
   flagHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   modalTitle: { fontSize: 16, fontWeight: '700', color: DARK_TEXT },
   modalSubtitle: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
-  modalBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
+  modalBody: {
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.md,
+  },
   modalFooterSingle: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingBottom: spacing.lg },
   modalFooterRow: {
     flexDirection: 'row',
@@ -870,9 +1071,21 @@ const styles = StyleSheet.create({
   },
 
   sessionStatsGrid: { flexDirection: 'row', gap: spacing.md },
-  sessionStatTile: { flex: 1, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', backgroundColor: '#F9FAFB' },
+  sessionStatTile: {
+    flex: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
   statTileLabel: { fontSize: 11, color: '#9CA3AF' },
-  statTileValue: { fontSize: 17, fontWeight: '700', color: DARK_TEXT, fontVariant: ['tabular-nums'], marginTop: 2 },
+  statTileValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: DARK_TEXT,
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
+  },
   notesSectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1 },
   sessionNotesText: {
     fontSize: 13,

@@ -10,18 +10,39 @@ import {
   Modal,
   Alert,
 } from 'react-native';
-import {
-  Download,
-  RefreshCw,
-  Bell,
-  Eye,
-  AlertTriangle,
-  Clock,
-  Users,
-  CheckCircle,
-  Activity,
-  X,
-} from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
+
+type IconProps = { size?: number; color?: string; style?: any };
+const Download = (props: IconProps) => (
+  <Feather name="download" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const RefreshCw = (props: IconProps) => (
+  <Feather name="refresh-cw" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Bell = (props: IconProps) => (
+  <Feather name="bell" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Eye = (props: IconProps) => (
+  <Feather name="eye" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const AlertTriangle = (props: IconProps) => (
+  <Feather name="alert-triangle" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Clock = (props: IconProps) => (
+  <Feather name="clock" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Users = (props: IconProps) => (
+  <Feather name="users" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const CheckCircle = (props: IconProps) => (
+  <Feather name="check-circle" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Activity = (props: IconProps) => (
+  <Feather name="activity" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const X = (props: IconProps) => (
+  <Feather name="x" size={props.size ?? 16} color={props.color} style={props.style} />
+);
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
@@ -54,7 +75,9 @@ const STATUS_FROM_API: Record<string, SessionStatus> = {
 };
 
 function mapActiveSession(row: ActiveSessionRow): Session {
-  const [m, s] = String(row.timer ?? '0:00').split(':').map(Number);
+  const [m, s] = String(row.timer ?? '0:00')
+    .split(':')
+    .map(Number);
   return {
     id: row.id,
     teacher: row.teacherName,
@@ -85,7 +108,9 @@ interface Session {
 }
 
 function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const m = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 }
@@ -95,7 +120,12 @@ const STATUS_CONFIG: Record<
   { border: string; dot: string; label: string; text: string }
 > = {
   'on-track': { border: '#4ADE80', dot: '#4ADE80', label: 'On Track', text: '#4ADE80' },
-  'needs-attention': { border: '#FCD34D', dot: '#FCD34D', label: 'Needs Attention', text: '#FCD34D' },
+  'needs-attention': {
+    border: '#FCD34D',
+    dot: '#FCD34D',
+    label: 'Needs Attention',
+    text: '#FCD34D',
+  },
   overdue: { border: '#F87171', dot: '#F87171', label: 'Overdue', text: '#F87171' },
 };
 
@@ -231,7 +261,12 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
   const summaryTiles = [
     { label: 'Active Sessions', value: counts.total, icon: Activity, color: SKY },
     { label: 'On Track', value: counts.onTrack, icon: CheckCircle, color: '#4ADE80' },
-    { label: 'Needs Attention', value: counts.needsAttention, icon: AlertTriangle, color: '#FCD34D' },
+    {
+      label: 'Needs Attention',
+      value: counts.needsAttention,
+      icon: AlertTriangle,
+      color: '#FCD34D',
+    },
     { label: 'Overdue', value: counts.overdue, icon: Clock, color: '#F87171' },
   ];
 
@@ -242,7 +277,9 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
         {/* Filter Row */}
         <View style={styles.filterRow}>
           <View style={[styles.pillWrap, { flex: 1, minWidth: 150 }]}>
-            <Text style={styles.pillLabel}>{STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label}</Text>
+            <Text style={styles.pillLabel}>
+              {STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label}
+            </Text>
             <View style={styles.optionRow}>
               {STATUS_OPTIONS.map((opt) => (
                 <TouchableOpacity
@@ -263,13 +300,18 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
             </View>
           </View>
           <View style={[styles.pillWrap, { flex: 1, minWidth: 140 }]}>
-            <Text style={styles.pillLabel}>{STATION_OPTIONS.find((o) => o.value === stationFilter)?.label}</Text>
+            <Text style={styles.pillLabel}>
+              {STATION_OPTIONS.find((o) => o.value === stationFilter)?.label}
+            </Text>
             <View style={styles.optionRow}>
               {STATION_OPTIONS.map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   onPress={() => setStationFilter(opt.value)}
-                  style={[styles.optionChip, stationFilter === opt.value && styles.optionChipActive]}
+                  style={[
+                    styles.optionChip,
+                    stationFilter === opt.value && styles.optionChipActive,
+                  ]}
                 >
                   <Text
                     style={[
@@ -286,7 +328,11 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.skyButton} onPress={handleManualRefresh} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.skyButton}
+            onPress={handleManualRefresh}
+            activeOpacity={0.8}
+          >
             <RefreshCw size={16} color={SKY} />
             <Text style={styles.skyButtonText}>Refresh</Text>
           </TouchableOpacity>
@@ -399,7 +445,12 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
       </ScrollView>
 
       {/* Session Detail Modal */}
-      <Modal visible={selectedSession !== null} animationType="slide" transparent onRequestClose={() => setSelectedSession(null)}>
+      <Modal
+        visible={selectedSession !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedSession(null)}
+      >
         <View style={styles.overlay}>
           <View style={[styles.modalSheet, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
@@ -411,15 +462,31 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                   </Text>
                 )}
               </View>
-              <TouchableOpacity onPress={() => setSelectedSession(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setSelectedSession(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
             {selectedSession && (
-              <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                contentContainerStyle={styles.modalBody}
+                showsVerticalScrollIndicator={false}
+              >
                 <View style={styles.statusInlineRow}>
-                  <View style={[styles.statusDot, { backgroundColor: STATUS_CONFIG[selectedSession.status].dot }]} />
-                  <Text style={[styles.statusText, { color: STATUS_CONFIG[selectedSession.status].text }]}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      { backgroundColor: STATUS_CONFIG[selectedSession.status].dot },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.statusText,
+                      { color: STATUS_CONFIG[selectedSession.status].text },
+                    ]}
+                  >
                     {STATUS_CONFIG[selectedSession.status].label}
                   </Text>
                 </View>
@@ -442,7 +509,12 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                     </View>
                   ))
                 ) : (
-                  <Text style={[styles.goalText, { color: colors.mutedText, fontStyle: 'italic', marginBottom: spacing.xs }]}>
+                  <Text
+                    style={[
+                      styles.goalText,
+                      { color: colors.mutedText, fontStyle: 'italic', marginBottom: spacing.xs },
+                    ]}
+                  >
                     No active goals listed for this session
                   </Text>
                 )}
@@ -453,7 +525,9 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                     <Text style={styles.metricTileLabel}>Duration</Text>
                   </View>
                   <View style={styles.metricTile}>
-                    <Text style={[styles.metricTileValue, { color: SKY }]}>{selectedSession.trials}</Text>
+                    <Text style={[styles.metricTileValue, { color: SKY }]}>
+                      {selectedSession.trials}
+                    </Text>
                     <Text style={styles.metricTileLabel}>Trials</Text>
                   </View>
                   <View style={styles.metricTile}>
@@ -474,7 +548,11 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                   {Object.entries(selectedSession.trialBreakdown).map(([key, val]) => (
                     <View key={key} style={styles.breakdownTile}>
                       <Text style={styles.breakdownValue}>{val}</Text>
-                      <Text style={[styles.breakdownKey, { color: TRIAL_COLORS[key] ?? '#4ADE80' }]}>{key}</Text>
+                      <Text
+                        style={[styles.breakdownKey, { color: TRIAL_COLORS[key] ?? '#4ADE80' }]}
+                      >
+                        {key}
+                      </Text>
                     </View>
                   ))}
                 </View>
@@ -486,7 +564,8 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                       <View key={i} style={styles.incidentLogRow}>
                         <AlertTriangle size={14} color="#FDBA74" />
                         <Text style={styles.incidentLogText}>
-                          Incident {i + 1}: Behavior during activity transition — managed with redirection.
+                          Incident {i + 1}: Behavior during activity transition — managed with
+                          redirection.
                         </Text>
                       </View>
                     ))}
@@ -495,7 +574,11 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
               </ScrollView>
             )}
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedSession(null)} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setSelectedSession(null)}
+                activeOpacity={0.8}
+              >
                 <Text style={styles.closeButtonText}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -504,15 +587,25 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
       </Modal>
 
       {/* Send Alert Modal */}
-      <Modal visible={alertSession !== null} animationType="slide" transparent onRequestClose={closeAlertModal}>
+      <Modal
+        visible={alertSession !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={closeAlertModal}
+      >
         <View style={styles.overlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Send Alert</Text>
-                {alertSession && <Text style={styles.modalSubtitle}>To: {alertSession.teacher}</Text>}
+                {alertSession && (
+                  <Text style={styles.modalSubtitle}>To: {alertSession.teacher}</Text>
+                )}
               </View>
-              <TouchableOpacity onPress={closeAlertModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={closeAlertModal}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
@@ -549,10 +642,18 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
               />
             </View>
             <View style={styles.modalFooterRow}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={closeAlertModal} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={closeAlertModal}
+                activeOpacity={0.8}
+              >
                 <Text style={styles.closeButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.sendBtn} onPress={handleSendAlert} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.sendBtn}
+                onPress={handleSendAlert}
+                activeOpacity={0.8}
+              >
                 <Text style={styles.sendBtnText}>Send Alert</Text>
               </TouchableOpacity>
             </View>
@@ -626,7 +727,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     backgroundColor: `${PANEL}`,
   },
-  statIconWrap: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  statIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   statValue: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
   statLabel: { fontSize: 11, color: '#6B7280', marginTop: 2 },
 
@@ -640,12 +747,27 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     backgroundColor: DARK,
   },
-  sessionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  sessionHeaderLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, flexShrink: 1 },
+  sessionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  sessionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    flexShrink: 1,
+  },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
   teacherName: { color: DARK_TEXT, fontSize: 14, fontWeight: '600' },
   stationRoom: { color: '#9CA3AF', fontSize: 12, marginTop: 2 },
-  statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   statusBadgeText: { fontSize: 11, fontWeight: '600' },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -719,7 +841,13 @@ const styles = StyleSheet.create({
   emptyState: { flexBasis: '100%', alignItems: 'center', paddingVertical: 64 },
   emptyText: { color: '#6B7280', fontSize: 14 },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(26,34,51,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26,34,51,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
   modalSheet: {
     width: '100%',
     maxWidth: 520,
@@ -740,8 +868,17 @@ const styles = StyleSheet.create({
   },
   modalTitle: { color: DARK_TEXT, fontSize: 18, fontWeight: '700' },
   modalSubtitle: { color: '#9CA3AF', fontSize: 12, marginTop: 2 },
-  modalBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
-  modalFooter: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  modalBody: {
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.md,
+  },
+  modalFooter: {
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   modalFooterRow: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -753,7 +890,13 @@ const styles = StyleSheet.create({
 
   statusInlineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusText: { fontSize: 14, fontWeight: '600' },
-  sectionLabel: { color: '#9CA3AF', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: -spacing.xs },
+  sectionLabel: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: -spacing.xs,
+  },
   goalRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -766,11 +909,28 @@ const styles = StyleSheet.create({
   goalText: { color: DARK_TEXT, fontSize: 13 },
 
   metricsGrid3: { flexDirection: 'row', gap: spacing.md },
-  metricTile: { flex: 1, backgroundColor: PANEL, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center' },
-  metricTileValue: { color: DARK_TEXT, fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  metricTile: {
+    flex: 1,
+    backgroundColor: PANEL,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  metricTileValue: {
+    color: DARK_TEXT,
+    fontSize: 20,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
   metricTileLabel: { color: '#9CA3AF', fontSize: 11, marginTop: 2 },
 
-  breakdownTile: { flex: 1, backgroundColor: PANEL, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  breakdownTile: {
+    flex: 1,
+    backgroundColor: PANEL,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
   breakdownValue: { color: DARK_TEXT, fontSize: 17, fontWeight: '700' },
   breakdownKey: { fontSize: 12, fontWeight: '700', fontFamily: undefined },
 
@@ -798,7 +958,11 @@ const styles = StyleSheet.create({
   },
   closeButtonText: { color: DARK_TEXT, fontSize: 14, fontWeight: '600' },
 
-  alertFormBody: { paddingHorizontal: spacing.xl ?? spacing.lg, paddingVertical: spacing.lg, gap: spacing.md },
+  alertFormBody: {
+    paddingHorizontal: spacing.xl ?? spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.md,
+  },
   messageInput: {
     width: '100%',
     minHeight: 100,
@@ -820,6 +984,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgApp,
     alignItems: 'center',
   },
-  sendBtn: { flex: 1, paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: '#FCD34D', alignItems: 'center' },
+  sendBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#FCD34D',
+    alignItems: 'center',
+  },
   sendBtnText: { color: DARK, fontSize: 14, fontWeight: '700' },
 });

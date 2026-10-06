@@ -1,7 +1,7 @@
 export const colors = {
   // Brand
   primaryYellow: '#F6C445', // main CTA buttons (Start Session, Sign In, active tab)
-  primaryYellowDark: '#E0AE2E', 
+  primaryYellowDark: '#E0AE2E',
   primaryBlue: '#2563EB',
   purple: '#8B5CF6',
   successGreen: '#22C55E',
@@ -50,10 +50,12 @@ export const spacing = {
 } as const;
 
 export const radius = {
+  xs: 4,
   sm: 6,
   md: 10,
   lg: 14,
   pill: 999,
+  full: 999,
 } as const;
 
 export default colors;

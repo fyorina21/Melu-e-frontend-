@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, radius, spacing } from '../theme/colors';
@@ -8,7 +15,8 @@ import { getFormConfig } from '../api/institutionalAdminApi';
 
 export interface DynamicFormField {
   id: string;
-  type: 'Text' | 'Number' | 'Date' | 'Dropdown' | 'Checkbox' | 'Radio' | 'TextArea' | 'File' | string;
+  type:
+    'Text' | 'Number' | 'Date' | 'Dropdown' | 'Checkbox' | 'Radio' | 'TextArea' | 'File' | string;
   label: string;
   required: boolean;
   visible: boolean;
@@ -137,7 +145,12 @@ export default function DynamicFormFields({
     customFields.forEach((field) => {
       if (field.required) {
         const val = values[field.id] ?? values[field.label];
-        if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
+        if (
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (Array.isArray(val) && val.length === 0)
+        ) {
           missing.push(field.label);
         }
       }
@@ -158,7 +171,10 @@ export default function DynamicFormFields({
 
   const handlePickFile = async (fieldId: string, fieldLabel: string) => {
     try {
-      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      const res = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const file = res.assets[0];
         onChange(fieldId, file.name);
@@ -180,11 +196,15 @@ export default function DynamicFormFields({
 
       {customFields.map((field) => {
         const val = values[field.id] ?? values[field.label] ?? '';
-        const fieldOptions = Array.isArray(field.options) && field.options.length > 0
-          ? field.options
-          : (typeof field.options === 'string' && (field.options as string).length > 0
-              ? (field.options as string).split(',').map((s) => s.trim()).filter(Boolean)
-              : ['Option 1', 'Option 2', 'Option 3']);
+        const fieldOptions =
+          Array.isArray(field.options) && field.options.length > 0
+            ? field.options
+            : typeof field.options === 'string' && (field.options as string).length > 0
+              ? (field.options as string)
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : ['Option 1', 'Option 2', 'Option 3'];
 
         if (field.type === 'TextArea') {
           return (
@@ -197,6 +217,8 @@ export default function DynamicFormFields({
                 value={String(val)}
                 placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
                 placeholderTextColor={colors.mutedText}
+                accessibilityLabel={field.label}
+                aria-label={field.label}
                 onChangeText={(text) => {
                   onChange(field.id, text);
                   onChange(field.label, text);
@@ -215,6 +237,9 @@ export default function DynamicFormFields({
               key={field.id}
               style={styles.checkboxRow}
               activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityLabel={field.label}
+              accessibilityState={{ checked: isChecked }}
               onPress={() => {
                 const next = !isChecked;
                 onChange(field.id, next);
@@ -233,7 +258,12 @@ export default function DynamicFormFields({
 
         if (field.type === 'Radio') {
           return (
-            <View key={field.id} style={styles.field}>
+            <View
+              key={field.id}
+              style={styles.field}
+              accessibilityRole="radiogroup"
+              accessibilityLabel={field.label}
+            >
               <Text style={typography.label}>
                 {field.label} {field.required && <Text style={styles.required}>*</Text>}
               </Text>
@@ -244,6 +274,9 @@ export default function DynamicFormFields({
                     <TouchableOpacity
                       key={opt}
                       style={[styles.radioChip, isSelected && styles.radioChipSelected]}
+                      accessibilityRole="radio"
+                      accessibilityLabel={opt}
+                      accessibilityState={{ selected: isSelected }}
                       onPress={() => {
                         onChange(field.id, opt);
                         onChange(field.label, opt);
@@ -252,7 +285,9 @@ export default function DynamicFormFields({
                       <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
                         {isSelected && <View style={styles.radioInnerDot} />}
                       </View>
-                      <Text style={[styles.radioChipText, isSelected && styles.radioChipTextSelected]}>
+                      <Text
+                        style={[styles.radioChipText, isSelected && styles.radioChipTextSelected]}
+                      >
                         {opt}
                       </Text>
                     </TouchableOpacity>
@@ -307,27 +342,42 @@ export default function DynamicFormFields({
               <TouchableOpacity
                 style={styles.dropdownBtn}
                 activeOpacity={0.8}
+                accessibilityRole="combobox"
+                accessibilityLabel={field.label}
+                accessibilityState={{ expanded: isOpen }}
                 onPress={() => setOpenDropdownId(isOpen ? null : field.id)}
               >
                 <Text style={val ? styles.dropdownSelectedText : styles.dropdownPlaceholder}>
                   {val ? String(val) : `Select ${field.label}...`}
                 </Text>
-                <Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.mutedText} />
+                <Feather
+                  name={isOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.mutedText}
+                />
               </TouchableOpacity>
 
               {isOpen && (
-                <View style={styles.dropdownMenu}>
+                <View style={styles.dropdownMenu} accessibilityRole="menu">
                   {fieldOptions.map((opt) => (
                     <TouchableOpacity
                       key={opt}
                       style={[styles.dropdownItem, val === opt && styles.dropdownItemActive]}
+                      accessibilityRole="menuitem"
+                      accessibilityLabel={opt}
+                      accessibilityState={{ selected: val === opt }}
                       onPress={() => {
                         onChange(field.id, opt);
                         onChange(field.label, opt);
                         setOpenDropdownId(null);
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, val === opt && styles.dropdownItemTextActive]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          val === opt && styles.dropdownItemTextActive,
+                        ]}
+                      >
                         {opt}
                       </Text>
                     </TouchableOpacity>
@@ -350,6 +400,9 @@ export default function DynamicFormFields({
                 placeholder={field.placeholder || 'Enter number (e.g. 0-100)...'}
                 placeholderTextColor={colors.mutedText}
                 keyboardType="numeric"
+                returnKeyType="done"
+                accessibilityLabel={field.label}
+                aria-label={field.label}
                 onChangeText={(text) => {
                   const cleaned = text.replace(/[^0-9.-]/g, '');
                   onChange(field.id, cleaned);
@@ -374,6 +427,9 @@ export default function DynamicFormFields({
                 value={String(val !== undefined && val !== null ? val : '')}
                 placeholder={field.placeholder || 'YYYY-MM-DD'}
                 placeholderTextColor={colors.mutedText}
+                returnKeyType="done"
+                accessibilityLabel={field.label}
+                aria-label={field.label}
                 onChangeText={(text) => {
                   onChange(field.id, text);
                   onChange(field.label, text);
@@ -397,6 +453,9 @@ export default function DynamicFormFields({
               value={String(val !== undefined && val !== null ? val : '')}
               placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
               placeholderTextColor={colors.mutedText}
+              returnKeyType="done"
+              accessibilityLabel={field.label}
+              aria-label={field.label}
               onChangeText={(text) => {
                 onChange(field.id, text);
                 onChange(field.label, text);
@@ -621,4 +680,3 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 });
-

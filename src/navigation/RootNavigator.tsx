@@ -57,16 +57,16 @@ function getActiveRouteName(
   return getActiveRoute(state)?.name;
 }
 
+import { storage } from '../utils/storage';
+
 /** Push the current screen name into the browser URL bar (web only). */
 function syncUrlToScreen(state: NavigationState | undefined): void {
   if (Platform.OS !== 'web' || !state) return;
   const route = getActiveRoute(state);
   if (route?.name) {
     const sid = route.params?.studentId;
-    if (sid && typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('last_assessment_student_id', sid);
-      } catch {}
+    if (sid) {
+      storage.setSync('last_assessment_student_id', sid);
     }
     const query = sid ? `?studentId=${encodeURIComponent(sid)}` : '';
     window.history.replaceState(null, '', `/${route.name}${query}`);
@@ -140,9 +140,7 @@ export default function RootNavigator() {
       const searchParams = new URLSearchParams(window.location.search);
       const sid =
         searchParams.get('studentId') ||
-        (typeof localStorage !== 'undefined'
-          ? localStorage.getItem('last_assessment_student_id')
-          : null) ||
+        storage.getSync('last_assessment_student_id') ||
         'student-a';
       nav.navigate(target, { studentId: sid });
     } catch {

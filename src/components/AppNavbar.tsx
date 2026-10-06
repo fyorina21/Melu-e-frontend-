@@ -188,6 +188,13 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             key={tab}
             style={[styles.tab, active && styles.tabActive]}
             onPress={() => handleTabPress(tab)}
+            accessibilityRole="tab"
+            accessibilityLabel={
+              isNotificationsTab && effectiveUnread > 0
+                ? `${tab}, ${effectiveUnread} unread notifications`
+                : tab
+            }
+            accessibilityState={{ selected: active }}
             onLayout={(e) => {
               const { x, width } = e.nativeEvent.layout;
               tabLayouts.current[tab] = { x, width };

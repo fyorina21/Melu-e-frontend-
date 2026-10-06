@@ -1,18 +1,51 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import {
-  Bell,
-  ClipboardList,
-  FileText,
-  Target,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  ChevronRight,
-  TrendingUp,
-  Activity,
-  Users,
-} from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
+
+type IconProps = { size?: number; color?: string; style?: any };
+const Bell = (props: IconProps) => (
+  <Feather
+    name="bell"
+    size={props.size ?? 20}
+    color={props.color ?? '#4B5563'}
+    style={props.style}
+  />
+);
+const ClipboardList = (props: IconProps) => (
+  <Feather name="clipboard" size={props.size ?? 18} color={props.color} style={props.style} />
+);
+const FileText = (props: IconProps) => (
+  <Feather name="file-text" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Target = (props: IconProps) => (
+  <Feather name="target" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const CheckCircle = (props: IconProps) => (
+  <Feather name="check-circle" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Clock = (props: IconProps) => (
+  <Feather name="clock" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const AlertCircle = (props: IconProps) => (
+  <Feather name="alert-circle" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const ChevronRight = (props: IconProps) => (
+  <Feather
+    name="chevron-right"
+    size={props.size ?? 16}
+    color={props.color ?? '#D1D5DB'}
+    style={props.style}
+  />
+);
+const TrendingUp = (props: IconProps) => (
+  <Feather name="trending-up" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Activity = (props: IconProps) => (
+  <Feather name="activity" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Users = (props: IconProps) => (
+  <Feather name="users" size={props.size ?? 16} color={props.color} style={props.style} />
+);
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
@@ -56,7 +89,12 @@ interface NotificationItem {
 }
 
 interface DashboardPayload {
-  summary?: { sessionsCompleted?: number; trialsLogged?: number; incidents?: number; goalsMastered?: number };
+  summary?: {
+    sessionsCompleted?: number;
+    trialsLogged?: number;
+    incidents?: number;
+    goalsMastered?: number;
+  };
   unreadCount?: number;
   activeSessionsCount?: number;
   pendingReviewCount?: number;
@@ -86,14 +124,24 @@ const STATUS_FROM_API: Record<string, LiveSession['status']> = {
   red: 'overdue',
 };
 
-const STATUS_CONFIG: Record<LiveSession['status'], { dot: string; label: string; badgeBg: string; badgeText: string }> = {
+const STATUS_CONFIG: Record<
+  LiveSession['status'],
+  { dot: string; label: string; badgeBg: string; badgeText: string }
+> = {
   'on-track': { dot: '#4ADE80', label: 'On Track', badgeBg: '#F0FDF4', badgeText: '#15803D' },
-  'needs-attention': { dot: '#FACC15', label: 'Needs Attention', badgeBg: '#FEFCE8', badgeText: '#A16207' },
+  'needs-attention': {
+    dot: '#FACC15',
+    label: 'Needs Attention',
+    badgeBg: '#FEFCE8',
+    badgeText: '#A16207',
+  },
   overdue: { dot: '#F87171', label: 'Overdue', badgeBg: '#FEF2F2', badgeText: '#B91C1C' },
 };
 
 function formatTimer(seconds: number): string {
-  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const m = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 }
@@ -122,7 +170,12 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
   const [counts, setCounts] = useState({ active: 0, pending: 0, students: 0, teachers: 0 });
-  const [summary, setSummary] = useState({ completed: 0, trials: 0, incidents: 0, goalsMastered: 0 });
+  const [summary, setSummary] = useState({
+    completed: 0,
+    trials: 0,
+    incidents: 0,
+    goalsMastered: 0,
+  });
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
 
@@ -218,11 +271,46 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
 
   const goto = (route: keyof CoordinatorStackParamList) => navigation?.navigate?.(route as never);
 
-  const stats: { label: string; value: number; icon: typeof Activity; color: string; bg: string; route: keyof CoordinatorStackParamList }[] = [
-    { label: 'Active Sessions Now', value: counts.active, icon: Activity, color: SKY, bg: colors.bgApp, route: 'LiveSessionMonitoring' },
-    { label: 'Sessions Pending Review', value: counts.pending, icon: FileText, color: AMBER, bg: '#FFFBEB', route: 'SessionSummaryReview' },
-    { label: 'Students in Therapy', value: counts.students, icon: Target, color: '#22C55E', bg: '#F0FDF4', route: 'CoordinatorStudentProgress' },
-    { label: 'Teachers On Duty', value: counts.teachers, icon: Users, color: '#A855F7', bg: '#FAF5FF', route: 'WorkloadDashboard' },
+  const stats: {
+    label: string;
+    value: number;
+    icon: typeof Activity;
+    color: string;
+    bg: string;
+    route: keyof CoordinatorStackParamList;
+  }[] = [
+    {
+      label: 'Active Sessions Now',
+      value: counts.active,
+      icon: Activity,
+      color: SKY,
+      bg: colors.bgApp,
+      route: 'LiveSessionMonitoring',
+    },
+    {
+      label: 'Sessions Pending Review',
+      value: counts.pending,
+      icon: FileText,
+      color: AMBER,
+      bg: '#FFFBEB',
+      route: 'SessionSummaryReview',
+    },
+    {
+      label: 'Students in Therapy',
+      value: counts.students,
+      icon: Target,
+      color: '#22C55E',
+      bg: '#F0FDF4',
+      route: 'CoordinatorStudentProgress',
+    },
+    {
+      label: 'Teachers On Duty',
+      value: counts.teachers,
+      icon: Users,
+      color: '#A855F7',
+      bg: '#FAF5FF',
+      route: 'WorkloadDashboard',
+    },
   ];
 
   const dailySummary: { label: string; value: number; icon: typeof Activity; color: string }[] = [
@@ -232,10 +320,20 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
     { label: 'Goals Mastered', value: summary.goalsMastered, icon: TrendingUp, color: '#A855F7' },
   ];
 
-  const quickActions: { label: string; icon: typeof Activity; route: keyof CoordinatorStackParamList; color: string }[] = [
+  const quickActions: {
+    label: string;
+    icon: typeof Activity;
+    route: keyof CoordinatorStackParamList;
+    color: string;
+  }[] = [
     { label: 'Live Sessions', icon: Activity, route: 'LiveSessionMonitoring', color: SKY },
     { label: 'Session Review', icon: FileText, route: 'SessionSummaryReview', color: AMBER },
-    { label: 'Student Progress', icon: Target, route: 'CoordinatorStudentProgress', color: '#22C55E' },
+    {
+      label: 'Student Progress',
+      icon: Target,
+      route: 'CoordinatorStudentProgress',
+      color: '#22C55E',
+    },
     { label: 'Operations', icon: Users, route: 'WorkloadDashboard', color: '#A855F7' },
   ];
 
@@ -247,7 +345,9 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
         <View style={styles.headerCard}>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Therapy Coordinator Dashboard</Text>
-            <Text style={styles.headerSubtitle}>Foundation operations overview & live monitoring</Text>
+            <Text style={styles.headerSubtitle}>
+              Foundation operations overview & live monitoring
+            </Text>
           </View>
           <View>
             <TouchableOpacity
@@ -284,7 +384,9 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
                         style={{ marginTop: 2 }}
                       />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.notifText, n.read && { color: '#9CA3AF' }]}>{n.text}</Text>
+                        <Text style={[styles.notifText, n.read && { color: '#9CA3AF' }]}>
+                          {n.text}
+                        </Text>
                         <Text style={styles.notifTime}>{n.time}</Text>
                       </View>
                     </View>
@@ -301,7 +403,12 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
         {/* Stats Cards */}
         <View style={styles.statsGrid}>
           {stats.map((stat) => (
-            <TouchableOpacity key={stat.label} style={styles.statCard} onPress={() => goto(stat.route)} activeOpacity={0.8}>
+            <TouchableOpacity
+              key={stat.label}
+              style={styles.statCard}
+              onPress={() => goto(stat.route)}
+              activeOpacity={0.8}
+            >
               <View style={[styles.statIconWrap, { backgroundColor: stat.bg }]}>
                 <stat.icon size={24} color={stat.color} />
               </View>
@@ -342,7 +449,9 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
                       </Text>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: sc.badgeBg }]}>
-                      <Text style={[styles.statusBadgeText, { color: sc.badgeText }]}>{sc.label}</Text>
+                      <Text style={[styles.statusBadgeText, { color: sc.badgeText }]}>
+                        {sc.label}
+                      </Text>
                     </View>
                   </View>
                   <Text style={styles.sessionStation}>{session.station}</Text>
@@ -495,7 +604,13 @@ const styles = StyleSheet.create({
   headerTitle: { color: HEADER_TEXT, fontSize: 20, fontWeight: '700' },
   headerSubtitle: { color: '#6B7280', fontSize: 12, marginTop: spacing.xs },
 
-  bellButton: { padding: 8, borderRadius: radius.md, backgroundColor: colors.bgApp, borderWidth: 1, borderColor: colors.border },
+  bellButton: {
+    padding: 8,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   bellBadge: {
     position: 'absolute',
     top: -2,
@@ -534,7 +649,13 @@ const styles = StyleSheet.create({
   closeBtn: { borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingVertical: spacing.sm },
   closeBtnText: { textAlign: 'center', fontSize: 12, color: '#9CA3AF' },
 
-  notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
   notifRead: { backgroundColor: colors.bgCard },
   notifUnread: { backgroundColor: colors.bgApp },
   notifText: { fontSize: 12, color: DARK, lineHeight: 16 },
@@ -555,7 +676,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  statIconWrap: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  statIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   statValue: { fontSize: 26, fontWeight: '700', color: DARK, fontVariant: ['tabular-nums'] },
   statLabel: { fontSize: 11, color: '#6B7280', lineHeight: 14, marginTop: 2 },
 
@@ -580,16 +707,37 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  sessionTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  sessionTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   sessionNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   sessionTeacher: { fontSize: 14, fontWeight: '600', color: DARK, flexShrink: 1 },
-  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB' },
+  statusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   statusBadgeText: { fontSize: 10, fontWeight: '700' },
   sessionStation: { fontSize: 12, color: '#9CA3AF' },
-  sessionBottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  sessionBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  studentChip: { backgroundColor: colors.bgApp, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
+  studentChip: {
+    backgroundColor: colors.bgApp,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   studentChipText: { fontSize: 10, color: SKY },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   timerText: { fontSize: 12, fontWeight: '700', color: DARK, fontVariant: ['tabular-nums'] },
@@ -622,10 +770,20 @@ const styles = StyleSheet.create({
   quickActionLabel: { fontSize: 14, fontWeight: '600', color: DARK, flex: 1 },
 
   pendingHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  pendingCountBadge: { backgroundColor: AMBER, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  pendingCountBadge: {
+    backgroundColor: AMBER,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   pendingCountText: { fontSize: 11, fontWeight: '700', color: DARK },
 
-  reviewRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
   reviewRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   reviewTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   reviewTeacher: { fontSize: 14, fontWeight: '600', color: DARK },

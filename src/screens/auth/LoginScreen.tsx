@@ -20,11 +20,13 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function LoginScreen() {
   const { loginWithCredentials } = useAuth();
-  const navigation = useNavigation<NativeStackNavigationProp<{ Login: undefined; ForgotPassword: undefined }>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<{ Login: undefined; ForgotPassword: undefined }>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
+  const passwordInputRef = React.useRef<TextInput>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSignIn = async () => {
@@ -44,14 +46,24 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
-          <Image source={require('../../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+          <Image
+            source={require('../../../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.foundationName}>Melu'e Foundation</Text>
 
-          <Text style={typography.h1}>Sign In to Your Account</Text>
-          <Text style={[typography.body, { textAlign: 'center' }]}>Melu'e Foundation Therapy Portal</Text>
+          <Text accessibilityRole="header" style={typography.h1}>
+            Sign In to Your Account
+          </Text>
+          <Text accessibilityRole="text" style={[typography.body, { textAlign: 'center' }]}>
+            Melu'e Foundation Therapy Portal
+          </Text>
 
           <View style={styles.field}>
-            <Text style={typography.label}>Email Address</Text>
+            <Text nativeID="emailLabel" style={typography.label}>
+              Email Address
+            </Text>
             <View style={styles.inputRow}>
               <Feather name="mail" size={16} color={colors.mutedText} />
               <TextInput
@@ -60,25 +72,43 @@ export default function LoginScreen() {
                 placeholderTextColor={colors.mutedText}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                blurOnSubmit={false}
                 value={email}
                 onChangeText={setEmail}
                 editable={!submitting}
+                accessibilityLabel="Email Address"
+                aria-label="Email Address"
+                aria-labelledby="emailLabel"
               />
             </View>
           </View>
 
           <View style={styles.field}>
-            <Text style={typography.label}>Password</Text>
+            <Text nativeID="passwordLabel" style={typography.label}>
+              Password
+            </Text>
             <View style={styles.inputRow}>
               <Feather name="lock" size={16} color={colors.mutedText} />
               <TextInput
+                ref={passwordInputRef}
                 style={styles.input}
                 placeholder="Enter your password"
                 placeholderTextColor={colors.mutedText}
                 secureTextEntry={!showPassword}
+                autoComplete="current-password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={handleSignIn}
                 value={password}
                 onChangeText={setPassword}
                 editable={!submitting}
+                accessibilityLabel="Password"
+                aria-label="Password"
+                aria-labelledby="passwordLabel"
               />
               <TouchableOpacity
                 onPress={() => setShowPassword((p) => !p)}
@@ -86,23 +116,47 @@ export default function LoginScreen() {
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                accessibilityState={{ selected: showPassword }}
               >
-                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={colors.mutedText} />
+                <Feather
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={18}
+                  color={colors.mutedText}
+                />
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.rowBetween}>
-            <TouchableOpacity style={styles.rememberRow} onPress={() => setRemember((r) => !r)} disabled={submitting}>
+            <TouchableOpacity
+              style={styles.rememberRow}
+              onPress={() => setRemember((r) => !r)}
+              disabled={submitting}
+              accessibilityRole="checkbox"
+              accessibilityLabel="Remember this device"
+              accessibilityState={{ checked: remember, disabled: submitting }}
+            >
               <View style={[styles.checkbox, remember && styles.checkboxChecked]} />
               <Text style={typography.body}>Remember this device</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} disabled={submitting}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ForgotPassword')}
+              disabled={submitting}
+              accessibilityRole="link"
+              accessibilityLabel="Forgot Password? Navigate to password recovery"
+            >
               <Text style={styles.linkText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={[styles.signInBtn, submitting && styles.signInBtnDisabled]} onPress={handleSignIn} disabled={submitting}>
+          <TouchableOpacity
+            style={[styles.signInBtn, submitting && styles.signInBtnDisabled]}
+            onPress={handleSignIn}
+            disabled={submitting}
+            accessibilityRole="button"
+            accessibilityLabel="Sign In"
+            accessibilityState={{ busy: submitting, disabled: submitting }}
+          >
             {submitting ? (
               <ActivityIndicator color={colors.navyText} size="small" />
             ) : (
@@ -117,7 +171,12 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  scrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
   card: {
     width: '100%',
     maxWidth: 420,
@@ -128,7 +187,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   logo: { width: 64, height: 64 },
-  foundationName: { fontWeight: '700', fontSize: 16, color: colors.primaryYellowDark, marginBottom: spacing.sm },
+  foundationName: {
+    fontWeight: '700',
+    fontSize: 16,
+    color: colors.primaryYellowDark,
+    marginBottom: spacing.sm,
+  },
   field: { width: '100%', gap: spacing.xs },
   inputRow: {
     flexDirection: 'row',
@@ -140,12 +204,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   input: { flex: 1, paddingVertical: spacing.md, color: colors.navyText },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
   rememberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   checkbox: { width: 16, height: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 3 },
   checkboxChecked: { backgroundColor: colors.navyText, borderColor: colors.navyText },
   linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 13 },
-  signInBtn: { width: '100%', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.sm },
+  signInBtn: {
+    width: '100%',
+    backgroundColor: colors.primaryYellow,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
   signInBtnDisabled: { opacity: 0.7 },
   signInBtnText: { fontWeight: '700', color: colors.navyText },
 });

@@ -58,8 +58,9 @@ export default function RoleSidebar({ role }: { role: Role }) {
               key={tab}
               style={[styles.item, active && styles.itemActive]}
               onPress={() => handlePress(tab)}
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityLabel={tab}
+              accessibilityState={{ selected: active }}
             >
               <View style={styles.itemContent}>
                 <Feather

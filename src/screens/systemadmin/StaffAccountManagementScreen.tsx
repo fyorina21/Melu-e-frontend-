@@ -11,6 +11,8 @@ import {
   Alert,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
+import { Button, Input, Card, Badge } from '../../shared/components';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
@@ -1279,76 +1281,86 @@ export default function StaffAccountManagementScreen({
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {filtered.map((s) => (
-          <View key={s.id} style={styles.row}>
-            <TouchableOpacity onPress={() => toggleSelect(s.id)} style={styles.checkbox}>
-              <View
-                style={[styles.checkboxInner, selectedIds.includes(s.id) && styles.checkboxChecked]}
-              />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={typography.bodyBold}>{s.name}</Text>
-              <Text style={typography.caption}>
-                {s.email} · {s.roles.join(', ')}
-              </Text>
-            </View>
-            <StatusPill
-              status={s.active ? 'approved' : 'revision'}
-              label={s.active ? 'Active' : 'Inactive'}
-            />
-            <View style={styles.rowActions}>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                accessibilityLabel="Edit staff member"
-                onPress={() => setFormTarget(s)}
-              >
-                <Feather name="edit-2" size={14} color={colors.navyText} />
-              </TouchableOpacity>
-              {(s.roles.includes('Teacher') || s.roles.includes('Therapist')) && (
-                <TouchableOpacity
-                  style={[styles.iconBtn, linkTarget?.id === s.id && styles.iconBtnActive]}
-                  accessibilityLabel="Link teacher or therapist to students"
-                  onPress={() => setLinkTarget(linkTarget?.id === s.id ? null : s)}
-                >
-                  <Feather name="link-2" size={14} color={colors.navyText} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.iconBtn}
-                accessibilityLabel="Manage credentials and password"
-                onPress={() => setCredentialTarget(s)}
-              >
-                <Ionicons name="key" size={14} color="#D97706" />
-              </TouchableOpacity>
-
-              {/* Toggle switch icon: Green (Active/On) vs Red (Inactive/Off) */}
-              <TouchableOpacity
-                style={styles.iconBtn}
-                accessibilityLabel="Toggle active status"
-                onPress={() => handleToggleActive(s)}
-              >
-                <Feather
-                  name={s.active ? 'toggle-right' : 'toggle-left'}
-                  size={18}
-                  color={s.active ? '#10B981' : '#EF4444'}
+      <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
+        <FlashList
+          data={filtered}
+          keyExtractor={(s) => s.id}
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+          renderItem={({ item: s }) => (
+            <View style={styles.row}>
+              <TouchableOpacity onPress={() => toggleSelect(s.id)} style={styles.checkbox}>
+                <View
+                  style={[
+                    styles.checkboxInner,
+                    selectedIds.includes(s.id) && styles.checkboxChecked,
+                  ]}
                 />
               </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={typography.bodyBold}>{s.name}</Text>
+                <Text style={typography.caption}>
+                  {s.email} · {s.roles.join(', ')}
+                </Text>
+              </View>
+              <StatusPill
+                status={s.active ? 'approved' : 'revision'}
+                label={s.active ? 'Active' : 'Inactive'}
+              />
+              <View style={styles.rowActions}>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  accessibilityLabel="Edit staff member"
+                  onPress={() => setFormTarget(s)}
+                >
+                  <Feather name="edit-2" size={14} color={colors.navyText} />
+                </TouchableOpacity>
+                {(s.roles.includes('Teacher') || s.roles.includes('Therapist')) && (
+                  <TouchableOpacity
+                    style={[styles.iconBtn, linkTarget?.id === s.id && styles.iconBtnActive]}
+                    accessibilityLabel="Link teacher or therapist to students"
+                    onPress={() => setLinkTarget(linkTarget?.id === s.id ? null : s)}
+                  >
+                    <Feather name="link-2" size={14} color={colors.navyText} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  accessibilityLabel="Manage credentials and password"
+                  onPress={() => setCredentialTarget(s)}
+                >
+                  <Ionicons name="key" size={14} color="#D97706" />
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.iconBtn}
-                accessibilityLabel="Delete staff account"
-                onPress={() => handleDelete(s)}
-              >
-                <Feather name="trash-2" size={14} color={colors.statusRevisionText} />
-              </TouchableOpacity>
+                {/* Toggle switch icon: Green (Active/On) vs Red (Inactive/Off) */}
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  accessibilityLabel="Toggle active status"
+                  onPress={() => handleToggleActive(s)}
+                >
+                  <Feather
+                    name={s.active ? 'toggle-right' : 'toggle-left'}
+                    size={18}
+                    color={s.active ? '#10B981' : '#EF4444'}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  accessibilityLabel="Delete staff account"
+                  onPress={() => handleDelete(s)}
+                >
+                  <Feather name="trash-2" size={14} color={colors.statusRevisionText} />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        ))}
-        {linkTarget && (
-          <TeacherLinkingPanel teacher={linkTarget} onClose={() => setLinkTarget(null)} />
-        )}
-      </ScrollView>
+          )}
+          ListFooterComponent={
+            linkTarget ? (
+              <TeacherLinkingPanel teacher={linkTarget} onClose={() => setLinkTarget(null)} />
+            ) : null
+          }
+        />
+      </View>
 
       <StaffFormModal
         visible={formTarget !== undefined}

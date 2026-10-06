@@ -16,7 +16,11 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { openPrintWindow } from '../../utils/webExport';
-import { getSkillsAssessment, saveSkillsAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import {
+  getSkillsAssessment,
+  saveSkillsAssessment,
+  getTeacherStudentProfile,
+} from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import {
   DEFAULT_ABLLS_DOMAINS,
@@ -37,20 +41,23 @@ interface StudentProfile {
   age: number;
 }
 
+import { storage } from '../../utils/storage';
+
 type Props = NativeStackScreenProps<SessionStackParamList, 'AbllsNeedMap'>;
 type ViewMode = 'grid' | 'cards' | 'summary';
 
 export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props) {
-  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const localSid = storage.getSync('last_assessment_student_id');
   const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
   const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
 
   useEffect(() => {
-    if (typeof localStorage !== 'undefined' && studentId) {
-      try {
-        localStorage.setItem('last_assessment_student_id', studentId);
-      } catch {}
+    if (studentId) {
+      storage.setSync('last_assessment_student_id', studentId);
     }
   }, [studentId]);
 
@@ -97,7 +104,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
       const localData = loadStorageAssessment(studentId);
       const mergedScores: Record<string, Score> = { ...apiScores, ...(localData?.scores ?? {}) };
       const mergedNotes = { ...(savedData.notes ?? {}), ...(localData?.notes ?? {}) };
-      const mergedCustomFields = { ...(savedData.customFields ?? {}), ...(localData?.customFields ?? {}) };
+      const mergedCustomFields = {
+        ...(savedData.customFields ?? {}),
+        ...(localData?.customFields ?? {}),
+      };
       setScores(mergedScores);
       if (Object.keys(mergedNotes).length > 0) setSavedNotes(mergedNotes);
       if (Object.keys(mergedCustomFields).length > 0) setSavedCustomFields(mergedCustomFields);
@@ -112,7 +122,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   const handleUpdateItemScore = async (itemId: string, newScore: Score) => {
@@ -203,7 +213,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     if (item.maxCells) return item.maxCells;
     if (item.options && Array.isArray(item.options) && item.options.length > 0) {
       const nonNA = item.options.filter(
-        (o) => o.trim().toUpperCase() !== 'N/A' && o.trim().toUpperCase() !== 'NA' && !o.toLowerCase().includes('not assessed')
+        (o) =>
+          o.trim().toUpperCase() !== 'N/A' &&
+          o.trim().toUpperCase() !== 'NA' &&
+          !o.toLowerCase().includes('not assessed'),
       );
       if (nonNA.length === 2) return 2;
       const numbers = nonNA
@@ -223,7 +236,11 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
   };
 
   // Each number from left to right occupies the graph cells from left to right respectively
-  const getFilledCells = (item: { score: Score | number; options?: string[]; maxCells?: number }): number => {
+  const getFilledCells = (item: {
+    score: Score | number;
+    options?: string[];
+    maxCells?: number;
+  }): number => {
     if (item.score === 'NA' || item.score === undefined || item.score === null) return 0;
     if (item.score === 0) return 1;
     const num = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
@@ -233,7 +250,11 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
 
   const handleExport = () => {
     const title = 'ABLLS-R Skill Tracking System & Color Need Map';
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const dateStr = new Date().toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
 
     const towersHtml = summaryData
       .map((domain) => {
@@ -243,7 +264,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
           .map((item) => {
             const maxCells = getMaxCellsForItem(item);
             const filledCount = getFilledCells(item);
-            const scoreNum = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
+            const scoreNum =
+              typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
             const cellColor = item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
             const cellsHtml = Array.from({ length: maxCells }, (_, cIdx) => {
               const isFilled = cIdx < filledCount;
@@ -356,7 +378,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                   <td><strong>${d.masteredPct}%</strong></td>
                   <td>${d.isPriority ? '<span class="priority-tag">HIGH PRIORITY</span>' : 'Normal'}</td>
                 </tr>
-              `
+              `,
                 )
                 .join('')}
             </tbody>
@@ -369,7 +391,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       {/* Top Header Card */}
       <View style={styles.headerContainer}>
@@ -396,8 +421,12 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
         {/* Student & Tracking Information Sheet Header */}
         <View style={styles.sheetHeaderCard}>
           <View style={styles.sheetHeaderLeft}>
-            <Text style={styles.sheetMainTitle}>Assessment of Basic Language and Learning Skills-Revised (ABLLS-R)</Text>
-            <Text style={styles.sheetSubTitle}>Skill Tracking System &middot; Color Need Analysis Grid</Text>
+            <Text style={styles.sheetMainTitle}>
+              Assessment of Basic Language and Learning Skills-Revised (ABLLS-R)
+            </Text>
+            <Text style={styles.sheetSubTitle}>
+              Skill Tracking System &middot; Color Need Analysis Grid
+            </Text>
 
             <View style={styles.studentMetaRow}>
               <View style={styles.avatar}>
@@ -413,7 +442,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
               <View>
                 <Text style={styles.studentNameText}>{studentName}</Text>
                 <Text style={styles.studentDetailsText}>
-                  Student ID: {studentId} &middot; Age {profile?.age ?? '—'} &middot; Assessment: Current
+                  Student ID: {studentId} &middot; Age {profile?.age ?? '—'} &middot; Assessment:
+                  Current
                 </Text>
               </View>
             </View>
@@ -490,7 +520,11 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             style={[styles.modeTab, viewMode === 'summary' && styles.modeTabActive]}
             onPress={() => setViewMode('summary')}
           >
-            <Feather name="bar-chart-2" size={14} color={viewMode === 'summary' ? '#0F172A' : '#64748B'} />
+            <Feather
+              name="bar-chart-2"
+              size={14}
+              color={viewMode === 'summary' ? '#0F172A' : '#64748B'}
+            />
             <Text style={[styles.modeTabText, viewMode === 'summary' && styles.modeTabTextActive]}>
               Priority Needs & Summary Table
             </Text>
@@ -505,11 +539,16 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             <View style={styles.sheetNoticeRow}>
               <Feather name="info" size={14} color="#0284C7" />
               <Text style={styles.sheetNoticeText}>
-                Tap any skill floor/cell to inspect specific criteria, mastery level, and description.
+                Tap any skill floor/cell to inspect specific criteria, mastery level, and
+                description.
               </Text>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.gridColumnsContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator
+              contentContainerStyle={styles.gridColumnsContainer}
+            >
               {summaryData.map((domain) => {
                 // Stacked ascending from bottom (A1 at bottom floor) to top (A7 at peak)
                 const ascendingItems = [...domain.items].reverse();
@@ -551,10 +590,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                                       item.score === 2
                                         ? '#16A34A'
                                         : item.score === 1
-                                        ? '#EAB308'
-                                        : item.score === 0
-                                        ? '#EF4444'
-                                        : '#CBD5E1',
+                                          ? '#EAB308'
+                                          : item.score === 0
+                                            ? '#EF4444'
+                                            : '#CBD5E1',
                                   },
                                 ]}
                               />
@@ -566,13 +605,17 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                               {Array.from({ length: maxCells }, (_, cellIdx) => {
                                 const isFilled = cellIdx < filledCount;
                                 const isNA = item.score === 'NA';
-                                const scoreNum = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
-                                const cellColor = item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
-                                const cellBg = isFilled
-                                  ? cellColor
-                                  : isNA
-                                  ? '#E2E8F0'
-                                  : '#FFFFFF';
+                                const scoreNum =
+                                  typeof item.score === 'number'
+                                    ? item.score
+                                    : parseInt(String(item.score), 10);
+                                const cellColor =
+                                  item.score === 0
+                                    ? '#EF4444'
+                                    : scoreNum >= 2
+                                      ? '#16A34A'
+                                      : '#EAB308';
+                                const cellBg = isFilled ? cellColor : isNA ? '#E2E8F0' : '#FFFFFF';
 
                                 return (
                                   <View
@@ -604,8 +647,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                           domain.masteredPct >= 70
                             ? styles.pillGreen
                             : domain.masteredPct >= 40
-                            ? styles.pillYellow
-                            : styles.pillRed,
+                              ? styles.pillYellow
+                              : styles.pillRed,
                         ]}
                       >
                         <Text style={styles.towerMasteryText}>{domain.masteredPct}%</Text>
@@ -658,10 +701,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                         <View style={styles.cardTileHeader}>
                           <Text style={styles.cardTileId}>{item.id}</Text>
                           <Text
-                            style={[
-                              styles.cardTileScoreBadge,
-                              { color: SCORE_COLOR[item.score] },
-                            ]}
+                            style={[styles.cardTileScoreBadge, { color: SCORE_COLOR[item.score] }]}
                           >
                             {item.score === 'NA' ? 'N/A' : `Score: ${item.score}`}
                           </Text>
@@ -673,18 +713,21 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                           {Array.from({ length: maxCells }, (_, cIdx) => {
                             const isFilled = cIdx < filled;
                             const isNA = item.score === 'NA';
-                            const scoreNum = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
-                            const cellColor = item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
+                            const scoreNum =
+                              typeof item.score === 'number'
+                                ? item.score
+                                : parseInt(String(item.score), 10);
+                            const cellColor =
+                              item.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
                             return (
                               <View
                                 key={cIdx}
                                 style={[
                                   styles.cardMiniCell,
                                   {
-                                    backgroundColor:
-                                      isFilled
-                                        ? cellColor
-                                        : isNA
+                                    backgroundColor: isFilled
+                                      ? cellColor
+                                      : isNA
                                         ? '#E2E8F0'
                                         : '#FFFFFF',
                                     borderColor: '#64748B',
@@ -710,10 +753,13 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             <View style={styles.summaryCard}>
               <View style={styles.sectionHeaderRow}>
                 <Feather name="alert-triangle" size={16} color="#DC2626" />
-                <Text style={styles.sectionHeading}>Priority Areas of Need (Top Clinical Focus)</Text>
+                <Text style={styles.sectionHeading}>
+                  Priority Areas of Need (Top Clinical Focus)
+                </Text>
               </View>
               <Text style={styles.sectionSub}>
-                Domains with the highest count of unmastered (0s) and emerging (1s) skills recommended for IEP / IUP target goals.
+                Domains with the highest count of unmastered (0s) and emerging (1s) skills
+                recommended for IEP / IUP target goals.
               </Text>
 
               <View style={styles.priorityCardsGrid}>
@@ -839,10 +885,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                         selectedItem?.score === 2
                           ? '#DCFCE7'
                           : selectedItem?.score === 1
-                          ? '#FEF9C3'
-                          : selectedItem?.score === 0
-                          ? '#FEE2E2'
-                          : '#F1F5F9',
+                            ? '#FEF9C3'
+                            : selectedItem?.score === 0
+                              ? '#FEE2E2'
+                              : '#F1F5F9',
                     },
                   ]}
                 >
@@ -894,15 +940,25 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
               {/* Progress Tracker representation */}
               <View style={styles.inspectorCellsBox}>
                 <Text style={styles.inspectorCellsLabel}>
-                  {selectedItem ? `${getMaxCellsForItem(selectedItem)}-Cell Progress Tracker:` : 'Progress Tracker:'}
+                  {selectedItem
+                    ? `${getMaxCellsForItem(selectedItem)}-Cell Progress Tracker:`
+                    : 'Progress Tracker:'}
                 </Text>
                 <View style={styles.inspectorCellsRow}>
                   {selectedItem &&
                     Array.from({ length: getMaxCellsForItem(selectedItem) }, (_, cIdx) => {
                       const filled = getFilledCells(selectedItem);
                       const isF = cIdx < filled;
-                      const scoreNum = typeof selectedItem.score === 'number' ? selectedItem.score : parseInt(String(selectedItem.score), 10);
-                      const cellColor = selectedItem.score === 0 ? '#EF4444' : scoreNum >= 2 ? '#16A34A' : '#EAB308';
+                      const scoreNum =
+                        typeof selectedItem.score === 'number'
+                          ? selectedItem.score
+                          : parseInt(String(selectedItem.score), 10);
+                      const cellColor =
+                        selectedItem.score === 0
+                          ? '#EF4444'
+                          : scoreNum >= 2
+                            ? '#16A34A'
+                            : '#EAB308';
                       return (
                         <View key={cIdx} style={styles.inspectorCellUnit}>
                           <View
@@ -922,7 +978,10 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
               </View>
             </View>
 
-            <TouchableOpacity style={styles.inspectorCloseBtn} onPress={() => setSelectedItem(null)}>
+            <TouchableOpacity
+              style={styles.inspectorCloseBtn}
+              onPress={() => setSelectedItem(null)}
+            >
               <Text style={styles.inspectorCloseBtnText}>Close</Text>
             </TouchableOpacity>
           </View>

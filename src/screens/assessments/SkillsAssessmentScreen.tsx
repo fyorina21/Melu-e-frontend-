@@ -46,21 +46,20 @@ interface StudentProfile {
   age: number;
 }
 
+import { storage } from '../../utils/storage';
+
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const urlSid =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('studentId')
       : null;
-  const localSid =
-    typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const localSid = storage.getSync('last_assessment_student_id');
   const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
   const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
 
   useEffect(() => {
-    if (typeof localStorage !== 'undefined' && studentId) {
-      try {
-        localStorage.setItem('last_assessment_student_id', studentId);
-      } catch {}
+    if (studentId) {
+      storage.setSync('last_assessment_student_id', studentId);
     }
   }, [studentId]);
 

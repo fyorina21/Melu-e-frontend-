@@ -211,7 +211,9 @@ export default function StudentSessionCard({
                       styles.trialRecordItem,
                       {
                         flex: 1,
-                        backgroundColor: TRIAL_ICON_COLOR[t.promptLevel] || colors.mutedText,
+                        backgroundColor:
+                          (t.promptLevel ? TRIAL_ICON_COLOR[t.promptLevel] : undefined) ||
+                          colors.mutedText,
                       },
                     ]}
                   >

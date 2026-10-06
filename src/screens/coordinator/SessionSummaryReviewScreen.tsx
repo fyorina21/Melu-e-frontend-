@@ -10,15 +10,30 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
-import {
-  X,
-  Search,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  FileText,
-  Users,
-} from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
+
+type IconProps = { size?: number; color?: string; style?: any };
+const X = (props: IconProps) => (
+  <Feather name="x" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Search = (props: IconProps) => (
+  <Feather name="search" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const CheckCircle = (props: IconProps) => (
+  <Feather name="check-circle" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const AlertCircle = (props: IconProps) => (
+  <Feather name="alert-circle" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const Clock = (props: IconProps) => (
+  <Feather name="clock" size={props.size ?? 14} color={props.color} style={props.style} />
+);
+const FileText = (props: IconProps) => (
+  <Feather name="file-text" size={props.size ?? 16} color={props.color} style={props.style} />
+);
+const Users = (props: IconProps) => (
+  <Feather name="users" size={props.size ?? 16} color={props.color} style={props.style} />
+);
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useToast } from '../../context/ToastContext';
 import AppNavbar from '../../components/AppNavbar';
@@ -85,10 +100,31 @@ function mapSummary(row: ApiSummaryRow): Summary {
   };
 }
 
-const STATUS_CONFIG: Record<SummaryStatus, { label: string; bg: string; text: string; border: string; icon: typeof Clock }> = {
-  pending: { label: 'Pending', bg: 'rgba(252,211,77,0.15)', text: '#B45309', border: 'rgba(252,211,77,0.45)', icon: Clock },
-  'revision-required': { label: 'Revision Required', bg: 'rgba(248,113,113,0.12)', text: '#DC2626', border: 'rgba(248,113,113,0.35)', icon: AlertCircle },
-  approved: { label: 'Approved', bg: 'rgba(74,222,128,0.12)', text: '#16A34A', border: 'rgba(74,222,128,0.35)', icon: CheckCircle },
+const STATUS_CONFIG: Record<
+  SummaryStatus,
+  { label: string; bg: string; text: string; border: string; icon: typeof Clock }
+> = {
+  pending: {
+    label: 'Pending',
+    bg: 'rgba(252,211,77,0.15)',
+    text: '#B45309',
+    border: 'rgba(252,211,77,0.45)',
+    icon: Clock,
+  },
+  'revision-required': {
+    label: 'Revision Required',
+    bg: 'rgba(248,113,113,0.12)',
+    text: '#DC2626',
+    border: 'rgba(248,113,113,0.35)',
+    icon: AlertCircle,
+  },
+  approved: {
+    label: 'Approved',
+    bg: 'rgba(74,222,128,0.12)',
+    text: '#16A34A',
+    border: 'rgba(74,222,128,0.35)',
+    icon: CheckCircle,
+  },
 };
 
 const SECTIONS = ['Notes', 'Trial Data', 'Incident Report', 'General'];
@@ -108,7 +144,15 @@ function StatusBadge({ status }: { status: SummaryStatus }) {
   );
 }
 
-function FilterSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
+function FilterSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
   return (
     <View style={styles.filterRow}>
       {options.map((opt) => (
@@ -117,14 +161,18 @@ function FilterSelect({ value, options, onChange }: { value: string; options: st
           style={[styles.filterChip, value === opt && styles.filterChipActive]}
           onPress={() => onChange(opt)}
         >
-          <Text style={[styles.filterChipText, value === opt && styles.filterChipTextActive]}>{opt}</Text>
+          <Text style={[styles.filterChipText, value === opt && styles.filterChipTextActive]}>
+            {opt}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
   );
 }
 
-export default function SessionSummaryReviewScreen({ navigation }: NativeStackScreenProps<CoordinatorStackParamList, 'SessionSummaryReview'>) {
+export default function SessionSummaryReviewScreen({
+  navigation,
+}: NativeStackScreenProps<CoordinatorStackParamList, 'SessionSummaryReview'>) {
   const { showToast } = useToast();
   const [summaries, setSummaries] = useState<Summary[]>([]);
   const [search, setSearch] = useState('');
@@ -166,11 +214,16 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     return matchSearch && matchTeacher && matchStudent && matchStatus;
   });
 
-  const pendingCount = summaries.filter((s) => s.status === 'pending' || s.status === 'revision-required').length;
+  const pendingCount = summaries.filter(
+    (s) => s.status === 'pending' || s.status === 'revision-required',
+  ).length;
 
   const toggleSelectAll = () => {
     const filteredIds = filtered.map((s) => s.id);
-    if (selectedIds.length === filteredIds.length && filteredIds.every((id) => selectedIds.includes(id))) {
+    if (
+      selectedIds.length === filteredIds.length &&
+      filteredIds.every((id) => selectedIds.includes(id))
+    ) {
       setSelectedIds([]);
     } else {
       setSelectedIds(filteredIds);
@@ -185,7 +238,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     try {
       await bulkApproveSummaries(selectedIds);
     } catch (err) {}
-    setSummaries((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'approved' } : s)));
+    setSummaries((prev) =>
+      prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'approved' } : s)),
+    );
     showToast(`${selectedIds.length} session${selectedIds.length > 1 ? 's' : ''} approved`);
     setSelectedIds([]);
     setShowBulkConfirm(false);
@@ -195,7 +250,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     try {
       await approveSummary(summary.id, { notes: coordinatorNotes });
     } catch (err) {}
-    setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'approved' } : s)));
+    setSummaries((prev) =>
+      prev.map((s) => (s.id === summary.id ? { ...s, status: 'approved' } : s)),
+    );
     showToast(`Session by ${summary.teacher} approved`);
     setSelectedSummary(null);
     setCoordinatorNotes('');
@@ -210,7 +267,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     try {
       await requestSummaryChanges(summary.id, { section: requestSection, reason: requestReason });
     } catch (err) {}
-    setSummaries((prev) => prev.map((s) => (s.id === summary.id ? { ...s, status: 'revision-required' } : s)));
+    setSummaries((prev) =>
+      prev.map((s) => (s.id === summary.id ? { ...s, status: 'revision-required' } : s)),
+    );
     showToast(`Changes requested for ${summary.teacher}'s session`, 'info');
     setSelectedSummary(null);
     setRequestReason('');
@@ -233,7 +292,8 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
     setRequestReason('');
   };
 
-  const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selectedIds.includes(s.id));
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((s) => selectedIds.includes(s.id));
 
   const independenceColor = (v: number) => (v >= 70 ? '#4ADE80' : v >= 60 ? AMBER : '#F87171');
 
@@ -258,7 +318,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Session Summary Review</Text>
-          <Text style={styles.headerSubtitle}>Therapy Coordinator · Review submitted summaries</Text>
+          <Text style={styles.headerSubtitle}>
+            Therapy Coordinator · Review submitted summaries
+          </Text>
         </View>
         {pendingCount > 0 && (
           <View style={styles.pendingPill}>
@@ -281,9 +343,17 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
         </View>
 
         <Text style={styles.filterLabel}>Student</Text>
-        <FilterSelect value={studentFilter} options={['all', ...allStudents]} onChange={setStudentFilter} />
+        <FilterSelect
+          value={studentFilter}
+          options={['all', ...allStudents]}
+          onChange={setStudentFilter}
+        />
         <Text style={styles.filterLabel}>Teacher</Text>
-        <FilterSelect value={teacherFilter} options={['all', ...allTeachers]} onChange={setTeacherFilter} />
+        <FilterSelect
+          value={teacherFilter}
+          options={['all', ...allTeachers]}
+          onChange={setTeacherFilter}
+        />
         <Text style={styles.filterLabel}>Status</Text>
         <FilterSelect
           value={statusFilter}
@@ -314,7 +384,9 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
           keyExtractor={(item) => item.id}
           scrollEnabled={false}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          ListEmptyComponent={<Text style={styles.emptyText}>No summaries match the current filters.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No summaries match the current filters.</Text>
+          }
           renderItem={({ item }) => {
             const selected = selectedIds.includes(item.id);
             return (
@@ -328,8 +400,11 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                   <Text style={styles.cardDate}>{item.date}</Text>
                   <StatusBadge status={item.status} />
                 </View>
-                 <Text style={styles.cardTeacher}>{item.teacher}</Text>
-                 <Text style={styles.cardMeta}>{item.station}{item.room ? ` · ${item.room}` : ''}</Text>
+                <Text style={styles.cardTeacher}>{item.teacher}</Text>
+                <Text style={styles.cardMeta}>
+                  {item.station}
+                  {item.room ? ` · ${item.room}` : ''}
+                </Text>
                 <View style={styles.tagRow}>
                   {item.students.map((st) => (
                     <View key={st} style={styles.studentTag}>
@@ -343,11 +418,22 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                     <Text style={styles.metricLabel}>Trials</Text>
                   </View>
                   <View style={styles.metric}>
-                    <Text style={[styles.metricValue, { color: independenceColor(item.independence) }]}>{item.independence}%</Text>
+                    <Text
+                      style={[styles.metricValue, { color: independenceColor(item.independence) }]}
+                    >
+                      {item.independence}%
+                    </Text>
                     <Text style={styles.metricLabel}>Independence</Text>
                   </View>
                   <View style={styles.metric}>
-                    <Text style={[styles.metricValue, { color: item.incidents > 0 ? '#FB923C' : '#6B7280' }]}>{item.incidents}</Text>
+                    <Text
+                      style={[
+                        styles.metricValue,
+                        { color: item.incidents > 0 ? '#FB923C' : '#6B7280' },
+                      ]}
+                    >
+                      {item.incidents}
+                    </Text>
                     <Text style={styles.metricLabel}>Incidents</Text>
                   </View>
                 </View>
@@ -361,14 +447,26 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
       </ScrollView>
 
       {/* Bulk Approve Confirmation */}
-      <Modal visible={showBulkConfirm} transparent animationType="fade" onRequestClose={() => setShowBulkConfirm(false)}>
+      <Modal
+        visible={showBulkConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBulkConfirm(false)}
+      >
         <View style={styles.overlay}>
           <View style={[styles.modalPanel, styles.confirmPanel]}>
             <Text style={styles.modalTitle}>Confirm Bulk Approve</Text>
             <Text style={styles.modalBody}>
-              You are about to approve <Text style={styles.modalBodyStrong}>{selectedIds.length}</Text> session summar{selectedIds.length > 1 ? 'ies' : 'y'}. This action cannot be undone.
+              You are about to approve{' '}
+              <Text style={styles.modalBodyStrong}>{selectedIds.length}</Text> session summar
+              {selectedIds.length > 1 ? 'ies' : 'y'}. This action cannot be undone.
             </Text>
-            <View style={[styles.modalFooter, { paddingHorizontal: 0, paddingBottom: 0, marginTop: 24 }]}>
+            <View
+              style={[
+                styles.modalFooter,
+                { paddingHorizontal: 0, paddingBottom: 0, marginTop: 24 },
+              ]}
+            >
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowBulkConfirm(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
@@ -381,16 +479,22 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
       </Modal>
 
       {/* Session Detail Modal */}
-      <Modal visible={selectedSummary !== null} transparent animationType="slide" onRequestClose={closeModal}>
+      <Modal
+        visible={selectedSummary !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeModal}
+      >
         <View style={styles.overlay}>
           <View style={[styles.modalPanel, styles.detailPanel]}>
             <View style={styles.detailHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Session Review</Text>
                 {selectedSummary && (
-                <Text style={styles.headerSubtitle}>
-                  {selectedSummary.teacher} · {selectedSummary.date} · {selectedSummary.station}{selectedSummary.room ? ` · ${selectedSummary.room}` : ''}
-                </Text>
+                  <Text style={styles.headerSubtitle}>
+                    {selectedSummary.teacher} · {selectedSummary.date} · {selectedSummary.station}
+                    {selectedSummary.room ? ` · ${selectedSummary.room}` : ''}
+                  </Text>
                 )}
               </View>
               <TouchableOpacity onPress={closeModal} hitSlop={8}>
@@ -398,7 +502,10 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.detailBody} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              contentContainerStyle={styles.detailBody}
+              keyboardShouldPersistTaps="handled"
+            >
               {selectedSummary && (
                 <>
                   <StatusBadge status={selectedSummary.status} />
@@ -415,17 +522,29 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
 
                   <View style={styles.statsGrid}>
                     <View style={styles.statBox}>
-                      <Text style={[styles.statValue, { color: SKY }]}>{selectedSummary.trials}</Text>
+                      <Text style={[styles.statValue, { color: SKY }]}>
+                        {selectedSummary.trials}
+                      </Text>
                       <Text style={styles.statLabel}>Trials</Text>
                     </View>
                     <View style={styles.statBox}>
-                      <Text style={[styles.statValue, { color: independenceColor(selectedSummary.independence) }]}>
+                      <Text
+                        style={[
+                          styles.statValue,
+                          { color: independenceColor(selectedSummary.independence) },
+                        ]}
+                      >
                         {selectedSummary.independence}%
                       </Text>
                       <Text style={styles.statLabel}>Independence</Text>
                     </View>
                     <View style={styles.statBox}>
-                      <Text style={[styles.statValue, { color: selectedSummary.incidents > 0 ? '#FB923C' : '#4ADE80' }]}>
+                      <Text
+                        style={[
+                          styles.statValue,
+                          { color: selectedSummary.incidents > 0 ? '#FB923C' : '#4ADE80' },
+                        ]}
+                      >
                         {selectedSummary.incidents}
                       </Text>
                       <Text style={styles.statLabel}>Incidents</Text>
@@ -454,9 +573,15 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
 
                   {showRequestForm && (
                     <View style={styles.requestForm}>
-                      <Text style={[styles.sectionLabel, { color: '#F87171' }]}>Request Changes</Text>
+                      <Text style={[styles.sectionLabel, { color: '#F87171' }]}>
+                        Request Changes
+                      </Text>
                       <Text style={styles.fieldLabel}>Section</Text>
-                      <FilterSelect value={requestSection} options={SECTIONS} onChange={setRequestSection} />
+                      <FilterSelect
+                        value={requestSection}
+                        options={SECTIONS}
+                        onChange={setRequestSection}
+                      />
                       <Text style={styles.fieldLabel}>Reason</Text>
                       <TextInput
                         style={styles.textArea}
@@ -466,7 +591,10 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                         placeholder="Describe what needs to be corrected or added..."
                         placeholderTextColor="#6B7280"
                       />
-                      <TouchableOpacity style={styles.submitRequestBtn} onPress={() => handleRequestChanges(selectedSummary)}>
+                      <TouchableOpacity
+                        style={styles.submitRequestBtn}
+                        onPress={() => handleRequestChanges(selectedSummary)}
+                      >
                         <Text style={styles.submitRequestText}>Submit Change Request</Text>
                       </TouchableOpacity>
                     </View>
@@ -475,7 +603,18 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
               )}
             </ScrollView>
 
-            <View style={[styles.modalFooter, { paddingHorizontal: 20, paddingBottom: 16, marginTop: 0, borderTopWidth: 1, borderTopColor: '#E5E7EB' }]}>
+            <View
+              style={[
+                styles.modalFooter,
+                {
+                  paddingHorizontal: 20,
+                  paddingBottom: 16,
+                  marginTop: 0,
+                  borderTopWidth: 1,
+                  borderTopColor: '#E5E7EB',
+                },
+              ]}
+            >
               <TouchableOpacity
                 style={styles.requestChangesFooterBtn}
                 onPress={() => setShowRequestForm((v) => !v)}
@@ -485,7 +624,10 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                 </Text>
               </TouchableOpacity>
               {!showRequestForm && selectedSummary && (
-                <TouchableOpacity style={styles.approveSingleBtn} onPress={() => approveSingle(selectedSummary)}>
+                <TouchableOpacity
+                  style={styles.approveSingleBtn}
+                  onPress={() => approveSingle(selectedSummary)}
+                >
                   <Text style={styles.approveSingleBtnText}>Approve</Text>
                 </TouchableOpacity>
               )}
@@ -509,7 +651,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
   },
-  headerIconWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(252,211,77,0.2)', alignItems: 'center', justifyContent: 'center' },
+  headerIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(252,211,77,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { color: DARK, fontSize: 18, fontWeight: '700' },
   headerSubtitle: { color: '#6B7280', fontSize: 11, marginTop: 2 },
   pendingPill: {
@@ -538,22 +687,62 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   searchInput: { flex: 1, color: DARK, fontSize: 13, paddingVertical: 0 },
-  filterLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280', letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 },
+  filterLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF' },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
   filterChipActive: { borderColor: SKY, backgroundColor: 'rgba(56,189,248,0.15)' },
   filterChipText: { color: '#4B5563', fontSize: 12 },
   filterChipTextActive: { color: SKY, fontWeight: '600' },
 
-  bulkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  bulkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
   checkbox: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkboxBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  checkboxBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   checkboxChecked: { backgroundColor: AMBER, borderColor: AMBER },
   bulkLabel: { color: '#4B5563', fontSize: 13 },
-  bulkApproveBtn: { backgroundColor: AMBER, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  bulkApproveBtn: {
+    backgroundColor: AMBER,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
   bulkApproveText: { color: DARK, fontSize: 13, fontWeight: '700' },
 
-  summaryCard: { backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 14, gap: 8 },
+  summaryCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 14,
+    gap: 8,
+  },
   summaryCardSelected: { backgroundColor: colors.bgApp, borderColor: SKY },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   cardDate: { color: '#4B5563', fontSize: 12, flex: 1 },
@@ -571,10 +760,23 @@ const styles = StyleSheet.create({
   cardTeacher: { color: DARK, fontSize: 15, fontWeight: '600' },
   cardMeta: { color: '#6B7280', fontSize: 12 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  studentTag: { backgroundColor: 'rgba(56,189,248,0.1)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  studentTag: {
+    backgroundColor: 'rgba(56,189,248,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
   studentTagText: { color: SKY, fontSize: 11 },
   metricRow: { flexDirection: 'row', gap: 8 },
-  metric: { flex: 1, alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 8, paddingVertical: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  metric: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   metricValue: { color: DARK, fontSize: 16, fontWeight: '700' },
   metricLabel: { color: '#6B7280', fontSize: 10, marginTop: 2 },
   reviewBtn: {
@@ -590,24 +792,72 @@ const styles = StyleSheet.create({
 
   emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 40 },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(26,34,51,0.75)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  modalPanel: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', width: '100%', maxWidth: 560, maxHeight: '92%', overflow: 'hidden' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26,34,51,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalPanel: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '92%',
+    overflow: 'hidden',
+  },
   confirmPanel: { maxWidth: 400, padding: 24 },
   detailPanel: { maxHeight: '92%' },
   modalTitle: { color: DARK, fontSize: 17, fontWeight: '700' },
   modalBody: { color: '#6B7280', fontSize: 13, lineHeight: 19, marginTop: 8 },
   modalBodyStrong: { color: DARK, fontWeight: '600' },
   modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20 },
-  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center' },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+  },
   cancelBtnText: { color: DARK, fontSize: 13, fontWeight: '500' },
-  approveAllBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: AMBER, alignItems: 'center' },
+  approveAllBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: AMBER,
+    alignItems: 'center',
+  },
   approveAllBtnText: { color: DARK, fontSize: 13, fontWeight: '700' },
 
-  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
   detailBody: { padding: 20, gap: 14 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#6B7280', letterSpacing: 1, textTransform: 'uppercase' },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  internalTag: { backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  internalTag: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   internalTagText: { color: '#6B7280', fontSize: 10 },
   studentTagLg: {
     flexDirection: 'row',
@@ -622,10 +872,25 @@ const styles = StyleSheet.create({
   },
   studentTagLgText: { color: SKY, fontSize: 13, fontWeight: '500' },
   statsGrid: { flexDirection: 'row', gap: 10 },
-  statBox: { flex: 1, alignItems: 'center', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   statValue: { fontSize: 22, fontWeight: '700' },
   statLabel: { color: '#6B7280', fontSize: 11, marginTop: 2 },
-  notesBox: { backgroundColor: '#F9FAFB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  notesBox: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   notesText: { color: colors.bodyText, fontSize: 13, lineHeight: 20 },
   textArea: {
     backgroundColor: '#F9FAFB',
@@ -648,7 +913,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   fieldLabel: { fontSize: 12, color: '#9CA3AF' },
-  submitRequestBtn: { backgroundColor: '#EF4444', borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  submitRequestBtn: {
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
   submitRequestText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
   requestChangesFooterBtn: {
@@ -660,6 +931,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   requestChangesFooterText: { color: '#F87171', fontSize: 13, fontWeight: '500' },
-  approveSingleBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#22C55E', alignItems: 'center' },
+  approveSingleBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+  },
   approveSingleBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 });

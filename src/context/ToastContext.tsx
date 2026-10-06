@@ -23,7 +23,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, message, type }]);
-    
+
     // Auto-remove after 3 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -34,35 +34,57 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const getIcon = (type: ToastType) => {
     switch (type) {
-      case 'success': return 'check-circle';
-      case 'error': return 'alert-triangle';
-      default: return 'info';
+      case 'success':
+        return 'check-circle';
+      case 'error':
+        return 'alert-triangle';
+      default:
+        return 'info';
     }
   };
 
   const getBgColor = (type: ToastType) => {
     switch (type) {
-      case 'success': return '#E6F4EA';
-      case 'error': return '#FCE8E6';
-      default: return '#E8F0FE';
+      case 'success':
+        return '#E6F4EA';
+      case 'error':
+        return '#FCE8E6';
+      default:
+        return '#E8F0FE';
     }
   };
 
   const getTextColor = (type: ToastType) => {
     switch (type) {
-      case 'success': return '#137333';
-      case 'error': return '#C5221F';
-      default: return '#1A73E8';
+      case 'success':
+        return '#137333';
+      case 'error':
+        return '#C5221F';
+      default:
+        return '#1A73E8';
     }
   };
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <View style={styles.container} pointerEvents="none">
+      <View
+        style={styles.container}
+        pointerEvents="none"
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        // @ts-ignore
+        aria-live="polite"
+        accessibilityLabel="Notification alerts"
+      >
         {toasts.map((toast) => (
           <View
             key={toast.id}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            // @ts-ignore
+            aria-live="polite"
+            accessibilityLabel={`${toast.type} notification: ${toast.message}`}
             style={[styles.toast, { backgroundColor: getBgColor(toast.type) }]}
           >
             <Feather
@@ -71,7 +93,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               color={getTextColor(toast.type)}
               style={styles.icon}
             />
-            <Text style={[styles.text, { color: getTextColor(toast.type) }]}>
+            <Text
+              accessibilityRole="text"
+              style={[styles.text, { color: getTextColor(toast.type) }]}
+            >
               {toast.message}
             </Text>
           </View>

@@ -11,6 +11,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, radius, spacing } from '../theme/colors';
+import AccessibleModal from './AccessibleModal';
 
 interface CameraCaptureModalProps {
   visible: boolean;
@@ -73,7 +74,9 @@ export default function CameraCaptureModal({
     } catch (err: any) {
       console.error('Camera error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setErrorMsg('Camera permission was denied. Please allow camera access in your browser settings.');
+        setErrorMsg(
+          'Camera permission was denied. Please allow camera access in your browser settings.',
+        );
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setErrorMsg('No camera hardware found on this device.');
       } else {
@@ -106,7 +109,9 @@ export default function CameraCaptureModal({
             });
             if (!result.canceled && result.assets && result.assets.length > 0) {
               const asset = result.assets[0];
-              const b64 = asset.base64 ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}` : asset.uri;
+              const b64 = asset.base64
+                ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+                : asset.uri;
               onCapture(asset.uri, b64);
               onClose();
             } else {
@@ -190,7 +195,13 @@ export default function CameraCaptureModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+    <AccessibleModal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+      accessibilityLabel="Camera Capture Dialog"
+    >
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
           {/* Header */}
@@ -201,7 +212,11 @@ export default function CameraCaptureModal({
               </View>
               <Text style={styles.headerTitle}>Take Student Photo</Text>
             </View>
-            <TouchableOpacity onPress={handleClose} style={styles.closeBtn} accessibilityLabel="Close Camera">
+            <TouchableOpacity
+              onPress={handleClose}
+              style={styles.closeBtn}
+              accessibilityLabel="Close Camera"
+            >
               <Feather name="x" size={20} color="#64748B" />
             </TouchableOpacity>
           </View>
@@ -220,7 +235,10 @@ export default function CameraCaptureModal({
                 <Feather name="alert-circle" size={36} color="#DC2626" />
                 <Text style={styles.errorTitle}>Camera Unavailable</Text>
                 <Text style={styles.errorDesc}>{errorMsg}</Text>
-                <TouchableOpacity style={styles.retryBtn} onPress={() => startWebCamera(facingMode)}>
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  onPress={() => startWebCamera(facingMode)}
+                >
                   <Feather name="refresh-cw" size={14} color="#FFFFFF" />
                   <Text style={styles.retryBtnText}>Try Again</Text>
                 </TouchableOpacity>
@@ -306,7 +324,8 @@ export default function CameraCaptureModal({
                   style={styles.switchCameraBtn}
                   onPress={handleSwitchFacing}
                   disabled={loading}
-                  accessibilityLabel="Switch camera">
+                  accessibilityLabel="Switch camera"
+                >
                   <Feather name="refresh-cw" size={18} color="#475569" />
                   <Text style={styles.switchCameraText}>Flip</Text>
                 </TouchableOpacity>
@@ -344,7 +363,7 @@ export default function CameraCaptureModal({
           </View>
         </View>
       </View>
-    </Modal>
+    </AccessibleModal>
   );
 }
 

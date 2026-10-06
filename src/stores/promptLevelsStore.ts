@@ -1,9 +1,10 @@
 // src/stores/promptLevelsStore.ts
 //
-// Single source of truth for prompt-level trial ordering. The institutional
-// admin configures the order on the TrialLoggingFormat screen; the live
-// preview and the teacher session Trial Record read from this same store so
-// every surface renders trials in the identical sequence.
+// Single source of truth for prompt-level trial ordering.
+// Modernized as a Zustand store backed by unified KeyValueStorage.
+
+import { create } from 'zustand';
+import { storage } from '../utils/storage';
 
 export interface PromptLevelConfigItem {
   id: string;
@@ -31,66 +32,87 @@ function toItem(row: Record<string, unknown>, index: number): PromptLevelConfigI
       typeof row.order === 'number'
         ? row.order
         : typeof row.displayOrder === 'number'
-        ? row.displayOrder
-        : index + 1,
+          ? row.displayOrder
+          : index + 1,
     status: 'Active',
   };
 }
 
-function readPersisted(): { levels: PromptLevelConfigItem[] | null; consecutive: number; streamCount: number } {
-  if (typeof localStorage === 'undefined') {
-    return { levels: null, consecutive: 5, streamCount: 5 };
-  }
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { levels: null, consecutive: 5, streamCount: 5 };
-    const parsed = JSON.parse(raw);
-    const rows = parsed?.promptLevels;
-    const levels = Array.isArray(rows) && rows.length > 0 ? rows.map(toItem) : null;
-    const consecutive = typeof parsed?.consecutive === 'number' ? parsed.consecutive : 5;
-    const streamCount = typeof parsed?.streamCount === 'number' ? parsed.streamCount : 5;
-    return { levels, consecutive, streamCount };
-  } catch {
-    return { levels: null, consecutive: 5, streamCount: 5 };
-  }
+function readPersisted(): {
+  levels: PromptLevelConfigItem[] | null;
+  consecutive: number;
+  streamCount: number;
+} {
+  const parsed = storage.getJSONSync<any>(STORAGE_KEY, null);
+  if (!parsed) return { levels: null, consecutive: 5, streamCount: 5 };
+  const rows = parsed?.promptLevels;
+  const levels = Array.isArray(rows) && rows.length > 0 ? rows.map(toItem) : null;
+  const consecutive = typeof parsed?.consecutive === 'number' ? parsed.consecutive : 5;
+  const streamCount = typeof parsed?.streamCount === 'number' ? parsed.streamCount : 5;
+  return { levels, consecutive, streamCount };
 }
 
 const initial = readPersisted();
-let config: PromptLevelConfigItem[] = initial.levels ?? DEFAULT_PROMPT_LEVELS.map((c) => ({ ...c }));
-let configConsecutive = initial.consecutive;
-let configStreamCount = initial.streamCount;
 
+export interface PromptLevelsState {
+  promptLevels: PromptLevelConfigItem[];
+  consecutive: number;
+  streamCount: number;
+  setPromptLevels: (
+    next: PromptLevelConfigItem[],
+    consecutive?: number,
+    streamCount?: number,
+  ) => void;
+  syncFromApi: (rows: any[], consecutive?: number, streamCount?: number) => PromptLevelConfigItem[];
+}
+
+export const usePromptLevelsStore = create<PromptLevelsState>((set, get) => ({
+  promptLevels: initial.levels ?? DEFAULT_PROMPT_LEVELS.map((c) => ({ ...c })),
+  consecutive: initial.consecutive,
+  streamCount: initial.streamCount,
+  setPromptLevels: (next, consecutive = get().consecutive, streamCount = get().streamCount) => {
+    storage.setJSONSync(STORAGE_KEY, { promptLevels: next, consecutive, streamCount });
+    set({ promptLevels: next.map((c) => ({ ...c })), consecutive, streamCount });
+  },
+  syncFromApi: (rows, consecutive = get().consecutive, streamCount = get().streamCount) => {
+    if (Array.isArray(rows)) {
+      const items = rows.map((r, idx) => toItem(r, idx));
+      get().setPromptLevels(items, consecutive, streamCount);
+      return items;
+    }
+    return get().promptLevels;
+  },
+}));
+
+// Backward-compatible exports
 export function getPromptLevels(): PromptLevelConfigItem[] {
-  return config.map((c) => ({ ...c }));
+  return usePromptLevelsStore.getState().promptLevels.map((c) => ({ ...c }));
 }
 
 export function getTrialConfig() {
-  return { consecutive: configConsecutive, streamCount: configStreamCount };
+  const { consecutive, streamCount } = usePromptLevelsStore.getState();
+  return { consecutive, streamCount };
 }
 
-export function setPromptLevels(next: PromptLevelConfigItem[], consecutive: number = configConsecutive, streamCount: number = configStreamCount): void {
-  config = next.map((c) => ({ ...c }));
-  configConsecutive = consecutive;
-  configStreamCount = streamCount;
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ promptLevels: config, consecutive, streamCount }));
-    } catch {}
-  }
+export function setPromptLevels(
+  next: PromptLevelConfigItem[],
+  consecutive: number = usePromptLevelsStore.getState().consecutive,
+  streamCount: number = usePromptLevelsStore.getState().streamCount,
+): void {
+  usePromptLevelsStore.getState().setPromptLevels(next, consecutive, streamCount);
 }
 
-export function syncPromptLevelsFromApi(rows: any[], consecutive: number = configConsecutive, streamCount: number = configStreamCount): PromptLevelConfigItem[] {
-  if (Array.isArray(rows)) {
-    const items = rows.map((r, idx) => toItem(r, idx));
-    setPromptLevels(items, consecutive, streamCount);
-    return items;
-  }
-  return getPromptLevels();
+export function syncPromptLevelsFromApi(
+  rows: any[],
+  consecutive: number = usePromptLevelsStore.getState().consecutive,
+  streamCount: number = usePromptLevelsStore.getState().streamCount,
+): PromptLevelConfigItem[] {
+  return usePromptLevelsStore.getState().syncFromApi(rows, consecutive, streamCount);
 }
 
 export function getPromptLevelOrder(): Record<string, number> {
   const map: Record<string, number> = {};
-  for (const item of config) {
+  for (const item of usePromptLevelsStore.getState().promptLevels) {
     map[item.name] = item.order;
     if (item.name === '+') map['INDEPENDENT'] = item.order;
   }

@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, ActivityIndicator, Image } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  ActivityIndicator,
+  Image,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DobPicker from '../../components/DobPicker';
@@ -9,11 +19,17 @@ import { colors, radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
-import { getStaffOptions, getStudentOptions, type StaffOption, type StudentOption } from '../../api/optionsApi';
+import {
+  getStaffOptions,
+  getStudentOptions,
+  type StaffOption,
+  type StudentOption,
+} from '../../api/optionsApi';
 import { createStudentEnrollment } from '../../api/coordinatorApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
+import { storage } from '../../utils/storage';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'];
@@ -136,11 +152,26 @@ function StepIndicator({ current, steps = STEPS }: { current: number; steps?: st
   );
 }
 
-function Chips({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+function Chips({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
-    <View style={styles.chipRow}>
+    <View style={styles.chipRow} accessibilityRole="radiogroup">
       {options.map((opt) => (
-        <TouchableOpacity key={opt} style={[styles.chip, value === opt && styles.chipSelected]} onPress={() => onChange(opt)}>
+        <TouchableOpacity
+          key={opt}
+          style={[styles.chip, value === opt && styles.chipSelected]}
+          onPress={() => onChange(opt)}
+          accessibilityRole="radio"
+          accessibilityLabel={opt}
+          accessibilityState={{ selected: value === opt }}
+        >
           <Text style={[styles.chipText, value === opt && styles.chipTextSelected]}>{opt}</Text>
         </TouchableOpacity>
       ))}
@@ -158,14 +189,31 @@ interface FieldProps {
   placeholder?: string;
   maxWidth?: boolean;
   hint?: string;
+  returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send';
+  onSubmitEditing?: () => void;
 }
 
-function Field({ label, required, value, onChangeText, keyboardType, multiline, placeholder, maxWidth, hint }: FieldProps) {
+function Field({
+  label,
+  required,
+  value,
+  onChangeText,
+  keyboardType,
+  multiline,
+  placeholder,
+  maxWidth,
+  hint,
+  returnKeyType = 'next',
+  onSubmitEditing,
+}: FieldProps) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
       {label ? (
-        <Text style={styles.fieldLabel}>
+        <Text
+          style={styles.fieldLabel}
+          nativeID={label ? `${label.replace(/\s+/g, '_')}_label` : undefined}
+        >
           {label}
           {required && <Text style={styles.requiredStar}> *</Text>}
         </Text>
@@ -186,6 +234,10 @@ function Field({ label, required, value, onChangeText, keyboardType, multiline, 
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         textAlignVertical={multiline ? 'top' : 'center'}
+        accessibilityLabel={label || placeholder}
+        aria-label={label || placeholder}
+        returnKeyType={multiline ? undefined : returnKeyType}
+        onSubmitEditing={onSubmitEditing}
       />
       {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
     </View>
@@ -253,9 +305,11 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 f.section ||
                 (/parent|guardian|mother|father|family|contact/i.test(f.label)
                   ? 'Parent Info'
-                  : /medical|allerg|doctor|health|insurance|medication|hospital|physician|diet/i.test(f.label)
-                  ? 'Medical Info'
-                  : 'Student Info'),
+                  : /medical|allerg|doctor|health|insurance|medication|hospital|physician|diet/i.test(
+                        f.label,
+                      )
+                    ? 'Medical Info'
+                    : 'Student Info'),
             }));
             setFormFields(normalizedFields);
           }
@@ -271,18 +325,19 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       loadFormConfig();
-    }, [loadFormConfig])
+    }, [loadFormConfig]),
   );
 
   const isFieldVisible = (label: string, defaultVisible = true) => {
     const f = formFields.find(
-      (item) => item.label?.toLowerCase().trim() === label.toLowerCase().trim()
+      (item) => item.label?.toLowerCase().trim() === label.toLowerCase().trim(),
     );
     if (!f) return defaultVisible;
     return f.visible !== false;
   };
 
-  const caseloadOf = (name: string) => therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
+  const caseloadOf = (name: string) =>
+    therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
   const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
   const therapistNames = therapists.map((t) => t.name);
 
@@ -293,16 +348,29 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const steps = [...activeInfoTypes, 'Assign Therapist', 'Review'];
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
-  const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+  const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
   const next = () => {
     if (currentStep === 'Student Info') {
-      if (!form.name.trim()) { showToast('Student name is required', 'error'); return; }
-      if (!form.dob.trim()) { showToast('Date of birth is required', 'error'); return; }
+      if (!form.name.trim()) {
+        showToast('Student name is required', 'error');
+        return;
+      }
+      if (!form.dob.trim()) {
+        showToast('Date of birth is required', 'error');
+        return;
+      }
     }
     if (currentStep === 'Parent Info') {
-      if (!form.parentName.trim()) { showToast('Parent name is required', 'error'); return; }
-      if (!form.parentPhone.trim()) { showToast('Parent phone is required', 'error'); return; }
+      if (!form.parentName.trim()) {
+        showToast('Parent name is required', 'error');
+        return;
+      }
+      if (!form.parentPhone.trim()) {
+        showToast('Parent phone is required', 'error');
+        return;
+      }
       if (!PHONE_RE.test(form.parentPhone.trim())) {
         showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
         return;
@@ -313,9 +381,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       }
     }
     if (currentStep === 'Assign Therapist') {
-      if (!form.therapist) { showToast('Please pick a therapist', 'error'); return; }
+      if (!form.therapist) {
+        showToast('Please pick a therapist', 'error');
+        return;
+      }
       if (isFull(form.therapist)) {
-        showToast(`${form.therapist} is at maximum capacity (2 students). Choose another therapist.`, 'error');
+        showToast(
+          `${form.therapist} is at maximum capacity (2 students). Choose another therapist.`,
+          'error',
+        );
         return;
       }
     }
@@ -325,21 +399,30 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       currentStep === 'Student Info'
         ? ['Full Name', 'Student Full Name', 'Date of Birth', 'Gender', 'Program', 'Program Type']
         : currentStep === 'Parent Info'
-        ? ['Parent / Guardian Name', 'Parent Name', 'Phone', 'Parent Phone', 'Email', 'Parent Email']
-        : currentStep === 'Medical Info'
-        ? ['Diagnosis', 'Medical Notes']
-        : [];
+          ? [
+              'Parent / Guardian Name',
+              'Parent Name',
+              'Phone',
+              'Parent Phone',
+              'Email',
+              'Parent Email',
+            ]
+          : currentStep === 'Medical Info'
+            ? ['Diagnosis', 'Medical Notes']
+            : [];
 
     const sectionRequiredFields = formFields.filter(
       (f) =>
         f.visible !== false &&
         f.required &&
         f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim() &&
-        !excludedForCurrentStep.some((ex) => ex.toLowerCase() === f.label.toLowerCase())
+        !excludedForCurrentStep.some((ex) => ex.toLowerCase() === f.label.toLowerCase()),
     );
     const missing = sectionRequiredFields.filter((f) => {
       const val = customValues[f.id] ?? customValues[f.label];
-      return val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
+      return (
+        val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)
+      );
     });
     if (missing.length > 0) {
       showToast(`Please complete required field: ${missing[0].label}`, 'error');
@@ -393,7 +476,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const saveProgress = () => {
     try {
       const key = `enrollment-draft-${form.name.trim().toLowerCase() || 'untitled'}`;
-      localStorage.setItem(key, JSON.stringify(form));
+      storage.setSync(key, JSON.stringify(form));
       showToast('Draft stored locally on this device', 'success');
     } catch (err) {
       showToast('This device does not support local drafts', 'error');
@@ -447,28 +530,30 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   // Group custom values by info type section
-  const customSectionEntries: Array<{ title: string; rows: [string, string][] }> = activeCustomSections
-    .map((sec) => {
-      const secFields = formFields.filter(
-        (f) => f.section?.toLowerCase().trim() === sec.toLowerCase().trim() && f.visible !== false
-      );
-      const rows: [string, string][] = [];
-      secFields.forEach((f) => {
-        const val = customValues[f.id] ?? customValues[f.label];
-        if (val !== undefined && val !== '' && val !== null && val !== false) {
-          rows.push([f.label, typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val)]);
-        }
-      });
-      return { title: sec, rows };
-    })
-    .filter((entry) => entry.rows.length > 0);
+  const customSectionEntries: Array<{ title: string; rows: [string, string][] }> =
+    activeCustomSections
+      .map((sec) => {
+        const secFields = formFields.filter(
+          (f) =>
+            f.section?.toLowerCase().trim() === sec.toLowerCase().trim() && f.visible !== false,
+        );
+        const rows: [string, string][] = [];
+        secFields.forEach((f) => {
+          const val = customValues[f.id] ?? customValues[f.label];
+          if (val !== undefined && val !== '' && val !== null && val !== false) {
+            rows.push([f.label, typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val)]);
+          }
+        });
+        return { title: sec, rows };
+      })
+      .filter((entry) => entry.rows.length > 0);
 
-  const capturedKeys = new Set(
-    formFields.map((f) => f.id).concat(formFields.map((f) => f.label))
-  );
+  const capturedKeys = new Set(formFields.map((f) => f.id).concat(formFields.map((f) => f.label)));
   const remainingCustomRows = Object.entries(customValues)
     .filter(([k, v]) => !capturedKeys.has(k) && v !== '' && v !== undefined && v !== false)
-    .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)] as [string, string]);
+    .map(
+      ([k, v]) => [k, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)] as [string, string],
+    );
 
   const calculatedAge = calculateAge(form.dob);
 
@@ -478,7 +563,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       rows: [
         ['Full Name', form.name || '—'],
         ['Gender', form.gender || '—'],
-        ['Date of Birth', form.dob ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}` : '—'],
+        [
+          'Date of Birth',
+          form.dob
+            ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}`
+            : '—',
+        ],
         ['Program Type', form.program || '—'],
         ['Therapy Group', form.therapyGroup || '—'],
         ['Photo', form.photoUri ? 'Photo Attached' : 'None'],
@@ -504,7 +594,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Enrollment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
+      <AppNavbar
+        activeTab="Enrollment"
+        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)}
+      />
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Enrollment Wizard</Text>
@@ -516,7 +609,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
         <View style={styles.card}>
           <View style={styles.cardHeadingRow}>
-            <Text style={styles.cardHeading}>Step {step + 1}: {currentStep}</Text>
+            <Text style={styles.cardHeading}>
+              Step {step + 1}: {currentStep}
+            </Text>
           </View>
 
           {currentStep === 'Student Info' && (
@@ -564,7 +659,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               )}
 
               {isFieldVisible('Student Full Name') && isFieldVisible('Full Name') && (
-                <Field label="Student Full Name" value={form.name} onChangeText={(t) => set('name', t)} placeholder="e.g. Aiden Rivera" />
+                <Field
+                  label="Student Full Name"
+                  value={form.name}
+                  onChangeText={(t) => set('name', t)}
+                  placeholder="e.g. Aiden Rivera"
+                />
               )}
 
               {isFieldVisible('Date of Birth') && (
@@ -575,7 +675,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                       <View style={styles.ageBadge}>
                         <Feather name="calendar" size={12} color="#0284C7" />
                         <Text style={styles.ageBadgeText}>
-                          Calculated Age: {calculateAge(form.dob)} {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                          Calculated Age: {calculateAge(form.dob)}{' '}
+                          {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
                         </Text>
                       </View>
                     ) : null}
@@ -591,21 +692,33 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               )}
 
               {isFieldVisible('Gender') && (
-                <View style={styles.field}><Text style={styles.fieldLabel}>Gender</Text><Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} /></View>
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Gender</Text>
+                  <Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} />
+                </View>
               )}
 
               {isFieldVisible('Program Type') && isFieldVisible('Program') && (
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Program Type</Text>
-                  <Chips options={PROGRAM_TYPES} value={form.program} onChange={(v) => set('program', v)} />
+                  <Chips
+                    options={PROGRAM_TYPES}
+                    value={form.program}
+                    onChange={(v) => set('program', v)}
+                  />
                 </View>
               )}
 
               {isFieldVisible('Therapy Group') && (
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Therapy Group</Text>
-                  <Chips options={THERAPY_GROUPS} value={form.therapyGroup} onChange={(v) => set('therapyGroup', v)} />
-                  {form.dob && getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
+                  <Chips
+                    options={THERAPY_GROUPS}
+                    value={form.therapyGroup}
+                    onChange={(v) => set('therapyGroup', v)}
+                  />
+                  {form.dob &&
+                  getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
                     <View style={styles.ageWarningBox}>
                       <Feather name="info" size={13} color="#D97706" />
                       <Text style={styles.ageWarningText}>
@@ -641,13 +754,35 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           {currentStep === 'Parent Info' && (
             <View style={styles.stepBody}>
               {isFieldVisible('Parent / Guardian Name') && isFieldVisible('Parent Name') && (
-                <Field required label="Parent / Guardian Name" value={form.parentName} onChangeText={(t) => set('parentName', t)} placeholder="e.g. Maria Rivera" />
+                <Field
+                  required
+                  label="Parent / Guardian Name"
+                  value={form.parentName}
+                  onChangeText={(t) => set('parentName', t)}
+                  placeholder="e.g. Maria Rivera"
+                />
               )}
               {isFieldVisible('Phone') && isFieldVisible('Parent Phone') && (
-                <Field required label="Phone" value={form.parentPhone} onChangeText={(t) => set('parentPhone', t)} keyboardType="phone-pad" maxWidth placeholder="(555) 000-0000" />
+                <Field
+                  required
+                  label="Phone"
+                  value={form.parentPhone}
+                  onChangeText={(t) => set('parentPhone', t)}
+                  keyboardType="phone-pad"
+                  maxWidth
+                  placeholder="(555) 000-0000"
+                />
               )}
               {isFieldVisible('Email') && isFieldVisible('Parent Email') && (
-                <Field label="Email" value={form.parentEmail} onChangeText={(t) => set('parentEmail', t)} keyboardType="email-address" maxWidth placeholder="guardian@example.com" hint="Optional" />
+                <Field
+                  label="Email"
+                  value={form.parentEmail}
+                  onChangeText={(t) => set('parentEmail', t)}
+                  keyboardType="email-address"
+                  maxWidth
+                  placeholder="guardian@example.com"
+                  hint="Optional"
+                />
               )}
 
               <DynamicFormFields
@@ -671,10 +806,21 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           {currentStep === 'Medical Info' && (
             <View style={styles.stepBody}>
               {isFieldVisible('Diagnosis') && (
-                <Field label="Diagnosis" value={form.diagnosis} onChangeText={(t) => set('diagnosis', t)} placeholder="e.g. Autism Spectrum Disorder" />
+                <Field
+                  label="Diagnosis"
+                  value={form.diagnosis}
+                  onChangeText={(t) => set('diagnosis', t)}
+                  placeholder="e.g. Autism Spectrum Disorder"
+                />
               )}
               {isFieldVisible('Medical Notes') && (
-                <Field label="Medical Notes" value={form.medicalNotes} onChangeText={(t) => set('medicalNotes', t)} multiline placeholder="Enter any relevant medical notes..." />
+                <Field
+                  label="Medical Notes"
+                  value={form.medicalNotes}
+                  onChangeText={(t) => set('medicalNotes', t)}
+                  multiline
+                  placeholder="Enter any relevant medical notes..."
+                />
               )}
 
               <DynamicFormFields
@@ -683,16 +829,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 initialFields={formFields.length ? formFields : undefined}
                 values={customValues}
                 onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                excludeStandardLabels={[
-                  'Diagnosis',
-                  'Medical Notes',
-                ]}
+                excludeStandardLabels={['Diagnosis', 'Medical Notes']}
               />
             </View>
           )}
 
           {/* Custom Info Types dynamically configured in Form Builder */}
-          {!['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'].includes(currentStep) && (
+          {!['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'].includes(
+            currentStep,
+          ) && (
             <View style={styles.stepBody}>
               <View style={styles.customSectionHeader}>
                 <Feather name="folder" size={16} color="#0284C7" />
@@ -709,12 +854,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
               />
               {formFields.filter(
-                (f) => f.visible !== false && f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim()
+                (f) =>
+                  f.visible !== false &&
+                  f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim(),
               ).length === 0 && (
                 <View style={styles.emptyCustomStepBox}>
                   <Feather name="info" size={16} color="#64748B" />
                   <Text style={styles.emptyCustomStepText}>
-                    No custom fields have been added to "{currentStep}" yet. You can add and customize fields for this info type in the Form Builder.
+                    No custom fields have been added to "{currentStep}" yet. You can add and
+                    customize fields for this info type in the Form Builder.
                   </Text>
                 </View>
               )}
@@ -724,8 +872,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           {currentStep === 'Assign Therapist' && (
             <View style={styles.stepBody}>
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Therapist <Text style={styles.requiredStar}>*</Text></Text>
-                <Text style={styles.fieldHint}>Each therapist can be assigned up to {MAX_CASELOAD} students at a time.</Text>
+                <Text style={styles.fieldLabel}>
+                  Therapist <Text style={styles.requiredStar}>*</Text>
+                </Text>
+                <Text style={styles.fieldHint}>
+                  Each therapist can be assigned up to {MAX_CASELOAD} students at a time.
+                </Text>
                 {therapistNames.length ? (
                   <View style={styles.chipRow}>
                     {therapists.map((t) => {
@@ -736,10 +888,23 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                         <TouchableOpacity
                           key={t.name}
                           disabled={full}
-                          style={[styles.chip, selected && styles.chipSelected, full && styles.chipDisabled]}
+                          style={[
+                            styles.chip,
+                            selected && styles.chipSelected,
+                            full && styles.chipDisabled,
+                          ]}
                           onPress={() => set('therapist', t.name)}
+                          accessibilityRole="radio"
+                          accessibilityLabel={`${t.name}, ${count} of ${MAX_CASELOAD} students assigned`}
+                          accessibilityState={{ selected, disabled: full }}
                         >
-                          <Text style={[styles.chipText, selected && styles.chipTextSelected, full && styles.chipTextDisabled]}>
+                          <Text
+                            style={[
+                              styles.chipText,
+                              selected && styles.chipTextSelected,
+                              full && styles.chipTextDisabled,
+                            ]}
+                          >
                             {t.name} ({count}/{MAX_CASELOAD})
                           </Text>
                         </TouchableOpacity>
@@ -755,7 +920,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   </Text>
                 )}
                 {therapistNames.length > 0 && therapistNames.every(isFull) && (
-                  <Text style={styles.capacityWarning}>All therapists are at maximum capacity (2/2). Reassign a student before enrolling another.</Text>
+                  <Text style={styles.capacityWarning}>
+                    All therapists are at maximum capacity (2/2). Reassign a student before
+                    enrolling another.
+                  </Text>
                 )}
               </View>
             </View>
@@ -763,7 +931,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           {currentStep === 'Review' && (
             <View style={styles.stepBody}>
-              <Text style={styles.reviewIntro}>Please review the enrollment details before confirming.</Text>
+              <Text style={styles.reviewIntro}>
+                Please review the enrollment details before confirming.
+              </Text>
 
               <View style={styles.reviewCard}>
                 {form.photoUri ? (
@@ -803,28 +973,52 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           <View style={styles.actionsRow}>
             {step > 0 && (
-              <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)}>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={() => setStep(step - 1)}
+                accessibilityRole="button"
+                accessibilityLabel="Go to previous step"
+              >
                 <Feather name="arrow-left" size={16} color={colors.navyText} />
                 <Text style={styles.backBtnText}>Back</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.secondaryBtn} onPress={saveProgress}>
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={saveProgress}
+              accessibilityRole="button"
+              accessibilityLabel="Save enrollment progress"
+            >
               <Feather name="bookmark" size={14} color={colors.navyText} />
               <Text style={styles.secondaryBtnText}>Save Progress</Text>
             </TouchableOpacity>
             {step < steps.length - 1 ? (
-              <TouchableOpacity style={styles.nextBtn} onPress={next}>
+              <TouchableOpacity
+                style={styles.nextBtn}
+                onPress={next}
+                accessibilityRole="button"
+                accessibilityLabel={`Proceed to next step: ${steps[step + 1] || 'Next'}`}
+              >
                 <Text style={styles.nextBtnText}>Next</Text>
                 <Feather name="arrow-right" size={16} color={colors.navyText} />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.nextBtn} onPress={handleSubmit} disabled={saving}>
+              <TouchableOpacity
+                style={styles.nextBtn}
+                onPress={handleSubmit}
+                disabled={saving}
+                accessibilityRole="button"
+                accessibilityLabel="Finish and submit student enrollment"
+                accessibilityState={{ busy: saving, disabled: saving }}
+              >
                 {saving ? (
                   <ActivityIndicator size="small" color={colors.navyText} />
                 ) : (
                   <Feather name="check" size={16} color={colors.navyText} />
                 )}
-                <Text style={styles.nextBtnText}>{saving ? 'Submitting…' : 'Finish Enrollment'}</Text>
+                <Text style={styles.nextBtnText}>
+                  {saving ? 'Submitting…' : 'Finish Enrollment'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -832,7 +1026,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>ABA Therapy Management System — SCR-009 Enrollment Wizard</Text>
+        <Text style={styles.footerText}>
+          ABA Therapy Management System — SCR-009 Enrollment Wizard
+        </Text>
       </View>
 
       <CameraCaptureModal
@@ -879,7 +1075,12 @@ const styles = StyleSheet.create({
   },
   progressRow: { flexDirection: 'row', alignItems: 'flex-start' },
   stepWrap: { flex: 1, alignItems: 'center' },
-  stepRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', paddingHorizontal: 2 },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    paddingHorizontal: 2,
+  },
   stepDot: {
     width: 30,
     height: 30,
@@ -894,9 +1095,21 @@ const styles = StyleSheet.create({
   stepDotCurrent: { backgroundColor: C_YELLOW, borderColor: C_YELLOW, borderWidth: 1.5 },
   stepNum: { fontSize: 13, fontWeight: '700', color: '#9CA3AF' },
   stepNumCurrent: { color: '#1F2937' },
-  stepLine: { flex: 1, height: 3, borderRadius: 2, backgroundColor: '#E5E7EB', marginHorizontal: 6 },
+  stepLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 6,
+  },
   stepLineDone: { backgroundColor: C_SKY },
-  stepLabel: { fontSize: 10, fontWeight: '500', color: '#9CA3AF', marginTop: spacing.sm, textAlign: 'center' },
+  stepLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
   stepLabelCurrent: { color: '#1F2937', fontWeight: '700' },
 
   card: {
@@ -911,7 +1124,12 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
-  cardHeadingRow: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: spacing.md, marginBottom: spacing.lg },
+  cardHeadingRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: spacing.md,
+    marginBottom: spacing.lg,
+  },
   cardHeading: { fontSize: 17, fontWeight: '700', color: '#1F2937', letterSpacing: 0.2 },
 
   stepBody: { gap: spacing.lg },
@@ -1148,23 +1366,64 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   reviewKey: { fontSize: 13, color: '#6B7280', flexShrink: 1 },
-  reviewValue: { fontSize: 13, fontWeight: '600', color: '#1F2937', flexShrink: 1, textAlign: 'right' },
+  reviewValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1F2937',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
 
-  actionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
   backBtn: {
-    flexDirection: 'row', gap: spacing.xs, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 10, paddingVertical: spacing.md, paddingHorizontal: spacing.md, alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
   },
   backBtnText: { fontWeight: '600', color: colors.navyText },
   secondaryBtn: {
-    flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: spacing.md, alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
   },
-  secondaryBtnText: { fontWeight: '600', fontSize: 12, color: colors.navyText, textAlign: 'center' },
+  secondaryBtnText: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: colors.navyText,
+    textAlign: 'center',
+  },
   nextBtn: {
-    flex: 1.6, flexDirection: 'row', gap: spacing.xs, backgroundColor: C_YELLOW, borderRadius: 10,
-    paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 1,
+    flex: 1.6,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    backgroundColor: C_YELLOW,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 1,
   },
   nextBtnText: { fontWeight: '700', color: '#1F2937' },
 

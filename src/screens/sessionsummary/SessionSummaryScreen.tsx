@@ -18,12 +18,24 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getSessionSummary, submitSessionSummary, saveSessionDraft, resubmitSessionNote } from '../../api/sessionApi';
+import {
+  getSessionSummary,
+  submitSessionSummary,
+  saveSessionDraft,
+  resubmitSessionNote,
+} from '../../api/sessionApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
 import StatusPill from '../../components/StatusPill';
 import { useToast } from '../../context/ToastContext';
-import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal, Trial, IncidentPayload } from '../../types';
+import type {
+  SessionStackParamList,
+  SessionSummary,
+  SessionSummaryStudent,
+  Goal,
+  Trial,
+  IncidentPayload,
+} from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SessionSummary'>;
 
@@ -54,22 +66,34 @@ function TrialLogModal({ visible, goalName, trials, onClose }: TrialLogModalProp
             </TouchableOpacity>
           </View>
           <ScrollView>
-              {(trials || []).map((t, i) => (
-                <View key={i} style={styles.trialLogRow}>
-                  <Text style={typography.body}>{(t as any).date ? `${(t as any).date} ` : ''}{t.timestamp}</Text>
-                  <View
+            {(trials || []).map((t, i) => (
+              <View key={i} style={styles.trialLogRow}>
+                <Text style={typography.body}>
+                  {(t as any).date ? `${(t as any).date} ` : ''}
+                  {t.timestamp}
+                </Text>
+                <View
                   style={[
                     styles.trialBadge,
-                    { backgroundColor: PROMPT_CONFIG[t.promptLevel]?.bg || '#F3F4F6' },
+                    {
+                      backgroundColor:
+                        (t.promptLevel ? PROMPT_CONFIG[t.promptLevel]?.bg : undefined) || '#F3F4F6',
+                    },
                   ]}
                 >
                   <Text
                     style={[
                       styles.trialBadgeText,
-                      { color: PROMPT_CONFIG[t.promptLevel]?.text || '#374151' },
+                      {
+                        color:
+                          (t.promptLevel ? PROMPT_CONFIG[t.promptLevel]?.text : undefined) ||
+                          '#374151',
+                      },
                     ]}
                   >
-                    {PROMPT_CONFIG[t.promptLevel]?.label || t.promptLevel}
+                    {(t.promptLevel ? PROMPT_CONFIG[t.promptLevel]?.label : undefined) ||
+                      t.promptLevel ||
+                      ''}
                   </Text>
                 </View>
               </View>
@@ -172,13 +196,19 @@ function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectio
 
 export function SessionSummaryScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
-  const localIncidents = useMemo(() => route.params?.localIncidents as IncidentPayload[] || [], [route.params?.localIncidents]);
+  const localIncidents = useMemo(
+    () => (route.params?.localIncidents as IncidentPayload[]) || [],
+    [route.params?.localIncidents],
+  );
   const { showToast } = useToast();
 
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
-  const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
+  const [trialLogTarget, setTrialLogTarget] = useState<{
+    goalName: string;
+    trials: Trial[];
+  } | null>(null);
   const [expandedIncidentIndex, setExpandedIncidentIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -307,7 +337,11 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         ...(Array.isArray(s.goals) ? s.goals : []).map((g) =>
           g.goalType === 'task_analysis'
             ? `  • ${g.name} (TA): ${g.independencePercent}% independent · mastery: ${g.overallMasteryStatus}`
-            : `  • ${g.name}: ${g.independencePercent}% independent · ${g.totalTrials} trials · ${Object.entries(g.promptBreakdown || {}).map(([l, c]) => `${l}:${c}`).join(' ')}`
+            : `  • ${g.name}: ${g.independencePercent}% independent · ${g.totalTrials} trials · ${Object.entries(
+                g.promptBreakdown || {},
+              )
+                .map(([l, c]) => `${l}:${c}`)
+                .join(' ')}`,
         ),
       ]),
       '',
@@ -344,7 +378,10 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   if (students.length === 0 && incidents.length === 0) {
     return (
       <SafeAreaView style={styles.safe}>
-        <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+        <AppNavbar
+          activeTab="Session"
+          onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+        />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No session data found.</Text>
@@ -360,10 +397,10 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     summaryStatus === 'approved'
       ? 'Approved'
       : summaryStatus === 'revised_required'
-      ? 'Revision Required'
-      : isDraft
-      ? 'Draft'
-      : 'Pending Review';
+        ? 'Revision Required'
+        : isDraft
+          ? 'Draft'
+          : 'Pending Review';
   const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
   const showCoordinatorFeedback = isReviewed;
   const coordinatorFeedback = (summary as any).coordinatorFeedback || '';
@@ -404,10 +441,10 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
                 summaryStatus === 'approved'
                   ? 'approved'
                   : summaryStatus === 'revised_required'
-                  ? 'revision'
-                  : isDraft
-                  ? 'draft'
-                  : 'pending'
+                    ? 'revision'
+                    : isDraft
+                      ? 'draft'
+                      : 'pending'
               }
               label={statusLabel}
             />
@@ -438,39 +475,54 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           <View style={styles.incidentCard}>
             <View style={styles.incidentHeader}>
               <Feather name="alert-triangle" size={18} color="#EA580C" />
-              <Text style={styles.incidentTitle}>
-                Behavior Incidents ({incidents.length})
-              </Text>
+              <Text style={styles.incidentTitle}>Behavior Incidents ({incidents.length})</Text>
             </View>
-              {incidents.map((inc, i) => (
-                <View key={i} style={styles.incidentBody}>
-                  <View style={styles.incidentRowTop}>
-                    <Text style={styles.incidentTime}>{inc.date ? `${inc.date} ` : ''}{inc.time}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setExpandedIncidentIndex(expandedIncidentIndex === i ? null : i);
-                      }}
-                    >
-                      <Text style={styles.linkText}>
-                        {expandedIncidentIndex === i ? 'Hide Details' : 'View Details'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.incidentABC}>
-                    <Text style={styles.boldText}>A:</Text> {(inc as any).antecedent || 'Not recorded'} •{' '}
-                    <Text style={styles.boldText}>B:</Text> {inc.behavior || 'Not recorded'} •{' '}
-                    <Text style={styles.boldText}>C:</Text> {(inc as any).consequence || 'Not recorded'}
+            {incidents.map((inc, i) => (
+              <View key={i} style={styles.incidentBody}>
+                <View style={styles.incidentRowTop}>
+                  <Text style={styles.incidentTime}>
+                    {inc.date ? `${inc.date} ` : ''}
+                    {inc.time}
                   </Text>
-                  
-                  {expandedIncidentIndex === i && (
-                    <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 4 }}>
-                      <Text style={styles.boldText}>Student: <Text style={{fontWeight: 'normal'}}>{inc.studentName || 'Student'}</Text></Text>
-                      <Text style={[styles.boldText, {marginTop: 4}]}>Additional Notes:</Text>
-                      <Text style={{ marginTop: 2, color: '#334155' }}>{(inc as any).additionalNotes || 'None'}</Text>
-                    </View>
-                  )}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setExpandedIncidentIndex(expandedIncidentIndex === i ? null : i);
+                    }}
+                  >
+                    <Text style={styles.linkText}>
+                      {expandedIncidentIndex === i ? 'Hide Details' : 'View Details'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              ))}
+                <Text style={styles.incidentABC}>
+                  <Text style={styles.boldText}>A:</Text>{' '}
+                  {(inc as any).antecedent || 'Not recorded'} •{' '}
+                  <Text style={styles.boldText}>B:</Text> {inc.behavior || 'Not recorded'} •{' '}
+                  <Text style={styles.boldText}>C:</Text>{' '}
+                  {(inc as any).consequence || 'Not recorded'}
+                </Text>
+
+                {expandedIncidentIndex === i && (
+                  <View
+                    style={{
+                      marginTop: 8,
+                      padding: 8,
+                      backgroundColor: '#F8FAFC',
+                      borderRadius: 4,
+                    }}
+                  >
+                    <Text style={styles.boldText}>
+                      Student:{' '}
+                      <Text style={{ fontWeight: 'normal' }}>{inc.studentName || 'Student'}</Text>
+                    </Text>
+                    <Text style={[styles.boldText, { marginTop: 4 }]}>Additional Notes:</Text>
+                    <Text style={{ marginTop: 2, color: '#334155' }}>
+                      {(inc as any).additionalNotes || 'None'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ))}
           </View>
         )}
 
@@ -587,7 +639,11 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     gap: spacing.md,
   },
-  goalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  goalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   goalTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   goalSubtitle: { fontSize: 13, color: '#94A3B8' },
   independenceContainer: { alignItems: 'flex-end' },
@@ -667,7 +723,12 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
   trialLogSheet: {
     backgroundColor: '#FFFFFF',
     borderRadius: radius.lg,
@@ -684,8 +745,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
-   trialBadgeText: { fontSize: 12, fontWeight: '700' },
-   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
-   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
- });
+  trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
+  trialBadgeText: { fontSize: 12, fontWeight: '700' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+  emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+});
