@@ -7,8 +7,8 @@
 //   - normalize errors into ApiError
 //   - in demo mode, route requests to the in-memory mock database
 //     (src/api/mock) so the app is fully usable without a backend
-//   - on 401 (or a 400 "expired JWT access token"), transparently refresh the
-//     token once via an opt-in handler and replay the original request
+//   - on 401, transparently refresh the token once via an opt-in handler and
+//     replay the original request
 //   - log requests through an opt-in hook
 //
 // Screens should never import this directly; use the typed resources in
@@ -128,14 +128,9 @@ function createHttpClient(): AxiosInstance {
         });
       }
 
-      // Transparent single-attempt refresh when the access token is unusable:
-      // 401, or the backend's 400 "expired JWT access token".
+      // Transparent single-attempt refresh on 401 (opt-in, not wired to screens).
       const status = axiosError.response?.status;
-      const apiError = (axiosError.response?.data as { error?: string } | undefined)?.error;
-      const expiredToken = status === 400 && typeof apiError === 'string' && /expired jwt/i.test(apiError);
-      const isRefreshCall = !!cfg?.url?.includes('/auth/jwt-refresh');
-      const shouldRefresh =
-        !isRefreshCall && (status === 401 || expiredToken) && cfg && !cfg._retry && !!refreshHandler;
+      const shouldRefresh = status === 401 && cfg && !cfg._retry && !!refreshHandler;
       if (shouldRefresh) {
         cfg._retry = true;
         try {
