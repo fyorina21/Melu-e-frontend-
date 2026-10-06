@@ -10,9 +10,13 @@ import { getEnrollmentStudents } from '../../api/coordinatorApi';
 import { getStaffOptions } from '../../api/optionsApi';
 import type { CoordinatorStackParamList } from '../../types';
 
-const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
-const DIAGNOSES = ['Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
+// Values must match what the backend returns: Student.program_type humanized
+// ("Regular" / "Pulled out") and Student.diagnosis (free text).
+const PROGRAMS = ['Regular', 'Pulled out'];
+const DIAGNOSES = ['Autism Spectrum Disorder', 'ASD Level 1', 'ASD Level 2'];
 const AGE_RANGES = ['3-5', '6-8', '9-11', '12+'];
+
+const uniq = (values: string[]): string[] => Array.from(new Set(values.filter(Boolean)));
 
 export interface EnrolledStudent {
   id: string;
@@ -33,6 +37,7 @@ interface EnrollmentStudentRow {
   programType: string;
   therapyGroup: string;
   therapist?: string;
+  diagnosis?: string;
   status: string;
 }
 
@@ -51,11 +56,11 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
   useEffect(() => {
     getStaffOptions()
       .then(({ data }) => {
-        const therapists = data.filter((s) => s.role === 'teacher').map((t) => t.name);
-        setTherapistOptions(therapists);
-        setTherapistFilter((prev) => (prev === 'All' || therapists.includes(prev) ? prev : 'All'));
+        const options = uniq([...data.filter((s) => s.role === 'teacher').map((t) => t.name), 'Unassigned']);
+        setTherapistOptions(options);
+        setTherapistFilter((prev) => (prev === 'All' || options.includes(prev) ? prev : 'All'));
       })
-      .catch(() => setTherapistOptions([]));
+      .catch(() => setTherapistOptions(['Unassigned']));
   }, []);
 
   const load = useCallback(async () => {
@@ -74,8 +79,8 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         age: row.age,
         gender: '',
         program: row.programType,
-        therapist: row.therapist || row.therapyGroup,
-        diagnosis: '',
+        therapist: row.therapist || 'Unassigned',
+        diagnosis: row.diagnosis || '',
         status: row.status === 'active' ? 'Active' : 'Inactive',
         studentId: row.id,
       })));
@@ -92,6 +97,9 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
     if (range === '12+') return age >= 12;
     return age >= min && age <= max;
   };
+
+  const programOptions = uniq([...PROGRAMS, ...students.map((s) => s.program)]);
+  const diagnosisOptions = uniq([...DIAGNOSES, ...students.map((s) => s.diagnosis)]);
 
   const filtered = students.filter(
     (s) =>
@@ -133,11 +141,11 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           value={search}
           onChangeText={setSearch}
         />
-        <FilterChips label="Program" options={PROGRAMS} value={programFilter} onChange={setProgramFilter} />
+        <FilterChips label="Program" options={programOptions} value={programFilter} onChange={setProgramFilter} />
         <FilterChips label="Therapist" options={therapistOptions} value={therapistFilter} onChange={setTherapistFilter} />
         <FilterChips label="Status" options={['Active', 'Inactive']} value={statusFilter} onChange={setStatusFilter} />
         <FilterChips label="Age" options={AGE_RANGES} value={ageFilter} onChange={setAgeFilter} />
-        <FilterChips label="Diagnosis" options={DIAGNOSES} value={diagnosisFilter} onChange={setDiagnosisFilter} />
+        <FilterChips label="Diagnosis" options={diagnosisOptions} value={diagnosisFilter} onChange={setDiagnosisFilter} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
