@@ -137,7 +137,7 @@ export default function ReportsOversightScreen({
     setStudentProgressLoading(true);
     getDirectorStudentProgress(selectedStudentId)
       .then(({ data }) => {
-        setStudentProgressData(data?.data ?? data);
+        setStudentProgressData(data ?? null);
       })
       .catch(() => {
         setStudentProgressData(null);

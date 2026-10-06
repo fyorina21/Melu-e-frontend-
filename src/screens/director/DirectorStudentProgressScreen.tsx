@@ -23,34 +23,11 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import StatusPill, { type StatusType } from '../../components/StatusPill';
-import { getDirectorStudentProgress } from '../../api/directorApi';
+import { getDirectorStudentProgress, type DirectorStudentData } from '../../api/directorApi';
+import { getStudentOptions } from '../../api/optionsApi';
 import client from '../../api/sessionApi';
 import { type StudentOption } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
-
-interface DirectorGoal {
-  id: string;
-  name: string;
-  percent: number;
-  trend: number[];
-}
-
-interface SessionHistoryEntry {
-  id: string;
-  date: string;
-  teacherName: string;
-  status?: string;
-}
-
-interface DirectorStudentData {
-  name: string;
-  age: number;
-  program: string;
-  assessmentSummary: { skills: string; behavior: string; preferences: string };
-  goals: DirectorGoal[];
-  sessionHistory: SessionHistoryEntry[];
-  incidentSummary: string;
-}
 
 /** Maps the assessment status strings returned by the API to StatusPill keys. */
 const ASSESSMENT_STATUS_KEY: Record<string, StatusType> = {
@@ -78,7 +55,7 @@ export default function DirectorStudentProgressScreen({
   navigation,
 }: NativeStackScreenProps<DirectorStackParamList, 'DirectorStudentProgress'>) {
   const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState('student-a');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
   const [data, setData] = useState<DirectorStudentData | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
@@ -89,21 +66,27 @@ export default function DirectorStudentProgressScreen({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchStudent, setSearchStudent] = useState('');
 
+  // Load the student list first; progress data waits until one is selected.
   useEffect(() => {
-    import('../../api/sessionApi').then(({ default: client }) => {
-      client.get<StudentOption[]>('/director/options/assessed-students')
-        .then(({ data: opts }) => {
-          setStudentOptions(opts);
-          if (opts.length > 0 && !opts.some((o) => o.id === selectedStudentId)) {
-            setSelectedStudentId(opts[0].id);
-          }
-        })
-        .catch(() => {});
-
-    });
+    let cancelled = false;
+    getStudentOptions()
+      .then(({ data: opts }) => {
+        if (cancelled) return;
+        const list = Array.isArray(opts) ? opts : [];
+        setStudentOptions(list);
+        if (list.length > 0) setSelectedStudentId(list[0].id);
+        else setLoadError(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const load = useCallback(async () => {
+    if (!selectedStudentId) return;
     try {
       const { data: res } = await getDirectorStudentProgress(selectedStudentId);
       setData(res);
@@ -116,6 +99,26 @@ export default function DirectorStudentProgressScreen({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Retry either refetches the student list (if that part failed) or the
+  // currently selected student's progress payload.
+  const retry = useCallback(async () => {
+    setLoadError(false);
+    if (selectedStudentId) {
+      await load();
+      return;
+    }
+    try {
+      const { data: opts } = await getStudentOptions();
+      const list = Array.isArray(opts) ? opts : [];
+      setStudentOptions(list);
+      if (list.length > 0) {
+        setSelectedStudentId(list[0].id);
+        return;
+      }
+    } catch {}
+    setLoadError(true);
+  }, [selectedStudentId, load]);
 
   const selectedStudentObj = useMemo(
     () => studentOptions.find((s) => s.id === selectedStudentId) ?? null,
@@ -139,7 +142,8 @@ export default function DirectorStudentProgressScreen({
       setNotesSaved(true);
       setTimeout(() => setNotesSaved(false), 2500);
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to save internal note');
+      const msg = err?.response?.data?.error || err?.message || 'Failed to save internal note';
+      Alert.alert('Error', msg);
     }
   };
 
@@ -180,7 +184,7 @@ export default function DirectorStudentProgressScreen({
     );
   };
 
-  if (loadError) return <ScreenError onRetry={load} />;
+  if (loadError) return <ScreenError onRetry={retry} />;
   if (!data) return <ScreenLoader />;
 
   return (
@@ -307,6 +311,9 @@ export default function DirectorStudentProgressScreen({
             <Text style={styles.cardTitle}>Current Active Goals</Text>
             <Text style={styles.countBadge}>{Array.from(new Set(data.goals.map(g => g.name))).length} Goals Assigned</Text>
           </View>
+          {data.goals.length === 0 && (
+            <Text style={styles.emptyText}>No active goals assigned to this student yet.</Text>
+          )}
           {data.goals
             .filter((g, index, self) => index === self.findIndex((t) => t.name === g.name))
             .map((g) => (
@@ -329,21 +336,28 @@ export default function DirectorStudentProgressScreen({
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Goal Progress Trend (Weekly)</Text>
           <View style={styles.chartWrap}>
-            {data.goals[0]?.trend.map((v, i) => (
-              <View key={i} style={styles.chartCol}>
-                <View style={styles.barWrap}>
-                  <View style={[styles.bar, { height: `${Math.max(10, v)}%` }]} />
+            {data.goals[0]?.trend?.length ? (
+              data.goals[0].trend.map((v, i) => (
+                <View key={i} style={styles.chartCol}>
+                  <View style={styles.barWrap}>
+                    <View style={[styles.bar, { height: `${Math.max(10, v)}%` }]} />
+                  </View>
+                  <Text style={styles.barLabel}>Wk {i + 1}</Text>
+                  <Text style={styles.barValue}>{v}%</Text>
                 </View>
-                <Text style={styles.barLabel}>Wk {i + 1}</Text>
-                <Text style={styles.barValue}>{v}%</Text>
-              </View>
-            ))}
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No weekly trend data recorded yet.</Text>
+            )}
           </View>
         </View>
 
         {/* Session History */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Recent Session History</Text>
+          {data.sessionHistory.length === 0 && (
+            <Text style={styles.emptyText}>No sessions recorded for this student yet.</Text>
+          )}
           {data.sessionHistory.map((s, i) => (
             <View key={s.id || i} style={styles.sessionRow}>
               <View style={styles.sessionIconWrap}>
@@ -449,6 +463,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText },
+  emptyText: { fontSize: 13, color: colors.mutedText, fontStyle: 'italic' },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.bodyText, letterSpacing: 0.8 },
   countBadge: { fontSize: 12, color: colors.bodyText, fontWeight: '600' },
