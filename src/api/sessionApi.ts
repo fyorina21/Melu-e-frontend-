@@ -87,20 +87,10 @@ export const createGoalMasteryCheck = (studentGoalId: string, payload?: Payload)
 export const submitGoalMasteryVerification = (masteryCheckId: string, payload: Payload) =>
   client.post(`/mastery_checks/${masteryCheckId}/verifications`, payload);
 
-export const getGoalMasteryCheck = (studentId: string, goalId: string) =>
-  client.get(`/students/${studentId}/goals/${goalId}/mastery-check`);
-
-export const submitGoalMasteryCheck = async (studentId: string, goalId: string, payload: Payload) => {
-  const { data: mcRes } = await client.post(`/student_goals/${goalId}/mastery_checks`, {
-    student_id: studentId,
-    studentId,
-    student_goal_id: goalId,
-    studentGoalId: goalId,
-    ...payload,
-  });
-  const checkId = (mcRes as any)?.mastery_check?.id || (mcRes as any)?.id || goalId;
-  return client.post(`/mastery_checks/${checkId}/verifications`, payload);
-};
+// Backend has no GET-by-student+goal mastery-check route (that path 404s).
+// A check can only be fetched by its id — callers persist the id after create.
+export const getMasteryCheck = (masteryCheckId: string) =>
+  client.get(`/mastery_checks/${masteryCheckId}`);
 
 export const swapStudents = (sessionId: string, payload: Payload) =>
   client.post(`/sessions/${sessionId}/swap-students`, payload);
