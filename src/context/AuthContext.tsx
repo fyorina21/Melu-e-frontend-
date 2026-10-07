@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
-import { setAccessToken } from '../api/token';
+import { setAccessToken, clearAuthTokens } from '../api/token';
+import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
 
 export const ROLES = {
@@ -74,9 +75,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
 
   useEffect(() => {
+    setTokenRefreshHandler(authApi.refreshToken);
+    setSessionExpiredHandler(() => {
+      setSession(null);
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', '/');
+      }
+      showToast('Your session has expired. Please sign in again.', 'info');
+    });
+
     async function restoreSession() {
       try {
-        const token = await authApi.restore();
+        let token = await authApi.restore();
         if (token) {
           try {
             const user = await authApi.me();
@@ -88,19 +98,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: user.email,
             });
           } catch (meErr) {
-            console.warn('Failed to restore session (token expired or invalid):', meErr);
-            await setAccessToken(null);
+            // Attempt token refresh before discarding session
+            const freshToken = await authApi.refreshToken();
+            if (freshToken) {
+              try {
+                const user = await authApi.me();
+                const roles = resolveRoles(user.roles, user.role);
+                setSession({
+                  role: roles[0],
+                  roles,
+                  userName: user.name,
+                  email: user.email,
+                });
+              } catch {
+                await clearAuthTokens();
+              }
+            } else {
+              console.warn('Failed to restore session (token expired and refresh failed):', meErr);
+              await clearAuthTokens();
+            }
           }
         }
       } catch (err) {
         console.warn('Failed to restore session:', err);
-        await setAccessToken(null);
+        await clearAuthTokens();
       } finally {
         setLoading(false);
       }
     }
     restoreSession();
-  }, []);
+
+    return () => {
+      setTokenRefreshHandler(null);
+      setSessionExpiredHandler(null);
+    };
+  }, [showToast]);
 
   const loginWithCredentials = async (
     email: string,

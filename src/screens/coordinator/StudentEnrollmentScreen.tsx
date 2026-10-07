@@ -6,6 +6,8 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
+import StudentAvatar from '../../components/StudentAvatar';
+import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { getEnrollmentStudents } from '../../api/coordinatorApi';
 import { getStaffOptions } from '../../api/optionsApi';
 import type { CoordinatorStackParamList } from '../../types';
@@ -24,6 +26,7 @@ export interface EnrolledStudent {
   diagnosis: string;
   status: 'Active' | 'Inactive';
   studentId: string;
+  photoUrl?: string | null;
 }
 
 interface EnrollmentStudentRow {
@@ -34,6 +37,9 @@ interface EnrollmentStudentRow {
   therapyGroup: string;
   therapist?: string;
   status: string;
+  headshotUrl?: string | null;
+  photoUrl?: string | null;
+  photo?: string | null;
 }
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollment'>;
@@ -68,6 +74,9 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         diagnosis: diagnosisFilter,
         age: ageFilter,
       });
+      if (Array.isArray(data)) {
+        registerStudentPhotos(data);
+      }
       setStudents((data as EnrollmentStudentRow[]).map((row) => ({
         id: row.id,
         name: row.fullName,
@@ -78,6 +87,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         diagnosis: '',
         status: row.status === 'active' ? 'Active' : 'Inactive',
         studentId: row.id,
+        photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
       })));
     } catch (err) {
       setStudents([]);
@@ -144,7 +154,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         <Text style={typography.caption}>{filtered.length} student(s) found</Text>
         {filtered.map((s) => (
           <TouchableOpacity key={s.id} style={styles.row} onPress={() => navigation?.navigate?.('StudentProfile', { studentId: s.id })}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{s.name.charAt(0)}</Text></View>
+            <StudentAvatar name={s.name} studentId={s.id} photoUrl={s.photoUrl} size={40} />
             <View style={{ flex: 1 }}>
               <Text style={typography.bodyBold}>{s.name}</Text>
               <Text style={typography.caption}>{s.studentId} · Age {s.age} · {s.gender}</Text>

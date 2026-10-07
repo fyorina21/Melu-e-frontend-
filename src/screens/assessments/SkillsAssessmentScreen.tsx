@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -82,14 +83,18 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     }
     try {
       const { data: saved } = await getSkillsAssessment(studentId);
-      if (saved?.id || (saved as any)?.ablls_assessment?.id || (saved as any)?.assessment_id) {
-        setAssessmentId(saved?.id || (saved as any)?.ablls_assessment?.id || (saved as any)?.assessment_id);
-      }
       const savedData = (saved?.data ?? saved ?? {}) as {
+        id?: string;
+        assessment_id?: string;
+        ablls_assessment_id?: string;
         scores?: Record<string, Score>;
         notes?: Record<string, string>;
         customFields?: Record<string, any>;
       };
+      const foundId = savedData?.ablls_assessment_id || savedData?.assessment_id || savedData?.id || (saved as any)?.id;
+      if (foundId) {
+        setAssessmentId(foundId);
+      }
       const apiScores = savedData.scores ?? (saved as any)?.scores ?? {};
       const localData = loadStorageAssessment(studentId);
       const mergedScores = { ...apiScores, ...(localData?.scores ?? {}) };
@@ -224,9 +229,13 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
         {/* Student Profile Row */}
         <View style={styles.studentRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{studentInitials}</Text>
-          </View>
+          <StudentAvatar
+            name={studentName}
+            studentId={studentId}
+            photoUrl={(profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo}
+            size={40}
+            style={{ marginRight: 10 }}
+          />
           <View style={styles.studentInfo}>
             <View style={styles.studentNameRow}>
               <Text style={styles.studentName}>{studentName}</Text>

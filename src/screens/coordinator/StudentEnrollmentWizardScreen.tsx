@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DobPicker from '../../components/DobPicker';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
@@ -14,6 +14,7 @@ import { createStudentEnrollment } from '../../api/coordinatorApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
+import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'];
@@ -234,7 +235,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       .catch(() => setTherapists([]));
 
     getStudentOptions()
-      .then(({ data }) => setExistingStudents(data))
+      .then(({ data }) => {
+        setExistingStudents(data);
+        if (Array.isArray(data)) {
+          registerStudentPhotos(data);
+        }
+      })
       .catch(() => setExistingStudents([]));
 
     getFormConfig('Enrollment Wizard')
@@ -371,11 +377,18 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         set('photoUri', asset.uri);
-        if (asset.base64) {
-          const mimeType = asset.mimeType || 'image/jpeg';
-          set('photoBase64', `data:${mimeType};base64,${asset.base64}`);
-        } else {
-          set('photoBase64', asset.uri);
+        const photoData = asset.base64
+          ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+          : asset.uri;
+        set('photoBase64', photoData);
+        if (form.name.trim()) {
+          saveStudentPhoto({
+            name: form.name.trim(),
+            fullName: form.name.trim(),
+            photo: photoData,
+            photoBase64: photoData,
+            photoUri: asset.uri,
+          });
         }
         showToast('Student photo uploaded successfully', 'success');
       }
@@ -394,6 +407,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     try {
       const key = `enrollment-draft-${form.name.trim().toLowerCase() || 'untitled'}`;
       localStorage.setItem(key, JSON.stringify(form));
+      if (form.name.trim() && (form.photoBase64 || form.photoUri)) {
+        saveStudentPhoto({
+          name: form.name.trim(),
+          fullName: form.name.trim(),
+          photo: form.photoBase64 || form.photoUri,
+          photoBase64: form.photoBase64,
+          photoUri: form.photoUri,
+        });
+      }
       showToast('Draft stored locally on this device', 'success');
     } catch (err) {
       showToast('This device does not support local drafts', 'error');
@@ -404,6 +426,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     if (saving) return;
     setSaving(true);
     const [firstName, ...rest] = form.name.trim().split(/\s+/);
+    const photoPayload = form.photoBase64 || form.photoUri || '';
     const payload = {
       firstName,
       lastName: rest.join(' ') || '-',
@@ -418,15 +441,32 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       medicalNotes: form.medicalNotes.trim(),
       documents: [],
       assignedTherapist: form.therapist,
-      photo: form.photoBase64 || form.photoUri || '',
+      photo: photoPayload,
       photoBase64: form.photoBase64 || '',
       customFields: customValues,
     };
     try {
-      await createStudentEnrollment(payload);
+      const res = await createStudentEnrollment(payload);
+      const createdData = res?.data;
+      saveStudentPhoto({
+        id: createdData?.id,
+        name: form.name.trim(),
+        fullName: form.name.trim(),
+        photo: createdData?.headshotUrl || createdData?.photoUrl || createdData?.photo || photoPayload,
+        photoBase64: form.photoBase64,
+        photoUri: form.photoUri,
+      });
       showToast(`${form.name} enrolled in ${form.program}`, 'success');
       navigation?.navigate?.('AssessmentDashboard' as never);
     } catch (err) {
+      // Keep photo saved locally with the student name
+      saveStudentPhoto({
+        name: form.name.trim(),
+        fullName: form.name.trim(),
+        photo: photoPayload,
+        photoBase64: form.photoBase64,
+        photoUri: form.photoUri,
+      });
       showToast('Could not save the enrollment. Please try again.', 'error');
     } finally {
       setSaving(false);
@@ -839,8 +879,18 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         visible={cameraModalOpen}
         onClose={() => setCameraModalOpen(false)}
         onCapture={(uri, b64) => {
+          const photoData = b64 || uri;
           set('photoUri', uri);
-          set('photoBase64', b64 || uri);
+          set('photoBase64', photoData);
+          if (form.name.trim()) {
+            saveStudentPhoto({
+              name: form.name.trim(),
+              fullName: form.name.trim(),
+              photo: photoData,
+              photoBase64: photoData,
+              photoUri: uri,
+            });
+          }
           showToast('Student photo captured successfully', 'success');
         }}
       />
@@ -871,11 +921,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    ...makeShadow(1, 4, 0.05, '0, 0, 0', 1),
   },
   progressRow: { flexDirection: 'row', alignItems: 'flex-start' },
   stepWrap: { flex: 1, alignItems: 'center' },
@@ -905,11 +951,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.xl,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 1,
+    ...makeShadow(1, 6, 0.06, '0, 0, 0', 1),
   },
   cardHeadingRow: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: spacing.md, marginBottom: spacing.lg },
   cardHeading: { fontSize: 17, fontWeight: '700', color: '#1F2937', letterSpacing: 0.2 },
@@ -986,11 +1028,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 14,
     borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    ...makeShadow(1, 2, 0.08, '0, 0, 0', 1),
   },
   cameraBtnText: {
     color: '#FFFFFF',
@@ -1164,7 +1202,7 @@ const styles = StyleSheet.create({
   nextBtn: {
     flex: 1.6, flexDirection: 'row', gap: spacing.xs, backgroundColor: C_YELLOW, borderRadius: 10,
     paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 1,
+    ...makeShadow(1, 3, 0.1, '0, 0, 0', 1),
   },
   nextBtnText: { fontWeight: '700', color: '#1F2937' },
 

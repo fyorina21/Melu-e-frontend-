@@ -12,7 +12,7 @@
 
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { apiBaseUrl, env, isDemoMode } from '../config/env';
-import { getAccessToken, setAccessToken } from '../token';
+import { getAccessToken, setAccessToken, clearAuthTokens } from '../token';
 import { toApiError, ApiError } from './errors';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
@@ -23,6 +23,7 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
 // ---- Opt-in hooks ----
 
 type RefreshHandler = () => Promise<string | null>;
+type SessionExpiredHandler = () => void;
 export type Logger = (entry: {
   method: string;
   url: string;
@@ -33,11 +34,38 @@ export type Logger = (entry: {
 }) => void;
 
 let refreshHandler: RefreshHandler | null = null;
+let sessionExpiredHandler: SessionExpiredHandler | null = null;
 let logger: Logger | null = null;
+let inflightRefreshPromise: Promise<string | null> | null = null;
 
 /** Register a callback that returns a fresh access token (or null if refresh fails). */
 export function setTokenRefreshHandler(handler: RefreshHandler | null) {
   refreshHandler = handler;
+}
+
+/** Register a callback when the session has permanently expired and cannot be refreshed. */
+export function setSessionExpiredHandler(handler: SessionExpiredHandler | null) {
+  sessionExpiredHandler = handler;
+}
+
+function notifySessionExpired() {
+  if (sessionExpiredHandler) {
+    sessionExpiredHandler();
+  }
+}
+
+async function executeRefresh(): Promise<string | null> {
+  if (!refreshHandler) return null;
+  if (!inflightRefreshPromise) {
+    inflightRefreshPromise = (async () => {
+      try {
+        return await refreshHandler();
+      } finally {
+        inflightRefreshPromise = null;
+      }
+    })();
+  }
+  return inflightRefreshPromise;
 }
 
 /** Register an optional request/response logger for observability. */
@@ -61,7 +89,9 @@ function createHttpClient(): AxiosInstance {
     const isPublicAuthUrl =
       config.url?.includes('/auth/login') ||
       config.url?.includes('/auth/create-account') ||
-      config.url?.includes('/auth/reset-password');
+      config.url?.includes('/auth/reset-password') ||
+      config.url?.includes('/auth/jwt-refresh') ||
+      config.url?.includes('/auth/jwt_refresh');
 
     if (isPublicAuthUrl) {
       if (config.headers) {
@@ -131,13 +161,21 @@ function createHttpClient(): AxiosInstance {
         status === 401 ||
         (status === 400 && (errorMsg.includes('expired') || errorMsg.includes('jwt') || errorMsg.includes('token')));
 
-      const shouldRefresh = isExpiredJwt && cfg && !cfg._retry && !!refreshHandler;
+      const isAuthUrl =
+        cfg?.url?.includes('/auth/login') ||
+        cfg?.url?.includes('/auth/jwt-refresh') ||
+        cfg?.url?.includes('/auth/jwt_refresh') ||
+        cfg?.url?.includes('/auth/create-account') ||
+        cfg?.url?.includes('/auth/reset-password');
+
+      const shouldRefresh = isExpiredJwt && cfg && !cfg._retry && !isAuthUrl && !!refreshHandler;
       if (shouldRefresh) {
         cfg._retry = true;
         try {
-          const token = await refreshHandler!();
+          const token = await executeRefresh();
           if (!token) {
-            await setAccessToken(null);
+            await clearAuthTokens();
+            notifySessionExpired();
             return Promise.reject(toApiError(error));
           }
           await setAccessToken(token);
@@ -145,13 +183,15 @@ function createHttpClient(): AxiosInstance {
           cfg.headers.Authorization = `Bearer ${token}`;
           return instance(cfg);
         } catch (refreshError) {
-          await setAccessToken(null);
+          await clearAuthTokens();
+          notifySessionExpired();
           return Promise.reject(toApiError(error));
         }
       }
 
-      if (isExpiredJwt) {
-        await setAccessToken(null);
+      if (isExpiredJwt && !isAuthUrl) {
+        await clearAuthTokens();
+        notifySessionExpired();
       }
       
       return Promise.reject(toApiError(error));

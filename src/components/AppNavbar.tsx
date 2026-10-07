@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import IconButton from './IconButton';
 import { useAuth } from '../context/AuthContext';
@@ -31,7 +31,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const role = (session?.role ?? 'teacher') as Role;
-  const sidebarRole = role === 'institutional_admin' || role === 'system_admin';
+  const sidebarRole = role === 'institutional_admin';
 
   // Keep the active tab visible in the horizontally scrolling tab strip:
   // measure each tab's position and scroll the strip so the active one is
@@ -334,11 +334,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+    ...makeShadow(4, 12, 0.12, '0, 0, 0', 8),
     padding: spacing.md,
     gap: spacing.xs,
   },

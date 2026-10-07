@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -1037,10 +1037,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     gap: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 8,
+    ...makeShadow(4, 10, 0.15, '0, 0, 0', 8),
   },
   pickerHeader: {
     flexDirection: 'row',

@@ -8,12 +8,14 @@ import {
   StyleSheet,
   SafeAreaView,
   Modal,
+  Platform,
 } from 'react-native';
 import ScreenLoader from '../../components/ScreenLoader';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import StatusPill from '../../components/StatusPill';
+import StudentAvatar from '../../components/StudentAvatar';
 import AppNavbar from '../../components/AppNavbar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -617,7 +619,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                 <View style={styles.colStudents}>
                   <View style={styles.pillsRow}>
                     {r.students.map((st) => (
-                      <View key={st} style={styles.studentPill}>
+                      <View key={st} style={[styles.studentPill, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                        <StudentAvatar name={st} size={18} />
                         <Text style={styles.studentPillText}>{st}</Text>
                       </View>
                     ))}
@@ -906,11 +909,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#000000',
     borderRadius: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 10,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 6px rgba(0, 0, 0, 0.15)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 6,
+          elevation: 10,
+        }),
   },
   dropdownOption: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF' },
   dropdownOptionSelected: { backgroundColor: '#93C5FD' },

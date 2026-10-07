@@ -738,11 +738,24 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Staff Accounts" onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])} />
       <View style={styles.header}>
-        <Text style={typography.h1}>Staff Account Management</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setFormTarget(null)}>
-          <Feather name="plus" size={14} color={colors.navyText} />
-          <Text style={styles.addBtnText}>Add Staff</Text>
-        </TouchableOpacity>
+        <View>
+          <Text style={typography.h1}>Staff Account Management</Text>
+          <Text style={typography.caption}>Manage user accounts, roles, and station linkings</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+          <TouchableOpacity
+            style={styles.secondaryHeaderBtn}
+            onPress={() => navigation?.navigate?.('PermissionConfiguration')}
+            accessibilityLabel="Configure Role Permissions"
+          >
+            <Feather name="shield" size={14} color={colors.navyText} />
+            <Text style={styles.secondaryHeaderBtnText}>Permissions</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtn} onPress={() => setFormTarget(null)}>
+            <Feather name="plus" size={14} color={colors.navyText} />
+            <Text style={styles.addBtnText}>Add Staff</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.filtersRow}>
@@ -786,6 +799,13 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
                 onPress={() => setFormTarget(s)}
               >
                 <Feather name="edit-2" size={14} color={colors.navyText} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                accessibilityLabel="Configure role permissions"
+                onPress={() => navigation?.navigate?.('PermissionConfiguration')}
+              >
+                <Feather name="shield" size={14} color="#0284C7" />
               </TouchableOpacity>
               {s.roles.includes('Teacher') && (
                 <TouchableOpacity
@@ -839,6 +859,8 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
+  secondaryHeaderBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  secondaryHeaderBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   addBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   addBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   filtersRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard },

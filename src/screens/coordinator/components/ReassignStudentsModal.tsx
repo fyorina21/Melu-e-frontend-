@@ -3,6 +3,7 @@ import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } fr
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
+import StudentAvatar from '../../../components/StudentAvatar';
 import { getScheduleCapacityConfig } from '../../../api/institutionalAdminApi';
 
 export interface ReassignOption {
@@ -145,9 +146,10 @@ export default function ReassignStudentsModal({
                   {sourceStudents.map((s) => (
                     <TouchableOpacity
                       key={s.id}
-                      style={[styles.chip, selected.includes(s.id) && styles.chipSelected]}
+                      style={[styles.chip, { flexDirection: 'row', alignItems: 'center' }, selected.includes(s.id) && styles.chipSelected]}
                       onPress={() => toggleStudent(s.id)}
                     >
+                      <StudentAvatar name={s.name} studentId={s.id} size={20} style={{ marginRight: 6 }} />
                       <Text style={[styles.chipText, selected.includes(s.id) && styles.chipTextSelected]}>{s.name}</Text>
                     </TouchableOpacity>
                   ))}

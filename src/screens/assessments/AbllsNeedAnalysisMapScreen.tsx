@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -400,16 +401,13 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
             <Text style={styles.sheetSubTitle}>Skill Tracking System &middot; Color Need Analysis Grid</Text>
 
             <View style={styles.studentMetaRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {studentName
-                    .split(' ')
-                    .map((p) => p.charAt(0))
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </Text>
-              </View>
+              <StudentAvatar
+                name={studentName}
+                studentId={studentId}
+                photoUrl={(profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo}
+                size={42}
+                style={{ marginRight: 10 }}
+              />
               <View>
                 <Text style={styles.studentNameText}>{studentName}</Text>
                 <Text style={styles.studentDetailsText}>

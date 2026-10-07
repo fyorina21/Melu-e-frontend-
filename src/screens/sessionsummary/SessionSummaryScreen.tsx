@@ -23,6 +23,7 @@ import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
 import StatusPill from '../../components/StatusPill';
 import { useToast } from '../../context/ToastContext';
+import StudentAvatar from '../../components/StudentAvatar';
 import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal, Trial, IncidentPayload } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SessionSummary'>;
@@ -158,7 +159,10 @@ function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectio
   const goals = Array.isArray(student?.goals) ? student.goals : [];
   return (
     <View style={styles.studentSection}>
-      <Text style={styles.studentSectionTitle}>{student?.name || 'Student'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <StudentAvatar name={student?.name} studentId={student?.id} size={28} />
+        <Text style={styles.studentSectionTitle}>{student?.name || 'Student'}</Text>
+      </View>
       {goals.map((goal) => (
         <GoalSummaryRow
           key={goal.id}

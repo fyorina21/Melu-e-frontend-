@@ -18,6 +18,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import StatusPill from '../../components/StatusPill';
+import StudentAvatar from '../../components/StudentAvatar';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -202,9 +203,13 @@ export default function IupLibraryScreen({
           {filtered.map((iup) => (
             <View key={iup.id} style={styles.iupCard}>
               <View style={styles.iupCardMain}>
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>{iup.studentName.charAt(0)}</Text>
-                </View>
+                <StudentAvatar
+                  name={iup.studentName}
+                  studentId={(iup as any).studentId}
+                  photoUrl={(iup as any).photoUrl || (iup as any).headshotUrl || (iup as any).photo}
+                  size={42}
+                  style={{ marginRight: 12 }}
+                />
                 <View style={{ flex: 1 }}>
                   <View style={styles.iupTitleRow}>
                     <Text style={styles.iupStudentName}>{iup.studentName}</Text>

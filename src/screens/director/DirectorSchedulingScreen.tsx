@@ -19,6 +19,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
@@ -125,9 +126,13 @@ function AssignmentEditorModal({
                   onPress={() => toggle(s.id)}
                   activeOpacity={isDisabled ? 1 : 0.7}
                 >
-                  <View style={[styles.studentAvatar, isChecked && styles.studentAvatarActive]}>
-                    <Text style={styles.studentAvatarText}>{(s.name || 'S').charAt(0).toUpperCase()}</Text>
-                  </View>
+                  <StudentAvatar
+                    name={s.name}
+                    studentId={s.id}
+                    photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
+                    size={36}
+                    style={{ marginRight: 10 }}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.studentDropdownName, isChecked && styles.studentDropdownNameActive]}>
                       {s.name}

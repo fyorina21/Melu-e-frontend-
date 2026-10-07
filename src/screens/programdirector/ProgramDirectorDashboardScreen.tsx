@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -483,8 +483,7 @@ const styles = StyleSheet.create({
     flexGrow: 1, minWidth: '45%',
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
+    ...makeShadow(1, 3, 0.04, '0, 0, 0', 1),
   },
   statIconBg: {
     width: 36, height: 36, borderRadius: 10,
@@ -497,8 +496,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
+    ...makeShadow(1, 3, 0.04, '0, 0, 0', 1),
   },
 
   /* Pipeline */

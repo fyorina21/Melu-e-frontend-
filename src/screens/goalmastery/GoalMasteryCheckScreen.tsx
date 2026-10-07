@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
+import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { getGoalMasteryCheck, submitGoalMasteryCheck } from '../../api/sessionApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
@@ -349,9 +350,13 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         {/* Student Information Card */}
         <View style={styles.studentCard}>
           <View style={styles.studentInfoLeft}>
-            <View style={styles.avatar}>
-              <Feather name="user" size={28} color="#FFFFFF" />
-            </View>
+            <StudentAvatar
+              name={data.studentName}
+              studentId={data.studentId}
+              photoUrl={(data as any).photoUrl || (data as any).headshotUrl || (data as any).photo}
+              size={56}
+              style={{ marginRight: 12 }}
+            />
             <View>
               <Text style={styles.studentName}>{data.studentName}</Text>
               <Text style={styles.metaDetail}>Goal: <Text style={styles.metaValue}>{data.goalName}</Text></Text>
@@ -727,10 +732,14 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     borderRadius: 6,
     marginTop: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.1,
+          shadowRadius: 6,
+          elevation: 5,
+        }),
     zIndex: 200,
     minWidth: 160,
   },

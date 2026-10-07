@@ -45,7 +45,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Reports',
   ],
   institutional_admin: ['Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
-  system_admin: ['Staff account management', 'Role Management'],
+  system_admin: ['Staff Accounts', 'Role Management', 'Permissions'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 
@@ -111,13 +111,19 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
 };
 
 export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
-   
-   'Admin Panel': 'StaffAccountManagement',
-   'Staff account management': 'StaffAccountManagement',
-   'Role Management': 'RoleManagement',
-   
-   'Audit Log': 'AuditLog',
- };
+  'Admin Panel': 'StaffAccountManagement',
+  'Staff account management': 'StaffAccountManagement',
+  'Staff Accounts': 'StaffAccountManagement',
+  'Staff Management': 'StaffAccountManagement',
+  Staff: 'StaffAccountManagement',
+  'Role Management': 'RoleManagement',
+  Roles: 'RoleManagement',
+  Permissions: 'PermissionConfiguration',
+  Permission: 'PermissionConfiguration',
+  'Permission Configuration': 'PermissionConfiguration',
+  'Audit Log': 'AuditLog',
+  'Audit Logs': 'AuditLog',
+};
 
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
   // Canonical tabs

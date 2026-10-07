@@ -9,10 +9,12 @@ import {
   SafeAreaView,
   Modal,
   Alert,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { saveSensoryAssessment, getTeacherStudentProfile, getSensoryAssessment } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
@@ -144,9 +146,13 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
         {/* Top Header Card */}
         <View style={styles.topCard}>
           <View style={styles.studentInfoRow}>
-            <View style={styles.avatarCircle}>
-              <Feather name="user" size={28} color="#64748B" />
-            </View>
+            <StudentAvatar
+              name={profile?.fullName || 'Student'}
+              studentId={studentId}
+              photoUrl={(profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo}
+              size={48}
+              style={{ marginRight: 12 }}
+            />
             <View>
               <Text style={styles.studentName}>{profile?.fullName || 'Student'}</Text>
               <Text style={styles.studentAge}>Age {profile?.age || '?'}</Text>
@@ -580,11 +586,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#000000',
     borderRadius: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 10,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 6px rgba(0, 0, 0, 0.15)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 6,
+          elevation: 10,
+        }),
     zIndex: 9999,
   },
   dropdownOption: {
@@ -712,11 +722,15 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 10px 20px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.1,
+          shadowRadius: 20,
+          elevation: 5,
+        }),
   },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   modalField: { gap: 6 },

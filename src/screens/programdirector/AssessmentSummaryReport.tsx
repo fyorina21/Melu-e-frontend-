@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator } from 'react-native';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, TextInput } from 'react-native';
-import { Alert, SafeAreaView } from 'react-native';
+import {
+  ActivityIndicator,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  TextInput,
+  Platform,
+  Alert,
+  SafeAreaView,
+  Image,
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
+import { resolveStudentPhotoUri } from '../../utils/studentPhotoHelper';
 import type { ProgramDirectorStackParamList } from '../../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
@@ -44,6 +58,8 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [prefTab, setPrefTab] = useState('Sensory Time');
 
+  const [reloadCount, setReloadCount] = useState(0);
+
   useEffect(() => {
     if (route?.params?.studentId && route.params.studentId !== selectedStudent) {
       setSelectedStudent(route.params.studentId);
@@ -74,7 +90,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
     };
     fetchDashboard();
     return () => { active = false; };
-  }, [selectedStudent]);
+  }, [selectedStudent, reloadCount]);
 
   if (loading) {
     return (
@@ -100,7 +116,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           </Text>
           <TouchableOpacity
             style={styles.downloadBtn}
-            onPress={() => setSelectedStudent(selectedStudent || '')}
+            onPress={() => setReloadCount((c) => c + 1)}
           >
             <Text style={styles.downloadBtnText}>Retry</Text>
           </TouchableOpacity>
@@ -169,6 +185,9 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
   }
 
   const { studentInfo, abllsScores, behavior, preference, sensory, socialSkills } = data;
+  const rawPhoto = studentInfo?.photoUrl || studentInfo?.headshotUrl || studentInfo?.photo;
+  const resolvedPhoto = resolveStudentPhotoUri(rawPhoto);
+  const selectedStudentObj = students.find((s: any) => s.id === selectedStudent);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -196,9 +215,22 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               style={styles.dropdownToggle} 
               onPress={() => setDropdownOpen(!dropdownOpen)}
             >
-              <Text style={styles.dropdownToggleText}>
-                {students.find((s: any) => s.id === selectedStudent)?.name || 'Select a Student'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {selectedStudentObj ? (
+                    <StudentAvatar
+                      name={selectedStudentObj.name}
+                      studentId={selectedStudentObj.id}
+                      photoUrl={selectedStudentObj.photoUrl || selectedStudentObj.headshotUrl || selectedStudentObj.photo || rawPhoto}
+                      size={28}
+                    />
+                  ) : null}
+                  <Text style={styles.dropdownToggleText}>
+                    {selectedStudentObj?.name || 'Select a Student'}
+                  </Text>
+                </View>
+                <Feather name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedText} />
+              </View>
             </TouchableOpacity>
             
             {dropdownOpen && (
@@ -210,7 +242,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                 />
-                <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
+                <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled={true}>
                   {students
                     .filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
                     .map((s: any) => (
@@ -223,7 +255,17 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                         }}
                         style={[styles.dropdownItem, selectedStudent === s.id && styles.dropdownItemActive]}
                       >
-                        <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>{s.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <StudentAvatar
+                            name={s.name}
+                            studentId={s.id}
+                            photoUrl={s.photoUrl || s.headshotUrl || s.photo}
+                            size={32}
+                          />
+                          <Text style={[styles.dropdownItemText, selectedStudent === s.id && styles.dropdownItemTextActive]}>
+                            {s.name}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     ))}
                   {students.filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
@@ -240,12 +282,33 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
         <View style={styles.cardHeaderBlue}>
           <Text style={styles.cardHeaderText}>Student Information</Text>
         </View>
-        <View style={styles.infoGrid}>
-          <InfoItem label="Full Name" value={studentInfo.fullName} />
-          <InfoItem label="Date of Birth" value={studentInfo.dateOfBirth} />
-          <InfoItem label="Age" value={`${studentInfo.age} years old`} />
-          <InfoItem label="Parent / Guardian" value={studentInfo.parentGuardian} />
-          <InfoItem label="Station" value={studentInfo.station} />
+        <View style={styles.studentInfoCardBody}>
+          <View style={styles.photoContainer}>
+            {resolvedPhoto ? (
+              <Image
+                source={{ uri: resolvedPhoto }}
+                style={styles.studentPhoto}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.noPhotoBox}>
+                <Feather name="camera-off" size={24} color={colors.mutedText} />
+                <Text style={styles.noPhotoText}>no photo inserted</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.studentDetailsGrid}>
+            <InfoItem label="Full Name" value={studentInfo?.fullName || '—'} />
+            <InfoItem label="Date of Birth" value={studentInfo?.dateOfBirth || '—'} />
+            <InfoItem label="Age" value={studentInfo?.age ? `${studentInfo.age} years old` : '—'} />
+            <InfoItem label="Parent / Guardian" value={studentInfo?.parentGuardian || '—'} />
+            <InfoItem label="Station" value={studentInfo?.station || 'Station 1'} />
+            <InfoItem
+              label="Photo Status"
+              value={resolvedPhoto ? 'Photo Uploaded' : 'no photo inserted'}
+            />
+          </View>
         </View>
       </View>
 
@@ -256,7 +319,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
         </View>
         <View style={styles.cardBody}>
           <Text style={[styles.cardHeaderText, { marginBottom: 12, color: '#0F172A' }]}>ABLLS-R Skill Tracking Grid</Text>
-          <AbllsGridView scores={abllsScores} />
+          <AbllsGridView scores={abllsScores || {}} />
         </View>
       </View>
 
@@ -273,7 +336,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 {item.id}. {item.text}
               </Text>
               <Text style={{ fontSize: 13, color: '#475569' }}>
-                Answer: <Text style={{ fontWeight: '500', color: behavior.massAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior.massAnswers?.[item.id] || 'Not answered'}</Text>
+                Answer: <Text style={{ fontWeight: '500', color: behavior?.massAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior?.massAnswers?.[item.id] || 'Not answered'}</Text>
               </Text>
             </View>
           ))}
@@ -287,7 +350,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 {item.id}. {item.text}
               </Text>
               <Text style={{ fontSize: 13, color: '#475569' }}>
-                Answer: <Text style={{ fontWeight: '500', color: behavior.fastAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior.fastAnswers?.[item.id] || 'Not answered'}</Text>
+                Answer: <Text style={{ fontWeight: '500', color: behavior?.fastAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior?.fastAnswers?.[item.id] || 'Not answered'}</Text>
               </Text>
             </View>
           ))}
@@ -295,14 +358,22 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           <View style={styles.divider} />
 
           <SectionTitle title="ABC Incident Log Summary" />
-          <Text style={styles.subNote}>Total incidents: <Text style={styles.subNoteBold}>{behavior.abc.totalIncidents}</Text></Text>
-          <TableHeader cols={['Top Antecedents', 'Count']} />
-          {behavior.abc.topAntecedents.map((item: any) => (
-            <TableRow key={item.antecedent} values={[
-              <Text key="a" style={styles.tableCell}>{item.antecedent}</Text>,
-              <Text key="c" style={[styles.tableCell, styles.tableRight]}>{item.count}</Text>
-            ]} />
-          ))}
+          <Text style={styles.subNote}>Total incidents: <Text style={styles.subNoteBold}>{behavior?.abc?.totalIncidents ?? 0}</Text></Text>
+          {(behavior?.abc?.topAntecedents || []).length > 0 ? (
+            <>
+              <TableHeader cols={['Top Antecedents', 'Count']} />
+              {behavior.abc.topAntecedents.map((item: any, idx: number) => (
+                <TableRow key={item.antecedent ? `ante-${item.antecedent}` : `ante-idx-${idx}`} values={[
+                  <Text key="a" style={styles.tableCell}>{item.antecedent || item.name}</Text>,
+                  <Text key="c" style={[styles.tableCell, styles.tableRight]}>{item.count}</Text>
+                ]} />
+              ))}
+            </>
+          ) : (
+            <Text style={{ fontSize: 13, color: colors.mutedText, fontStyle: 'italic', marginVertical: 8 }}>
+              No behavior incidents logged for this student.
+            </Text>
+          )}
         </View>
       </View>
 
@@ -322,24 +393,46 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               </TouchableOpacity>
             ))}
           </View>
-          <TableHeader cols={['Rank', 'Preferred Item', 'Duration', 'Freq', 'Context', 'Engagement', 'Approach']} alignEnd={false} />
-          {(preference?.items || []).map((item: any) => (
-            <TableRow key={item.rank} values={[
-              <Text key="r" style={[styles.tableCell, styles.tableBoldText]}>
-                <View style={styles.rankCircle}><Text style={styles.rankText}>{item.rank}</Text></View>
-              </Text>,
-              <Text key="i" style={[styles.tableCell, styles.tableBoldText]}>{item.item}</Text>,
-              <Text key="d" style={[styles.tableCell, styles.tableRight]}>{item.duration}</Text>,
-              <Text key="f" style={[styles.tableCell, styles.tableRight]}>{item.frequency}x</Text>,
-              <Text key="c" style={[styles.tableCell, { fontSize: 11, color: colors.mutedText }]}>{item.context}</Text>,
-              <Text key="e" style={[styles.tableCell, { fontSize: 11 }]}>{item.engaged || 'N/A'}</Text>,
-              <Text key="a" style={[styles.tableCell, { fontSize: 11 }]}>{item.approached || 'N/A'}</Text>
-            ]} />
-          ))}
+          {(() => {
+            const allItems = preference?.items || [];
+            const filteredItems = allItems.filter((item: any) => {
+              if (!item.context) return true;
+              const cleanCtx = item.context.toLowerCase().replace(/_/g, ' ');
+              const cleanTab = prefTab.toLowerCase().replace(' time', '');
+              return cleanCtx.includes(cleanTab) || cleanCtx === prefTab.toLowerCase();
+            });
+
+            if (filteredItems.length === 0) {
+              return (
+                <Text style={{ fontSize: 13, color: colors.mutedText, fontStyle: 'italic', marginVertical: 8 }}>
+                  No preference observations recorded for {prefTab}.
+                </Text>
+              );
+            }
+
+            return (
+              <>
+                <TableHeader cols={['Rank', 'Preferred Item', 'Duration', 'Freq', 'Context', 'Engagement', 'Approach']} alignEnd={false} />
+                {filteredItems.map((item: any, idx: number) => (
+                  <TableRow key={item.id ? `pref-${item.id}` : (item.rank !== undefined ? `pref-rank-${item.rank}-${idx}` : `pref-idx-${idx}`)} values={[
+                    <Text key="r" style={[styles.tableCell, styles.tableBoldText]}>
+                      <View style={styles.rankCircle}><Text style={styles.rankText}>{item.rank}</Text></View>
+                    </Text>,
+                    <Text key="i" style={[styles.tableCell, styles.tableBoldText]}>{item.item}</Text>,
+                    <Text key="d" style={[styles.tableCell, styles.tableRight]}>{item.duration}</Text>,
+                    <Text key="f" style={[styles.tableCell, styles.tableRight]}>{item.frequency}x</Text>,
+                    <Text key="c" style={[styles.tableCell, { fontSize: 11, color: colors.mutedText }]}>{item.context}</Text>,
+                    <Text key="e" style={[styles.tableCell, { fontSize: 11 }]}>{item.engaged || 'N/A'}</Text>,
+                    <Text key="a" style={[styles.tableCell, { fontSize: 11 }]}>{item.approached || 'N/A'}</Text>
+                  ]} />
+                ))}
+              </>
+            );
+          })()}
         </View>
       </View>
 
-            {/* Sensory */}
+      {/* Sensory */}
       {sensory && sensory.activities && sensory.activities.length > 0 && (
       <View style={styles.card}>
         <View style={styles.cardHeaderBlue}>
@@ -471,11 +564,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          elevation: 4,
+        }),
     zIndex: 1000,
   },
   searchInput: {
@@ -510,8 +607,53 @@ const styles = StyleSheet.create({
   cardHeaderBlue: { backgroundColor: '#38BDF8', paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   cardHeaderText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   cardBody: { padding: spacing.lg, gap: spacing.md },
+  studentInfoCardBody: {
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    flexWrap: 'wrap',
+  },
+  photoContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  studentPhoto: {
+    width: 90,
+    height: 90,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: '#38BDF8',
+    backgroundColor: '#F1F5F9',
+  },
+  noPhotoBox: {
+    width: 96,
+    height: 96,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+    gap: 4,
+  },
+  noPhotoText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.mutedText,
+    textAlign: 'center',
+  },
+  studentDetailsGrid: {
+    flex: 1,
+    minWidth: 260,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  infoItem: { width: '48%' },
+  infoItem: { width: '48%', minWidth: 120 },
   infoLabel: { fontSize: 10, color: colors.mutedText, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', marginBottom: 2 },
   infoValue: { fontSize: 13, fontWeight: '500', color: colors.navyText },
   abllRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },

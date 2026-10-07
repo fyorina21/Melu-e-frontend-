@@ -23,6 +23,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import StatusPill, { type StatusType } from '../../components/StatusPill';
+import StudentAvatar from '../../components/StudentAvatar';
 import { getDirectorStudentProgress } from '../../api/directorApi';
 import client from '../../api/sessionApi';
 import { type StudentOption } from '../../api/optionsApi';
@@ -43,6 +44,11 @@ interface SessionHistoryEntry {
 }
 
 interface DirectorStudentData {
+  id?: string;
+  studentId?: string;
+  photoUrl?: string;
+  headshotUrl?: string;
+  photo?: string;
   name: string;
   age: number;
   program: string;
@@ -214,9 +220,12 @@ export default function DirectorStudentProgressScreen({
             activeOpacity={0.8}
           >
             <View style={styles.dropdownLeft}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(data.name || 'S').charAt(0)}</Text>
-              </View>
+              <StudentAvatar
+                name={data.name}
+                studentId={data.studentId || selectedStudentId}
+                photoUrl={(data as any).photoUrl || (data as any).headshotUrl || (data as any).photo}
+                size={40}
+              />
               <View>
                 <Text style={styles.selectedStudentName}>{data.name}</Text>
                 <Text style={styles.selectedStudentMeta}>Age {data.age} · {data.program}</Text>
@@ -251,7 +260,14 @@ export default function DirectorStudentProgressScreen({
                         setSearchStudent('');
                       }}
                     >
-                                            <View style={{ flex: 1 }}>
+                      <StudentAvatar
+                        name={s.name}
+                        studentId={s.id}
+                        photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
+                        size={32}
+                        style={{ marginRight: 8 }}
+                      />
+                      <View style={{ flex: 1 }}>
                         <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
                           {s.name}
                         </Text>

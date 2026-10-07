@@ -10,7 +10,7 @@ import {
   Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
@@ -559,10 +559,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     zIndex: 99,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...makeShadow(2, 4, 0.1, '0, 0, 0', 3),
   },
   dropdownItem: {
     padding: spacing.md,

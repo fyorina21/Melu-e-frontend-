@@ -22,6 +22,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useToast } from '../../context/ToastContext';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import {
   getPendingSummaries,
   approveSummary,
@@ -332,7 +333,8 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                  <Text style={styles.cardMeta}>{item.station}{item.room ? ` · ${item.room}` : ''}</Text>
                 <View style={styles.tagRow}>
                   {item.students.map((st) => (
-                    <View key={st} style={styles.studentTag}>
+                    <View key={st} style={[styles.studentTag, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                      <StudentAvatar name={st} size={16} />
                       <Text style={styles.studentTagText}>{st}</Text>
                     </View>
                   ))}
@@ -407,7 +409,7 @@ export default function SessionSummaryReviewScreen({ navigation }: NativeStackSc
                   <View style={styles.tagRow}>
                     {selectedSummary.students.map((st) => (
                       <View key={st} style={styles.studentTagLg}>
-                        <Users size={14} color={SKY} />
+                        <StudentAvatar name={st} size={18} style={{ marginRight: 2 }} />
                         <Text style={styles.studentTagLgText}>{st}</Text>
                       </View>
                     ))}

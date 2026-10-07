@@ -27,6 +27,7 @@ import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
 import { downloadTextFile } from '../../utils/webExport';
+import StudentAvatar from '../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'LiveSessionMonitoring'>;
@@ -342,11 +343,11 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                   {session.students.map((st) => (
                     <TouchableOpacity
                       key={st}
-                      style={styles.studentChip}
+                      style={[styles.studentChip, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
                       onPress={() => openStudent(st)}
                       activeOpacity={0.7}
                     >
-                      <Users size={12} color={SKY} />
+                      <StudentAvatar name={st} size={16} />
                       <Text style={styles.studentChipText}>{st}</Text>
                     </TouchableOpacity>
                   ))}
@@ -427,7 +428,8 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
                 <Text style={styles.sectionLabel}>STUDENTS</Text>
                 <View style={styles.chipRow}>
                   {selectedSession.students.map((st) => (
-                    <View key={st} style={styles.studentChip}>
+                    <View key={st} style={[styles.studentChip, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                      <StudentAvatar name={st} size={16} />
                       <Text style={styles.studentChipText}>{st}</Text>
                     </View>
                   ))}

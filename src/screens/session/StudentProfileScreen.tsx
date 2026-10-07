@@ -9,6 +9,8 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StatusPill, { StatusType } from '../../components/StatusPill';
+import StudentAvatar from '../../components/StudentAvatar';
+import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherStudentProfile, getSkillsAssessment } from '../../api/teacherExtrasApi';
@@ -31,6 +33,9 @@ interface StudentProfileResponse {
   programType: string;
   therapyGroup: string;
   status: string;
+  headshotUrl?: string | null;
+  photoUrl?: string | null;
+  photo?: string | null;
   goals?: Array<{ id: string; name: string; status: string; progressPercent: number }>;
 }
 
@@ -45,6 +50,7 @@ export interface TeacherStudentProfile {
   parentName: string;
   parentPhone: string;
   parentEmail: string;
+  photoUrl?: string | null;
   goals: ProfileGoal[];
   trialsThisBlock: number;
   independencePercent: number;
@@ -59,6 +65,10 @@ const STATUS_FOR_GOAL: Record<string, StatusType> = {
 
 function toProfile(row: any): TeacherStudentProfile {
   const fullName = row.fullName || `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Student';
+  const photo = row.photoUrl || row.headshotUrl || row.photo || null;
+  if (row.id || fullName) {
+    saveStudentPhoto({ id: row.id, name: fullName, photo });
+  }
   return {
     id: row.id || '',
     name: fullName,
@@ -70,6 +80,7 @@ function toProfile(row: any): TeacherStudentProfile {
     parentName: row.guardianName || row.parentName || '',
     parentPhone: row.guardianPhone || row.parentPhone || '',
     parentEmail: row.guardianEmail || row.parentEmail || '',
+    photoUrl: photo,
     goals: (row.goals ?? []).map((g: any) => ({
       id: g.id,
       name: g.name,
@@ -166,9 +177,12 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           <Feather name="arrow-left" size={18} color={colors.navyText} />
         </TouchableOpacity>
         <View style={styles.identity}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{profile.initial}</Text>
-          </View>
+          <StudentAvatar
+            name={profile.name}
+            studentId={profile.id}
+            photoUrl={profile.photoUrl}
+            size={48}
+          />
           <View>
             <Text style={typography.h1}>{profile.name}</Text>
             <Text style={typography.caption}>

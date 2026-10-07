@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../theme/colors';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAbcLog, exportAbcLog, deleteAbcIncident } from '../../api/teacherExtrasApi';
@@ -242,9 +243,13 @@ export default function AbcLogScreen({ navigation }: Props) {
       <View style={[styles.card, styles.headerCard]}>
         <View style={styles.headerRow}>
           <View style={styles.studentBlock}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{currentStudent?.name?.[0] ?? '?'}</Text>
-            </View>
+            <StudentAvatar
+              name={currentStudent?.name}
+              studentId={currentStudent?.id}
+              photoUrl={(currentStudent as any)?.photoUrl || (currentStudent as any)?.headshotUrl || (currentStudent as any)?.photo}
+              size={44}
+              style={{ marginRight: 10 }}
+            />
             <View>
               <View style={styles.studentSelector}>
                 <TouchableOpacity
@@ -271,6 +276,13 @@ export default function AbcLogScreen({ navigation }: Props) {
                         setStudentMenuOpen(false);
                       }}
                     >
+                      <StudentAvatar
+                        name={s.name}
+                        studentId={s.id}
+                        photoUrl={(s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo}
+                        size={26}
+                        style={{ marginRight: 8 }}
+                      />
                       <Text
                         style={[
                           styles.dropdownItemText,

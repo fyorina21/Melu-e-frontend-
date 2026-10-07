@@ -9,6 +9,7 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { markAttendance, markBulkAttendance, getAttendanceHistory, getAttendanceReport } from '../../api/sessionApi';
+import StudentAvatar from '../../components/StudentAvatar';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'Attendance'>;
@@ -165,7 +166,12 @@ export default function AttendanceScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         {activeRoster.map((person) => (
           <View key={person.id} style={styles.row}>
-            <Text style={typography.bodyBold}>{person.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {activeType === 'student' && (
+                <StudentAvatar name={person.name} studentId={person.id} size={28} />
+              )}
+              <Text style={typography.bodyBold}>{person.name}</Text>
+            </View>
             <View style={styles.statusOptions}>
               {statusOptions.map((opt) => {
                 const selected = person.status === opt.key;

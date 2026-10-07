@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../theme/colors';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -59,7 +59,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <View style={styles.container} pointerEvents="none">
+      <View style={[styles.container, { pointerEvents: 'none' }]}>
         {toasts.map((toast) => (
           <View
             key={toast.id}
@@ -102,11 +102,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    ...makeShadow(2, 8, 0.12, '0, 0, 0', 4),
     maxWidth: 480,
     width: '100%',
   },

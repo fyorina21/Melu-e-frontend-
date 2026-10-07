@@ -2228,11 +2228,15 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     padding: 12,
     gap: 8,
-    shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 1,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 2px 4px rgba(0, 0, 0, 0.04)' }
+      : {
+          shadowColor: '#000000',
+          shadowOpacity: 0.04,
+          shadowOffset: { width: 0, height: 2 },
+          shadowRadius: 4,
+          elevation: 1,
+        }),
   },
   formHeaderTop: {
     flexDirection: 'row',
@@ -2814,10 +2818,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBD5E1',
     paddingVertical: 4,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)' }
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+          elevation: 5,
+        }),
   },
   dropdownOption: {
     paddingHorizontal: 16,

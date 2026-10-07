@@ -19,6 +19,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { PD_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useAuth, ROLES } from '../../context/AuthContext';
@@ -74,6 +75,42 @@ interface IupContext {
 type StationKey = 'station1' | 'station2';
 type Slots = Record<StationKey, (GoalBankItem | null)[]>;
 
+const isEligibleIupCandidate = (c: IupCandidate): boolean => {
+  const s = ((c as any).rawStatus || c.status || '').toLowerCase().trim();
+  const assessStatus = (c.assessmentStatus || '').toLowerCase().trim();
+
+  // Explicitly exclude students who are still in assessment or draft/pending/inactive
+  if (
+    s === 'in_assessment' ||
+    s === 'in assessment' ||
+    s === 'assessment' ||
+    s === 'draft' ||
+    s === 'registered' ||
+    s === 'pending_review' ||
+    s === 'withdrawn' ||
+    s === 'discharged' ||
+    s === 'archived' ||
+    assessStatus.includes('in progress') ||
+    assessStatus.includes('in assessment')
+  ) {
+    return false;
+  }
+
+  // Only allow students whose status is Ready for IUP or In Session (or active_therapy / active)
+  return (
+    s === 'ready for iup' ||
+    s === 'ready_for_iup' ||
+    s === 'assessment_complete' ||
+    s === 'in session' ||
+    s === 'in_session' ||
+    s === 'active' ||
+    s === 'active therapy' ||
+    s === 'active_therapy' ||
+    assessStatus === 'ready for iup' ||
+    assessStatus === 'in session'
+  );
+};
+
 export default function IupGenerationScreen({
   navigation,
   route,
@@ -126,7 +163,8 @@ export default function IupGenerationScreen({
     } catch {
       loadedCandidates = [];
     }
-    setCandidates(loadedCandidates);
+    const eligibleCandidates = loadedCandidates.filter(isEligibleIupCandidate);
+    setCandidates(eligibleCandidates);
 
     try {
       const { data: res } = await getGoalBank({});
@@ -143,10 +181,12 @@ export default function IupGenerationScreen({
     }
 
     const preId = (route.params as { studentId?: string })?.studentId;
-    if (preId) {
+    if (preId && eligibleCandidates.some((c) => c.id === preId)) {
       setSelectedStudentId(preId);
-    } else if (loadedCandidates.length > 0) {
-      setSelectedStudentId(loadedCandidates[0].id);
+    } else if (eligibleCandidates.length > 0) {
+      setSelectedStudentId(eligibleCandidates[0].id);
+    } else {
+      setSelectedStudentId(null);
     }
     setLoading(false);
   }, [route.params]);
@@ -198,23 +238,11 @@ export default function IupGenerationScreen({
   }, [selectedStudentId, goalBank]);
 
   const completedCandidates = useMemo(() => {
-    return candidates.filter((c) => {
-      const statusLower = (c.status || '').toLowerCase();
-      const assessStatusLower = (c.assessmentStatus || '').toLowerCase();
-      if (statusLower.includes('in assessment') || assessStatusLower.includes('in assessment')) {
-        return false;
-      }
-      return (
-        c.assessmentStatus === '100% Complete' ||
-        c.assessmentProgress === 100 ||
-        c.status === 'Ready for IUP' ||
-        c.hasAssessmentData === true
-      );
-    });
+    return candidates.filter(isEligibleIupCandidate);
   }, [candidates]);
 
   const selectedCandidate = useMemo(
-    () => completedCandidates.find((c) => c.id === selectedStudentId) ?? null,
+    () => completedCandidates.find((c) => c.id === selectedStudentId) || null,
     [completedCandidates, selectedStudentId]
   );
 
@@ -492,11 +520,13 @@ export default function IupGenerationScreen({
               activeOpacity={0.8}
             >
               <View style={styles.dropdownTriggerLeft}>
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>
-                    {(selectedCandidate?.name || 'S').charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+                <StudentAvatar
+                  name={selectedCandidate?.name}
+                  studentId={selectedCandidate?.id}
+                  photoUrl={(selectedCandidate as any)?.photoUrl || (selectedCandidate as any)?.headshotUrl || (selectedCandidate as any)?.photo}
+                  size={36}
+                  style={{ marginRight: 10 }}
+                />
                 <View>
                   <Text style={styles.dropdownSelectedName}>
                     {selectedCandidate ? selectedCandidate.name : 'Choose a student...'}
@@ -545,6 +575,13 @@ export default function IupGenerationScreen({
                           setSearchStudentText('');
                         }}
                       >
+                        <StudentAvatar
+                          name={c.name}
+                          studentId={c.id}
+                          photoUrl={(c as any)?.photoUrl || (c as any)?.headshotUrl || (c as any)?.photo}
+                          size={32}
+                          style={{ marginRight: 8 }}
+                        />
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
                             {c.name}
@@ -556,13 +593,17 @@ export default function IupGenerationScreen({
                         <View
                           style={[
                             styles.statusBadge,
-                            c.status === 'Active' ? styles.statusActive : styles.statusPending,
+                            c.status === 'In Session' || c.status === 'Active' || (c as any).rawStatus === 'active_therapy'
+                              ? styles.statusActive
+                              : styles.statusReadyIup,
                           ]}
                         >
                           <Text
                             style={[
                               styles.statusBadgeText,
-                              c.status === 'Active' ? styles.statusActiveText : styles.statusPendingText,
+                              c.status === 'In Session' || c.status === 'Active' || (c as any).rawStatus === 'active_therapy'
+                                ? styles.statusActiveText
+                                : styles.statusReadyIupText,
                             ]}
                           >
                             {c.status}
@@ -1245,6 +1286,8 @@ const styles = StyleSheet.create({
   statusBadgeText: { fontSize: 10, fontWeight: '700' },
   statusActive: { backgroundColor: '#DCFCE7' },
   statusActiveText: { fontSize: 10, fontWeight: '700', color: '#166534' },
+  statusReadyIup: { backgroundColor: '#DBEAFE' },
+  statusReadyIupText: { fontSize: 10, fontWeight: '700', color: '#1E40AF' },
   statusPending: { backgroundColor: '#FEF3C7' },
   statusPendingText: { fontSize: 10, fontWeight: '700', color: '#B45309' },
 

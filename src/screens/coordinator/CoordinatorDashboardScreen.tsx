@@ -16,6 +16,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { getCoordinatorDashboard, getCoordinatorNotifications } from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
 
@@ -349,7 +350,8 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
                   <View style={styles.sessionBottomRow}>
                     <View style={styles.chipRow}>
                       {session.students.map((s) => (
-                        <View key={s} style={styles.studentChip}>
+                        <View key={s} style={[styles.studentChip, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                          <StudentAvatar name={s} size={14} />
                           <Text style={styles.studentChipText}>{s}</Text>
                         </View>
                       ))}
@@ -441,7 +443,8 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
                   <Text style={styles.reviewDate}>{review.date}</Text>
                   <View style={styles.chipRow}>
                     {review.students.map((s) => (
-                      <View key={s} style={styles.studentChip}>
+                      <View key={s} style={[styles.studentChip, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                        <StudentAvatar name={s} size={14} />
                         <Text style={styles.studentChipText}>{s}</Text>
                       </View>
                     ))}

@@ -7,6 +7,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
@@ -159,38 +160,55 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <Text style={typography.h3}>Student Assessments</Text>
         <View style={styles.studentsGrid}>
           {filteredStudents.map((s) => {
+            const skillsProg = Number(s.ablls?.progress || 0);
+            const skillsStat = s.ablls?.status || (skillsProg >= 100 ? 'Completed' : skillsProg > 0 ? 'In Progress' : 'Not Started');
+            const behaviorProg = Number(s.behavior?.progress || 0);
+            const behaviorStat = s.behavior?.status || (behaviorProg >= 100 ? 'Completed' : behaviorProg > 0 ? 'In Progress' : 'Not Started');
+            
             const isCompleted =
               s.score === 100 ||
-              (s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed') ||
-              (s.ablls?.progress === 100 && s.behavior?.progress === 100);
+              (skillsStat === 'Completed' && behaviorStat === 'Completed') ||
+              (skillsProg === 100 && behaviorProg === 100);
+
+            const displayScore = isCompleted
+              ? 100
+              : (skillsProg === 0 && behaviorProg === 0)
+              ? 0
+              : Math.min(Math.max(Number(s.score ?? Math.round((skillsProg + behaviorProg) / 2)), 0), 100);
 
             return (
               <View key={s.id} style={styles.studentCard}>
                 <View style={styles.studentHeaderRow}>
-                  <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{s.initial}</Text></View>
+                  <StudentAvatar
+                    name={s.name}
+                    studentId={s.id}
+                    photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
+                    size={40}
+                    style={{ marginRight: 10 }}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={typography.bodyBold}>{s.name}</Text>
                     <Text style={typography.caption}>Age {s.age} · {s.program}</Text>
                     <Text style={typography.caption}>Therapist: {s.therapist} · Last assessment: {s.lastAssessment}</Text>
                   </View>
                   <View style={styles.scoreBadge}>
-                    <Text style={styles.scoreBadgeValue}>{s.score}%</Text>
-                    <Text style={styles.scoreBadgeLabel}>Score</Text>
+                    <Text style={styles.scoreBadgeValue}>{displayScore}%</Text>
+                    <Text style={styles.scoreBadgeLabel}>Overall</Text>
                   </View>
                 </View>
 
-                <AssessmentRow label="Skills Assessment" status={s.ablls.status} progress={s.ablls.progress} />
-                <AssessmentRow label="Behavior Assessment" status={s.behavior.status} progress={s.behavior.progress} />
+                <AssessmentRow label="Skills Assessment" status={skillsStat} progress={skillsProg} />
+                <AssessmentRow label="Behavior Assessment" status={behaviorStat} progress={behaviorProg} />
 
-                {/* When assessment is fully 100% complete, prominent link/button to IUP Generation */}
+                {/* Prominent IUP Generation Button to Assign Goals (Only when assessment is completed) */}
                 {isCompleted && (
                   <TouchableOpacity
                     style={[styles.launchBtn, { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 }]}
                     onPress={() => (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id })}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      <Feather name="check-circle" size={14} color="#FFFFFF" />
-                      <Text style={styles.launchBtnTextLight}>100% Complete — Proceed to IUP Generation →</Text>
+                      <Feather name="check-circle" size={15} color="#FFFFFF" />
+                      <Text style={[styles.launchBtnTextLight, { fontSize: 12 }]}>100% Complete — Proceed to IUP Generation to Assign Goals →</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -224,7 +242,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <View style={styles.guidelinesBox}>
           <Feather name="info" size={16} color={colors.primaryYellowDark} />
           <Text style={styles.guidelinesText}>
-            All students must complete the Skills and Behavior assessments within the 6-week window. Contact your coordinator if you need an extension.
+            All students must complete the Skills and Behavior assessments within the 6-week window. Once assessments reach 100% completion, proceed to IUP Generation to assign targets from the Goal Bank.
           </Text>
         </View>
       </ScrollView>

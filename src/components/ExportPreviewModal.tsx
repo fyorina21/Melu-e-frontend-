@@ -10,7 +10,7 @@ import {
   Share,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { downloadTextFile, openPrintWindow } from '../utils/webExport';
 
@@ -203,11 +203,7 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     padding: spacing.lg,
     gap: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 10,
+    ...makeShadow(8, 16, 0.15, '0, 0, 0', 10),
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   headerIconWrap: {
@@ -250,7 +246,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radius.sm,
   },
-  segmentBtnActive: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  segmentBtnActive: { backgroundColor: colors.bgCard, ...makeShadow(1, 2, 0.05, '0, 0, 0', 1) },
   segmentText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
   segmentTextActive: { color: colors.navyText, fontWeight: '700' },
   copyBtn: {

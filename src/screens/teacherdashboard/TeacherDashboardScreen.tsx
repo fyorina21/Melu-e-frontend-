@@ -7,6 +7,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
@@ -201,7 +202,7 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
             <View style={styles.studentChipsRow}>
               {data.todaySchedule.students.map((s) => (
                 <View key={s.id} style={styles.studentChip}>
-                  <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{s.initial}</Text></View>
+                  <StudentAvatar name={s.name} studentId={s.id} size={24} style={{ marginRight: 4 }} />
                   <Text style={styles.studentChipText}>{s.name}</Text>
                 </View>
               ))}
@@ -250,7 +251,7 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
               {data.assessmentTasks.map((t) => (
                 <View key={t.id} style={styles.taskRow}>
                   <View style={styles.taskHeaderRow}>
-                    <View style={styles.studentAvatar}><Text style={styles.studentAvatarText}>{t.studentInitial}</Text></View>
+                    <StudentAvatar name={t.studentName} studentId={t.id} size={28} style={{ marginRight: 8 }} />
                     <View style={{ flex: 1 }}>
                       <Text style={typography.bodyBold}>{t.studentName}</Text>
                       <Text style={typography.caption}>{t.assessmentName}</Text>

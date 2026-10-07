@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
 import PromptEntryRow from './PromptEntryRow';
+import StudentAvatar from '../../../components/StudentAvatar';
 import type { Student, Goal } from '../../../types';
 import { getPromptLevelOrder, getTrialConfig } from '../../../stores/promptLevelsStore';
 
@@ -82,11 +83,12 @@ export default function StudentSessionCard({
     >
       <View style={styles.headerRow}>
         <View style={styles.identity}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {student.initial}
-            </Text>
-          </View>
+          <StudentAvatar
+            name={student.name}
+            studentId={student.id}
+            photoUrl={(student as any).photoUrl || (student as any).headshotUrl || (student as any).photo}
+            size={40}
+          />
 
           <View>
             <TouchableOpacity

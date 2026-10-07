@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { PARENT_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -282,9 +283,12 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
           <ScrollView>
             {visibleConversations.map((c) => (
               <TouchableOpacity key={c.id} onPress={() => setActiveId(c.id)} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]}>
-                <View style={[styles.avatar, { backgroundColor: TEACHER_COLOR }]}>
-                  <Text style={styles.avatarLetter}>{c.studentName.charAt(0)}</Text>
-                </View>
+                <StudentAvatar
+                  name={c.studentName}
+                  photoUrl={(c as any).photoUrl || (c as any).headshotUrl || (c as any).photo}
+                  size={40}
+                  style={{ marginRight: 10 }}
+                />
                 <View style={{ flex: 1 }}>
                   <View style={styles.convoMetaRow}>
                     <Text style={typography.bodyBold}>{c.studentName}</Text>

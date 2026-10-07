@@ -26,6 +26,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { getEnrollmentStudents, getStudentProgressOverview, flagStudent } from '../../api/coordinatorApi';
 import { colors, radius, spacing } from '../../theme/colors';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
@@ -279,9 +280,12 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
             <View style={styles.card}>
               <View style={styles.profileRow}>
                 <View style={styles.profileLeft}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{selectedStudent.fullName.charAt(0)}</Text>
-                  </View>
+                  <StudentAvatar
+                    name={selectedStudent.fullName}
+                    studentId={selectedStudent.id}
+                    photoUrl={(selectedStudent as any).photoUrl || (selectedStudent as any).headshotUrl || (selectedStudent as any).photo}
+                    size={48}
+                  />
                   <View style={{ flexShrink: 1 }}>
                     <Text style={styles.studentName}>{selectedStudent.fullName}</Text>
                     <View style={styles.chipRow}>
