@@ -36,10 +36,11 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
     try {
       await requestResetCode({ email: trimmedEmail });
-      Alert.alert('Reset Code Sent', 'If an account exists with this email address, you will receive a verification code.');
+      Alert.alert('Reset Link Sent', 'If an account exists with this email address, you will receive a password reset link.');
       setStep('reset');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Could not send reset code. Please try again.';
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.error || err?.response?.data?.message || (status === 500 ? 'The password reset service is temporarily unavailable. Please try again later.' : 'Could not send reset code. Please try again.');
       Alert.alert('Request Failed', msg);
     } finally {
       setLoading(false);
@@ -48,11 +49,11 @@ export default function ForgotPasswordScreen() {
 
   const handleReset = async () => {
     if (!code.trim()) {
-      Alert.alert('Missing Code', 'Please enter the verification code sent to your email.');
+      Alert.alert('Missing Key', 'Please enter the reset key from your email.');
       return;
     }
-    if (newPassword.length < 6) {
-      Alert.alert('Weak Password', 'New password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      Alert.alert('Weak Password', 'New password must be at least 8 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -61,10 +62,14 @@ export default function ForgotPasswordScreen() {
     }
     setLoading(true);
     try {
-      await resetPassword({ email: email.trim(), code: code.trim(), password: newPassword });
+      await resetPassword({
+        reset_password_key: code.trim(),
+        password: newPassword,
+        password_confirm: confirmPassword,
+      });
       setStep('done');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to reset password. Please verify the code and try again.';
+      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Failed to reset password. Please verify the key and try again.';
       Alert.alert('Reset Failed', msg);
     } finally {
       setLoading(false);
@@ -82,8 +87,8 @@ export default function ForgotPasswordScreen() {
 
           <Text style={typography.h1}>Reset Your Password</Text>
           <Text style={[typography.body, { textAlign: 'center' }]}>
-            {step === 'request' && 'Enter your account email and we’ll send a reset code.'}
-            {step === 'reset' && 'Enter the reset code and choose a new password.'}
+            {step === 'request' && 'Enter your account email and we\u2019ll send you a reset link.'}
+            {step === 'reset' && 'Copy the reset key from your email, then choose a new password.'}
             {step === 'done' && 'Your password has been successfully reset.'}
           </Text>
 
@@ -114,14 +119,15 @@ export default function ForgotPasswordScreen() {
           {step === 'reset' && (
             <>
               <View style={styles.field}>
-                <Text style={typography.label}>Reset Code</Text>
+                <Text style={typography.label}>Reset Key</Text>
                 <View style={styles.inputRow}>
                   <Feather name="key" size={16} color={colors.mutedText} />
                   <TextInput
                     style={styles.input}
-                    placeholder="Verification code"
+                    placeholder="Paste the reset key from your email"
                     placeholderTextColor={colors.mutedText}
-                    keyboardType="number-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
                     value={code}
                     onChangeText={setCode}
                     editable={!loading}

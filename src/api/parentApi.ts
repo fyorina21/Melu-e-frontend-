@@ -14,13 +14,31 @@ export const createObservation = (payload: Payload) => client.post('/parent/obse
 export const getRequestedLogs = () => client.get('/parent/observations/requested');
 
 // SCR-PAR-004: Parent Communication
-export const getParentConversations = () => client.get('/parent/conversations');
-export const getParentConversationThread = (id: string) => client.get(`/parent/conversations/${id}`);
-export const sendParentMessage = (id: string, payload: Payload) => client.post(`/parent/conversations/${id}/messages`, payload);
-export const setParentConversationResolved = (id: string, resolved: boolean) =>
-  client.post(`/parent/conversations/${id}/status`, { resolved });
+export const getParentConversations = async () => {
+  const { parentApi } = await import('./resources/parent');
+  const convos = await parentApi.conversations();
+  return { data: convos };
+};
 
-// MR-51/52: Announcements & Notifications (Parent view)
-export const getParentNotifications = () => client.get('/parent/notifications');
+export const getParentConversationThread = async (id: string) => {
+  const { parentApi } = await import('./resources/parent');
+  const thread = await parentApi.conversationThread(id);
+  return { data: thread };
+};
+
+export const sendParentMessage = async (id: string, payload: Payload) => {
+  const { parentApi } = await import('./resources/parent');
+  const res = await parentApi.sendMessage(id, (payload.content || payload.text || '') as string);
+  return { data: res };
+};
+
+export const setParentConversationResolved = async (id: string, resolved: boolean) => {
+  const { parentApi } = await import('./resources/parent');
+  const res = await parentApi.setConversationResolved(id, resolved);
+  return { data: res };
+};
+
+// MR-51/52: Announcements & Notifications (Parent view - user-scoped backend route)
+export const getParentNotifications = () => client.get('/notifications');
 export const markParentNotificationRead = (notificationId: string) =>
-  client.post(`/parent/notifications/${notificationId}/read`);
+  client.post(`/notifications/${notificationId}/mark_as_read`);

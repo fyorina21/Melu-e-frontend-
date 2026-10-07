@@ -14,6 +14,8 @@ import { typography } from '../theme/typography';
 import IconButton from './IconButton';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, TEACHER_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
+import { notificationsApi } from '../api/resources/notifications';
+import { getAccessToken } from '../api/token';
 import { useBreakpoint } from '../utils/useBreakpoint';
 import type { Role } from '../types';
 
@@ -28,10 +30,38 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const navigation = useNavigation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [liveUnreadCount, setLiveUnreadCount] = useState(0);
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const role = (session?.role ?? 'teacher') as Role;
   const sidebarRole = role === 'institutional_admin';
+
+  // Automatically fetch unread count from backend if not provided as a prop
+  React.useEffect(() => {
+    let isMounted = true;
+    const fetchUnread = async () => {
+      const token = getAccessToken();
+      if (!token) return;
+      try {
+        const list = await notificationsApi.list();
+        if (isMounted && Array.isArray(list)) {
+          const unread = list.filter((n: any) => !n.read && !n.read_at && !n.readAt).length;
+          setLiveUnreadCount(unread);
+        }
+      } catch {
+        // Quietly catch unauthenticated or network failures
+      }
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [session?.userName]);
+
+  const effectiveUnread = unreadCount > 0 ? unreadCount : liveUnreadCount;
 
   // Keep the active tab visible in the horizontally scrolling tab strip:
   // measure each tab's position and scroll the strip so the active one is
@@ -122,6 +152,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     <View style={styles.tabs}>
       {tabs.map((tab) => {
         const active = tab === activeTabNormalized;
+        const isNotificationsTab = tab === 'Notifications';
         return (
           <TouchableOpacity
             key={tab}
@@ -133,7 +164,14 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
               setLayoutTick((n) => n + 1);
             }}
           >
-            <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
+            <View style={styles.tabContentRow}>
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab}</Text>
+              {isNotificationsTab && effectiveUnread > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{effectiveUnread}</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -170,8 +208,8 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         {notificationRoute && (
           <TouchableOpacity onPress={openNotifications} style={styles.iconBtn} accessibilityLabel="Notifications">
             <Feather name="bell" size={18} color={colors.navyText} />
-            {unreadCount > 0 && (
-              <View style={styles.badge}><Text style={styles.badgeText}>{unreadCount}</Text></View>
+            {effectiveUnread > 0 && (
+              <View style={styles.badge}><Text style={styles.badgeText}>{effectiveUnread}</Text></View>
             )}
           </TouchableOpacity>
         )}
@@ -253,13 +291,21 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             <ScrollView contentContainerStyle={styles.drawerList}>
               {tabs.map((tab) => {
                 const active = tab === activeTabNormalized;
+                const isNotificationsTab = tab === 'Notifications';
                 return (
                   <TouchableOpacity
                     key={tab}
                     style={[styles.drawerItem, active && styles.drawerItemActive]}
                     onPress={() => handleTabPress(tab)}
                   >
-                    <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>{tab}</Text>
+                    <View style={styles.tabContentRow}>
+                      <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>{tab}</Text>
+                      {isNotificationsTab && effectiveUnread > 0 && (
+                        <View style={styles.tabBadge}>
+                          <Text style={styles.tabBadgeText}>{effectiveUnread}</Text>
+                        </View>
+                      )}
+                    </View>
                     {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
                   </TouchableOpacity>
                 );
@@ -301,6 +347,17 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: colors.primaryYellow },
   tabText: { fontWeight: '600', color: colors.bodyText, fontSize: 13 },
   tabTextActive: { color: colors.navyText },
+  tabContentRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tabBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: { color: colors.white, fontSize: 9, fontWeight: '700' },
   rightBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginLeft: 'auto' },
   iconBtn: { padding: spacing.xs, position: 'relative' },
   badge: {
@@ -311,6 +368,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 16,
     height: 16,
+    paddingHorizontal: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },

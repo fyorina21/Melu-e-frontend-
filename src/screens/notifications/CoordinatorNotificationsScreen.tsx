@@ -3,8 +3,8 @@ import { SafeAreaView, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
-import { getCoordinatorNotifications } from '../../api/coordinatorApi';
-import NotificationsList from './NotificationsList';
+import { getCoordinatorNotifications, markCoordinatorNotificationRead } from '../../api/coordinatorApi';
+import NotificationsList, { toAppNotification } from './NotificationsList';
 import type { CoordinatorStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'Notifications'>;
@@ -15,10 +15,14 @@ export default function CoordinatorNotificationsScreen({ navigation }: Props) {
       <AppNavbar activeTab="Notifications" onTabPress={(t) => t !== 'Notifications' && navigation?.navigate?.(navRouteForTab(t) as never)} />
       <NotificationsList
         title="Notifications"
-        subtitle="MR-52 — session alerts and review requests"
-        fetchData={async () => (await getCoordinatorNotifications()).data}
+        subtitle="Session alerts and review requests"
+        fetchData={async () => {
+          const res = await getCoordinatorNotifications();
+          const list = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+          return list.map(toAppNotification);
+        }}
         demoData={[]}
-        markRead={async () => undefined}
+        markRead={markCoordinatorNotificationRead}
       />
     </SafeAreaView>
   );

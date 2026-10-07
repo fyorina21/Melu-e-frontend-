@@ -10,11 +10,11 @@ import type { Notification, UUID } from './types';
 
 export const notificationsApi = {
   async list(): Promise<Notification[]> {
-    const { data } = await http.get<Notification[]>('/notifications');
-    return data;
+    const { data } = await http.get<any>('/notifications');
+    return Array.isArray(data) ? data : (data?.data ?? []);
   },
 
-  async markAsRead(notificationId: UUID): Promise<void> {
+  async markAsRead(notificationId: UUID | string): Promise<void> {
     await http.post(`/notifications/${notificationId}/mark_as_read`);
   },
 };

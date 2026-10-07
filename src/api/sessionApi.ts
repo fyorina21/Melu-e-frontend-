@@ -10,11 +10,14 @@ export { setAuthToken } from './http/client';
 import { http as client } from './http/client';
 
 // ---- MR-4: Forgot / Reset Password ----
+// Uses Rodauth's built-in routes (prefix /api/v1/auth). The legacy
+// "/auth/request-reset-code" path never existed on the backend (404), so the
+// flow was wired to Rodauth's real endpoints instead.
 export const requestResetCode = (payload: Payload) =>
   // payload: { email }
-  client.post('/auth/request-reset-code', payload);
+  client.post('/auth/reset-password-request', payload);
 export const resetPassword = (payload: Payload) =>
-  // payload: { email, code, password }
+  // payload: { reset_password_key, password, password_confirm }
   client.post('/auth/reset-password', payload);
 
 // ---- MR-39: Appointment & Session Management ----

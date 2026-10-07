@@ -145,7 +145,7 @@ export async function loadToken(): Promise<string | null> {
   return getAccessToken();
 }
 
-export async function setAccessToken(token: string | null): Promise<void> {
+export async function setAccessToken(token: string | null, persist = true): Promise<void> {
   if (
     !token ||
     token === 'undefined' ||
@@ -168,6 +168,19 @@ export async function setAccessToken(token: string | null): Promise<void> {
     : token.trim();
 
   accessToken = cleanToken;
+
+  if (!persist) {
+    // A non-remembered login must not survive the running session. Drop
+    // anything a previous persisted login left behind, otherwise that stale
+    // token could resurrect the account after a restart. The in-memory value
+    // above keeps the current session logged in.
+    try {
+      await resolveStorage().removeItem(TOKEN_KEY);
+    } catch (err) {
+      console.warn('Failed to clear stored auth token:', err);
+    }
+    return;
+  }
 
   try {
     await resolveStorage().setItem(TOKEN_KEY, cleanToken);

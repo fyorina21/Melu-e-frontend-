@@ -23,6 +23,7 @@ export default function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<{ Login: undefined; ForgotPassword: undefined }>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,11 +75,20 @@ export default function LoginScreen() {
                 style={styles.input}
                 placeholder="Enter your password"
                 placeholderTextColor={colors.mutedText}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
                 editable={!submitting}
               />
+              <TouchableOpacity
+                onPress={() => setShowPassword((p) => !p)}
+                disabled={submitting}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              >
+                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={colors.mutedText} />
+              </TouchableOpacity>
             </View>
           </View>
 
