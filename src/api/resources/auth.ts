@@ -62,15 +62,13 @@ export const authApi = {
       remember_device: payload.rememberDevice,
     });
     const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
-<<<<<<< HEAD
     const refreshToken = (data as any).refresh_token ?? (data as any).refreshToken;
-    if (token) await setAccessToken(token);
-    if (refreshToken) await setRefreshToken(refreshToken);
-=======
     // Persist only when "remember this device" was ticked. Unchecked means the
-    // session lives for this app run only and is gone after a restart.
+    // session lives for this app run only and is gone after a restart. The
+    // refresh token follows the same rule so an unremembered session cannot
+    // be resurrected from storage.
     if (token) await setAccessToken(token, !!payload.rememberDevice);
->>>>>>> 5db4e36ddaab4c582686f6bb9c9f9304eda88de8
+    if (refreshToken && payload.rememberDevice) await setRefreshToken(refreshToken);
     return {
       ...data,
       token: token || '',

@@ -23,18 +23,13 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import StatusPill, { type StatusType } from '../../components/StatusPill';
-<<<<<<< HEAD
 import StudentAvatar from '../../components/StudentAvatar';
 import { getDirectorStudentProgress } from '../../api/directorApi';
-=======
-import { getDirectorStudentProgress, type DirectorStudentData } from '../../api/directorApi';
 import { getStudentOptions } from '../../api/optionsApi';
->>>>>>> 5db4e36ddaab4c582686f6bb9c9f9304eda88de8
 import client from '../../api/sessionApi';
 import { type StudentOption } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 
-<<<<<<< HEAD
 interface DirectorGoal {
   id: string;
   name: string;
@@ -64,8 +59,6 @@ interface DirectorStudentData {
   incidentSummary: string;
 }
 
-=======
->>>>>>> 5db4e36ddaab4c582686f6bb9c9f9304eda88de8
 /** Maps the assessment status strings returned by the API to StatusPill keys. */
 const ASSESSMENT_STATUS_KEY: Record<string, StatusType> = {
   Completed: 'completed',
