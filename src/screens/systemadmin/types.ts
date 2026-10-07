@@ -43,12 +43,36 @@ export interface RoleMeta {
   permission_count?: number;
 }
 
+/**
+ * The 7 predefined core system roles.
+ * Custom roles (e.g. Therapist) are not hardcoded and can be configured within the app.
+ */
 export const ROLE_OPTIONS = [
   'Teacher',
-  'Therapist',
   'Coordinator',
   'Director',
   'Program Director',
   'Institutional Admin',
   'System Admin',
-];
+  'Parent',
+] as const;
+
+export function filterStaff(
+  staff: StaffMember[] | null,
+  search: string,
+  roleFilter: string,
+  statusFilter: string,
+): StaffMember[] {
+  if (!staff) return [];
+  const term = search.trim().toLowerCase();
+  return staff.filter((s) => {
+    if (roleFilter !== 'All' && !s.roles.includes(roleFilter)) return false;
+    if (statusFilter !== 'All' && (statusFilter === 'Active') !== s.active) return false;
+    if (term) {
+      const matchName = s.name.toLowerCase().includes(term);
+      const matchEmail = s.email.toLowerCase().includes(term);
+      if (!matchName && !matchEmail) return false;
+    }
+    return true;
+  });
+}
