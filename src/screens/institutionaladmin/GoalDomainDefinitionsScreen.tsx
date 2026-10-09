@@ -24,10 +24,17 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { colors, radius, spacing } from '../../theme/colors';
 
 import type { GoalDomain, TaskAnalysisStep, TaskAnalysisTemplate } from './goaldomains/types';
+import { GoalDomainsHeader } from './goaldomains/components/GoalDomainsHeader';
+import { GoalDomainsSectionSwitcher } from './goaldomains/components/GoalDomainsSectionSwitcher';
 import { GoalDomainsTable } from './goaldomains/components/GoalDomainsTable';
 import { AddDomainFormCard } from './goaldomains/components/AddDomainFormCard';
 import { TaskAnalysisTemplatesTable } from './goaldomains/components/TaskAnalysisTemplatesTable';
 import { TaskAnalysisTemplateEditor } from './goaldomains/components/TaskAnalysisTemplateEditor';
+import {
+  moveItemInList,
+  validateDomainSubmission,
+  validateTemplateSubmission,
+} from './goaldomains/goalDomainsHelper';
 
 export type { GoalDomain };
 
@@ -83,25 +90,11 @@ export default function GoalDomainDefinitionsScreen({
 
   // Domain Handlers
   const handleMoveDomainUp = (index: number) => {
-    if (index === 0) return;
-    setDomains((prev) => {
-      const list = [...prev];
-      const temp = list[index - 1];
-      list[index - 1] = list[index];
-      list[index] = temp;
-      return list;
-    });
+    setDomains((prev) => moveItemInList(prev, index, 'up'));
   };
 
   const handleMoveDomainDown = (index: number) => {
-    if (index === domains.length - 1) return;
-    setDomains((prev) => {
-      const list = [...prev];
-      const temp = list[index + 1];
-      list[index + 1] = list[index];
-      list[index] = temp;
-      return list;
-    });
+    setDomains((prev) => moveItemInList(prev, index, 'down'));
   };
 
   const handleConfirmAddDomain = () => {
@@ -137,9 +130,9 @@ export default function GoalDomainDefinitionsScreen({
   };
 
   const handleSaveDomains = async () => {
-    const activeCount = domains.filter((d) => d.active !== false).length;
-    if (activeCount === 0) {
-      Alert.alert('Validation Error', 'At least one active domain is required.');
+    const validation = validateDomainSubmission(domains);
+    if (!validation.valid) {
+      Alert.alert('Validation Error', validation.error);
       return;
     }
     try {
@@ -188,24 +181,13 @@ export default function GoalDomainDefinitionsScreen({
   };
 
   const moveTemplateStep = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= formSteps.length) return;
-    setFormSteps((prev) => {
-      const updated = [...prev];
-      const temp = updated[index];
-      updated[index] = updated[targetIndex];
-      updated[targetIndex] = temp;
-      return updated;
-    });
+    setFormSteps((prev) => moveItemInList(prev, index, direction));
   };
 
   const handleSaveTemplate = async () => {
-    if (!formName.trim()) {
-      Alert.alert('Validation Error', 'Template Name is required.');
-      return;
-    }
-    if (formSteps.length === 0) {
-      Alert.alert('Validation Error', 'At least one step is required.');
+    const validation = validateTemplateSubmission(formName, formSteps);
+    if (!validation.valid) {
+      Alert.alert('Validation Error', validation.error);
       return;
     }
 
@@ -268,69 +250,16 @@ export default function GoalDomainDefinitionsScreen({
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.responsiveContainer}>
-          {/* Page Header */}
-          <View style={styles.pageHeader}>
-            <View style={styles.headerLeft}>
-              <View style={styles.badgeIcon}>
-                <Feather name="layers" size={20} color={colors.navyText} />
-              </View>
-              <View>
-                <Text style={styles.pageTitle}>Goal Domains & Task Analysis</Text>
-                <Text style={styles.pageSubtitle}>
-                  Unified clinical workbench for goal categories, milestones & task analysis step
-                  templates
-                </Text>
-              </View>
-            </View>
-          </View>
+          {/* Modular Page Header */}
+          <GoalDomainsHeader />
 
-          {/* Section Switcher Bar */}
-          <View style={styles.switcherContainer}>
-            <TouchableOpacity
-              style={[styles.switcherBtn, activeSection === 'domains' && styles.switcherBtnActive]}
-              onPress={() => setActiveSection('domains')}
-              accessibilityRole="button"
-              accessibilityState={{ selected: activeSection === 'domains' }}
-            >
-              <Feather
-                name="target"
-                size={15}
-                color={activeSection === 'domains' ? colors.navyText : colors.bodyText}
-              />
-              <Text
-                style={[
-                  styles.switcherBtnText,
-                  activeSection === 'domains' && styles.switcherBtnTextActive,
-                ]}
-              >
-                Goal Domains ({domains.length})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.switcherBtn,
-                activeSection === 'templates' && styles.switcherBtnActive,
-              ]}
-              onPress={() => setActiveSection('templates')}
-              accessibilityRole="button"
-              accessibilityState={{ selected: activeSection === 'templates' }}
-            >
-              <Feather
-                name="list"
-                size={15}
-                color={activeSection === 'templates' ? colors.navyText : colors.bodyText}
-              />
-              <Text
-                style={[
-                  styles.switcherBtnText,
-                  activeSection === 'templates' && styles.switcherBtnTextActive,
-                ]}
-              >
-                Task Analysis Templates ({templates.length})
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {/* Modular Section Switcher Bar */}
+          <GoalDomainsSectionSwitcher
+            activeSection={activeSection}
+            domainsCount={domains.length}
+            templatesCount={templates.length}
+            onSelectSection={setActiveSection}
+          />
 
           {/* SECTION 1: GOAL DOMAINS */}
           {activeSection === 'domains' && (
@@ -424,68 +353,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 1200,
     gap: spacing.lg,
-  },
-  pageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    flex: 1,
-    minWidth: 280,
-  },
-  badgeIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.primaryYellow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pageTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.navyText,
-  },
-  pageSubtitle: {
-    fontSize: 12,
-    color: colors.mutedText,
-    marginTop: 2,
-  },
-  switcherContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.md,
-    padding: 4,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  switcherBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radius.sm,
-  },
-  switcherBtnActive: {
-    backgroundColor: colors.primaryYellow,
-  },
-  switcherBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.bodyText,
-  },
-  switcherBtnTextActive: {
-    color: colors.navyText,
-    fontWeight: '700',
   },
   saveConfigBtn: {
     flexDirection: 'row',
