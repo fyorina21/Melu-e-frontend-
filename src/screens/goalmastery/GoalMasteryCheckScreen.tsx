@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Alert,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -26,87 +27,42 @@ import {
   type StudentOption,
   type StaffOption,
 } from '../../api/optionsApi';
-import { spacing, radius } from '../../theme/colors';
+import { spacing } from '../../theme/colors';
 import type { SessionStackParamList } from '../../types';
-import type { OutcomeOption, PromptType, MasteryCheckData, GoalOption } from './types';
-import { MasteryHeaderPickers } from './components/MasteryHeaderPickers';
-import { MasteryStudentCard } from './components/MasteryStudentCard';
-import { PrimaryTeacherCard } from './components/PrimaryTeacherCard';
-import { TeacherVerificationCard } from './components/TeacherVerificationCard';
+import {
+  type OutcomeOption,
+  type PromptType,
+  type MasteryCheckData,
+  type GoalOption,
+  isTeacherVerificationValid,
+} from './types';
+import {
+  MasteryHeaderPickers,
+  MasteryStudentCard,
+  PrimaryTeacherCard,
+  TeacherVerificationCard,
+  MasteryFooterActions,
+} from './components';
+import {
+  STATUS_LABELS,
+  today,
+  formatDate,
+  readStoredCheckId,
+  writeStoredCheckId,
+  clearStoredCheckId,
+  unwrapBody,
+  flattenGoals,
+  toFormOutcome,
+  payloadFor,
+  canSubmitMasteryCheck,
+} from './goalMasteryHelper';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'GoalMasteryCheck'>;
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_verifications: 'Pending Verifications',
-  pending_approval: 'Pending Director Review',
-  approved: 'Approved',
-  rejected: 'Rejected',
-};
-
-const today = () => new Date().toISOString().split('T')[0];
-
-const formatDate = (value?: string | null) => {
-  if (!value) return today();
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? String(value) : d.toISOString().split('T')[0];
-};
-
-const checkKey = (studentId: string, goalId: string) => `gmc_check_${studentId}_${goalId}`;
-
-const readStoredCheckId = (studentId: string, goalId: string): string | null => {
-  if (!studentId || !goalId || typeof localStorage === 'undefined') return null;
-  try {
-    return localStorage.getItem(checkKey(studentId, goalId));
-  } catch {
-    return null;
-  }
-};
-
-const writeStoredCheckId = (studentId: string, goalId: string, id: string) => {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(checkKey(studentId, goalId), id);
-  } catch {}
-};
-
-const clearStoredCheckId = (studentId: string, goalId: string) => {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.removeItem(checkKey(studentId, goalId));
-  } catch {}
-};
-
-function unwrapBody(res: { data?: unknown }): Record<string, any> | null {
-  const body = res?.data as Record<string, any> | undefined;
-  if (!body || typeof body !== 'object') return null;
-  if (body.data && typeof body.data === 'object') return body.data as Record<string, any>;
-  return body;
-}
-
-const flattenGoals = (summary: unknown) => {
-  const entries = Array.isArray(summary)
-    ? (summary as {
-        station?: { name?: string };
-        goals?: { id: string | number; goal_name?: string; progress_percent?: number }[];
-      }[])
-    : [];
-  const goals: GoalOption[] = [];
-  const stationByGoal: Record<string, string> = {};
-  entries.forEach((entry) => {
-    (entry.goals || []).forEach((g) => {
-      const id = String(g.id);
-      goals.push({ id, name: g.goal_name || 'Goal' });
-      stationByGoal[id] = entry.station?.name || '';
-    });
-  });
-  return { goals, stationByGoal };
-};
-
-const toApiOutcome = (outcome: OutcomeOption) => (outcome === 'failed' ? 'fail' : 'success');
-const toFormOutcome = (outcome?: string | null): OutcomeOption | null =>
-  outcome === 'fail' ? 'failed' : outcome === 'success' ? 'both' : null;
-
 export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+
   const { session: authSession } = useAuth();
   const { showToast } = useToast();
   const urlSid =
@@ -306,40 +262,43 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   }, [load, activeStudentId, activeGoalId]);
 
   // Validation Logic
-  const isTeacherBValid =
-    teacherBOutcome &&
-    (teacherBOutcome !== 'failed' || (teacherBOutcome === 'failed' && teacherBPrompt !== ''));
+  const isTeacherBValid = useMemo(
+    () => isTeacherVerificationValid(teacherBOutcome, teacherBPrompt),
+    [teacherBOutcome, teacherBPrompt],
+  );
 
-  const isTeacherCValid =
-    teacherCOutcome &&
-    (teacherCOutcome !== 'failed' || (teacherCOutcome === 'failed' && teacherCPrompt !== ''));
+  const isTeacherCValid = useMemo(
+    () => isTeacherVerificationValid(teacherCOutcome, teacherCPrompt),
+    [teacherCOutcome, teacherCPrompt],
+  );
 
-  const canSubmit =
-    (teacherBLocked || isTeacherBValid) &&
-    (teacherCLocked || isTeacherCValid) &&
-    !isSubmitted &&
-    !submitting;
+  const canSubmit = useMemo(
+    () =>
+      canSubmitMasteryCheck(
+        teacherBLocked,
+        isTeacherBValid,
+        teacherCLocked,
+        isTeacherCValid,
+        isSubmitted,
+        submitting,
+      ),
+    [teacherBLocked, isTeacherBValid, teacherCLocked, isTeacherCValid, isSubmitted, submitting],
+  );
 
   const handleCancel = () => {
     if (touched && !isSubmitted) {
       Alert.alert('Discard changes?', 'Any entered data will be lost.', [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => navigation?.goBack?.() },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => navigation?.goBack?.(),
+        },
       ]);
     } else {
       navigation?.goBack?.();
     }
   };
-
-  const payloadFor = (
-    outcome: OutcomeOption,
-    prompt: PromptType,
-    notes: string,
-  ): Record<string, any> => ({
-    outcome: toApiOutcome(outcome),
-    ...(outcome === 'failed' ? { prompt_used: prompt } : {}),
-    notes,
-  });
 
   const handleSubmit = async () => {
     if (!canSubmit || !activeStudentId || !activeGoalId) return;
@@ -418,7 +377,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     <SafeAreaView style={styles.safe}>
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation?.goBack?.()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
           <Feather name="arrow-left" size={16} color="#334155" />
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
@@ -453,7 +417,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.responsiveContainer}>
+        <View style={[styles.responsiveContainer, isTablet && styles.responsiveContainerTablet]}>
           {/* Student Information Card */}
           <MasteryStudentCard data={data} currentStatus={currentStatus} isSubmitted={isSubmitted} />
 
@@ -517,28 +481,13 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
           </View>
 
           {/* Footer Actions */}
-          <View style={styles.footerActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
-              <Text style={styles.cancelBtnText}>{isSubmitted ? 'Close' : 'Cancel'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.submitBtn,
-                canSubmit && styles.submitBtnActive,
-                (!canSubmit || isSubmitted || submitting) && styles.submitBtnDisabled,
-              ]}
-              disabled={!canSubmit}
-              onPress={handleSubmit}
-            >
-              <Text style={[styles.submitBtnText, canSubmit && styles.submitBtnTextActive]}>
-                {submitting
-                  ? 'Submitting…'
-                  : isSubmitted
-                    ? 'Submitted for Review'
-                    : 'Submit for Review'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <MasteryFooterActions
+            canSubmit={canSubmit}
+            isSubmitted={isSubmitted}
+            submitting={submitting}
+            onCancel={handleCancel}
+            onSubmit={handleSubmit}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -583,52 +532,15 @@ const styles = StyleSheet.create({
   },
   responsiveContainer: {
     width: '100%',
-    maxWidth: 1200,
     gap: spacing.md,
+  },
+  responsiveContainerTablet: {
+    maxWidth: 1200,
+    alignSelf: 'center',
   },
   columnsRow: {
     flexDirection: 'row',
     gap: spacing.md,
     flexWrap: 'wrap',
-  },
-  footerActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  cancelBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
-  },
-  cancelBtnText: {
-    fontSize: 13,
-    color: '#475569',
-    fontWeight: '600',
-  },
-  submitBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    backgroundColor: '#E2E8F0',
-  },
-  submitBtnActive: {
-    backgroundColor: '#0284C7',
-  },
-  submitBtnDisabled: {
-    backgroundColor: '#94A3B8',
-  },
-  submitBtnText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '700',
-  },
-  submitBtnTextActive: {
-    color: '#FFFFFF',
   },
 });
