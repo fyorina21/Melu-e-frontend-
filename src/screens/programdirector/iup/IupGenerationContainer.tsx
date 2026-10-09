@@ -1,18 +1,20 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth, ROLES } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import {
-  getIupCandidates,
-  getIupContext,
-  saveIupDraft,
-  finalizeIup,
-  getGoalBank,
   assignGoalToSlot,
   removeGoalFromSlot,
   getStudentCaseload,
 } from '../../../api/programDirectorApi';
+import {
+  useIupCandidatesQuery,
+  useIupContextQuery,
+  useGoalBankQuery,
+  useSaveIupDraftMutation,
+  useFinalizeIupMutation,
+} from '../../../hooks';
 import ScreenLoader from '../../../components/ScreenLoader';
 import { routeMapForRole } from '../../../components/appNavConfig';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../../types';
@@ -35,11 +37,7 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
   const isCoordinator = session?.role === ROLES.COORDINATOR;
   const { showToast } = useToast();
 
-  const [loading, setLoading] = useState(true);
-  const [candidates, setCandidates] = useState<IupCandidate[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [context, setContext] = useState<IupContext | null>(null);
-  const [goalBank, setGoalBank] = useState<GoalBankItem[]>([]);
   const [slots, setSlots] = useState<Slots>({ station1: [null, null], station2: [null, null] });
   const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<
     'assessment' | 'goals' | 'strategies'
@@ -73,49 +71,31 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
   const [exportContent, setExportContent] = useState<string | null>(null);
   const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    let loadedCandidates: IupCandidate[] = [];
-    try {
-      const { data: res } = await getIupCandidates();
-      loadedCandidates = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.candidates)
-          ? res.candidates
-          : Array.isArray(res?.data)
-            ? res.data
-            : [];
-    } catch {
-      loadedCandidates = [];
-    }
-    setCandidates(loadedCandidates);
+  // TanStack React Query Hooks
+  const { data: candidatesData, isLoading: candidatesLoading } = useIupCandidatesQuery();
+  const { data: goalBankData } = useGoalBankQuery();
+  const { data: contextData } = useIupContextQuery(selectedStudentId);
+  const saveDraftMutation = useSaveIupDraftMutation();
+  const finalizeMutation = useFinalizeIupMutation();
 
-    try {
-      const { data: res } = await getGoalBank({});
-      const loadedGoals = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.goals)
-          ? res.goals
-          : Array.isArray(res?.data)
-            ? res.data
-            : [];
-      setGoalBank(loadedGoals);
-    } catch {
-      setGoalBank([]);
-    }
+  const candidates: IupCandidate[] = useMemo(() => {
+    return Array.isArray(candidatesData) ? candidatesData : [];
+  }, [candidatesData]);
 
+  const goalBank: GoalBankItem[] = useMemo(() => {
+    return Array.isArray(goalBankData) ? goalBankData : [];
+  }, [goalBankData]);
+
+  const context: IupContext | null = (contextData as IupContext) || null;
+
+  useEffect(() => {
     const preId = (route.params as { studentId?: string })?.studentId;
     if (preId) {
       setSelectedStudentId(preId);
-    } else if (loadedCandidates.length > 0) {
-      setSelectedStudentId(loadedCandidates[0].id);
+    } else if (candidates.length > 0 && !selectedStudentId) {
+      setSelectedStudentId(candidates[0].id);
     }
-    setLoading(false);
-  }, [route.params]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  }, [route.params, candidates, selectedStudentId]);
 
   useEffect(() => {
     if (!selectedStudentId) return;
@@ -131,10 +111,6 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     setReviewCycle('6 Weeks');
     setCustomIupValues({});
     setLastSavedTimestamp(null);
-
-    getIupContext(selectedStudentId)
-      .then(({ data }) => setContext(data))
-      .catch(() => setContext(null));
 
     if (goalBank.length > 0) {
       getStudentCaseload(selectedStudentId)
@@ -209,19 +185,14 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
           station: stationNumber,
           slot: slotIndex,
         });
-        showToast(`Assigned "${goal.name}" to Slot ${slotIndex + 1}`, 'success');
       } catch (err) {
-        console.error('Failed to assign goal on backend:', err);
-        showToast(`Assigned "${goal.name}" locally.`, 'info');
+        console.error('Failed to persist goal assignment:', err);
       }
     }
   };
 
   const handleRemoveGoal = (station: StationKey, slotIndex: number) => {
-    const currentGoal = slots[station][slotIndex];
-    if (!currentGoal) return;
-
-    Alert.alert('Remove Goal', `Remove "${currentGoal.name}" from this slot?`, [
+    Alert.alert('Remove Goal', 'Are you sure you want to remove this target goal from the slot?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -255,18 +226,21 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     try {
       const targetIupId =
         selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
-      await saveIupDraft(targetIupId, {
-        slots,
-        goals: [...slots.station1, ...slots.station2]
-          .filter(Boolean)
-          .map((g) => g?.id)
-          .filter(Boolean),
-        reinforcementSchedule,
-        crisisProtocol,
-        accommodations,
-        reviewCycle,
-        customFields: customIupValues,
-        form_values: customIupValues,
+      await saveDraftMutation.mutateAsync({
+        iupId: targetIupId,
+        payload: {
+          slots,
+          goals: [...slots.station1, ...slots.station2]
+            .filter(Boolean)
+            .map((g) => g?.id)
+            .filter(Boolean),
+          reinforcementSchedule,
+          crisisProtocol,
+          accommodations,
+          reviewCycle,
+          customFields: customIupValues,
+          form_values: customIupValues,
+        },
       });
       setLastSavedTimestamp(
         new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -296,15 +270,18 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       try {
         const targetIupId =
           selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
-        await finalizeIup(targetIupId, {
-          slots,
-          goals: allAssigned.map((g) => g?.id).filter(Boolean),
-          reinforcementSchedule,
-          crisisProtocol,
-          accommodations,
-          reviewCycle,
-          customFields: customIupValues,
-          form_values: customIupValues,
+        await finalizeMutation.mutateAsync({
+          iupId: targetIupId,
+          payload: {
+            slots,
+            goals: allAssigned.map((g) => g?.id).filter(Boolean),
+            reinforcementSchedule,
+            crisisProtocol,
+            accommodations,
+            reviewCycle,
+            customFields: customIupValues,
+            form_values: customIupValues,
+          },
         });
         showToast(
           'IUP Finalized & Activated. Goals are now in the Teacher Session workbench.',
@@ -401,7 +378,7 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     setExportContent(buildExportText());
   };
 
-  if (loading && candidates.length === 0) return <ScreenLoader />;
+  if (candidatesLoading && candidates.length === 0) return <ScreenLoader />;
 
   const filteredGoals = goalBank.filter(
     (g) =>

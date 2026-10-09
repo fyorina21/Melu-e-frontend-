@@ -1,15 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getDailyNotes, getWeeklySummary, resubmitSessionNote } from '../../api/sessionApi';
-import { getTeacherDashboard, getBehaviorAssessment } from '../../api/teacherExtrasApi';
 import { downloadTextFile } from '../../utils/webExport';
 import { storage } from '../../utils/storage';
 import type { SessionStackParamList } from '../../types';
+import {
+  useDailyNotesQuery,
+  useWeeklySummaryQuery,
+  useTeacherDashboardQuery,
+  useBehaviorAssessmentQuery,
+  useResubmitNoteMutation,
+} from '../../hooks';
 
 import DailyNotesPresenter, {
   type NoteRecord,
@@ -108,15 +113,6 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
   const { session } = useAuth();
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
-  const [records, setRecords] = useState<NoteRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<WeeklySummaryData | null>(null);
-  const [stats, setStats] = useState<DailyNotesStats>({
-    sessionsCompleted: 0,
-    totalTrials: 0,
-    avgIndependence: 0,
-    reviewsPending: 0,
-  });
   const [feedbackTarget, setFeedbackTarget] = useState<NoteRecord | null>(null);
 
   // Student resolution via route or KeyValueStorage
@@ -125,13 +121,43 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
   const initialStudentId = routeSid || localSid || undefined;
 
   const [studentId, setStudentId] = useState<string | undefined>(initialStudentId);
-  const [behaviorAssessment, setBehaviorAssessment] = useState<BehaviorAssessmentData | null>(null);
-  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
 
   // Dropdown states
   const [dateFilter, setDateFilter] = useState('This Month');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [openDropdown, setOpenDropdown] = useState<'date' | 'status' | 'student' | null>(null);
+
+  // TanStack React Query Hooks
+  const {
+    data: dailyNotesData,
+    isLoading: notesLoading,
+    refetch: refetchNotes,
+  } = useDailyNotesQuery();
+  const { data: summaryData } = useWeeklySummaryQuery();
+  const { data: dashboardData } = useTeacherDashboardQuery();
+  const { data: rawBehaviorData, refetch: refetchBehavior } = useBehaviorAssessmentQuery(studentId);
+  const resubmitMutation = useResubmitNoteMutation();
+
+  const records: NoteRecord[] = dailyNotesData?.records ?? [];
+  const stats: DailyNotesStats = dailyNotesData?.stats ?? {
+    sessionsCompleted: 0,
+    totalTrials: 0,
+    avgIndependence: 0,
+    reviewsPending: 0,
+  };
+  const summary: WeeklySummaryData | null = summaryData ?? null;
+
+  const studentOptions: StudentOption[] = (dashboardData?.students ?? []).map((s: any) => ({
+    id: s.id,
+    name: s.name ?? s.fullName ?? s.id,
+    initial: (s.name ?? s.fullName ?? '?').charAt(0),
+  }));
+
+  useEffect(() => {
+    if (!studentId && studentOptions.length > 0) {
+      setStudentId(routeSid || localSid || studentOptions[0]?.id);
+    }
+  }, [studentOptions, studentId, routeSid, localSid]);
 
   useEffect(() => {
     if (route?.params?.studentId && route.params.studentId !== studentId) {
@@ -145,58 +171,30 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
     }
   }, [studentId]);
 
-  const load = useCallback(async () => {
-    try {
-      const [notesRes, summaryRes, dashboardRes] = await Promise.all([
-        getDailyNotes({}),
-        getWeeklySummary({}),
-        getTeacherDashboard(),
-      ]);
-      setRecords(notesRes.data.records);
-      setStats(notesRes.data.stats);
-      setSummary(summaryRes.data);
-      const students = (dashboardRes.data.students ?? []).map((s: any) => ({
-        id: s.id,
-        name: s.name ?? s.fullName ?? s.id,
-        initial: (s.name ?? s.fullName ?? '?').charAt(0),
-      }));
-      setStudentOptions(students);
-      setStudentId((current) => current || routeSid || localSid || students[0]?.id);
-    } catch {
-      setRecords([]);
-      setStats({ sessionsCompleted: 0, totalTrials: 0, avgIndependence: 0, reviewsPending: 0 });
-      setSummary(null);
-      setStudentOptions([]);
-    } finally {
-      setLoading(false);
+  useFocusEffect(
+    useCallback(() => {
+      refetchBehavior();
+      refetchNotes();
+    }, [refetchBehavior, refetchNotes]),
+  );
+
+  const behaviorAssessment = useMemo<BehaviorAssessmentData | null>(() => {
+    if (!studentId) return null;
+    let localData: any = null;
+    const stored = storage.getSync(`behavior_assessment_${studentId}`);
+    if (stored) {
+      try {
+        localData = JSON.parse(stored);
+      } catch {}
     }
-  }, [routeSid, localSid]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+    const raw = rawBehaviorData as any;
+    const innerData = (
+      raw?.data && typeof raw.data === 'object' ? raw.data : raw
+    ) as BehaviorAssessmentData | null;
+    const status = raw?.status ?? innerData?.status;
 
-  const fetchBehavior = useCallback(async () => {
-    if (!studentId) {
-      setBehaviorAssessment(null);
-      return;
-    }
-    try {
-      const res = await getBehaviorAssessment(studentId);
-      const raw = res.data;
-      const innerData = (
-        raw?.data && typeof raw.data === 'object' ? raw.data : raw
-      ) as BehaviorAssessmentData;
-      const status = raw?.status ?? innerData?.status;
-
-      let localData: any = null;
-      const stored = storage.getSync(`behavior_assessment_${studentId}`);
-      if (stored) {
-        try {
-          localData = JSON.parse(stored);
-        } catch {}
-      }
-
+    if (innerData) {
       const mergedMass = { ...(localData?.massAnswers ?? {}), ...(innerData?.massAnswers ?? {}) };
       const mergedFast = { ...(localData?.fastAnswers ?? {}), ...(innerData?.fastAnswers ?? {}) };
       const mergedRecords =
@@ -206,41 +204,25 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
       const draftRecord = innerData?.draftRecord ?? localData?.draftRecord;
       const finalStatus = status || localData?.status || 'in_progress';
 
-      setBehaviorAssessment({
+      return {
         ...innerData,
         massAnswers: mergedMass,
         fastAnswers: mergedFast,
         records: mergedRecords,
         draftRecord,
         status: finalStatus,
-      });
-    } catch {
-      let localData: any = null;
-      const stored = storage.getSync(`behavior_assessment_${studentId}`);
-      if (stored) {
-        try {
-          localData = JSON.parse(stored);
-        } catch {}
-      }
-      if (localData && hasBehaviorData(localData)) {
-        setBehaviorAssessment(localData);
-      } else {
-        setBehaviorAssessment(null);
-      }
+      };
     }
-  }, [studentId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchBehavior();
-    }, [fetchBehavior]),
-  );
+    if (localData && hasBehaviorData(localData)) {
+      return localData as BehaviorAssessmentData;
+    }
+    return null;
+  }, [studentId, rawBehaviorData]);
 
-  useEffect(() => {
-    fetchBehavior();
-  }, [fetchBehavior]);
-
-  if (loading) return <ScreenLoader />;
+  if (notesLoading && records.length === 0 && !dailyNotesData) {
+    return <ScreenLoader />;
+  }
 
   const filteredRecords = records.filter((r) => {
     if (statusFilter !== 'All Statuses' && r.status !== statusFilter) {
@@ -279,9 +261,8 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
 
   const handleResubmit = async (id: string) => {
     try {
-      await resubmitSessionNote(id, { notes: '' });
+      await resubmitMutation.mutateAsync({ sessionId: id, notes: '' });
       showToast('Session resubmitted for coordinator review', 'success');
-      load();
     } catch (err: any) {
       showToast(err?.message || 'Failed to resubmit session note', 'error');
     }

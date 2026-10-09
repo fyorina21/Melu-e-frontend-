@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
 import { useToast } from '../../../context/ToastContext';
 import {
+  useFormConfigQuery,
+  useSaveFormConfigMutation,
+  useResetFormConfigMutation,
+} from '../../../hooks';
+import {
   getFormConfig,
   saveFormConfig,
   resetFormToDefault,
@@ -20,8 +25,17 @@ export function useFormBuilder(initialForm: string = FORMS[0]) {
   const [fields, setFields] = useState<FormField[]>([]);
   const [isDefault, setIsDefault] = useState<boolean>(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
+
+  // TanStack React Query Hooks
+  const {
+    data: configData,
+    isLoading: queryLoading,
+    refetch: refetchConfig,
+  } = useFormConfigQuery(selectedForm);
+  const saveMutation = useSaveFormConfigMutation();
+  const resetMutation = useResetFormConfigMutation();
+  const loading = queryLoading && fields.length === 0;
 
   // Form Dropdown State
   const [showFormModal, setShowFormModal] = useState<boolean>(false);
@@ -120,10 +134,8 @@ export function useFormBuilder(initialForm: string = FORMS[0]) {
     return 'Student Info';
   };
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await getFormConfig(selectedForm);
+  const applyConfigData = useCallback(
+    (data: any) => {
       let loadedFields = Array.isArray(data?.fields) ? data.fields : [];
       loadedFields = loadedFields.map((f: FormField) => {
         if (!f.section || f.section === 'General') {
@@ -148,22 +160,27 @@ export function useFormBuilder(initialForm: string = FORMS[0]) {
         ? data.deletedSections
         : [];
       setDeletedSections(loadedDeleted);
+    },
+    [selectedForm],
+  );
+
+  useEffect(() => {
+    if (configData) {
+      applyConfigData(configData);
+    }
+  }, [configData, applyConfigData]);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await refetchConfig();
+      if (res.data) {
+        applyConfigData(res.data);
+      }
     } catch (err: any) {
       console.warn('Failed to load form config from server:', err);
       showToast('Could not load remote form template, using default template', 'info');
-      setFields([]);
-      setIsDefault(true);
-      setHistory([]);
-      setCustomSections([]);
-      setDeletedSections([]);
-    } finally {
-      setLoading(false);
     }
-  }, [selectedForm]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  }, [refetchConfig, applyConfigData, showToast]);
 
   const availableSections = useMemo(() => {
     const base = getSectionsForForm(selectedForm);
@@ -666,12 +683,15 @@ export function useFormBuilder(initialForm: string = FORMS[0]) {
     }
     try {
       setSaving(true);
-      await saveFormConfig(selectedForm, {
-        fields,
-        customSections,
-        deletedSections,
-        history,
-        isDefault: false,
+      await saveMutation.mutateAsync({
+        formName: selectedForm,
+        config: {
+          fields,
+          customSections,
+          deletedSections,
+          history,
+          isDefault: false,
+        },
       });
       await load();
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
@@ -695,7 +715,7 @@ export function useFormBuilder(initialForm: string = FORMS[0]) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await resetFormToDefault(selectedForm);
+              await resetMutation.mutateAsync(selectedForm);
               setCustomSections([]);
               setDeletedSections([]);
               await load();
