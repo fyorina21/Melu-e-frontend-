@@ -14,7 +14,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, shadows } from '../../theme';
 import { typography } from '../../theme/typography';
 import { useAuth } from '../../context/AuthContext';
 
@@ -185,6 +185,9 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.md,
   },
   logo: { width: 64, height: 64 },
   foundationName: {
@@ -202,16 +205,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+    minHeight: 44,
   },
-  input: { flex: 1, paddingVertical: spacing.md, color: colors.navyText },
+  input: { flex: 1, paddingVertical: spacing.md, color: colors.navyText, fontSize: 14 },
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     width: '100%',
   },
-  rememberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  checkbox: { width: 16, height: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 3 },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  checkbox: { width: 18, height: 18, borderWidth: 1, borderColor: colors.border, borderRadius: 4 },
   checkboxChecked: { backgroundColor: colors.navyText, borderColor: colors.navyText },
   linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 13 },
   signInBtn: {
@@ -220,8 +224,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
     marginTop: spacing.sm,
   },
   signInBtnDisabled: { opacity: 0.7 },
-  signInBtnText: { fontWeight: '700', color: colors.navyText },
+  signInBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 15 },
 });
