@@ -1,19 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { View, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ScreenLoader from '../../components/ScreenLoader';
-import type { InstitutionalAdminStackParamList, FormField } from '../../types';
+import type { InstitutionalAdminStackParamList } from '../../types';
 
-import {
-  FORMS,
-  SCORE_SCALE_PRESETS,
-  getNextIdForSection,
-  getDomainLetterForAblls,
-} from './formBuilderConfig';
+import { FORMS, getNextIdForSection, getDomainLetterForAblls } from './formBuilderConfig';
 
 import { useFormBuilder } from './hooks/useFormBuilder';
 import FormBuilderToolbar from './components/FormBuilderToolbar';
@@ -24,6 +18,10 @@ import { EditFieldModal } from './components/EditFieldModal';
 import { AddDomainModal } from './components/AddDomainModal';
 import { FormSelectorModal } from './components/FormSelectorModal';
 import { PreviewFormModal } from './components/PreviewFormModal';
+import AbllsPresetBar from './components/AbllsPresetBar';
+import ModificationHistoryCard from './components/ModificationHistoryCard';
+import FormCanvasHeader from './components/FormCanvasHeader';
+import { groupFieldsBySection, getDefaultFieldConfigForSection } from './formBuilderHelper';
 
 export const FORM_METADATA: Record<string, { id: string; revision: string; pages: string }> = {
   'Enrollment Wizard': {
@@ -157,43 +155,23 @@ export default function FormBuilderScreen({
   const startAddingToSection = (sec: string) => {
     setAddingToSection(sec);
     setNewFieldSection(sec);
-    const isAblls = selectedForm === 'ABLLS Assessment Form';
-    setNewFieldType(
-      selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
-        ? 'Text'
-        : isAblls
-          ? 'Radio'
-          : 'Text',
-    );
-    setNewFieldLabel('');
-    setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
-    setNewFieldPlaceholder('');
-    setNewFieldRequired(true);
+    const config = getDefaultFieldConfigForSection(selectedForm, sec);
+    setNewFieldType(config.type);
+    setNewFieldLabel(config.label);
+    setNewFieldOptions(config.options);
+    setNewFieldPlaceholder(config.placeholder);
+    setNewFieldRequired(config.required);
     setShowAddFieldBox(true);
   };
 
-  // Group fields by section
-  const allSectionNames = Array.from(
-    new Set([
-      ...availableSections,
-      ...(fields.map((f) => f.section).filter(Boolean) as string[]),
-      'General',
-    ]),
-  ).filter((s) => !deletedSections.includes(s));
-
-  const grouped: Record<string, FormField[]> = {};
-  fields.forEach((f) => {
-    const sec =
-      f.section || (selectedForm === 'Enrollment Wizard' ? inferSection(f.label) : 'General');
-    if (!grouped[sec]) grouped[sec] = [];
-    grouped[sec].push(f);
-  });
-
-  const activeSections = allSectionNames.filter(
-    (sec) =>
-      (grouped[sec] && grouped[sec].length > 0) ||
-      customSections.includes(sec) ||
-      addingToSection === sec,
+  const { grouped, activeSections } = groupFieldsBySection(
+    fields,
+    availableSections,
+    deletedSections,
+    customSections,
+    selectedForm,
+    inferSection,
+    addingToSection,
   );
 
   return (
@@ -218,59 +196,21 @@ export default function FormBuilderScreen({
 
           {/* Canvas Box */}
           <View style={styles.canvasContainer}>
-            <View style={styles.canvasHeaderRow}>
-              <Text style={styles.canvasHeader}>FORM CANVAS — {selectedForm.toUpperCase()}</Text>
-              {selectedForm === 'ABLLS Assessment Form' && (
-                <TouchableOpacity
-                  style={styles.addSkillTypeTopBtn}
-                  onPress={() => {
-                    setNewSkillTypeName('');
-                    setShowAddSkillTypeModal(true);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add a Skill Type"
-                >
-                  <Feather name="folder-plus" size={13} color="#0284C7" />
-                  <Text style={styles.addSkillTypeTopBtnText}>Add a Skill Type</Text>
-                </TouchableOpacity>
-              )}
-              {selectedForm === 'Enrollment Wizard' && (
-                <TouchableOpacity
-                  style={styles.addSkillTypeTopBtn}
-                  onPress={() => {
-                    setNewInfoTypeName('');
-                    setShowAddInfoTypeModal(true);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add a Info Type"
-                >
-                  <Feather name="folder-plus" size={13} color="#0284C7" />
-                  <Text style={styles.addSkillTypeTopBtnText}>Add a Info Type</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <FormCanvasHeader
+              selectedForm={selectedForm}
+              onAddSkillType={() => {
+                setNewSkillTypeName('');
+                setShowAddSkillTypeModal(true);
+              }}
+              onAddInfoType={() => {
+                setNewInfoTypeName('');
+                setShowAddInfoTypeModal(true);
+              }}
+            />
 
             {/* Scoring Scale Presets for ABLLS */}
             {selectedForm === 'ABLLS Assessment Form' && (
-              <View style={styles.abllsPresetBar}>
-                <View style={styles.abllsPresetHeader}>
-                  <Feather name="sliders" size={14} color="#0369A1" />
-                  <Text style={styles.abllsPresetTitle}>
-                    Apply Scoring Scale Preset to All ABLLS Skill Items:
-                  </Text>
-                </View>
-                <View style={styles.presetButtonsRow}>
-                  {SCORE_SCALE_PRESETS.map((preset) => (
-                    <TouchableOpacity
-                      key={preset.label}
-                      style={styles.presetBtn}
-                      onPress={() => applyBulkPreset(preset.options)}
-                    >
-                      <Text style={styles.presetBtnText}>{preset.short}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+              <AbllsPresetBar onApplyPreset={applyBulkPreset} />
             )}
 
             {activeSections.length > 0
@@ -343,38 +283,7 @@ export default function FormBuilderScreen({
           </View>
 
           {/* History Card */}
-          {history.length > 0 && (
-            <View style={styles.historyCard}>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyTitle}>Modification History</Text>
-                <Feather name="chevron-up" size={16} color="#64748B" />
-              </View>
-
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.tableCol, { flex: 1.2 }]}>DATE</Text>
-                <Text style={[styles.tableCol, { flex: 1 }]}>USER</Text>
-                <Text style={[styles.tableCol, { flex: 1.5 }]}>FIELD</Text>
-                <Text style={[styles.tableCol, { flex: 1 }]}>OLD VALUE</Text>
-                <Text style={[styles.tableCol, { flex: 1 }]}>NEW VALUE</Text>
-              </View>
-
-              {history.map((item, idx) => (
-                <View key={idx} style={styles.tableDataRow}>
-                  <Text style={[styles.tableDataCell, { flex: 1.2 }]}>{item.date}</Text>
-                  <Text style={[styles.tableDataCell, { flex: 1, fontWeight: '700' }]}>
-                    {item.user}
-                  </Text>
-                  <Text style={[styles.tableDataCell, { flex: 1.5 }]}>{item.field}</Text>
-                  <Text style={[styles.tableDataCell, { flex: 1, color: '#EF4444' }]}>
-                    {item.oldValue}
-                  </Text>
-                  <Text style={[styles.tableDataCell, { flex: 1, color: '#22C55E' }]}>
-                    {item.newValue}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <ModificationHistoryCard history={history} />
         </View>
       </ScrollView>
 
@@ -479,110 +388,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.md,
-  },
-  canvasHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  canvasHeader: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748B',
-    letterSpacing: 0.5,
-  },
-  addSkillTypeTopBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E0F2FE',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.sm,
-    gap: 4,
-  },
-  addSkillTypeTopBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0284C7',
-  },
-  abllsPresetBar: {
-    backgroundColor: '#F0F9FF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: radius.sm,
-    padding: 10,
-    marginBottom: 14,
-  },
-  abllsPresetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  abllsPresetTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0369A1',
-  },
-  presetButtonsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  presetBtn: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#7DD3FC',
-    borderRadius: radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  presetBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#0284C7',
-  },
-  historyCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  historyTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  tableHeaderRow: {
-    flexDirection: 'row',
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: radius.sm,
-  },
-  tableCol: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  tableDataRow: {
-    flexDirection: 'row',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  tableDataCell: {
-    fontSize: 12,
-    color: '#334155',
   },
 });
