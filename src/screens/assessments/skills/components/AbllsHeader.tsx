@@ -1,16 +1,14 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import {
-  type AbllsDomainDef,
-  type StudentProfile,
-  calculateDomainProgress,
-  getStudentInitials,
-} from '../types';
+import StudentAvatar from '../../../../components/StudentAvatar';
+import { type AbllsDomainDef, type StudentProfile, calculateDomainProgress } from '../types';
 
 interface AbllsHeaderProps {
   onBack: () => void;
   profile: StudentProfile | null;
+  studentId?: string;
+  photoUrl?: string | null;
   domains: AbllsDomainDef[];
   activeDomain: number;
   onSelectDomain: (index: number) => void;
@@ -22,6 +20,8 @@ export const AbllsHeader: React.FC<AbllsHeaderProps> = React.memo(
   ({
     onBack,
     profile,
+    studentId,
+    photoUrl,
     domains,
     activeDomain,
     onSelectDomain,
@@ -29,7 +29,6 @@ export const AbllsHeader: React.FC<AbllsHeaderProps> = React.memo(
     domainTotalItems,
   }) => {
     const studentName = profile?.fullName || 'Student A';
-    const studentInitials = getStudentInitials(studentName);
     const domain = domains[activeDomain] || domains[0];
     const domainProgress = calculateDomainProgress(domainAnswered, domainTotalItems);
 
@@ -51,9 +50,7 @@ export const AbllsHeader: React.FC<AbllsHeaderProps> = React.memo(
 
         {/* Student Profile Row */}
         <View style={styles.studentRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{studentInitials}</Text>
-          </View>
+          <StudentAvatar name={studentName} studentId={studentId} photoUrl={photoUrl} size={40} />
           <View style={styles.studentInfo}>
             <View style={styles.studentNameRow}>
               <Text style={styles.studentName}>{studentName}</Text>

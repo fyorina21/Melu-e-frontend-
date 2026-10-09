@@ -7,6 +7,8 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
+import StudentAvatar from '../../components/StudentAvatar';
+import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
 import { getStudentProfile } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -28,6 +30,8 @@ export interface StudentProfileData {
   therapyGroup: string;
   status: string;
   headshotUrl: string | null;
+  photoUrl?: string | null;
+  photo?: string | null;
   currentFocusStudentGoalId: string | null;
   goals: StudentGoal[];
   customFields?: Record<string, any>;
@@ -45,6 +49,13 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     try {
       const { data } = await getStudentProfile(studentId);
       setProfile(data);
+      if (data) {
+        saveStudentPhoto({
+          id: data.id,
+          name: data.fullName,
+          photo: (data as any).photoUrl || data.headshotUrl || (data as any).photo,
+        });
+      }
       setLoadFailed(false);
     } catch (err) {
       setProfile(null);
@@ -112,7 +123,12 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.header}>
-        <View style={styles.avatar}><Text style={styles.avatarText}>{profile.fullName.charAt(0)}</Text></View>
+        <StudentAvatar
+          name={profile.fullName}
+          studentId={profile.id}
+          photoUrl={(profile as any).photoUrl || profile.headshotUrl || (profile as any).photo}
+          size={52}
+        />
         <View style={{ flex: 1 }}>
           <Text style={typography.h1}>{profile.fullName}</Text>
           <Text style={typography.caption}>{profile.id} · Age {profile.age} · {profile.programType}</Text>

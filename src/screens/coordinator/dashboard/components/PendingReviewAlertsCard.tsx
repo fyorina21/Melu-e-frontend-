@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../../theme/colors';
 import { type PendingReview } from '../types';
 
@@ -67,7 +68,14 @@ export const PendingReviewAlertsCard: React.FC<PendingReviewAlertsCardProps> = R
                     <Text style={styles.reviewDate}>{review.date}</Text>
                     <View style={styles.chipRow}>
                       {review.students.map((s) => (
-                        <View key={s} style={styles.studentChip}>
+                        <View
+                          key={s}
+                          style={[
+                            styles.studentChip,
+                            { flexDirection: 'row', alignItems: 'center', gap: 4 },
+                          ]}
+                        >
+                          <StudentAvatar name={s} size={14} />
                           <Text style={styles.studentChipText}>{s}</Text>
                         </View>
                       ))}

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../../theme/colors';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import type { IupCandidate, IupContext } from '../types';
 
 interface StudentSelectorCardProps {
@@ -48,11 +49,17 @@ export function StudentSelectorCard({
           activeOpacity={0.8}
         >
           <View style={styles.dropdownTriggerLeft}>
-            <View style={styles.studentAvatar}>
-              <Text style={styles.studentAvatarText}>
-                {(selectedCandidate?.name || 'S').charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <StudentAvatar
+              name={selectedCandidate?.name}
+              studentId={selectedCandidate?.id}
+              photoUrl={
+                (selectedCandidate as any)?.photoUrl ||
+                (selectedCandidate as any)?.headshotUrl ||
+                (selectedCandidate as any)?.photo
+              }
+              size={36}
+              style={{ marginRight: 10 }}
+            />
             <View>
               <Text style={styles.dropdownSelectedName}>
                 {selectedCandidate ? selectedCandidate.name : 'Choose a student...'}
@@ -96,6 +103,15 @@ export function StudentSelectorCard({
                     style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
                     onPress={() => onSelectStudent(c.id)}
                   >
+                    <StudentAvatar
+                      name={c.name}
+                      studentId={c.id}
+                      photoUrl={
+                        (c as any)?.photoUrl || (c as any)?.headshotUrl || (c as any)?.photo
+                      }
+                      size={32}
+                      style={{ marginRight: 8 }}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text
                         style={[

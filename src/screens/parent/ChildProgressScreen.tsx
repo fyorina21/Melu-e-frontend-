@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -371,9 +372,12 @@ export default function ChildProgressScreen({ navigation }: NativeStackScreenPro
       <AppNavbar activeTab="Progress" onTabPress={(t) => navigation?.navigate?.(PARENT_ROUTE_BY_TAB[t])} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{data.childName.charAt(0)}</Text>
-          </View>
+          <StudentAvatar
+            name={data.childName}
+            photoUrl={(data as any)?.photoUrl || (data as any)?.headshotUrl || (data as any)?.photo}
+            size={64}
+            style={{ marginRight: 16 }}
+          />
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{data.childName}</Text>
             <Text style={styles.profileMeta}>Age {data.age} · Program: {data.program} · Group: {data.group}</Text>

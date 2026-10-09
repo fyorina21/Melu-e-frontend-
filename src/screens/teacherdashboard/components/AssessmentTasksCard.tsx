@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
+import StudentAvatar from '../../../components/StudentAvatar';
 import type { AssessmentTask } from '../teacherDashboardTypes';
 
 interface AssessmentTasksCardProps {
@@ -33,9 +34,12 @@ export const AssessmentTasksCard: React.FC<AssessmentTasksCardProps> = React.mem
             tasks.map((t) => (
               <View key={t.id} style={styles.taskRow}>
                 <View style={styles.taskHeaderRow}>
-                  <View style={styles.studentAvatar}>
-                    <Text style={styles.studentAvatarText}>{t.studentInitial}</Text>
-                  </View>
+                  <StudentAvatar
+                    name={t.studentName}
+                    studentId={t.id}
+                    size={28}
+                    style={{ marginRight: 8 }}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={typography.bodyBold}>{t.studentName}</Text>
                     <Text style={typography.caption}>{t.assessmentName}</Text>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { radius, spacing } from '../../../../theme/colors';
 import {
   type Summary,
@@ -55,7 +56,11 @@ export const SummaryReviewCard: React.FC<SummaryReviewCardProps> = React.memo(
 
         <View style={styles.tagRow}>
           {summary.students.map((st) => (
-            <View key={st} style={styles.studentTag}>
+            <View
+              key={st}
+              style={[styles.studentTag, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+            >
+              <StudentAvatar name={st} size={14} />
               <Text style={styles.studentTagText}>{st}</Text>
             </View>
           ))}

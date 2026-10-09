@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
+import StudentAvatar from '../../../components/StudentAvatar';
 import type { TodaySchedule } from '../teacherDashboardTypes';
 import { SessionCountdown } from './SessionCountdown';
 
@@ -48,9 +49,13 @@ export const TodayScheduleCard: React.FC<TodayScheduleCardProps> = React.memo(
           <View style={styles.studentChipsRow}>
             {schedule.students.map((s) => (
               <View key={s.id} style={styles.studentChip}>
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>{s.initial}</Text>
-                </View>
+                <StudentAvatar
+                  name={s.name}
+                  studentId={s.id}
+                  photoUrl={(s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo}
+                  size={24}
+                  style={{ marginRight: 4 }}
+                />
                 <Text style={styles.studentChipText}>{s.name}</Text>
               </View>
             ))}

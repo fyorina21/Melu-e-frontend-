@@ -3,8 +3,9 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } fr
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
-import { radius, spacing } from '../../theme/colors';
+import { radius, spacing, makeShadow } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { PARENT_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useBreakpoint } from '../../utils/useBreakpoint';
 import { parentApi } from '../../api';
@@ -155,7 +156,12 @@ export default function ParentDashboardScreen({ navigation }: NativeStackScreenP
           <View style={bp === 'desktop' ? styles.gridRow : undefined}>
             <View style={[styles.card, cardW('child')]}>
               <View style={styles.childHeader}>
-                <View style={styles.childAvatar}><Text style={styles.childAvatarText}>{childName[0]}</Text></View>
+                <StudentAvatar
+                  name={childName}
+                  photoUrl={(dash as any)?.photoUrl || (dash as any)?.headshotUrl || (dash as any)?.photo}
+                  size={44}
+                  style={{ marginRight: 12 }}
+                />
                 <View>
                   <Text style={styles.childName}>{childName}</Text>
                   <Text style={styles.childMeta}>Age {childAge} · {dash?.childProgram ?? 'ABA'} Therapy Program</Text>
@@ -291,7 +297,7 @@ const styles = StyleSheet.create({
   mobileWelcomeTitle: { fontSize: 24, fontWeight: '700', color: '#1F2937' },
   mobileWelcomeDate: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
 
-  card: { backgroundColor: '#FFFFFF', borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.xl, gap: spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.xl, gap: spacing.md, ...makeShadow(1, 3, 0.05, '0, 0, 0', 1) },
 
   childHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm },
   childAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: SKY, alignItems: 'center', justifyContent: 'center' },
@@ -331,7 +337,7 @@ const styles = StyleSheet.create({
 
   quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   quickActionsGridDesktop: { gap: spacing.lg },
-  quickActionCard: { width: '48%', flexGrow: 1, backgroundColor: '#FFFFFF', borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.lg, alignItems: 'center', gap: spacing.sm, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+  quickActionCard: { width: '48%', flexGrow: 1, backgroundColor: '#FFFFFF', borderRadius: radius.lg, borderWidth: 1, borderColor: '#F3F4F6', padding: spacing.lg, alignItems: 'center', gap: spacing.sm, ...makeShadow(1, 3, 0.05, '0, 0, 0', 1) },
   quickActionCardDesktop: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', width: 'auto', flex: 1, gap: spacing.md },
   quickActionIconBg: { width: 48, height: 48, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
   quickActionLabel: { fontSize: 13, fontWeight: '600', color: '#374151', textAlign: 'center' },

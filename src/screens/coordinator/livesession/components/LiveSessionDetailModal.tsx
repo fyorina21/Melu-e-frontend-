@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../../theme/colors';
 import {
   type Session,
@@ -63,7 +64,14 @@ export const LiveSessionDetailModal: React.FC<LiveSessionDetailModalProps> = Rea
                 <Text style={styles.sectionLabel}>STUDENTS</Text>
                 <View style={styles.chipRow}>
                   {session.students.map((st) => (
-                    <View key={st} style={styles.studentChip}>
+                    <View
+                      key={st}
+                      style={[
+                        styles.studentChip,
+                        { flexDirection: 'row', alignItems: 'center', gap: 6 },
+                      ]}
+                    >
+                      <StudentAvatar name={st} size={16} />
                       <Text style={styles.studentChipText}>{st}</Text>
                     </View>
                   ))}

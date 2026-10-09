@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../theme/colors';
 import type { Teacher } from '../scheduleTypes';
 
@@ -87,9 +88,7 @@ export function TeacherSummaryModal({ selectedTeacher, onClose }: TeacherSummary
                     <View style={{ gap: spacing.sm }}>
                       {selectedTeacher.students.map((s) => (
                         <View key={s} style={styles.studentRow}>
-                          <View style={styles.studentAvatar}>
-                            <Text style={styles.studentAvatarText}>{s.charAt(s.length - 1)}</Text>
-                          </View>
+                          <StudentAvatar name={s} size={24} style={{ marginRight: 8 }} />
                           <Text style={styles.studentRowName}>{s}</Text>
                         </View>
                       ))}

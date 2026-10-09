@@ -5,7 +5,7 @@ export interface PrimaryTeacherData {
   name: string;
   criteriaMet: string;
   dateAchieved: string;
-  totalTrials: number;
+  totalTrials: number | string;
   independenceRate: string;
   notes?: string;
 }
@@ -36,6 +36,7 @@ export interface MasteryCheckData {
 export interface GoalOption {
   id: string;
   name: string;
+  progress?: number;
   status?: string;
 }
 

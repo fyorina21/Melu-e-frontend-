@@ -9,6 +9,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { getGoalProgress, updateGoalProgress } from '../../api/sessionApi';
 import { getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import StudentAvatar from '../../components/StudentAvatar';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'GoalProgress'>;
@@ -108,7 +109,10 @@ export default function GoalProgressScreen({ navigation, route }: Props) {
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.h1}>{goal.name}</Text>
-        <Text style={typography.body}>{goal.studentName} · {goal.category}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4 }}>
+          <StudentAvatar name={goal.studentName} studentId={studentId} size={24} />
+          <Text style={typography.body}>{goal.studentName} · {goal.category}</Text>
+        </View>
 
         <View style={styles.card}>
           <Text style={typography.label}>Overall Progress</Text>

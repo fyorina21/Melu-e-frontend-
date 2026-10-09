@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import StatusPill from '../../../components/StatusPill';
+import StudentAvatar from '../../../components/StudentAvatar';
 import { radius, spacing } from '../../../theme/colors';
 import type { NoteRecord } from '../dailyNotesTypes';
 
@@ -45,6 +46,7 @@ export const DailyNotesSessionTable: React.FC<DailyNotesSessionTableProps> = Rea
                   <View style={styles.pillsRow}>
                     {r.students.map((st) => (
                       <View key={st} style={styles.studentPill}>
+                        <StudentAvatar name={st} size={18} />
                         <Text style={styles.studentPillText}>{st}</Text>
                       </View>
                     ))}
@@ -192,6 +194,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   studentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#E0F2FE',
     paddingHorizontal: 6,
     paddingVertical: 2,

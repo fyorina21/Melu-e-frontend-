@@ -5,7 +5,7 @@ import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
 import { downloadTextFile } from '../../utils/webExport';
-import { colors, spacing } from '../../theme/colors';
+import { colors, radius, spacing } from '../../theme/colors';
 
 import { type Session, type ActiveSessionRow, mapActiveSession } from './livesession/types';
 import { LiveSessionStatsGrid } from './livesession/components/LiveSessionStatsGrid';

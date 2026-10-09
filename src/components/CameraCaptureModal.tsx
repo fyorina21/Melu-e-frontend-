@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import AccessibleModal from './AccessibleModal';
 
 interface CameraCaptureModalProps {
@@ -381,11 +381,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 25,
-    elevation: 10,
+    ...makeShadow(10, 25, 0.25, '0, 0, 0', 10),
   },
   header: {
     flexDirection: 'row',
@@ -501,11 +497,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: '#0284C7',
-    shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)' }
+      : {
+          shadowColor: '#0284C7',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 6,
+          elevation: 4,
+        }),
   },
   snapBtnInner: {
     width: 52,
@@ -555,11 +555,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#0284C7',
     paddingVertical: 12,
     borderRadius: 10,
-    shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 2px 4px rgba(2, 132, 199, 0.2)' }
+      : {
+          shadowColor: '#0284C7',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+          elevation: 2,
+        }),
   },
   confirmBtnText: {
     color: '#FFFFFF',

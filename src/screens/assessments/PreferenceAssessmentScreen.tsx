@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Alert,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';

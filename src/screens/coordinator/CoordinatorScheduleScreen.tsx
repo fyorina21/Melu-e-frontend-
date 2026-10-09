@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
 import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
@@ -324,7 +325,6 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         selectedTeacher={selectedTeacher}
         onClose={() => setSelectedTeacher(null)}
       />
-
       <MarkUnavailableModal
         unavailableModal={unavailableModal}
         unavailableFrom={unavailableFrom}

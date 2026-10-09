@@ -9,7 +9,8 @@ import React, {
 } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
-import { setAccessToken } from '../api/token';
+import { setAccessToken, clearAuthTokens, setActiveRole, setUserRoles } from '../api/token';
+import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
 
 export const ROLES = {
@@ -96,6 +97,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
 
   useEffect(() => {
+    setTokenRefreshHandler(authApi.refreshToken);
+    setSessionExpiredHandler(() => {
+      setSession(null);
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', '/');
+      }
+      showToast('Your session has expired. Please sign in again.', 'info');
+    });
+
     async function restoreSession() {
       try {
         const token = await authApi.restore();
@@ -103,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const user = await authApi.me();
             const roles = resolveRoles(user.roles, user.role);
+            setActiveRole(roles[0]);
+            setUserRoles(roles);
             setSession({
               role: roles[0],
               roles,
@@ -112,19 +124,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               permissions: user.permissions,
             });
           } catch (meErr) {
-            console.warn('Failed to restore session (token expired or invalid):', meErr);
-            await setAccessToken(null);
+            // Attempt token refresh before discarding session
+            const freshToken = await authApi.refreshToken();
+            if (freshToken) {
+              try {
+                const user = await authApi.me();
+                const roles = resolveRoles(user.roles, user.role);
+                setActiveRole(roles[0]);
+                setUserRoles(roles);
+                setSession({
+                  role: roles[0],
+                  roles,
+                  userName: user.name,
+                  email: user.email,
+                });
+              } catch {
+                await clearAuthTokens();
+              }
+            } else {
+              console.warn('Failed to restore session (token expired and refresh failed):', meErr);
+              await clearAuthTokens();
+            }
           }
         }
       } catch (err) {
         console.warn('Failed to restore session:', err);
-        await setAccessToken(null);
+        await clearAuthTokens();
       } finally {
         setLoading(false);
       }
     }
     restoreSession();
-  }, []);
+
+    return () => {
+      setTokenRefreshHandler(null);
+      setSessionExpiredHandler(null);
+    };
+  }, [showToast]);
 
   const loginWithCredentials = async (
     email: string,
@@ -140,6 +176,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const user = await authApi.me();
       const roles = resolveRoles(user.roles, result.role, user.role);
+      setActiveRole(roles[0]);
+      setUserRoles(roles);
       setSession({
         role: roles[0],
         roles,
@@ -171,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const roles = prev.roles?.length ? prev.roles : [role];
       if (!roles.includes(role)) return prev;
       if (prev.role === role) return prev;
+      setActiveRole(role);
       return { ...prev, role };
     });
   }, []);
@@ -181,6 +220,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Logout API failed:', err);
     } finally {
+      setActiveRole(null);
+      setUserRoles([]);
       setSession(null);
       if (typeof window !== 'undefined' && window.history?.replaceState) {
         window.history.replaceState(null, '', '/');

@@ -5,7 +5,14 @@
 // the `Authorization` header.
 
 import { http } from '../http/client';
-import { setAccessToken, loadToken } from '../token';
+import {
+  setAccessToken,
+  loadToken,
+  getRefreshToken,
+  setRefreshToken,
+  loadRefreshToken,
+  clearAuthTokens,
+} from '../token';
 
 export interface LoginRequest {
   email: string;
@@ -16,6 +23,8 @@ export interface LoginRequest {
 export interface LoginResponse {
   token?: string;
   access_token?: string;
+  refresh_token?: string;
+  refreshToken?: string;
   role?: string;
   roles?: string[];
   homeRoute?: string;
@@ -49,16 +58,20 @@ function extractBearer(header: string | undefined): string | null {
 
 export const authApi = {
   async login(payload: LoginRequest): Promise<LoginResponse> {
-    await setAccessToken(null);
+    await clearAuthTokens();
     const { data, headers } = await http.post<LoginResponse>('/auth/login', {
       email: payload.email,
       password: payload.password,
       remember_device: payload.rememberDevice,
     });
     const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
+    const refreshToken = (data as any).refresh_token ?? (data as any).refreshToken;
     // Persist only when "remember this device" was ticked. Unchecked means the
-    // session lives for this app run only and is gone after a restart.
+    // session lives for this app run only and is gone after a restart. The
+    // refresh token follows the same rule so an unremembered session cannot
+    // be resurrected from storage.
     if (token) await setAccessToken(token, !!payload.rememberDevice);
+    if (refreshToken && payload.rememberDevice) await setRefreshToken(refreshToken);
     return {
       ...data,
       token: token || '',
@@ -67,13 +80,41 @@ export const authApi = {
     };
   },
 
+  async refreshToken(): Promise<string | null> {
+    const currentRefreshToken = getRefreshToken() || (await loadRefreshToken());
+    if (!currentRefreshToken) return null;
+
+    try {
+      const { data, headers } = await http.post<LoginResponse>('/auth/jwt-refresh', {
+        refresh_token: currentRefreshToken,
+        'refresh-token': currentRefreshToken,
+      });
+      const token =
+        data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
+      const newRefreshToken =
+        (data as any).refresh_token ?? (data as any).refreshToken ?? currentRefreshToken;
+
+      if (token) {
+        await setAccessToken(token);
+      }
+      if (newRefreshToken) {
+        await setRefreshToken(newRefreshToken);
+      }
+
+      return token || null;
+    } catch (err) {
+      console.warn('Token refresh failed:', err);
+      return null;
+    }
+  },
+
   async logout(): Promise<void> {
     try {
       await http.post('/auth/logout');
     } catch (_ignored) {
       // Backend may respond 400 if token was already expired or invalid; local cleanup proceeds
     } finally {
-      await setAccessToken(null);
+      await clearAuthTokens();
     }
   },
 

@@ -90,10 +90,16 @@ function ApprovalDetailModal({
   const [notes, setNotes] = useState('');
   const [rejectReason, setRejectReason] = useState('');
 
+  useEffect(() => {
+    if (visible && typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
+      (document.activeElement as HTMLElement).blur();
+    }
+  }, [visible]);
+
   if (!detail) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} aria-modal={true} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
           <View style={styles.modalHeaderRow}>

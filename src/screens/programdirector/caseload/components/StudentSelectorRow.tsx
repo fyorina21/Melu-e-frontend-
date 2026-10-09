@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { colors, radius, spacing } from '../../../../theme/colors';
 import { typography } from '../../../../theme/typography';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import type { StudentOption } from '../../../../api/optionsApi';
 
 interface StudentSelectorRowProps {
@@ -31,6 +32,13 @@ export const StudentSelectorRow: React.FC<StudentSelectorRowProps> = React.memo(
               accessibilityRole="button"
               accessibilityLabel={`Select student ${s.name}`}
             >
+              <StudentAvatar
+                name={s.name}
+                studentId={s.id}
+                photoUrl={(s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo}
+                size={26}
+                style={{ marginRight: 6 }}
+              />
               <Text style={[styles.studentChipText, isSelected && styles.studentChipTextActive]}>
                 {s.name}
               </Text>
@@ -50,10 +58,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
   },
   studentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
-    alignItems: 'center',
     backgroundColor: colors.bgApp,
     borderWidth: 1,
     borderColor: colors.border,

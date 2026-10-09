@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../theme/colors';
 import type { StudentListItem } from '../studentProgressTypes';
 
@@ -21,9 +22,16 @@ export function StudentProfileCard({
     <View style={styles.card}>
       <View style={styles.profileRow}>
         <View style={styles.profileLeft}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{selectedStudent.fullName.charAt(0)}</Text>
-          </View>
+          <StudentAvatar
+            name={selectedStudent.fullName}
+            studentId={selectedStudent.id}
+            photoUrl={
+              (selectedStudent as any).photoUrl ||
+              (selectedStudent as any).headshotUrl ||
+              (selectedStudent as any).photo
+            }
+            size={48}
+          />
           <View style={{ flexShrink: 1 }}>
             <Text style={styles.studentName}>{selectedStudent.fullName}</Text>
             <View style={styles.chipRow}>

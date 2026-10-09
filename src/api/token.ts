@@ -18,6 +18,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 const TOKEN_KEY = 'melue.auth.token';
+const REFRESH_TOKEN_KEY = 'melue.auth.refresh_token';
 
 export interface KeyValueStorage {
   getItem(key: string): Promise<string | null>;
@@ -26,6 +27,7 @@ export interface KeyValueStorage {
 }
 
 let accessToken: string | null = null;
+let refreshToken: string | null = null;
 
 function createWebStorage(): KeyValueStorage | null {
   if (Platform.OS !== 'web') return null;
@@ -60,13 +62,17 @@ function createWebStorage(): KeyValueStorage | null {
  */
 const memoryStorage: KeyValueStorage = {
   async getItem(key) {
-    return key === TOKEN_KEY ? accessToken : null;
+    if (key === TOKEN_KEY) return accessToken;
+    if (key === REFRESH_TOKEN_KEY) return refreshToken;
+    return null;
   },
   async setItem(key, value) {
     if (key === TOKEN_KEY) accessToken = value;
+    if (key === REFRESH_TOKEN_KEY) refreshToken = value;
   },
   async removeItem(key) {
     if (key === TOKEN_KEY) accessToken = null;
+    if (key === REFRESH_TOKEN_KEY) refreshToken = null;
   },
 };
 
@@ -182,3 +188,130 @@ export async function setAccessToken(token: string | null, persist = true): Prom
     console.warn('Failed to persist auth token:', err);
   }
 }
+
+export function getRefreshToken(): string | null {
+  if (!refreshToken && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  }
+
+  if (
+    !refreshToken ||
+    refreshToken === 'undefined' ||
+    refreshToken === 'null' ||
+    refreshToken.trim() === ''
+  ) {
+    return null;
+  }
+
+  return refreshToken.trim();
+}
+
+export async function loadRefreshToken(): Promise<string | null> {
+  try {
+    refreshToken = await resolveStorage().getItem(REFRESH_TOKEN_KEY);
+  } catch (err) {
+    console.warn('Failed to read stored refresh token:', err);
+  }
+
+  return getRefreshToken();
+}
+
+export async function setRefreshToken(token: string | null): Promise<void> {
+  if (
+    !token ||
+    token === 'undefined' ||
+    token === 'null' ||
+    token.trim() === ''
+  ) {
+    refreshToken = null;
+
+    try {
+      await resolveStorage().removeItem(REFRESH_TOKEN_KEY);
+    } catch (err) {
+      console.warn('Failed to remove stored refresh token:', err);
+    }
+
+    return;
+  }
+
+  const cleanToken = token.trim();
+  refreshToken = cleanToken;
+
+  try {
+    await resolveStorage().setItem(REFRESH_TOKEN_KEY, cleanToken);
+  } catch (err) {
+    console.warn('Failed to persist refresh token:', err);
+  }
+}
+
+export async function clearAuthTokens(): Promise<void> {
+  await setAccessToken(null);
+  await setRefreshToken(null);
+  setActiveRole(null);
+  setUserRoles([]);
+}
+
+const ACTIVE_ROLE_KEY = 'melue.auth.active_role';
+const ROLES_KEY = 'melue.auth.roles';
+
+let activeRole: string | null = null;
+let userRoles: string[] = [];
+
+export function setActiveRole(role: string | null): void {
+  activeRole = role ? role.trim() : null;
+  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    try {
+      if (activeRole) localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+      else localStorage.removeItem(ACTIVE_ROLE_KEY);
+    } catch {}
+  }
+}
+
+export function getActiveRole(): string | null {
+  if (!activeRole && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    activeRole = localStorage.getItem(ACTIVE_ROLE_KEY);
+  }
+  return activeRole;
+}
+
+export function setUserRoles(roles: string[]): void {
+  userRoles = Array.isArray(roles) ? roles : [];
+  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(ROLES_KEY, JSON.stringify(userRoles));
+    } catch {}
+  }
+}
+
+export function getUserRoles(): string[] {
+  if ((!userRoles || userRoles.length === 0) && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(ROLES_KEY);
+      if (stored) userRoles = JSON.parse(stored);
+    } catch {}
+  }
+  return userRoles || [];
+}
+
+export function isUserAdmin(): boolean {
+  const current = getActiveRole()?.toLowerCase().replace(/[\s-]+/g, '_');
+  if (current) {
+    return (
+      current === 'institutional_admin' ||
+      current === 'system_admin' ||
+      current === 'admin' ||
+      current === 'sysadmin'
+    );
+  }
+  const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
+  if (roles.length > 0) {
+    return roles.some(
+      (r) =>
+        r === 'institutional_admin' ||
+        r === 'system_admin' ||
+        r === 'admin' ||
+        r === 'sysadmin'
+    );
+  }
+  return false;
+}

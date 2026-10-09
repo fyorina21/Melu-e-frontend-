@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../../theme/colors';
 import { type Option, type ScheduleBlock, filterStudentOptions } from '../types';
 
@@ -102,11 +103,12 @@ export const AssignmentEditorModal: React.FC<AssignmentEditorModalProps> = React
                     accessibilityState={{ checked: isChecked, disabled: isDisabled }}
                     accessibilityLabel={`Select student ${s.name}`}
                   >
-                    <View style={[styles.studentAvatar, isChecked && styles.studentAvatarActive]}>
-                      <Text style={styles.studentAvatarText}>
-                        {(s.name || 'S').charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
+                    <StudentAvatar
+                      name={s.name}
+                      studentId={s.id}
+                      photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
+                      size={32}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text
                         style={[

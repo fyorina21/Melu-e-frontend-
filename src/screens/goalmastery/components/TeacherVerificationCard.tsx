@@ -17,6 +17,7 @@ interface TeacherVerificationCardProps {
   notes: string;
   showPromptDropdown: boolean;
   isSubmitted: boolean;
+  isLocked?: boolean;
   onOutcomeChange: (outcome: OutcomeOption) => void;
   onPromptChange: (prompt: PromptType) => void;
   onNotesChange: (notes: string) => void;
@@ -31,11 +32,13 @@ export const TeacherVerificationCard: React.FC<TeacherVerificationCardProps> = R
     notes,
     showPromptDropdown,
     isSubmitted,
+    isLocked = false,
     onOutcomeChange,
     onPromptChange,
     onNotesChange,
     onTogglePromptDropdown,
   }) => {
+    const isCardDisabled = isSubmitted || isLocked;
     return (
       <View style={styles.columnCard}>
         <View style={styles.standardCardHeader}>
@@ -56,7 +59,7 @@ export const TeacherVerificationCard: React.FC<TeacherVerificationCardProps> = R
               return (
                 <TouchableOpacity
                   key={opt.id}
-                  disabled={isSubmitted}
+                  disabled={isCardDisabled}
                   style={styles.radioOption}
                   onPress={() => onOutcomeChange(opt.id)}
                   activeOpacity={0.7}
@@ -78,7 +81,7 @@ export const TeacherVerificationCard: React.FC<TeacherVerificationCardProps> = R
                 Prompt Used <Text style={styles.required}>*</Text>
               </Text>
               <TouchableOpacity
-                disabled={isSubmitted}
+                disabled={isCardDisabled}
                 style={styles.selectBox}
                 onPress={onTogglePromptDropdown}
                 accessibilityRole="button"
@@ -90,7 +93,7 @@ export const TeacherVerificationCard: React.FC<TeacherVerificationCardProps> = R
                 <Feather name="chevron-down" size={16} color="#64748B" />
               </TouchableOpacity>
 
-              {showPromptDropdown && !isSubmitted && (
+              {showPromptDropdown && !isCardDisabled && (
                 <View style={styles.dropdownMenu}>
                   <TouchableOpacity style={styles.dropdownItem} onPress={() => onPromptChange('')}>
                     <Text style={styles.dropdownItemTextPlaceholder}>Select prompt</Text>
@@ -113,7 +116,7 @@ export const TeacherVerificationCard: React.FC<TeacherVerificationCardProps> = R
           <TextInput
             style={styles.textInput}
             multiline
-            editable={!isSubmitted}
+            editable={!isCardDisabled}
             value={notes}
             onChangeText={onNotesChange}
             placeholder="Enter verification notes..."

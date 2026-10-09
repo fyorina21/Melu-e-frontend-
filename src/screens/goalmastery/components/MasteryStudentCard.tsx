@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { radius, spacing } from '../../../theme/colors';
+import StudentAvatar from '../../../components/StudentAvatar';
 import type { MasteryCheckData } from '../types';
 
 interface MasteryStudentCardProps {
@@ -15,9 +15,12 @@ export const MasteryStudentCard: React.FC<MasteryStudentCardProps> = React.memo(
     return (
       <View style={styles.studentCard}>
         <View style={styles.studentInfoLeft}>
-          <View style={styles.avatar}>
-            <Feather name="user" size={28} color="#FFFFFF" />
-          </View>
+          <StudentAvatar
+            name={data.studentName}
+            studentId={data.studentId}
+            size={52}
+            style={{ marginRight: 4 }}
+          />
           <View>
             <Text style={styles.studentName}>{data.studentName}</Text>
             <Text style={styles.metaDetail}>
@@ -67,14 +70,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#0284C7',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   studentName: {
     fontSize: 16,

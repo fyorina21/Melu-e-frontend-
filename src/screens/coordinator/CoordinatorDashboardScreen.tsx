@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, SafeAreaView, useWindowDimensions } from 'react
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { getCoordinatorDashboard, getCoordinatorNotifications } from '../../api/coordinatorApi';
 import { colors, spacing } from '../../theme/colors';
 

@@ -76,4 +76,21 @@ export const radius = {
   full: 999,
 } as const;
 
+import { Platform } from 'react-native';
+
+export function makeShadow(offsetY = 2, blur = 4, opacity = 0.1, color = '0, 0, 0', elevation = 2) {
+  if (Platform.OS === 'web') {
+    return {
+      boxShadow: `0px ${offsetY}px ${blur}px rgba(${color}, ${opacity})`,
+    } as any;
+  }
+  return {
+    shadowColor: `rgb(${color})`,
+    shadowOffset: { width: 0, height: offsetY },
+    shadowOpacity: opacity,
+    shadowRadius: blur,
+    elevation,
+  };
+}
+
 export default colors;

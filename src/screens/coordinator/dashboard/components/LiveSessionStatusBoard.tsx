@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../../theme/colors';
 import { type LiveSession, STATUS_CONFIG, formatTimer } from '../types';
 
@@ -58,7 +59,14 @@ export const LiveSessionStatusBoard: React.FC<LiveSessionStatusBoardProps> = Rea
                   <View style={styles.sessionBottomRow}>
                     <View style={styles.chipRow}>
                       {session.students.map((s) => (
-                        <View key={s} style={styles.studentChip}>
+                        <View
+                          key={s}
+                          style={[
+                            styles.studentChip,
+                            { flexDirection: 'row', alignItems: 'center', gap: 4 },
+                          ]}
+                        >
+                          <StudentAvatar name={s} size={14} />
                           <Text style={styles.studentChipText}>{s}</Text>
                         </View>
                       ))}

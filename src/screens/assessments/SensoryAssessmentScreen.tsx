@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
+import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { saveSensoryAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import type { SessionStackParamList } from '../../types';
@@ -159,6 +160,10 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
           onBack={() => navigation?.goBack?.()}
           studentName={profile?.fullName || 'Student'}
           studentAge={profile?.age || '?'}
+          studentId={studentId}
+          photoUrl={
+            (profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo
+          }
           assessmentDate={assessmentDate}
           onAssessmentDateChange={setAssessmentDate}
           scoredCount={metrics.scoredCount}

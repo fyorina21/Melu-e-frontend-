@@ -449,11 +449,15 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.2,
+          shadowRadius: 16,
+          elevation: 10,
+        }),
     position: 'relative',
   },
   header: {
@@ -574,11 +578,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 24,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 12,
+          elevation: 8,
+        }),
   },
   confirmTitle: {
     fontSize: 18,

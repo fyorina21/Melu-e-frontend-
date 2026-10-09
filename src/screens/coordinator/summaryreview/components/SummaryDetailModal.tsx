@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { radius, spacing } from '../../../../theme/colors';
 import {
   type Summary,
@@ -97,7 +98,7 @@ export const SummaryDetailModal: React.FC<SummaryDetailModalProps> = React.memo(
                   <View style={styles.tagRow}>
                     {summary.students.map((st) => (
                       <View key={st} style={styles.studentTagLg}>
-                        <Feather name="users" size={14} color={SKY} />
+                        <StudentAvatar name={st} size={18} style={{ marginRight: 2 }} />
                         <Text style={styles.studentTagLgText}>{st}</Text>
                       </View>
                     ))}

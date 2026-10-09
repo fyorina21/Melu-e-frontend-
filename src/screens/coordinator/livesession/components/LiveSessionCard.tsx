@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { radius, spacing } from '../../../../theme/colors';
 import { type Session, STATUS_CONFIG, SKY, DARK, DARK_TEXT, PANEL, formatTime } from '../types';
 
@@ -38,13 +39,13 @@ export const LiveSessionCard: React.FC<LiveSessionCardProps> = React.memo(
           {session.students.map((st) => (
             <TouchableOpacity
               key={st}
-              style={styles.studentChip}
+              style={[styles.studentChip, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
               onPress={() => onSelectStudent(st)}
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel={`View student ${st}`}
             >
-              <Feather name="users" size={12} color={SKY} />
+              <StudentAvatar name={st} size={16} />
               <Text style={styles.studentChipText}>{st}</Text>
             </TouchableOpacity>
           ))}

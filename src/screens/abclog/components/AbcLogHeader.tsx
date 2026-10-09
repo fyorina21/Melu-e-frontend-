@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../theme/colors';
 import type { StudentOption } from '../../../api/optionsApi';
 
@@ -26,9 +27,17 @@ export const AbcLogHeader: React.FC<AbcLogHeaderProps> = React.memo(
       <View style={styles.headerCard}>
         <View style={styles.headerRow}>
           <View style={styles.studentBlock}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{currentStudent?.name?.[0] ?? '?'}</Text>
-            </View>
+            <StudentAvatar
+              name={currentStudent?.name}
+              studentId={currentStudent?.id}
+              photoUrl={
+                (currentStudent as any)?.photoUrl ||
+                (currentStudent as any)?.headshotUrl ||
+                (currentStudent as any)?.photo
+              }
+              size={44}
+              style={{ marginRight: 10 }}
+            />
             <View>
               <View style={styles.studentSelector}>
                 <TouchableOpacity
@@ -56,6 +65,15 @@ export const AbcLogHeader: React.FC<AbcLogHeaderProps> = React.memo(
                         style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
                         onPress={() => onSelectStudent(s.id)}
                       >
+                        <StudentAvatar
+                          name={s.name}
+                          studentId={s.id}
+                          photoUrl={
+                            (s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo
+                          }
+                          size={26}
+                          style={{ marginRight: 8 }}
+                        />
                         <Text
                           style={[
                             styles.dropdownItemText,

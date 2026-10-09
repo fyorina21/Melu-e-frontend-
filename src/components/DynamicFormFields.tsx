@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { getFormConfig } from '../api/institutionalAdminApi';
 
@@ -649,11 +649,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    ...makeShadow(4, 8, 0.1, '0, 0, 0', 5),
     zIndex: 999,
   },
   dropdownItem: {

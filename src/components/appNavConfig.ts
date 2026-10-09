@@ -62,8 +62,8 @@ export function getTabsForSession(
 }
 
 export const ROLE_TABS: Record<Role, string[]> = {
-  teacher: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
-  therapist: ['IUP Creation & Goal Assignment'],
+  teacher: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
+  therapist: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
   coordinator: [
     'Dashboard',
     'Live Sessions',
@@ -186,7 +186,9 @@ export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> =
   Roles: 'RoleManagement',
   'Permission Configuration': 'PermissionConfiguration',
   Permissions: 'PermissionConfiguration',
+  Permission: 'PermissionConfiguration',
   'Audit Log': 'AuditLog',
+  'Audit Logs': 'AuditLog',
   Audit: 'AuditLog',
 };
 

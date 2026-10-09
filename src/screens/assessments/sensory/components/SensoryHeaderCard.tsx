@@ -1,12 +1,15 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import StudentAvatar from '../../../../components/StudentAvatar';
 import { radius, spacing } from '../../../../theme/colors';
 
 interface SensoryHeaderCardProps {
   onBack: () => void;
   studentName?: string;
   studentAge?: string | number;
+  studentId?: string;
+  photoUrl?: string | null;
   assessmentDate: string;
   onAssessmentDateChange: (date: string) => void;
   scoredCount: number;
@@ -19,6 +22,8 @@ export const SensoryHeaderCard: React.FC<SensoryHeaderCardProps> = React.memo(
     onBack,
     studentName = 'Student',
     studentAge = '?',
+    studentId,
+    photoUrl,
     assessmentDate,
     onAssessmentDateChange,
     scoredCount,
@@ -42,9 +47,7 @@ export const SensoryHeaderCard: React.FC<SensoryHeaderCardProps> = React.memo(
         {/* Top Header Card */}
         <View style={styles.topCard}>
           <View style={styles.studentInfoRow}>
-            <View style={styles.avatarCircle}>
-              <Feather name="user" size={24} color="#64748B" />
-            </View>
+            <StudentAvatar name={studentName} studentId={studentId} photoUrl={photoUrl} size={44} />
             <View>
               <Text style={styles.studentName}>{studentName}</Text>
               <Text style={styles.studentAge}>Age {studentAge}</Text>
