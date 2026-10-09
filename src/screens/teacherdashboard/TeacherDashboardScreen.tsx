@@ -82,22 +82,6 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
     ? session.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     : 'Teacher';
 
-  if (!hasData && (!session?.modules || session.modules.length === 0)) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <AppNavbar
-          activeTab="Dashboard"
-          onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-        />
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            No data available. Start a session to see dashboard information.
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar

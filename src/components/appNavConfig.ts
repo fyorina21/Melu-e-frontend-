@@ -20,7 +20,7 @@ import type {
 export const MODULE_TO_TABS: Record<string, string[]> = {
   iups: ['IUP Creation & Goal Assignment'],
   assessments: ['Assessments'],
-  sessions: ['Daily Notes'],
+  sessions: ['Session', 'Daily Notes'],
   behavior_incidents: ['ABC Log'],
   parent_portal: ['Parents'],
   students: ['Enrollment Wizard'],
@@ -31,7 +31,8 @@ export const MODULE_TO_TABS: Record<string, string[]> = {
 
 /**
  * Returns dynamic tabs for the current session.
- * For configured roles, ONLY the modules in the permission config are visible (no dashboard).
+ * Core roles always retain their full canonical tab suite.
+ * For custom configured roles, only configured modules are enabled while preserving Dashboard.
  */
 export function getTabsForSession(
   session: AuthSession | null | undefined,
@@ -39,8 +40,27 @@ export function getTabsForSession(
 ): string[] {
   if (!session) return defaultRoleTabs;
 
+  const CORE_ROLES = new Set([
+    'teacher',
+    'coordinator',
+    'director',
+    'program_director',
+    'institutional_admin',
+    'system_admin',
+    'parent',
+    'therapist',
+  ]);
+
+  if (session.role && CORE_ROLES.has(session.role)) {
+    return defaultRoleTabs;
+  }
+
   if (session.modules && Array.isArray(session.modules) && session.modules.length > 0) {
     const dynamicTabs: string[] = [];
+
+    if (defaultRoleTabs.includes('Dashboard')) {
+      dynamicTabs.push('Dashboard');
+    }
 
     for (const mod of session.modules) {
       const tabs = MODULE_TO_TABS[mod.toLowerCase()];
@@ -134,6 +154,7 @@ export const ROLE_NOTIFICATION_ROUTE: Record<Role, string | undefined> = {
 export const TEACHER_ROUTE_BY_TAB: Record<string, string> = {
   Dashboard: 'TeacherDashboard',
   Session: 'SessionDataCollection',
+  'Active Therapy': 'SessionDataCollection',
   Assessments: 'AssessmentDashboard',
   'Assessment Dashboard': 'AssessmentDashboard',
   'Assessment Summary Report': 'AssessmentSummaryReport',

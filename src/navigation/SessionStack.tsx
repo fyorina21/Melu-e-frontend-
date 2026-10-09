@@ -42,9 +42,7 @@ export default function SessionStack() {
   const defaultTabs = ROLE_TABS[session?.role ?? 'teacher'] ?? [];
   const tabs = getTabsForSession(session, defaultTabs);
   const firstTab = tabs[0];
-  const initialRoute =
-    (firstTab && TEACHER_ROUTE_BY_TAB[firstTab]) ||
-    (session?.role === 'therapist' ? 'IupGeneration' : 'TeacherDashboard');
+  const initialRoute = (firstTab && TEACHER_ROUTE_BY_TAB[firstTab]) || 'TeacherDashboard';
 
   return (
     <ErrorBoundary screenName="Session Navigator">

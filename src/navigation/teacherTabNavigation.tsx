@@ -4,6 +4,7 @@ import type { SessionStackParamList } from '../types';
 const ROUTE_BY_TAB: Record<string, keyof SessionStackParamList> = {
   Dashboard: 'TeacherDashboard',
   Session: 'SessionDataCollection',
+  'Active Therapy': 'SessionDataCollection',
   Assessments: 'AssessmentDashboard',
   'Daily Notes': 'DailyNotes',
   'ABC Log': 'AbcLog',

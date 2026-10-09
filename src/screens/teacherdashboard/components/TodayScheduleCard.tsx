@@ -96,25 +96,38 @@ export const TodayScheduleCard: React.FC<TodayScheduleCardProps> = React.memo(
           clinical module to begin.
         </Text>
 
-        {!modules || modules.includes('iups') ? (
+        <View
+          style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' }}
+        >
           <TouchableOpacity
-            style={styles.startSessionBtn}
-            onPress={onManageIups}
-            activeOpacity={0.8}
-          >
-            <Feather name="file-text" size={16} color={colors.navyText} />
-            <Text style={styles.startSessionBtnText}>Manage IUPs & Goals</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.startSessionBtn}
+            style={[styles.startSessionBtn, { flex: 1, minWidth: 160 }]}
             onPress={onStartSession}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Start active therapy session"
           >
             <Feather name="play" size={16} color={colors.navyText} />
-            <Text style={styles.startSessionBtnText}>Open Therapy Workspace</Text>
+            <Text style={styles.startSessionBtnText}>Start Active Therapy</Text>
           </TouchableOpacity>
-        )}
+
+          {(!modules || modules.includes('iups')) && (
+            <TouchableOpacity
+              style={[
+                styles.startSessionBtn,
+                { flex: 1, minWidth: 160, backgroundColor: '#E0F2FE' },
+              ]}
+              onPress={onManageIups}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Manage IUPs and goals"
+            >
+              <Feather name="file-text" size={16} color="#0284C7" />
+              <Text style={[styles.startSessionBtnText, { color: '#0369A1' }]}>
+                Manage IUPs & Goals
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   },
