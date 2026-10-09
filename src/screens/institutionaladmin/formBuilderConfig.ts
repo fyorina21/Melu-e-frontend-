@@ -31,6 +31,7 @@ export const ABLLS_SECTIONS = [
 export const BEHAVIORAL_SECTIONS = ['MASS', 'FAST', 'ABC Tracking', 'General'];
 export const PREFERENCE_SECTIONS = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement', 'General'];
 export const SENSORY_SECTIONS = ['Tactile', 'Visual & Auditory', 'Proprioception & Vestibular', 'General'];
+export const BEHAVIOR_INCIDENT_SECTIONS = ['Incident Details', 'ABC Tracking', 'General'];
 
 export const getSectionsForForm = (formName: string): string[] => {
   if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
@@ -38,6 +39,7 @@ export const getSectionsForForm = (formName: string): string[] => {
   if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment') return BEHAVIORAL_SECTIONS;
   if (formName === 'Preference Assessment') return PREFERENCE_SECTIONS;
   if (formName === 'Sensory Assessment') return SENSORY_SECTIONS;
+  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident')) return BEHAVIOR_INCIDENT_SECTIONS;
   return [];
 };
 
@@ -65,8 +67,17 @@ export const SENSORY_PRESETS = [
   { label: 'Reaction', short: 'Reaction', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
 ];
 
+export const BEHAVIOR_INCIDENT_PRESETS = [
+  { label: 'Location Presets', short: 'Locations', options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'] },
+  { label: 'Behavior Types', short: 'Behaviors', options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'] },
+  { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
+  { label: 'Antecedents', short: 'Antecedents', options: ['Demand / Task', 'Transition', 'Denied Access', 'Attention Diverted', 'Sensory Overload', 'Loud Noise', 'Peer Interaction'] },
+  { label: 'Consequences', short: 'Consequences', options: ['Redirection', 'Verbal Prompt', 'Break Given', 'Sensory Break', 'Physical Prompt', 'Planned Ignoring'] },
+];
+
 export const getPresetsForForm = (formName: string) => {
   if (formName === 'ABLLS Assessment Form') return SCORE_SCALE_PRESETS;
+  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident')) return BEHAVIOR_INCIDENT_PRESETS;
   return [];
 };
 
@@ -99,9 +110,11 @@ export const inferSectionFromId = (id: string): string | null => {
   if (!match) {
     if (id.startsWith('M') && /^\d+$/.test(id.slice(1))) return 'MASS';
     if (id.startsWith('F') && /^\d+$/.test(id.slice(1))) return 'FAST';
-    if (id.startsWith('ABC-')) return 'ABC Tracking';
+    if (id.startsWith('ABC-') || id === 'b_ant' || id === 'b_con') return 'ABC Tracking';
     if (id.startsWith('P') && /^\d+$/.test(id.slice(1))) return 'General';
     if (id.startsWith('SEN-')) return 'Tactile';
+    if (id.startsWith('b_loc') || id.startsWith('b_beh') || id.startsWith('b_int') || id.startsWith('b_dur') || /^b\d+$/i.test(id)) return 'Incident Details';
+    if (id.startsWith('b_notes')) return 'General';
     return null;
   }
   const letter = match[1];

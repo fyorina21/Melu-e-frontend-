@@ -45,7 +45,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Reports',
   ],
   institutional_admin: ['Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
-  system_admin: ['Staff Accounts', 'Role Management', 'Permissions'],
+  system_admin: ['Staff Accounts', 'Role Management', 'Permissions', 'Audit Log'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 

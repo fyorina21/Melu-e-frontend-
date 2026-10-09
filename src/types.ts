@@ -164,14 +164,14 @@ export type SessionStackParamList = {
   PreferenceAssessment: { studentId: string };
   SensoryAssessment: { studentId: string };
   AbcLog: undefined;
-  SessionDataCollection: { sessionId?: string } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[] } | undefined;
   DailyNotes: { studentId?: string };
   SessionNoteEditor: { sessionId: string; mode: 'view' | 'edit' };
   GoalProgress: { studentId: string; goalId: string };
   SchedulingCalendar: undefined;
   Attendance: { sessionId?: string } | undefined;
   GoalMasteryCheck: { studentId: string; goalId: string };
-  SessionSummary: { sessionId: string; localIncidents?: IncidentPayload[] };
+  SessionSummary: { sessionId: string; localIncidents?: IncidentPayload[]; students?: any[] };
   SocialSkillsAssessment: { studentId: string };
   TeacherParentCommunication: undefined;
   ParentCommunication: undefined;

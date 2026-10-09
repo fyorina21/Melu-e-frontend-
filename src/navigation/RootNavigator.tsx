@@ -14,14 +14,8 @@ import DirectorStack from './DirectorStack';
 import InstitutionalAdminStack from './InstitutionalAdminStack';
 import SystemAdminStack from './SystemAdminStack';
 import ParentStack from './ParentStack';
-import RoleSidebar from '../components/RoleSidebar';
 import { SidebarNavContext } from './SidebarNavContext';
-
 const Stack = createNativeStackNavigator();
-
-// Roles whose navigation lives in a persistent docked sidebar instead of
-// the top navbar tabs.
-const SIDEBAR_ROLES = new Set<Role>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADMIN]);
 
 const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
   [ROLES.TEACHER]: SessionStack,
@@ -73,7 +67,20 @@ function syncUrlToScreen(state: NavigationState | undefined): void {
   }
 }
 
-function AppNavigator() {
+const ROUTE_ROLE_HINT: Record<string, Role> = {
+  FormBuilder: ROLES.INSTITUTIONAL_ADMIN,
+  TrialLoggingFormat: ROLES.INSTITUTIONAL_ADMIN,
+  AbcDropdownLists: ROLES.INSTITUTIONAL_ADMIN,
+  ScheduleCapacityConfig: ROLES.INSTITUTIONAL_ADMIN,
+  GoalDomainDefinitions: ROLES.INSTITUTIONAL_ADMIN,
+  TaskAnalysisTemplates: ROLES.INSTITUTIONAL_ADMIN,
+  StaffAccountManagement: ROLES.SYSTEM_ADMIN,
+  RoleManagement: ROLES.SYSTEM_ADMIN,
+  PermissionConfiguration: ROLES.SYSTEM_ADMIN,
+  AuditLog: ROLES.SYSTEM_ADMIN,
+};
+
+function AuthenticatedApp() {
   const { session } = useAuth();
 
   if (!session) {
@@ -87,24 +94,13 @@ function AppNavigator() {
 
   const RoleStack = STACK_BY_ROLE[session.role] || STACK_BY_ROLE[ROLES.TEACHER];
 
-  if (SIDEBAR_ROLES.has(session.role)) {
-    return (
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        <RoleSidebar role={session.role} />
-        <View style={{ flex: 1 }}>
-          <RoleStack />
-        </View>
-      </View>
-    );
-  }
-
   return <RoleStack />;
 }
 
 export default function RootNavigator() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const navRef = React.useRef<NavigationContainerRef<any>>(null);
-  const { session } = useAuth();
+  const { session, switchRole } = useAuth();
   const deepLinkRestored = React.useRef(false);
   const [navVersion, setNavVersion] = React.useState(0);
 
@@ -126,6 +122,12 @@ export default function RootNavigator() {
       return;
     }
 
+    const neededRole = ROUTE_ROLE_HINT[target];
+    if (neededRole && session.role !== neededRole) {
+      switchRole(neededRole);
+      return;
+    }
+
     const nav = navRef.current;
     try {
       const searchParams = new URLSearchParams(window.location.search);
@@ -140,13 +142,18 @@ export default function RootNavigator() {
     if (nav.getCurrentRoute()?.name !== target) {
       window.history.replaceState(null, '', '/');
     }
-  }, [session]);
+  }, [session, switchRole]);
 
   React.useEffect(() => {
     if (Platform.OS !== 'web' || !session) return;
     const handlePopState = () => {
       const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
       if (target && navRef.current) {
+        const neededRole = ROUTE_ROLE_HINT[target];
+        if (neededRole && session.role !== neededRole) {
+          switchRole(neededRole);
+          return;
+        }
         try {
           const searchParams = new URLSearchParams(window.location.search);
           const sid =
@@ -161,7 +168,7 @@ export default function RootNavigator() {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [session]);
+  }, [session, switchRole]);
 
   return (
     <NavigationIndependentTree>
@@ -180,7 +187,7 @@ export default function RootNavigator() {
         }}
       >
         <SidebarNavContext.Provider value={{ navRef, version: navVersion }}>
-          <AppNavigator />
+          <AuthenticatedApp />
         </SidebarNavContext.Provider>
       </NavigationContainer>
     </NavigationIndependentTree>

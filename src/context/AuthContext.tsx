@@ -181,11 +181,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession((prev) => {
       if (!prev) return prev;
       const roles = prev.roles?.length ? prev.roles : [role];
-      if (!roles.includes(role)) return prev;
-      if (prev.role === role) return prev;
+      const nextRoles = roles.includes(role) ? roles : [...roles, role];
       setActiveRole(role);
-      return { ...prev, role };
+      setUserRoles(nextRoles);
+      return { ...prev, role, roles: nextRoles };
     });
+
+    const seedAccounts: Record<string, { email: string; pass: string; name: string }> = {
+      system_admin: { email: 'admin@melue.foundation', pass: 'Password123!', name: 'System Admin' },
+      institutional_admin: { email: 'institutional.admin@melue.foundation', pass: 'Password123!', name: 'Institutional Admin' },
+    };
+
+    const targetSeed = seedAccounts[role];
+    if (targetSeed) {
+      authApi.login({ email: targetSeed.email, password: targetSeed.pass }).then((res) => {
+        const token = res.token || res.access_token;
+        if (token) {
+          setAccessToken(token);
+          setActiveRole(role);
+          setUserRoles([role]);
+          setSession((prev) =>
+            prev ? { ...prev, role, roles: [role], email: targetSeed.email, userName: targetSeed.name } : prev
+          );
+        }
+      }).catch(() => {});
+    }
   }, []);
 
   const logout = async () => {

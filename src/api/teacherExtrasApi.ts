@@ -43,13 +43,9 @@ export const saveSocialSkillsAssessment = (studentId: string, payload: Record<st
 
 export const getTeacherStudentProfile = async (studentId: string) => {
   try {
-    return await client.get(`/teacher/students/${studentId}/profile`);
-  } catch (err) {
-    try {
-      return await client.get(`/coordinator/students/${studentId}/profile`);
-    } catch {
-      return await client.get(`/students/${studentId}`);
-    }
+    return await client.get(`/coordinator/students/${studentId}/profile`);
+  } catch {
+    return await client.get(`/students/${studentId}`);
   }
 };
 

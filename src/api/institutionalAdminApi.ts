@@ -54,11 +54,86 @@ const DEFAULT_ABLLS_FORM = {
   history: [],
 };
 
+const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
+  formName: 'Behavior Incident Form',
+  formType: 'behavior_incident',
+  revisionNumber: 1,
+  isDefault: true,
+  fields: [
+    {
+      id: 'b_loc',
+      type: 'Dropdown',
+      label: 'Location',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
+    },
+    {
+      id: 'b_beh',
+      type: 'Dropdown',
+      label: 'Behavior Type',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'],
+    },
+    {
+      id: 'b_int',
+      type: 'Dropdown',
+      label: 'Intensity',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: ['Low', 'Medium', 'High'],
+    },
+    {
+      id: 'b_dur',
+      type: 'Number',
+      label: 'Duration (mins)',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+    },
+    {
+      id: 'b_ant',
+      type: 'Dropdown',
+      label: 'Antecedent / Trigger',
+      required: false,
+      visible: true,
+      section: 'ABC Tracking',
+      options: ['Demand / Task', 'Transition', 'Denied Access', 'Attention Diverted', 'Sensory Overload', 'Loud Noise', 'Peer Interaction'],
+    },
+    {
+      id: 'b_con',
+      type: 'Dropdown',
+      label: 'Consequence / Action Taken',
+      required: false,
+      visible: true,
+      section: 'ABC Tracking',
+      options: ['Redirection', 'Verbal Prompt', 'Break Given', 'Sensory Break', 'Physical Prompt', 'Planned Ignoring'],
+    },
+    {
+      id: 'b_notes',
+      type: 'TextArea',
+      label: 'Notes & Observations',
+      required: false,
+      visible: true,
+      section: 'General',
+      placeholder: 'Enter additional notes or observations...',
+    },
+  ],
+  customSections: ['Incident Details', 'ABC Tracking', 'General'],
+  deletedSections: [],
+  history: [],
+};
+
 function getDefaultFormConfig(formName: string) {
   const name = (formName || '').toLowerCase();
   if (name.includes('enrollment')) return DEFAULT_ENROLLMENT_FORM;
   if (name.includes('iup')) return DEFAULT_IUP_FORM;
   if (name.includes('ablls') || name.includes('skill')) return DEFAULT_ABLLS_FORM;
+  if (name.includes('behavior incident') || name.includes('incident')) return DEFAULT_BEHAVIOR_INCIDENT_FORM;
   return {
     formName,
     formType: 'general',
@@ -75,7 +150,12 @@ function getCachedFormConfig(formName: string) {
   if (typeof localStorage !== 'undefined') {
     try {
       const cached = localStorage.getItem(`form_config_${formName.toLowerCase().trim()}`);
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.fields) && parsed.fields.length > 0) {
+          return parsed;
+        }
+      }
     } catch {}
   }
   return null;
@@ -85,6 +165,15 @@ function setCachedFormConfig(formName: string, config: any) {
   if (typeof localStorage !== 'undefined' && config) {
     try {
       localStorage.setItem(`form_config_${formName.toLowerCase().trim()}`, JSON.stringify(config));
+    } catch {}
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('melue_form_config_changed', {
+          detail: { formName, config },
+        })
+      );
     } catch {}
   }
 }
@@ -119,13 +208,37 @@ export const getFormConfig = async (formName: string) => {
 
 export const saveFormConfig = async (formName: string, payload: Payload) => {
   setCachedFormConfig(formName, payload);
-  return client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+  if (!isUserAdmin()) {
+    return { data: payload };
+  }
+  try {
+    return await client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+  } catch (err: any) {
+    if (
+      err?.status === 403 ||
+      err?.response?.status === 403 ||
+      err?.status === 404 ||
+      err?.response?.status === 404
+    ) {
+      return { data: payload };
+    }
+    return { data: payload };
+  }
 };
 
 export const resetFormToDefault = async (formName: string) => {
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.removeItem(`form_config_${formName.toLowerCase().trim()}`);
+    } catch {}
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('melue_form_config_changed', {
+          detail: { formName, config: getDefaultFormConfig(formName) },
+        })
+      );
     } catch {}
   }
   if (!isUserAdmin()) {

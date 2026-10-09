@@ -25,7 +25,8 @@ import {
   saveSessionDraft,
   resubmitSessionNote,
 } from '../../api/sessionApi';
-import { getStoredTrials, getStoredIncidents } from '../../stores/trialsStore';
+import { getTeacherDashboard } from '../../api/teacherExtrasApi';
+import { getStoredTrials, getStoredIncidents, getStoredSessionStudents } from '../../stores/trialsStore';
 import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
 import StatusPill from '../../components/StatusPill';
@@ -206,56 +207,81 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      // 1. Fetch backend summary (contains status, accuracy, totalTrials, participants, notes)
-      let summaryData: any = null;
-      try {
-        const { data } = await getSessionSummary(sessionId);
-        summaryData = data;
-      } catch (err) {
-        // Backend summary endpoint may be offline or 404
-      }
+      // 1. Fetch backend summary, roster, and teacher dashboard in parallel
+      const [summaryRes, rosterRes, dashboardRes] = await Promise.all([
+        getSessionSummary(sessionId).catch(() => null),
+        getSessionRoster(sessionId).catch(() => null),
+        getTeacherDashboard().catch(() => null),
+      ]);
 
-      // 2. Fetch backend roster (contains students, stationName, teacherName, roomName)
-      let rosterData: any = null;
-      try {
-        const { data } = await getSessionRoster(sessionId);
-        rosterData = data;
-      } catch (err) {
-        // Backend roster endpoint may be offline or 404
-      }
+      const summaryData = summaryRes?.data;
+      const rosterData = rosterRes?.data;
+      const dashboardStudents = dashboardRes?.data?.todaySchedule?.students;
+      const cachedStudents = getStoredSessionStudents(sessionId);
+      const passedStudents = (route.params as any)?.students;
 
-      // 3. Extract or synthesize students
-      let rawStudents = Array.isArray(rosterData?.students) && rosterData.students.length > 0
-        ? rosterData.students
-        : Array.isArray(summaryData?.students) && summaryData.students.length > 0
-        ? summaryData.students
-        : Array.isArray(summaryData?.participants) && summaryData.participants.length > 0
-        ? summaryData.participants.map((p: any) => ({
-            id: String(p.id),
-            name: p.name || p.fullName || 'Student',
+      // 3. Extract or synthesize students (guaranteed to match Teacher Dashboard and SessionDataCollection)
+      let rawStudents: any[] = [];
+
+      if (Array.isArray(passedStudents) && passedStudents.length > 0) {
+        rawStudents = passedStudents;
+      } else if (Array.isArray(cachedStudents) && cachedStudents.length > 0) {
+        rawStudents = cachedStudents;
+      } else if (Array.isArray(dashboardStudents) && dashboardStudents.length > 0) {
+        const rosterList = Array.isArray(rosterData?.students) ? rosterData.students : [];
+        rawStudents = dashboardStudents.map((ds: any, idx: number) => {
+          const sid = String(ds.id);
+          const sName = String(ds.name || ds.fullName || 'Student').trim();
+          const match = rosterList.find(
+            (rs: any) =>
+              String(rs.id) === sid ||
+              String(rs.fullName || rs.name || '').trim().toLowerCase() === sName.toLowerCase()
+          ) || (rosterList.length > idx ? rosterList[idx] : null);
+
+          return {
+            id: sid,
+            name: sName,
+            goals: match?.goals?.length
+              ? match.goals
+              : [
+                  { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+                  { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+                ],
+          };
+        });
+      } else if (Array.isArray(rosterData?.students) && rosterData.students.length > 0) {
+        rawStudents = rosterData.students;
+      } else if (Array.isArray(summaryData?.students) && summaryData.students.length > 0) {
+        rawStudents = summaryData.students;
+      } else if (Array.isArray(summaryData?.participants) && summaryData.participants.length > 0) {
+        rawStudents = summaryData.participants.map((p: any) => ({
+          id: String(p.id),
+          name: p.name || p.fullName || 'Student',
+          goals: [
+            { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+            { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+          ],
+        }));
+      } else {
+        rawStudents = [
+          {
+            id: 'stu-1',
+            name: 'Abebe Bikila',
             goals: [
               { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
               { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
             ],
-          }))
-        : [
-            {
-              id: 'stu-1',
-              name: 'Abebe Bikila',
-              goals: [
-                { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
-                { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
-              ],
-            },
-            {
-              id: 'stu-2',
-              name: 'Sara Connor',
-              goals: [
-                { id: 'goal-1', name: 'Receptive Object Identification', category: 'Cognitive' },
-                { id: 'goal-2', name: 'Task Transitions', category: 'Adaptive' },
-              ],
-            },
-          ];
+          },
+          {
+            id: 'stu-2',
+            name: 'Sara Connor',
+            goals: [
+              { id: 'goal-1', name: 'Receptive Object Identification', category: 'Cognitive' },
+              { id: 'goal-2', name: 'Task Transitions', category: 'Adaptive' },
+            ],
+          },
+        ];
+      }
 
       // 4. For each student and their goals, pull stored trials and compute metrics
       const processedStudents: SessionSummaryStudent[] = rawStudents.map((stu: any) => {
@@ -379,10 +405,10 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
       // 7. Assemble complete summary
       setSummary({
-        stationName: summaryData?.stationName || rosterData?.stationName || 'Station 1',
-        teacherName: summaryData?.teacherName || rosterData?.teacherName || 'Teacher',
-        startTime: summaryData?.startTime || '9:00 AM',
-        endTime: summaryData?.endTime || '10:30 AM',
+        stationName: summaryData?.stationName || rosterData?.stationName || dashboardRes?.data?.todaySchedule?.stationName || 'Station 1',
+        teacherName: summaryData?.teacherName || rosterData?.teacherName || dashboardRes?.data?.todaySchedule?.teacherName || 'Teacher',
+        startTime: summaryData?.startTime || dashboardRes?.data?.todaySchedule?.startTime || '9:00 AM',
+        endTime: summaryData?.endTime || dashboardRes?.data?.todaySchedule?.endTime || '10:30 AM',
         durationMinutes: Number(summaryData?.durationMinutes || rosterData?.blockDurationMinutes || 90),
         status: summaryData?.status || 'in_progress',
         students: processedStudents,

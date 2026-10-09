@@ -38,6 +38,7 @@ import {
   getStoredIupDraft,
   getAllStoredIupDrafts,
 } from '../../api/programDirectorApi';
+import { getTeacherDashboard } from '../../api/teacherExtrasApi';
 import type {
   SessionStackParamList,
   SessionRoster,
@@ -56,6 +57,9 @@ import {
   recordTrialInStore,
   undoTrialInStore,
   recordIncidentInStore,
+  getStoredIncidents,
+  setStoredSessionStudents,
+  getStoredSessionStudents,
 } from '../../stores/trialsStore';
 
 type Props = NativeStackScreenProps<
@@ -140,63 +144,6 @@ function getStudentAssignedGoals(studentId: string, rawGoals: any[] = []): any[]
   return [];
 }
 
-function checkStudentEligibility(
-  rawStatus: string,
-  hasAssignedGoal: boolean
-): boolean {
-  const s = rawStatus.toLowerCase().trim();
-
-  // Exclude students whose status is in assessment, draft, pending review, registered, discharged, etc.
-  if (
-    s === 'in_assessment' ||
-    s === 'in assessment' ||
-    s === 'assessment' ||
-    s === 'draft' ||
-    s === 'registered' ||
-    s === 'pending_review' ||
-    s === 'pending review' ||
-    s === 'withdrawn' ||
-    s === 'discharged' ||
-    s === 'archived'
-  ) {
-    return false;
-  }
-
-  const isInSession =
-    s === 'in session' ||
-    s === 'in_session' ||
-    s === 'active' ||
-    s === 'active therapy' ||
-    s === 'active_therapy' ||
-    s === 'session_assigned' ||
-    s === 'session assigned' ||
-    s === 'in_progress' ||
-    s === 'in progress';
-
-  const isReadyForIup =
-    s === 'ready for iup' ||
-    s === 'ready_for_iup' ||
-    s === 'assessment_complete' ||
-    s === 'assessment complete' ||
-    s === 'assessment completed';
-
-  // "only be the ones that are in ready for iup status and who are assigned goal or in session status"
-  if (isInSession) {
-    return true;
-  }
-
-  if (isReadyForIup && hasAssignedGoal) {
-    return true;
-  }
-
-  // If status is empty/unknown but student specifically has an assigned goal from draft and is not excluded
-  if (!s && hasAssignedGoal) {
-    return true;
-  }
-
-  return false;
-}
-
 export default function SessionDataCollectionScreen({
   route,
   navigation,
@@ -214,7 +161,19 @@ export default function SessionDataCollectionScreen({
   const [isRunning, setIsRunning] = useState(isTimerRunning());
   const [incidentModal, setIncidentModal] =
     useState<IncidentModalState | null>(null);
-  const [localIncidents, setLocalIncidents] = useState<IncidentPayload[]>([]);
+  const [localIncidents, setLocalIncidents] = useState<IncidentPayload[]>(() => {
+    return (getStoredIncidents(sessionId) as unknown as IncidentPayload[]) || [];
+  });
+
+  useEffect(() => {
+    const cached = getStoredIncidents(sessionId) as unknown as IncidentPayload[];
+    if (cached && cached.length > 0) {
+      setLocalIncidents((prev) => {
+        if (prev.length === 0) return cached;
+        return prev;
+      });
+    }
+  }, [sessionId]);
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
@@ -224,142 +183,130 @@ export default function SessionDataCollectionScreen({
       // Start the session on the backend asynchronously so it doesn't block roster fetching
       startSession(sessionId).catch(() => {});
 
-      const { data } = await getSessionRoster(sessionId);
-
-      // Fetch student options and pipeline in parallel to ensure accurate status info
-      const [optionsRes, pipelineRes] = await Promise.all([
-        client.get<any[]>('/options/students').catch(() => null),
-        client.get<any>('/program_director/assessment_pipeline').catch(() => null),
+      // Fetch teacher dashboard (to get today's session card students) and session roster in parallel
+      const [dashboardRes, rosterRes] = await Promise.all([
+        getTeacherDashboard().catch(() => null),
+        getSessionRoster(sessionId).catch(() => null),
       ]);
 
-      const studentMetaMap = new Map<
-        string,
-        { id: string; name: string; status: string; program?: string }
-      >();
+      const passedStudents = (route.params as any)?.students;
+      const cachedStudents = getStoredSessionStudents(sessionId);
+      const todayDashboardStudents = dashboardRes?.data?.todaySchedule?.students;
 
-      if (Array.isArray(optionsRes?.data)) {
-        optionsRes.data.forEach((s: any) => {
-          const id = String(s.id || s.student_id || s.studentId);
-          if (id) {
-            studentMetaMap.set(id, {
-              id,
-              name: String(s.name || '').trim(),
-              status: String(s.status || '').toLowerCase().trim(),
-              program: s.program,
-            });
-          }
-        });
-      }
+      const dashboardStudents: any[] =
+        Array.isArray(passedStudents) && passedStudents.length > 0
+          ? passedStudents
+          : Array.isArray(todayDashboardStudents) && todayDashboardStudents.length > 0
+          ? todayDashboardStudents
+          : Array.isArray(cachedStudents) && cachedStudents.length > 0
+          ? cachedStudents
+          : [];
 
-      const pipeList = Array.isArray(pipelineRes?.data?.pipeline)
-        ? pipelineRes.data.pipeline
-        : Array.isArray(pipelineRes?.data?.students)
-        ? pipelineRes.data.students
-        : Array.isArray(pipelineRes?.data)
-        ? pipelineRes.data
+      const rosterData = rosterRes?.data;
+      const rosterRaw: any[] = Array.isArray(rosterData?.students)
+        ? rosterData.students
+        : Array.isArray(rosterData)
+        ? rosterData
         : [];
 
-      pipeList.forEach((p: any) => {
-        const id = String(p.student_id || p.id);
-        if (!id) return;
-        const existing = studentMetaMap.get(id);
-        const st = String(p.status || p.stage || '').toLowerCase().trim();
-        if (existing) {
-          if (st) existing.status = st;
-        } else {
-          studentMetaMap.set(id, {
-            id,
-            name: String(p.student_name || p.name || 'Student').trim(),
-            status: st,
-          });
-        }
-      });
+      let finalStudents: any[] = [];
 
-      const rosterRaw = Array.isArray(data?.students)
-        ? data.students
-        : Array.isArray(data)
-        ? data
-        : [];
+      if (dashboardStudents.length > 0) {
+        finalStudents = dashboardStudents.map((ds: any, idx: number) => {
+          const sid = String(ds.id);
+          const sName = String(ds.name || ds.fullName || 'Student').trim();
+          const initial = String(ds.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
 
-      const eligibleStudents: any[] = [];
-      const seenStudentIds = new Set<string>();
+          // Find matching student in backend roster by id, name, or index
+          const matchingRoster =
+            rosterRaw.find(
+              (rs: any) =>
+                String(rs.id) === sid ||
+                String(rs.fullName || rs.name || '').trim().toLowerCase() === sName.toLowerCase()
+            ) || (rosterRaw.length > idx ? rosterRaw[idx] : null);
 
-      // 1. Process students from backend roster
-      rosterRaw.forEach((s: any) => {
-        const sid = String(s.id);
-        const meta = studentMetaMap.get(sid);
-        const rawStatus = meta?.status || String(s.status || '').toLowerCase().trim();
-        const assignedGoals = getStudentAssignedGoals(sid, s.goals);
-        const hasAssigned = assignedGoals.length > 0;
-
-        if (checkStudentEligibility(rawStatus, hasAssigned)) {
-          seenStudentIds.add(sid);
-          const sName = String(s.name || s.fullName || meta?.name || 'Student').trim();
-          const goalsToUse =
+          const assignedGoals = getStudentAssignedGoals(sid, matchingRoster?.goals || ds.goals || []);
+          const rawGoals =
             assignedGoals.length > 0
               ? assignedGoals
-              : Array.isArray(s.goals)
-              ? s.goals
-              : [];
+              : Array.isArray(matchingRoster?.goals) && matchingRoster.goals.length > 0
+              ? matchingRoster.goals
+              : Array.isArray(ds.goals) && ds.goals.length > 0
+              ? ds.goals
+              : [
+                  { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+                  { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+                ];
 
-          eligibleStudents.push({
+          return {
             id: sid,
             name: sName,
-            initial: String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase()),
-            program: String(s.program || meta?.program || 'Regular'),
-            goals: goalsToUse,
-            trials: Array.isArray(s.trials) ? s.trials : [],
-          });
-        }
-      });
+            initial,
+            program: String(ds.program || matchingRoster?.program || 'Regular'),
+            goals: rawGoals,
+            trials: Array.isArray(matchingRoster?.trials) ? matchingRoster.trials : [],
+          };
+        });
+      } else if (rosterRaw.length > 0) {
+        finalStudents = rosterRaw.slice(0, 2).map((rs: any) => {
+          const sid = String(rs.id);
+          const sName = String(rs.fullName || rs.name || 'Student').trim();
+          const assignedGoals = getStudentAssignedGoals(sid, rs.goals);
+          const rawGoals =
+            assignedGoals.length > 0
+              ? assignedGoals
+              : Array.isArray(rs.goals) && rs.goals.length > 0
+              ? rs.goals
+              : [
+                  { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+                  { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+                ];
 
-      // 2. If roster didn't yield enough eligible students (e.g. backend roster returned dummy in-assessment students),
-      // include eligible students from drafts/candidates up to session limit (max 2)
-      if (eligibleStudents.length < 2) {
-        const allDrafts = getAllStoredIupDrafts();
-        const draftStudentIds = Object.keys(allDrafts);
-        const candidateIds = Array.from(
-          new Set([...draftStudentIds, ...Array.from(studentMetaMap.keys())])
-        );
-
-        for (const cid of candidateIds) {
-          if (eligibleStudents.length >= 2) break;
-          if (seenStudentIds.has(cid)) continue;
-
-          const meta = studentMetaMap.get(cid);
-          const draft = getStoredIupDraft(cid);
-          const draftStatus = draft?.status
-            ? String(draft.status).toLowerCase().trim()
-            : '';
-          const rawStatus = meta?.status || draftStatus || '';
-          const assignedGoals = getStudentAssignedGoals(cid, []);
-          const hasAssigned = assignedGoals.length > 0;
-
-          if (checkStudentEligibility(rawStatus, hasAssigned)) {
-            seenStudentIds.add(cid);
-            const studentName =
-              meta?.name ||
-              (draft?.studentName
-                ? String(draft.studentName)
-                : `Student ${cid.slice(0, 4)}`);
-            eligibleStudents.push({
-              id: cid,
-              name: studentName,
-              initial: (studentName.slice(0, 2) || 'ST').toUpperCase(),
-              program: meta?.program || 'Regular',
-              goals: assignedGoals,
-              trials: [],
-            });
-          }
-        }
+          return {
+            id: sid,
+            name: sName,
+            initial: String(rs.initial || (sName.slice(0, 2) || 'ST').toUpperCase()),
+            program: String(rs.program || 'Regular'),
+            goals: rawGoals,
+            trials: Array.isArray(rs.trials) ? rs.trials : [],
+          };
+        });
+      } else {
+        // Consistent default fallback
+        finalStudents = [
+          {
+            id: 'stu-1',
+            name: 'Abebe Bikila',
+            initial: 'AB',
+            program: 'Regular',
+            goals: [
+              { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+              { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+            ],
+            trials: [],
+          },
+          {
+            id: 'stu-2',
+            name: 'Sara Connor',
+            initial: 'SC',
+            program: 'Regular',
+            goals: [
+              { id: 'goal-1', name: 'Receptive Object Identification', category: 'Cognitive' },
+              { id: 'goal-2', name: 'Task Transitions', category: 'Adaptive' },
+            ],
+            trials: [],
+          },
+        ];
       }
 
+      setStoredSessionStudents(sessionId, finalStudents);
+
       const parsedRoster: SessionRoster = {
-        teacherName: data?.teacherName || 'Teacher',
-        stationName: data?.stationName || 'Station 1',
-        roomName: data?.roomName || 'Room 101',
-        blockDurationMinutes: Number(data?.blockDurationMinutes || 90),
-        students: eligibleStudents.map((s: any, idx: number) => ({
+        teacherName: rosterData?.teacherName || dashboardRes?.data?.todaySchedule?.teacherName || 'Teacher',
+        stationName: rosterData?.stationName || dashboardRes?.data?.todaySchedule?.stationName || 'Station 1',
+        roomName: rosterData?.roomName || dashboardRes?.data?.todaySchedule?.roomName || 'Room 101',
+        blockDurationMinutes: Number(rosterData?.blockDurationMinutes || 90),
+        students: finalStudents.map((s: any, idx: number) => ({
           id: String(s.id),
           name: String(s.name).trim(),
           initial: String(
@@ -755,8 +702,17 @@ export default function SessionDataCollectionScreen({
   const handleSaveIncident = async (
     incidentData: IncidentPayload
   ) => {
-    const studentId = incidentModal?.studentId || (incidentData as any).student_id || (incidentData as any).studentId || '';
-    const studentGoalId = incidentModal?.studentGoalId || (incidentData as any).student_goal_id || (incidentData as any).studentGoalId || '';
+    const studentId =
+      incidentModal?.studentId ||
+      (incidentData as any).student_id ||
+      (incidentData as any).studentId ||
+      session?.students[0]?.id ||
+      '';
+    const studentGoalId =
+      incidentModal?.studentGoalId ||
+      (incidentData as any).student_goal_id ||
+      (incidentData as any).studentGoalId ||
+      '';
     const payload = {
       ...incidentData,
       student_id: studentId,
@@ -776,19 +732,36 @@ export default function SessionDataCollectionScreen({
     }
 
     // Track incident locally for session summary
-    const student = session?.students.find(
-      (s) => s.id === incidentModal?.studentId
-    );
-    const fullIncident = {
+    const student = session?.students.find((s) => s.id === studentId);
+    const fullIncident: IncidentPayload = {
       ...incidentData,
-      studentName: student?.name ?? 'Unknown Student',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      studentId,
+      studentName: incidentData.studentName || student?.name || 'Student',
+      time: incidentData.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: incidentData.date || new Date().toISOString().split('T')[0],
     };
     setLocalIncidents((prev) => [...prev, fullIncident]);
     recordIncidentInStore(sessionId, fullIncident as any);
 
     setIncidentModal(null);
     showToast('Behavior incident logged successfully', 'success');
+  };
+
+  const handleDeleteIncident = (index: number) => {
+    setLocalIncidents((prev) => {
+      const next = [...prev];
+      next.splice(index, 1);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('melue_session_incidents_cache');
+          const all = raw ? JSON.parse(raw) : {};
+          all[sessionId] = next;
+          localStorage.setItem('melue_session_incidents_cache', JSON.stringify(all));
+        } catch {}
+      }
+      return next;
+    });
+    showToast('Incident record removed', 'info');
   };
 
   const handleMasteryCheck = (
@@ -808,11 +781,12 @@ export default function SessionDataCollectionScreen({
       // Continue with local swap if backend is unavailable.
     }
     // Swap the order of the two students locally so the change is visible.
-    setSession((prev) =>
-      prev
-        ? { ...prev, students: [...prev.students].reverse() }
-        : prev
-    );
+    setSession((prev) => {
+      if (!prev) return prev;
+      const reversed = [...prev.students].reverse();
+      setStoredSessionStudents(sessionId, reversed);
+      return { ...prev, students: reversed };
+    });
     showToast('Students swapped successfully', 'success');
   };
 
@@ -847,9 +821,13 @@ export default function SessionDataCollectionScreen({
   };
 
   const handleSessionSummary = () => {
+    if (session?.students && session.students.length > 0) {
+      setStoredSessionStudents(sessionId, session.students);
+    }
     navigation?.navigate?.('SessionSummary', {
       sessionId,
       localIncidents,
+      students: session?.students,
     });
   };
 

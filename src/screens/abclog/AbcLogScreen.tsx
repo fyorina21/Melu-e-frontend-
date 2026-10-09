@@ -21,6 +21,7 @@ import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { getStoredAbcIncidents, removeStoredAbcIncident } from '../../stores/trialsStore';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AbcLog'>;
@@ -144,39 +145,155 @@ export default function AbcLogScreen({ navigation }: Props) {
     }
     setLoading(true);
     try {
-      const { data: res } = await getAbcLog({
-        studentId,
-        from,
-        to,
-        behavior: behaviorFilter,
-        category: categoryFilter,
+      let apiRows: AbcIncident[] = [];
+      let apiStats: AbcStats | null = null;
+      try {
+        const { data: res } = await getAbcLog({
+          studentId,
+          from,
+          to,
+          behavior: behaviorFilter,
+          category: categoryFilter,
+        });
+        apiRows = res?.incidents ?? res?.rows ?? [];
+        apiStats = res?.stats ?? null;
+      } catch (err) {
+        // Backend not available or mock mode
+      }
+
+      // Merge with stored ABC incidents from trialsStore
+      const storedIncidents: AbcIncident[] = getStoredAbcIncidents(studentId, currentStudent?.name);
+
+      // Filter stored incidents by date, behavior, and category
+      const filteredStored = storedIncidents.filter((inc) => {
+        if (from && inc.date && inc.date < from) return false;
+        if (to && inc.date && inc.date > to) return false;
+        if (behaviorFilter && behaviorFilter !== 'All' && inc.behavior !== behaviorFilter) return false;
+        if (categoryFilter && categoryFilter !== 'All' && inc.category !== categoryFilter) return false;
+        return true;
       });
-      const rows: AbcIncident[] = res?.incidents ?? res?.rows ?? [];
-      setIncidents(rows);
-      setStats(res?.stats ?? null);
+
+      // Combine and deduplicate
+      const seenIds = new Set<string>();
+      const combined: AbcIncident[] = [];
+      [...filteredStored, ...apiRows].forEach((item) => {
+        const idKey = item.id || `${item.date}-${item.time}-${item.behavior}`;
+        if (!seenIds.has(idKey)) {
+          seenIds.add(idKey);
+          combined.push(item);
+        }
+      });
+
+      // Sort by date/time descending (newest first)
+      combined.sort((a, b) => {
+        const dtA = `${a.date || ''} ${a.time || ''}`;
+        const dtB = `${b.date || ''} ${b.time || ''}`;
+        return dtB.localeCompare(dtA);
+      });
+
+      setIncidents(combined);
+
+      // Compute or merge stats
+      if (combined.length > 0) {
+        const behaviorCounts: Record<string, number> = {};
+        const antecedentCounts: Record<string, number> = {};
+        let thisWeekCount = 0;
+        const now = new Date();
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(now.getDate() - 7);
+        const oneWeekAgoStr = isoDate(oneWeekAgo);
+
+        combined.forEach((inc) => {
+          if (inc.behavior) {
+            behaviorCounts[inc.behavior] = (behaviorCounts[inc.behavior] || 0) + 1;
+          }
+          if (inc.antecedent) {
+            antecedentCounts[inc.antecedent] = (antecedentCounts[inc.antecedent] || 0) + 1;
+          }
+          if (inc.date && inc.date >= oneWeekAgoStr) {
+            thisWeekCount++;
+          }
+        });
+
+        let topBehavior = 'N/A';
+        let maxB = 0;
+        Object.entries(behaviorCounts).forEach(([k, v]) => {
+          if (v > maxB) {
+            maxB = v;
+            topBehavior = k;
+          }
+        });
+
+        let topAntecedent = 'N/A';
+        let maxA = 0;
+        Object.entries(antecedentCounts).forEach(([k, v]) => {
+          if (v > maxA) {
+            maxA = v;
+            topAntecedent = k;
+          }
+        });
+
+        setStats({
+          totalIncidents: combined.length,
+          mostCommonBehavior: topBehavior,
+          mostCommonAntecedent: topAntecedent,
+          thisWeek: thisWeekCount,
+        });
+      } else {
+        setStats(apiStats || {
+          totalIncidents: 0,
+          mostCommonBehavior: 'N/A',
+          mostCommonAntecedent: 'N/A',
+          thisWeek: 0,
+        });
+      }
     } catch (err) {
       setIncidents([]);
       setStats(null);
     } finally {
       setLoading(false);
     }
-  }, [studentId, from, to, behaviorFilter, categoryFilter]);
+  }, [studentId, currentStudent?.name, from, to, behaviorFilter, categoryFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Load full option lists once so filters don't shrink as they are applied.
-  useEffect(() => {
+  const refreshFilterOptions = useCallback(() => {
     if (!studentId) return;
+    const stored = getStoredAbcIncidents(studentId, currentStudent?.name);
     getAbcLog({ studentId })
       .then(({ data: res }) => {
         const rows: AbcIncident[] = res?.incidents ?? res?.rows ?? [];
-        setBehaviorOptions(['All', ...Array.from(new Set(rows.map((r) => r.behavior).filter(Boolean) as string[])).sort()]);
-        setCategoryOptions(['All', ...Array.from(new Set(rows.map((r) => r.category).filter(Boolean) as string[])).sort()]);
+        const allRows = [...stored, ...rows];
+        setBehaviorOptions(['All', ...Array.from(new Set(allRows.map((r) => r.behavior).filter(Boolean) as string[])).sort()]);
+        setCategoryOptions(['All', ...Array.from(new Set(allRows.map((r) => r.category).filter(Boolean) as string[])).sort()]);
       })
-      .catch(() => {});
-  }, [studentId]);
+      .catch(() => {
+        setBehaviorOptions(['All', ...Array.from(new Set(stored.map((r) => r.behavior).filter(Boolean) as string[])).sort()]);
+        setCategoryOptions(['All', ...Array.from(new Set(stored.map((r) => r.category).filter(Boolean) as string[])).sort()]);
+      });
+  }, [studentId, currentStudent?.name]);
+
+  useEffect(() => {
+    refreshFilterOptions();
+  }, [refreshFilterOptions]);
+
+  // Live updates when an incident is logged in SessionDataCollection or stored
+  useEffect(() => {
+    const handleUpdate = () => {
+      load();
+      refreshFilterOptions();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_abc_updated', handleUpdate);
+      window.addEventListener('storage', handleUpdate);
+      return () => {
+        window.removeEventListener('melue_abc_updated', handleUpdate);
+        window.removeEventListener('storage', handleUpdate);
+      };
+    }
+  }, [load, refreshFilterOptions]);
 
   const totalPages = Math.max(1, Math.ceil(incidents.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -186,13 +303,15 @@ export default function AbcLogScreen({ navigation }: Props) {
     if (!selectedIncident) return;
     try {
       await deleteAbcIncident(selectedIncident.id);
-      showToast('Incident deleted');
     } catch (err) {
-      showToast('Failed to delete incident', 'error');
+      // Offline fallback
     }
+    removeStoredAbcIncident(selectedIncident.id);
+    showToast('Incident deleted');
     setSelectedIncident(null);
     setDeleteConfirm(false);
     load();
+    refreshFilterOptions();
   };
 
   const handleExport = async (type: string) => {

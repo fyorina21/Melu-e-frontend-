@@ -468,6 +468,7 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
 
   const handleDeleteField = (id: string) => {
     const fieldObj = fields.find((f) => f.id === id);
+    let updatedHistory = history;
     if (fieldObj) {
       const today = new Date().toISOString().split('T')[0];
       const newHistoryEntry: HistoryEntry = {
@@ -477,11 +478,21 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
         oldValue: fieldObj.type,
         newValue: 'Deleted',
       };
-      setHistory((prev) => [newHistoryEntry, ...prev]);
+      updatedHistory = [newHistoryEntry, ...history];
+      setHistory(updatedHistory);
     }
-    setFields((prev) => prev.filter((f) => f.id !== id));
+    const updatedFields = fields.filter((f) => f.id !== id);
+    setFields(updatedFields);
     setIsDefault(false);
-    showToast('Field deleted — click Save to persist', 'info');
+    saveFormConfig(selectedForm, {
+      fields: updatedFields,
+      customSections,
+      deletedSections,
+      history: updatedHistory,
+      isDefault: false,
+    })
+      .then(() => showToast('Field deleted and saved', 'success'))
+      .catch(() => showToast('Field deleted — click Save to persist', 'info'));
   };
 
   const inferSection = (label: string): string => {

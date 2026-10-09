@@ -48,14 +48,62 @@ const getCurrentTime = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = [
-  { id: 'b_loc', type: 'Text', label: 'Location', required: true, visible: true, placeholder: 'Enter location...' },
-  { id: 'b_beh', type: 'TextArea', label: 'Behavior', required: true, visible: true, placeholder: 'Describe the behavior observed...' },
-  { id: 'b_freq', type: 'Text', label: 'Frequency', required: true, visible: true, placeholder: 'Enter frequency...' },
-  { id: 'b_int', type: 'Text', label: 'Intensity', required: true, visible: true, placeholder: 'Enter intensity...' },
-  { id: 'b_cat', type: 'Text', label: 'Category', required: true, visible: true, placeholder: 'Enter category...' },
-  { id: 'b_ant', type: 'Text', label: 'Antecedent', required: true, visible: true, placeholder: 'Enter antecedent...' },
-  { id: 'b_con', type: 'Text', label: 'Consequence', required: true, visible: true, placeholder: 'Enter consequence...' },
-  { id: 'b_notes', type: 'TextArea', label: 'Note', required: false, visible: true, placeholder: 'Enter any additional notes or relevant information...' },
+  {
+    id: 'b_loc',
+    type: 'Dropdown',
+    label: 'Location',
+    required: true,
+    visible: true,
+    options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
+  },
+  {
+    id: 'b_beh',
+    type: 'Dropdown',
+    label: 'Behavior Type',
+    required: true,
+    visible: true,
+    options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'],
+  },
+  {
+    id: 'b_int',
+    type: 'Dropdown',
+    label: 'Intensity',
+    required: true,
+    visible: true,
+    options: ['Low', 'Medium', 'High'],
+  },
+  {
+    id: 'b_dur',
+    type: 'Number',
+    label: 'Duration (mins)',
+    required: true,
+    visible: true,
+    placeholder: 'Enter duration...',
+  },
+  {
+    id: 'b_ant',
+    type: 'Dropdown',
+    label: 'Antecedent / Trigger',
+    required: false,
+    visible: true,
+    options: ['Demand / Task', 'Transition', 'Denied Access', 'Attention Diverted', 'Sensory Overload', 'Loud Noise', 'Peer Interaction'],
+  },
+  {
+    id: 'b_con',
+    type: 'Dropdown',
+    label: 'Consequence / Action Taken',
+    required: false,
+    visible: true,
+    options: ['Redirection', 'Verbal Prompt', 'Break Given', 'Sensory Break', 'Physical Prompt', 'Planned Ignoring'],
+  },
+  {
+    id: 'b_notes',
+    type: 'TextArea',
+    label: 'Notes & Observations',
+    required: false,
+    visible: true,
+    placeholder: 'Enter any additional notes or relevant information...',
+  },
 ];
 
 export default function BehaviorIncidentModal({
@@ -108,6 +156,24 @@ export default function BehaviorIncidentModal({
       setFormValues({});
       setShowDiscardConfirmation(false);
     }
+
+    const handleSync = () => {
+      if (visible) loadConfig();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleSync);
+      window.addEventListener('melue_form_config_changed', handleSync as EventListener);
+      window.addEventListener('focus', handleSync);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleSync);
+        window.removeEventListener('melue_form_config_changed', handleSync as EventListener);
+        window.removeEventListener('focus', handleSync);
+      }
+    };
   }, [visible, recordedBy, authSession?.userName, loadConfig]);
 
   const isFormDirty =
@@ -149,12 +215,12 @@ export default function BehaviorIncidentModal({
 
     const location = findFieldValue(['Location', 'location', 'b_loc', 'b1']);
     const category = findFieldValue(['Category', 'category', 'b_cat', 'b2']);
-    const behavior = findFieldValue(['Behavior', 'Observed Behavior', 'behavior', 'b_beh', 'b3']);
-    const frequency = findFieldValue(['Frequency', 'frequency', 'b_freq', 'b4']);
+    const behavior = findFieldValue(['Behavior Type', 'Behavior', 'Observed Behavior', 'behavior', 'b_beh', 'b3']);
+    const frequency = findFieldValue(['Duration (mins)', 'Duration', 'Frequency', 'frequency', 'b_freq', 'b_dur', 'b4']);
     const intensity = findFieldValue(['Intensity', 'intensity', 'b_int', 'b5']);
-    const antecedent = findFieldValue(['Antecedent', 'antecedent', 'b_ant', 'b6', 'Trigger', 'Trigger / Antecedent']);
-    const consequence = findFieldValue(['Consequence', 'consequence', 'b_con', 'b7', 'Action Taken']);
-    const note = findFieldValue(['Note', 'note', 'Additional Notes', 'Incident Notes', 'Notes', 'notes', 'additionalNotes', 'b_notes', 'b8']);
+    const antecedent = findFieldValue(['Antecedent / Trigger', 'Antecedent', 'antecedent', 'b_ant', 'b6', 'Trigger', 'Trigger / Antecedent']);
+    const consequence = findFieldValue(['Consequence / Action Taken', 'Consequence', 'consequence', 'b_con', 'b7', 'Action Taken']);
+    const note = findFieldValue(['Notes & Observations', 'Note', 'note', 'Additional Notes', 'Incident Notes', 'Notes', 'notes', 'additionalNotes', 'b_notes', 'b8']);
 
     onSave({
       student_id: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),

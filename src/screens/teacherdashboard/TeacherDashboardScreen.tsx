@@ -11,6 +11,8 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
+import { getSessionRoster } from '../../api/sessionApi';
+import { setStoredSessionStudents } from '../../stores/trialsStore';
 import type { SessionStackParamList, FeatherIconName } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'TeacherDashboard'>;
@@ -124,24 +126,52 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   const [loadError, setLoadError] = useState(false);
   const [now, setNow] = useState(new Date());
 
-const load = useCallback(async () => {
-     try {
-       const { data: res } = await getTeacherDashboard();
-       setData(res);
-       setLoadError(false);
-     } catch (err) {
-       setLoadError(true);
-     }
-   }, []);
+  const load = useCallback(async () => {
+    try {
+      const { data: res } = await getTeacherDashboard();
+      if (res) {
+        if (!res.todaySchedule?.students || res.todaySchedule.students.length === 0) {
+          try {
+            const { data: rosterRes } = await getSessionRoster('active');
+            if (Array.isArray(rosterRes?.students) && rosterRes.students.length > 0) {
+              res.todaySchedule = {
+                ...(res.todaySchedule || {}),
+                students: rosterRes.students.map((s: any) => ({
+                  id: String(s.id),
+                  name: String(s.fullName || s.name || 'Student').trim(),
+                  initial: String(s.fullName || s.name || 'ST').slice(0, 2).toUpperCase(),
+                })),
+              };
+            }
+          } catch {}
+        }
+        setData(res);
+        if (res.todaySchedule?.students && res.todaySchedule.students.length > 0) {
+          setStoredSessionStudents('active', res.todaySchedule.students);
+        }
+      }
+      setLoadError(false);
+    } catch (err) {
+      setLoadError(true);
+    }
+  }, []);
 
-   useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-   useEffect(() => {
-     const timer = setInterval(() => setNow(new Date()), 1000);
-     return () => clearInterval(timer);
-   }, []);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-   const handleStartSession = () => navigation?.navigate?.('SessionDataCollection');
+  const handleStartSession = () => {
+    if (data?.todaySchedule?.students && data.todaySchedule.students.length > 0) {
+      setStoredSessionStudents('active', data.todaySchedule.students);
+    }
+    navigation?.navigate?.('SessionDataCollection', {
+      sessionId: 'active',
+      students: data?.todaySchedule?.students,
+    });
+  };
 
    if (loadError) return <ScreenError onRetry={load} />;
    if (!data) return <ScreenLoader />;
