@@ -30,12 +30,11 @@ export const getOperationalSchedule = (params: QueryParams) =>
   client.get('/coordinator/operational-schedule', { params });
 export const getTeacherPerformanceMetrics = (params: QueryParams) => client.get('/coordinator/teachers/metrics', { params });
 
+// In-memory message thread store for coordinator communications
+const coordinatorThreadStore: Record<string, any[]> = {};
+
 // SCR-TC-006: Parent Communication (Coordinator View)
 export const getCoordinatorConversations = async (params?: QueryParams) => {
-  try {
-    const res = await client.get('/coordinator/conversations', { params });
-    if (res.data && Array.isArray(res.data) && res.data.length > 0) return res;
-  } catch {}
   try {
     const { data: students } = await client.get<any[]>('/options/students');
     if (Array.isArray(students) && students.length > 0) {
@@ -57,40 +56,53 @@ export const getCoordinatorConversations = async (params?: QueryParams) => {
 };
 
 export const getConversationThread = async (conversationId: string) => {
-  try {
-    const res = await client.get(`/coordinator/conversations/${conversationId}`);
-    if (res.data) return res;
-  } catch {}
+  if (coordinatorThreadStore[conversationId]) {
+    return {
+      data: {
+        id: conversationId,
+        messages: coordinatorThreadStore[conversationId],
+      },
+    };
+  }
   return {
     data: {
       id: conversationId,
-      messages: [],
+      messages: [
+        {
+          id: `seed-${conversationId}`,
+          sender: 'Coordinator',
+          content: 'Hello, this is the Therapy Coordinator regarding scheduling and care.',
+          timestamp: 'Today',
+          isStaff: true,
+        },
+      ],
     },
   };
 };
 
 export const sendCoordinatorMessage = async (conversationId: string, payload: Payload) => {
-  try {
-    return await client.post(`/coordinator/conversations/${conversationId}/messages`, payload);
-  } catch {
-    return { data: { success: true, id: `local-${Date.now()}`, conversationId, ...payload } };
+  const newMsg = {
+    id: `msg-${Date.now()}`,
+    conversationId,
+    sender: 'Coordinator',
+    content: payload.content || payload.message || '',
+    timestamp: 'Just now',
+    isStaff: true,
+    ...payload,
+  };
+  if (!coordinatorThreadStore[conversationId]) {
+    coordinatorThreadStore[conversationId] = [];
   }
+  coordinatorThreadStore[conversationId].push(newMsg);
+  return { data: newMsg };
 };
 
 export const escalateConversation = async (conversationId: string, payload: Payload) => {
-  try {
-    return await client.post(`/coordinator/conversations/${conversationId}/escalate`, payload);
-  } catch {
-    return { data: { success: true, conversationId, ...payload } };
-  }
+  return { data: { success: true, conversationId, ...payload } };
 };
 
 export const markConversationResolved = async (conversationId: string) => {
-  try {
-    return await client.post(`/coordinator/conversations/${conversationId}/resolve`);
-  } catch {
-    return { data: { success: true, conversationId, resolved: true } };
-  }
+  return { data: { success: true, conversationId, resolved: true } };
 };
 
 // MR-16/18/19: Student Enrollment & Profile

@@ -33,10 +33,16 @@ import {
   recordBehaviorIncident,
   swapStudents,
 } from '../../api/sessionApi';
+import { http as client } from '../../api/http/client';
+import {
+  getStoredIupDraft,
+  getAllStoredIupDrafts,
+} from '../../api/programDirectorApi';
 import type {
   SessionStackParamList,
   SessionRoster,
   Payload,
+  Trial,
 } from '../../types';
 import {
   startSessionTimer,
@@ -45,6 +51,12 @@ import {
   remainingSeconds,
   isTimerRunning,
 } from '../../stores/sessionTimerStore';
+import {
+  getStoredTrials,
+  recordTrialInStore,
+  undoTrialInStore,
+  recordIncidentInStore,
+} from '../../stores/trialsStore';
 
 type Props = NativeStackScreenProps<
   SessionStackParamList,
@@ -56,6 +68,133 @@ interface IncidentModalState {
   studentGoalId?: string;
   studentName?: string;
   goalName?: string;
+}
+
+function getStudentAssignedGoals(studentId: string, rawGoals: any[] = []): any[] {
+  const draft = getStoredIupDraft(studentId);
+  const extractedGoals: any[] = [];
+
+  if (draft) {
+    if (draft.slots && typeof draft.slots === 'object') {
+      const s1 = Array.isArray((draft.slots as any).station1) ? (draft.slots as any).station1 : [];
+      const s2 = Array.isArray((draft.slots as any).station2) ? (draft.slots as any).station2 : [];
+      [...s1, ...s2].filter(Boolean).forEach((g: any, idx: number) => {
+        extractedGoals.push({
+          id: String(g.id || `${studentId}-draft-g-${idx}`),
+          name: String(g.name || g.title || g.description || 'Assigned Goal'),
+          category: g.domain || g.category || 'Adaptive',
+          goalType: g.goalType || g.goal_type || 'standard',
+          totalTrials: 0,
+          independencePercent: 0,
+          trialLog: [],
+        });
+      });
+    }
+
+    if (extractedGoals.length === 0 && Array.isArray(draft.goals) && draft.goals.length > 0) {
+      draft.goals.forEach((g: any, idx: number) => {
+        if (typeof g === 'object' && g !== null) {
+          extractedGoals.push({
+            id: String(g.id || `${studentId}-draft-g-${idx}`),
+            name: String(g.name || g.title || g.description || 'Assigned Goal'),
+            category: g.domain || g.category || 'Adaptive',
+            goalType: g.goalType || g.goal_type || 'standard',
+            totalTrials: 0,
+            independencePercent: 0,
+            trialLog: [],
+          });
+        } else if (typeof g === 'string' && g.trim()) {
+          extractedGoals.push({
+            id: g.trim(),
+            name: 'Assigned Goal',
+            category: 'Adaptive',
+            goalType: 'standard',
+            totalTrials: 0,
+            independencePercent: 0,
+            trialLog: [],
+          });
+        }
+      });
+    }
+  }
+
+  if (extractedGoals.length > 0) {
+    return extractedGoals;
+  }
+
+  // Filter out default synthetic backend fallback IDs (e.g., studentId-g1, studentId-g2)
+  const realBackendGoals = (Array.isArray(rawGoals) ? rawGoals : []).filter((g: any) => {
+    const gid = String(g.id || '');
+    const isFallbackId =
+      gid === `${studentId}-g1` ||
+      gid === `${studentId}-g2` ||
+      gid.endsWith('-g1') ||
+      gid.endsWith('-g2');
+    return !isFallbackId;
+  });
+
+  if (realBackendGoals.length > 0) {
+    return realBackendGoals;
+  }
+
+  return [];
+}
+
+function checkStudentEligibility(
+  rawStatus: string,
+  hasAssignedGoal: boolean
+): boolean {
+  const s = rawStatus.toLowerCase().trim();
+
+  // Exclude students whose status is in assessment, draft, pending review, registered, discharged, etc.
+  if (
+    s === 'in_assessment' ||
+    s === 'in assessment' ||
+    s === 'assessment' ||
+    s === 'draft' ||
+    s === 'registered' ||
+    s === 'pending_review' ||
+    s === 'pending review' ||
+    s === 'withdrawn' ||
+    s === 'discharged' ||
+    s === 'archived'
+  ) {
+    return false;
+  }
+
+  const isInSession =
+    s === 'in session' ||
+    s === 'in_session' ||
+    s === 'active' ||
+    s === 'active therapy' ||
+    s === 'active_therapy' ||
+    s === 'session_assigned' ||
+    s === 'session assigned' ||
+    s === 'in_progress' ||
+    s === 'in progress';
+
+  const isReadyForIup =
+    s === 'ready for iup' ||
+    s === 'ready_for_iup' ||
+    s === 'assessment_complete' ||
+    s === 'assessment complete' ||
+    s === 'assessment completed';
+
+  // "only be the ones that are in ready for iup status and who are assigned goal or in session status"
+  if (isInSession) {
+    return true;
+  }
+
+  if (isReadyForIup && hasAssignedGoal) {
+    return true;
+  }
+
+  // If status is empty/unknown but student specifically has an assigned goal from draft and is not excluded
+  if (!s && hasAssignedGoal) {
+    return true;
+  }
+
+  return false;
 }
 
 export default function SessionDataCollectionScreen({
@@ -87,45 +226,160 @@ export default function SessionDataCollectionScreen({
 
       const { data } = await getSessionRoster(sessionId);
 
-      const rawStudents = (
-        Array.isArray(data?.students)
-          ? data.students
-          : Array.isArray(data)
-          ? data
-          : []
-      ).filter((s: any) => {
-        const isAssessment = s.status === 'in_assessment' || s.status === 'draft' || s.status === 'pending_review' || s.status === 'registered';
-        return !isAssessment;
+      // Fetch student options and pipeline in parallel to ensure accurate status info
+      const [optionsRes, pipelineRes] = await Promise.all([
+        client.get<any[]>('/options/students').catch(() => null),
+        client.get<any>('/program_director/assessment_pipeline').catch(() => null),
+      ]);
+
+      const studentMetaMap = new Map<
+        string,
+        { id: string; name: string; status: string; program?: string }
+      >();
+
+      if (Array.isArray(optionsRes?.data)) {
+        optionsRes.data.forEach((s: any) => {
+          const id = String(s.id || s.student_id || s.studentId);
+          if (id) {
+            studentMetaMap.set(id, {
+              id,
+              name: String(s.name || '').trim(),
+              status: String(s.status || '').toLowerCase().trim(),
+              program: s.program,
+            });
+          }
+        });
+      }
+
+      const pipeList = Array.isArray(pipelineRes?.data?.pipeline)
+        ? pipelineRes.data.pipeline
+        : Array.isArray(pipelineRes?.data?.students)
+        ? pipelineRes.data.students
+        : Array.isArray(pipelineRes?.data)
+        ? pipelineRes.data
+        : [];
+
+      pipeList.forEach((p: any) => {
+        const id = String(p.student_id || p.id);
+        if (!id) return;
+        const existing = studentMetaMap.get(id);
+        const st = String(p.status || p.stage || '').toLowerCase().trim();
+        if (existing) {
+          if (st) existing.status = st;
+        } else {
+          studentMetaMap.set(id, {
+            id,
+            name: String(p.student_name || p.name || 'Student').trim(),
+            status: st,
+          });
+        }
       });
+
+      const rosterRaw = Array.isArray(data?.students)
+        ? data.students
+        : Array.isArray(data)
+        ? data
+        : [];
+
+      const eligibleStudents: any[] = [];
+      const seenStudentIds = new Set<string>();
+
+      // 1. Process students from backend roster
+      rosterRaw.forEach((s: any) => {
+        const sid = String(s.id);
+        const meta = studentMetaMap.get(sid);
+        const rawStatus = meta?.status || String(s.status || '').toLowerCase().trim();
+        const assignedGoals = getStudentAssignedGoals(sid, s.goals);
+        const hasAssigned = assignedGoals.length > 0;
+
+        if (checkStudentEligibility(rawStatus, hasAssigned)) {
+          seenStudentIds.add(sid);
+          const sName = String(s.name || s.fullName || meta?.name || 'Student').trim();
+          const goalsToUse =
+            assignedGoals.length > 0
+              ? assignedGoals
+              : Array.isArray(s.goals)
+              ? s.goals
+              : [];
+
+          eligibleStudents.push({
+            id: sid,
+            name: sName,
+            initial: String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase()),
+            program: String(s.program || meta?.program || 'Regular'),
+            goals: goalsToUse,
+            trials: Array.isArray(s.trials) ? s.trials : [],
+          });
+        }
+      });
+
+      // 2. If roster didn't yield enough eligible students (e.g. backend roster returned dummy in-assessment students),
+      // include eligible students from drafts/candidates up to session limit (max 2)
+      if (eligibleStudents.length < 2) {
+        const allDrafts = getAllStoredIupDrafts();
+        const draftStudentIds = Object.keys(allDrafts);
+        const candidateIds = Array.from(
+          new Set([...draftStudentIds, ...Array.from(studentMetaMap.keys())])
+        );
+
+        for (const cid of candidateIds) {
+          if (eligibleStudents.length >= 2) break;
+          if (seenStudentIds.has(cid)) continue;
+
+          const meta = studentMetaMap.get(cid);
+          const draft = getStoredIupDraft(cid);
+          const draftStatus = draft?.status
+            ? String(draft.status).toLowerCase().trim()
+            : '';
+          const rawStatus = meta?.status || draftStatus || '';
+          const assignedGoals = getStudentAssignedGoals(cid, []);
+          const hasAssigned = assignedGoals.length > 0;
+
+          if (checkStudentEligibility(rawStatus, hasAssigned)) {
+            seenStudentIds.add(cid);
+            const studentName =
+              meta?.name ||
+              (draft?.studentName
+                ? String(draft.studentName)
+                : `Student ${cid.slice(0, 4)}`);
+            eligibleStudents.push({
+              id: cid,
+              name: studentName,
+              initial: (studentName.slice(0, 2) || 'ST').toUpperCase(),
+              program: meta?.program || 'Regular',
+              goals: assignedGoals,
+              trials: [],
+            });
+          }
+        }
+      }
 
       const parsedRoster: SessionRoster = {
         teacherName: data?.teacherName || 'Teacher',
         stationName: data?.stationName || 'Station 1',
         roomName: data?.roomName || 'Room 101',
         blockDurationMinutes: Number(data?.blockDurationMinutes || 90),
-        students: rawStudents.map((s: any, idx: number) => {
-          const sName = String(s.name || s.fullName || 'Student').trim();
-          const sInitial = String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
-          return {
-            id: String(s.id),
-            name: sName,
-            initial: sInitial,
-            program: String(s.program || 'Regular'),
-            active: typeof s.active === 'boolean' ? s.active : idx === 0,
-            goals: Array.isArray(s.goals)
-              ? s.goals.map((g: any) => ({
-                  id: String(g.id),
-                  name: String(g.name || 'Goal'),
-                  category: g.category || 'Adaptive',
-                  goalType: g.goalType || 'standard',
-                  totalTrials: Number(g.totalTrials || 0),
-                  independencePercent: Number(g.independencePercent || 0),
-                  trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
-                }))
-              : [],
-            trials: Array.isArray(s.trials) ? s.trials : [],
-          };
-        }),
+        students: eligibleStudents.map((s: any, idx: number) => ({
+          id: String(s.id),
+          name: String(s.name).trim(),
+          initial: String(
+            s.initial || (String(s.name).slice(0, 2) || 'ST').toUpperCase()
+          ),
+          program: String(s.program || 'Regular'),
+          active: idx === 0,
+          goals: Array.isArray(s.goals)
+            ? s.goals.map((g: any) => ({
+                id: String(g.id),
+                name: String(g.name || 'Goal'),
+                category: g.category || g.domain || 'Adaptive',
+                goalType: g.goalType || g.goal_type || 'standard',
+                totalTrials: Number(g.totalTrials || 0),
+                independencePercent: Number(g.independencePercent || 0),
+                trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
+              }))
+            : [],
+          trials: Array.isArray(s.trials) ? s.trials : [],
+        })),
       };
 
       if (parsedRoster.students.length > 0 && !parsedRoster.students.some((s) => s.active)) {
@@ -133,6 +387,50 @@ export default function SessionDataCollectionScreen({
       }
 
       setSession((prev) => {
+        const mergedStudents = parsedRoster.students.map((s) => {
+          const prevStudent = prev?.students.find((ps) => ps.id === s.id);
+          const storedTrials = getStoredTrials(sessionId, s.id);
+          const trialsToUse =
+            prevStudent?.trials && prevStudent.trials.length > 0
+              ? prevStudent.trials
+              : storedTrials;
+
+          const mergedGoals = s.goals.map((g) => {
+            const prevGoal = prevStudent?.goals.find((pg) => pg.id === g.id);
+            const goalTrials = trialsToUse.filter(
+              (t) => !t.studentGoalId || t.studentGoalId === g.id
+            );
+            const trialLog =
+              prevGoal?.trialLog && prevGoal.trialLog.length > 0
+                ? prevGoal.trialLog
+                : goalTrials;
+            const totalTrials =
+              prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
+            const indCount = trialLog.filter(
+              (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+            ).length;
+            const independencePercent =
+              totalTrials > 0
+                ? Math.round((indCount / totalTrials) * 100)
+                : (prevGoal?.independencePercent || g.independencePercent || 0);
+
+            return {
+              ...g,
+              totalTrials,
+              independencePercent,
+              trialLog,
+            };
+          });
+
+          return {
+            ...s,
+            trials: trialsToUse,
+            goals: mergedGoals,
+          };
+        });
+
+        parsedRoster.students = mergedStudents;
+
         if (prev && parsedRoster.students.length > 0) {
           const activeStudentId = prev.students.find((s) => s.active)?.id;
           if (activeStudentId && parsedRoster.students.some((s) => s.id === activeStudentId)) {
@@ -187,30 +485,226 @@ export default function SessionDataCollectionScreen({
     setIsRunning(isTimerRunning());
   };
 
-  const isLogging = useRef(false);
-
   const handleSelectPromptLevel = async (
     studentId: string,
     goalId: string | undefined,
     level: string,
     stepId?: string
   ) => {
-    if (isLogging.current) return;
-    isLogging.current = true;
+    // Generate unique local ID and timestamp
+    const trialId = `trial-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    // Determine target goal ID:
+    const targetStudent = session?.students.find((s) => s.id === studentId);
+    const activeGoal = goalId
+      ? targetStudent?.goals.find((g) => g.id === goalId)
+      : targetStudent?.goals[0];
+    const resolvedGoalId = activeGoal?.id || goalId || 'goal-1';
+
+    const newTrial: Trial = {
+      id: trialId,
+      promptLevel: level,
+      timestamp: timeStr,
+      sessionId,
+      studentGoalId: resolvedGoalId,
+    };
+
+    // 1. Optimistic UI update
+    setSession((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        students: prev.students.map((stu) => {
+          if (stu.id !== studentId) return stu;
+
+          const updatedTrials = [...(stu.trials || []), newTrial];
+          const isInd = level === 'INDEPENDENT' || level === '+';
+
+          const updatedGoals = (stu.goals || []).map((g) => {
+            const isMatch = g.id === resolvedGoalId;
+            if (!isMatch) return g;
+
+            const updatedTrialLog = [...(g.trialLog || []), newTrial];
+            const newTotalTrials = (g.totalTrials || 0) + 1;
+            const currentIndCount = updatedTrialLog.filter(
+              (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+            ).length;
+            const newIndependencePercent = Math.round((currentIndCount / newTotalTrials) * 100);
+
+            let updatedSteps = g.steps;
+            if (stepId && Array.isArray(g.steps)) {
+              updatedSteps = g.steps.map((st) => {
+                if (st.id !== stepId) return st;
+                const stepTotal = (st.totalTrials || 0) + 1;
+                const stepSuccess = (st.successCount || 0) + (isInd ? 1 : 0);
+                return {
+                  ...st,
+                  totalTrials: stepTotal,
+                  successCount: stepSuccess,
+                  independencePercent: Math.round((stepSuccess / stepTotal) * 100),
+                };
+              });
+            }
+
+            return {
+              ...g,
+              totalTrials: newTotalTrials,
+              independencePercent: newIndependencePercent,
+              trialLog: updatedTrialLog,
+              steps: updatedSteps,
+            };
+          });
+
+          return {
+            ...stu,
+            trials: updatedTrials,
+            goals: updatedGoals,
+          };
+        }),
+      };
+    });
+
+    // 2. Persist in local store
+    recordTrialInStore(sessionId, studentId, resolvedGoalId, newTrial);
+
+    // 3. User feedback
+    showToast('Trial recorded successfully', 'success');
+
+    // 4. Background sync with backend
     try {
-      await logTrial(sessionId, studentId, goalId ?? '', {
+      const res = await logTrial(sessionId, studentId, resolvedGoalId, {
         promptLevel: level,
         stepId,
       });
-      showToast('Trial logged successfully', 'success');
-      await loadRoster(true);
+      const serverTrialId = (res as any)?.data?.trial?.id;
+      if (serverTrialId) {
+        setSession((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            students: prev.students.map((stu) => {
+              if (stu.id !== studentId) return stu;
+              return {
+                ...stu,
+                trials: stu.trials?.map((t) => (t.id === trialId ? { ...t, id: String(serverTrialId) } : t)),
+                goals: stu.goals.map((g) => ({
+                  ...g,
+                  trialLog: g.trialLog?.map((t) => (t.id === trialId ? { ...t, id: String(serverTrialId) } : t)),
+                })),
+              };
+            }),
+          };
+        });
+      }
     } catch (err) {
-      Alert.alert(
-        'Sync failed',
-        'Trial saved locally, will retry when online.'
-      );
-    } finally {
-      isLogging.current = false;
+      console.warn('Backend logTrial sync skipped/failed:', err);
+    }
+  };
+
+  const handleUndoTrial = async (
+    studentId: string,
+    goalId: string | undefined
+  ) => {
+    const student = session?.students.find((s) => s.id === studentId);
+    if (!student) return;
+
+    const activeGoal = goalId
+      ? student.goals.find((g) => g.id === goalId)
+      : student.goals[0];
+    const resolvedGoalId = activeGoal?.id || goalId;
+
+    const goalTrials = Array.isArray(activeGoal?.trialLog) && activeGoal.trialLog.length > 0
+      ? activeGoal.trialLog
+      : (student.trials || []).filter((t) => !resolvedGoalId || !t.studentGoalId || t.studentGoalId === resolvedGoalId);
+
+    if (!goalTrials || goalTrials.length === 0) {
+      showToast('No trials to undo', 'info');
+      return;
+    }
+
+    const lastTrial = goalTrials[goalTrials.length - 1];
+    const targetTrialId = lastTrial?.id;
+
+    // 1. Optimistic UI update
+    setSession((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        students: prev.students.map((stu) => {
+          if (stu.id !== studentId) return stu;
+
+          const updatedTrials = [...(stu.trials || [])];
+          let removedFromStu = false;
+          for (let i = updatedTrials.length - 1; i >= 0; i--) {
+            const t = updatedTrials[i];
+            const matchesId = targetTrialId ? t.id === targetTrialId : true;
+            const matchesGoal = !resolvedGoalId || !t.studentGoalId || t.studentGoalId === resolvedGoalId;
+            if (matchesId && matchesGoal) {
+              updatedTrials.splice(i, 1);
+              removedFromStu = true;
+              break;
+            }
+          }
+          if (!removedFromStu && updatedTrials.length > 0) {
+            updatedTrials.pop();
+          }
+
+          const updatedGoals = (stu.goals || []).map((g) => {
+            const isMatch = resolvedGoalId ? g.id === resolvedGoalId : true;
+            if (!isMatch) return g;
+
+            const updatedTrialLog = [...(g.trialLog || [])];
+            let removedFromLog = false;
+            for (let i = updatedTrialLog.length - 1; i >= 0; i--) {
+              const t = updatedTrialLog[i];
+              if (!targetTrialId || t.id === targetTrialId) {
+                updatedTrialLog.splice(i, 1);
+                removedFromLog = true;
+                break;
+              }
+            }
+            if (!removedFromLog && updatedTrialLog.length > 0) {
+              updatedTrialLog.pop();
+            }
+
+            const newTotalTrials = Math.max(0, (g.totalTrials || 0) - 1);
+            const remainingIndCount = updatedTrialLog.filter(
+              (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+            ).length;
+            const newIndependencePercent =
+              newTotalTrials > 0
+                ? Math.round((remainingIndCount / newTotalTrials) * 100)
+                : 0;
+
+            return {
+              ...g,
+              totalTrials: newTotalTrials,
+              independencePercent: newIndependencePercent,
+              trialLog: updatedTrialLog,
+            };
+          });
+
+          return {
+            ...stu,
+            trials: updatedTrials,
+            goals: updatedGoals,
+          };
+        }),
+      };
+    });
+
+    // 2. Persist in local store
+    undoTrialInStore(sessionId, studentId, resolvedGoalId);
+
+    // 3. User feedback
+    showToast('Trial undone successfully', 'success');
+
+    // 4. Background backend sync
+    try {
+      await undoLastTrial(sessionId, studentId, resolvedGoalId || '');
+    } catch (err) {
+      console.warn('Backend undoLastTrial failed, preserved locally:', err);
     }
   };
 
@@ -291,6 +785,7 @@ export default function SessionDataCollectionScreen({
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setLocalIncidents((prev) => [...prev, fullIncident]);
+    recordIncidentInStore(sessionId, fullIncident as any);
 
     setIncidentModal(null);
     showToast('Behavior incident logged successfully', 'success');
@@ -483,15 +978,7 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
                 onViewProfile={
                   handleViewProfile
                 }
-                onUndo={async (goalId) => {
-                  if (!goalId) return;
-                  try {
-                    await undoLastTrial(sessionId, student.id, goalId);
-                    await loadRoster(true);
-                  } catch (err) {
-                    console.error('Failed to undo trial', err);
-                  }
-                }}
+                onUndo={(goalId) => handleUndoTrial(student.id, goalId)}
               />
             </TouchableOpacity>
           ))}

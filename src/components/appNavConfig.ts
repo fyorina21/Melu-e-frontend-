@@ -17,8 +17,8 @@ import type {
 } from '../types';
 
 export const ROLE_TABS: Record<Role, string[]> = {
-  teacher: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
-  therapist: ['Dashboard', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
+  teacher: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
+  therapist: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
   coordinator: [
     'Dashboard',
     'Live Sessions',

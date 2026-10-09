@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
-import { setAccessToken, clearAuthTokens } from '../api/token';
+import { setAccessToken, clearAuthTokens, setActiveRole, setUserRoles } from '../api/token';
 import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
 
@@ -91,6 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const user = await authApi.me();
             const roles = resolveRoles(user.roles, user.role);
+            setActiveRole(roles[0]);
+            setUserRoles(roles);
             setSession({
               role: roles[0],
               roles,
@@ -104,6 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               try {
                 const user = await authApi.me();
                 const roles = resolveRoles(user.roles, user.role);
+                setActiveRole(roles[0]);
+                setUserRoles(roles);
                 setSession({
                   role: roles[0],
                   roles,
@@ -148,6 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const user = await authApi.me();
       const roles = resolveRoles(user.roles, result.role, user.role);
+      setActiveRole(roles[0]);
+      setUserRoles(roles);
       setSession({
         role: roles[0],
         roles,
@@ -177,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const roles = prev.roles?.length ? prev.roles : [role];
       if (!roles.includes(role)) return prev;
       if (prev.role === role) return prev;
+      setActiveRole(role);
       return { ...prev, role };
     });
   }, []);
@@ -187,6 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Logout API failed:', err);
     } finally {
+      setActiveRole(null);
+      setUserRoles([]);
       setSession(null);
       if (typeof window !== 'undefined' && window.history?.replaceState) {
         window.history.replaceState(null, '', '/');

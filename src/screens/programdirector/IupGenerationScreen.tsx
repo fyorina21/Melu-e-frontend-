@@ -33,6 +33,7 @@ import {
   assignGoalToSlot,
   removeGoalFromSlot,
   getStudentCaseload,
+  getStoredIupDraft,
 } from '../../api/programDirectorApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
@@ -207,6 +208,32 @@ export default function IupGenerationScreen({
     setCustomIupValues({});
     setLastSavedTimestamp(null);
 
+    // Restore cached draft if available
+    const cachedDraft = getStoredIupDraft(selectedStudentId);
+    if (cachedDraft) {
+      if (cachedDraft.slots) {
+        setSlots(cachedDraft.slots as Slots);
+      }
+      if (cachedDraft.reinforcementSchedule) {
+        setReinforcementSchedule(String(cachedDraft.reinforcementSchedule));
+      }
+      if (cachedDraft.crisisProtocol) {
+        setCrisisProtocol(String(cachedDraft.crisisProtocol));
+      }
+      if (cachedDraft.accommodations) {
+        setAccommodations(String(cachedDraft.accommodations));
+      }
+      if (cachedDraft.reviewCycle) {
+        setReviewCycle(String(cachedDraft.reviewCycle));
+      }
+      if (cachedDraft.customFields) {
+        setCustomIupValues(cachedDraft.customFields as Record<string, any>);
+      }
+      if (cachedDraft.saved_at) {
+        setLastSavedTimestamp(new Date(cachedDraft.saved_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+    }
+
     // Fetch context
     getIupContext(selectedStudentId)
       .then(({ data }) => setContext(data))
@@ -270,6 +297,7 @@ export default function IupGenerationScreen({
         
         const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
         await saveIupDraft(targetIupId, {
+          studentId: selectedStudentId,
           slots: updatedSlots,
           goals: [...updatedSlots.station1, ...updatedSlots.station2].filter(Boolean).map(g => g?.id).filter(Boolean),
           reinforcementSchedule,
@@ -323,6 +351,7 @@ export default function IupGenerationScreen({
     try {
       const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
       await saveIupDraft(targetIupId, {
+        studentId: selectedStudentId,
         slots,
         goals: [...slots.station1, ...slots.station2].filter(Boolean).map(g => g?.id).filter(Boolean),
         reinforcementSchedule,

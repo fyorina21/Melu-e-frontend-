@@ -247,4 +247,71 @@ export async function setRefreshToken(token: string | null): Promise<void> {
 export async function clearAuthTokens(): Promise<void> {
   await setAccessToken(null);
   await setRefreshToken(null);
+  setActiveRole(null);
+  setUserRoles([]);
 }
+
+const ACTIVE_ROLE_KEY = 'melue.auth.active_role';
+const ROLES_KEY = 'melue.auth.roles';
+
+let activeRole: string | null = null;
+let userRoles: string[] = [];
+
+export function setActiveRole(role: string | null): void {
+  activeRole = role ? role.trim() : null;
+  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    try {
+      if (activeRole) localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+      else localStorage.removeItem(ACTIVE_ROLE_KEY);
+    } catch {}
+  }
+}
+
+export function getActiveRole(): string | null {
+  if (!activeRole && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    activeRole = localStorage.getItem(ACTIVE_ROLE_KEY);
+  }
+  return activeRole;
+}
+
+export function setUserRoles(roles: string[]): void {
+  userRoles = Array.isArray(roles) ? roles : [];
+  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(ROLES_KEY, JSON.stringify(userRoles));
+    } catch {}
+  }
+}
+
+export function getUserRoles(): string[] {
+  if ((!userRoles || userRoles.length === 0) && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(ROLES_KEY);
+      if (stored) userRoles = JSON.parse(stored);
+    } catch {}
+  }
+  return userRoles || [];
+}
+
+export function isUserAdmin(): boolean {
+  const current = getActiveRole()?.toLowerCase().replace(/[\s-]+/g, '_');
+  if (current) {
+    return (
+      current === 'institutional_admin' ||
+      current === 'system_admin' ||
+      current === 'admin' ||
+      current === 'sysadmin'
+    );
+  }
+  const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
+  if (roles.length > 0) {
+    return roles.some(
+      (r) =>
+        r === 'institutional_admin' ||
+        r === 'system_admin' ||
+        r === 'admin' ||
+        r === 'sysadmin'
+    );
+  }
+  return false;
+}

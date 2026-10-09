@@ -272,7 +272,9 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
 
   const load = useCallback(async () => {
     try {
-      const { data: res } = await getAssessmentsForReview({ search });
+      const { data: res } = await getAssessmentsForReview(
+        search.trim() ? { search: search.trim() } : undefined
+      );
       const rawList = Array.isArray(res)
         ? res
         : Array.isArray(res?.assessments)
@@ -291,9 +293,21 @@ export default function AssessmentReviewScreen({ navigation }: NativeStackScreen
 
   const filtered = useMemo(() => {
     if (!Array.isArray(list)) return [];
-    if (statusFilter === 'All') return list;
-    return list.filter((r) => r.status === statusFilter || normalizeStatus(r.status) === statusFilter);
-  }, [list, statusFilter]);
+    let items = list;
+    if (statusFilter !== 'All') {
+      items = items.filter((r) => r.status === statusFilter || normalizeStatus(r.status) === statusFilter);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      items = items.filter(
+        (r) =>
+          r.studentName.toLowerCase().includes(q) ||
+          r.program.toLowerCase().includes(q) ||
+          r.therapist.toLowerCase().includes(q)
+      );
+    }
+    return items;
+  }, [list, statusFilter, search]);
 
   if (!list) return <ScreenLoader />;
 

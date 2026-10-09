@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -7,7 +7,7 @@ import StatusPill from '../../components/StatusPill';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getStaffAccounts, createStaffAccount, updateStaffAccount, deleteStaffAccount, resetStaffPassword, toggleStaffActive, bulkStaffAction } from '../../api/SystemAdminApi';
+import { getStaffAccounts, createStaffAccount, updateStaffAccount, deleteStaffAccount, resetStaffPassword, toggleStaffActive, bulkStaffAction, getRoles } from '../../api/SystemAdminApi';
 import { getDirectorSchedule, saveAssignment } from '../../api/directorApi';
 import { studentsApi } from '../../api/resources/students';
 import { useToast } from '../../context/ToastContext';
@@ -60,19 +60,41 @@ type StaffPayload = {
 interface StaffFormModalProps {
   visible: boolean;
   staff: StaffMember | null | undefined;
+  availableRoles?: string[];
   onClose: () => void;
   onSave: (payload: StaffPayload) => void;
 }
 
-function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps) {
+function StaffFormModal({ visible, staff, availableRoles, onClose, onSave }: StaffFormModalProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [fetchedRoles, setFetchedRoles] = useState<string[]>([]);
 
   useEffect(() => {
+    if (!visible) return;
+    setRoleDropdownOpen(false);
+    getRoles()
+      .then(({ data }) => {
+        const raw = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.roles)
+          ? data.roles
+          : [];
+        const names = raw
+          .map((r: any) => String(r.name || r.title || '').trim())
+          .filter(Boolean);
+        setFetchedRoles(names);
+      })
+      .catch(() => {});
+  }, [visible]);
+
+  useEffect(() => {
+    setRoleDropdownOpen(false);
     if (staff) {
       setName(staff.name);
       setEmail(staff.email);
@@ -87,6 +109,19 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
       setRoles(['Teacher']);
     }
   }, [staff, visible]);
+
+  const allAvailableRoleOptions = useMemo(() => {
+    const combined = Array.from(
+      new Set([
+        ...ROLE_OPTIONS,
+        ...(availableRoles || []),
+        ...fetchedRoles,
+        ...(staff?.roles || []),
+        ...roles,
+      ])
+    ).filter(Boolean);
+    return combined;
+  }, [availableRoles, fetchedRoles, staff, roles]);
 
   const toggleRole = (r: string) => setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
 
@@ -156,14 +191,76 @@ function StaffFormModal({ visible, staff, onClose, onSave }: StaffFormModalProps
               <TextInput style={styles.textInput} placeholder="e.g. +1 (555) 019-2834" placeholderTextColor={colors.mutedText} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
             </View>
             <View style={styles.field}>
-              <Text style={typography.label}>Assigned System Role(s)</Text>
-              <View style={styles.chipRow}>
-                {ROLE_OPTIONS.map((r) => (
-                  <TouchableOpacity key={r} style={[styles.chip, roles.includes(r) && styles.chipSelected]} onPress={() => toggleRole(r)}>
-                    <Text style={[styles.chipText, roles.includes(r) && styles.chipTextSelected]}>{r}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <Text style={typography.label}>Assigned System Role(s) *</Text>
+              <TouchableOpacity
+                style={[styles.modalDropdownTrigger, roleDropdownOpen && styles.modalDropdownTriggerActive]}
+                onPress={() => setRoleDropdownOpen((prev) => !prev)}
+                activeOpacity={0.7}
+                accessibilityLabel="Select assigned role dropdown"
+              >
+                <View style={styles.modalDropdownValueRow}>
+                  <Feather name="shield" size={16} color={roles.length > 0 ? colors.navyText : colors.mutedText} />
+                  <Text style={[styles.modalDropdownValueText, roles.length > 0 && styles.modalDropdownValueTextSelected]}>
+                    {roles.length === 0
+                      ? 'Select role(s)...'
+                      : roles.join(', ')}
+                  </Text>
+                </View>
+                <Feather
+                  name={roleDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.navyText}
+                />
+              </TouchableOpacity>
+
+              {roleDropdownOpen && (
+                <View style={styles.modalDropdownMenu}>
+                  <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+                    {allAvailableRoleOptions.map((r) => {
+                      const isSelected = roles.includes(r);
+                      return (
+                        <TouchableOpacity
+                          key={r}
+                          style={[styles.modalDropdownItem, isSelected && styles.modalDropdownItemSelected]}
+                          onPress={() => toggleRole(r)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.modalDropdownItemLeft}>
+                            <View style={[styles.modalCheckbox, isSelected && styles.modalCheckboxChecked]}>
+                              {isSelected && <Feather name="check" size={12} color={colors.navyText} />}
+                            </View>
+                            <Text style={[styles.modalDropdownItemText, isSelected && styles.modalDropdownItemTextSelected]}>
+                              {r}
+                            </Text>
+                          </View>
+                          {isSelected && (
+                            <View style={styles.assignedBadge}>
+                              <Text style={styles.assignedBadgeText}>Assigned</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
+              {roles.length > 0 && (
+                <View style={styles.selectedRoleBadgesRow}>
+                  {roles.map((r) => (
+                    <View key={r} style={styles.selectedRoleBadge}>
+                      <Text style={styles.selectedRoleBadgeText}>{r}</Text>
+                      <TouchableOpacity
+                        onPress={() => toggleRole(r)}
+                        style={styles.selectedRoleRemoveBtn}
+                        accessibilityLabel={`Remove ${r} role`}
+                      >
+                        <Feather name="x" size={12} color={colors.navyText} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           </ScrollView>
           <View style={styles.modalFooter}>
@@ -650,10 +747,38 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formTarget, setFormTarget] = useState<StaffMember | null | undefined>(undefined);
   const [credentialTarget, setCredentialTarget] = useState<StaffMember | null>(null);
   const [linkTarget, setLinkTarget] = useState<StaffMember | null>(null);
+
+  const [systemRoles, setSystemRoles] = useState<string[]>([]);
+
+  useEffect(() => {
+    getRoles()
+      .then(({ data }) => {
+        const raw = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.roles)
+          ? data.roles
+          : [];
+        const names = raw
+          .map((r: any) => String(r.name || r.title || '').trim())
+          .filter(Boolean);
+        setSystemRoles(names);
+      })
+      .catch(() => {});
+  }, []);
+
+  const allRoleOptions = useMemo(() => {
+    const customRoles = (staff || []).flatMap((s) => s.roles || []);
+    const combined = Array.from(new Set([...ROLE_OPTIONS, ...systemRoles, ...customRoles])).filter(Boolean);
+    return ['All', ...combined];
+  }, [staff, systemRoles]);
+
+  const STATUS_OPTIONS = ['All', 'Active', 'Inactive'];
 
   const load = useCallback(async () => {
     try {
@@ -759,19 +884,150 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       </View>
 
       <View style={styles.filtersRow}>
-        <TextInput style={styles.searchInput} placeholder="Search by name or email..." placeholderTextColor={colors.mutedText} value={search} onChangeText={setSearch} autoCapitalize="none" autoCorrect={false} autoComplete="off" textContentType="none" importantForAutofill="no" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {['All', ...ROLE_OPTIONS].map((r) => (
-            <TouchableOpacity key={r} style={[styles.filterChip, roleFilter === r && styles.filterChipActive]} onPress={() => setRoleFilter(r)}>
-              <Text style={typography.body}>{r}</Text>
+        <View style={styles.searchContainer}>
+          <Feather name="search" size={16} color={colors.mutedText} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name or email..."
+            placeholderTextColor={colors.mutedText}
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            textContentType="none"
+            importantForAutofill="no"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} style={styles.clearSearchBtn}>
+              <Feather name="x" size={14} color={colors.mutedText} />
             </TouchableOpacity>
-          ))}
-          {['All', 'Active', 'Inactive'].map((s) => (
-            <TouchableOpacity key={s} style={[styles.filterChip, statusFilter === s && styles.filterChipActive]} onPress={() => setStatusFilter(s)}>
-              <Text style={typography.body}>{s}</Text>
+          )}
+        </View>
+
+        <View style={styles.dropdownsRow}>
+          {/* Role Dropdown */}
+          <View style={[styles.dropdownContainer, { zIndex: 70 }]}>
+            <Text style={styles.dropdownLabel}>Filter by Role</Text>
+            <TouchableOpacity
+              style={[styles.dropdownTrigger, roleDropdownOpen && styles.dropdownTriggerActive]}
+              onPress={() => {
+                setRoleDropdownOpen((prev) => !prev);
+                setStatusDropdownOpen(false);
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel="Filter by role dropdown"
+            >
+              <View style={styles.dropdownValueRow}>
+                <Feather name="user-check" size={14} color={roleFilter === 'All' ? colors.mutedText : colors.navyText} />
+                <Text style={[styles.dropdownValueText, roleFilter !== 'All' && styles.dropdownValueTextSelected]}>
+                  {roleFilter}
+                </Text>
+              </View>
+              <Feather
+                name={roleDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.navyText}
+              />
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+
+            {roleDropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                  {allRoleOptions.map((r) => {
+                    const isSelected = roleFilter === r;
+                    return (
+                      <TouchableOpacity
+                        key={r}
+                        style={[styles.dropdownMenuItem, isSelected && styles.dropdownMenuItemSelected]}
+                        onPress={() => {
+                          setRoleFilter(r);
+                          setRoleDropdownOpen(false);
+                        }}
+                      >
+                        <Text style={[styles.dropdownMenuItemText, isSelected && styles.dropdownMenuItemTextSelected]}>
+                          {r}
+                        </Text>
+                        {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+
+          {/* Status Dropdown */}
+          <View style={[styles.dropdownContainer, { zIndex: 60 }]}>
+            <Text style={styles.dropdownLabel}>Filter by Status</Text>
+            <TouchableOpacity
+              style={[styles.dropdownTrigger, statusDropdownOpen && styles.dropdownTriggerActive]}
+              onPress={() => {
+                setStatusDropdownOpen((prev) => !prev);
+                setRoleDropdownOpen(false);
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel="Filter by status dropdown"
+            >
+              <View style={styles.dropdownValueRow}>
+                <Feather name="activity" size={14} color={statusFilter === 'All' ? colors.mutedText : colors.navyText} />
+                <Text style={[styles.dropdownValueText, statusFilter !== 'All' && styles.dropdownValueTextSelected]}>
+                  {statusFilter}
+                </Text>
+              </View>
+              <Feather
+                name={statusDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.navyText}
+              />
+            </TouchableOpacity>
+
+            {statusDropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                {STATUS_OPTIONS.map((st) => {
+                  const isSelected = statusFilter === st;
+                  return (
+                    <TouchableOpacity
+                      key={st}
+                      style={[styles.dropdownMenuItem, isSelected && styles.dropdownMenuItemSelected]}
+                      onPress={() => {
+                        setStatusFilter(st);
+                        setStatusDropdownOpen(false);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {st === 'Active' && <View style={[styles.statusDot, { backgroundColor: '#10B981' }]} />}
+                        {st === 'Inactive' && <View style={[styles.statusDot, { backgroundColor: '#EF4444' }]} />}
+                        <Text style={[styles.dropdownMenuItemText, isSelected && styles.dropdownMenuItemTextSelected]}>
+                          {st}
+                        </Text>
+                      </View>
+                      {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {/* Reset Filters button if any filter is active */}
+          {(roleFilter !== 'All' || statusFilter !== 'All' || search.length > 0) && (
+            <TouchableOpacity
+              style={styles.resetFiltersBtn}
+              onPress={() => {
+                setRoleFilter('All');
+                setStatusFilter('All');
+                setSearch('');
+                setRoleDropdownOpen(false);
+                setStatusDropdownOpen(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="rotate-ccw" size={12} color={colors.mutedText} />
+              <Text style={styles.resetFiltersBtnText}>Reset</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {selectedIds.length > 0 && (
@@ -781,8 +1037,34 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {filtered.map((s) => (
+      <ScrollView
+        contentContainerStyle={styles.content}
+        onTouchStart={() => {
+          if (roleDropdownOpen) setRoleDropdownOpen(false);
+          if (statusDropdownOpen) setStatusDropdownOpen(false);
+        }}
+      >
+        {filtered.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Feather name="users" size={36} color={colors.mutedText} />
+            <Text style={styles.emptyStateText}>No staff members found matching your filters.</Text>
+            {(roleFilter !== 'All' || statusFilter !== 'All' || search.length > 0) && (
+              <TouchableOpacity
+                style={styles.clearFiltersBtn}
+                onPress={() => {
+                  setRoleFilter('All');
+                  setStatusFilter('All');
+                  setSearch('');
+                  setRoleDropdownOpen(false);
+                  setStatusDropdownOpen(false);
+                }}
+              >
+                <Text style={styles.clearFiltersBtnText}>Clear all filters</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          filtered.map((s) => (
           <View key={s.id} style={styles.row}>
             <TouchableOpacity onPress={() => toggleSelect(s.id)} style={styles.checkbox}>
               <View style={[styles.checkboxInner, selectedIds.includes(s.id) && styles.checkboxChecked]} />
@@ -846,11 +1128,17 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
               </TouchableOpacity>
             </View>
           </View>
-        ))}
+        )))}
         {linkTarget && <TeacherLinkingPanel teacher={linkTarget} onClose={() => setLinkTarget(null)} />}
       </ScrollView>
 
-      <StaffFormModal visible={formTarget !== undefined} staff={formTarget} onClose={() => setFormTarget(undefined)} onSave={handleSave} />
+      <StaffFormModal
+        visible={formTarget !== undefined}
+        staff={formTarget}
+        availableRoles={allRoleOptions.filter((r) => r !== 'All')}
+        onClose={() => setFormTarget(undefined)}
+        onSave={handleSave}
+      />
       <ResetPasswordModal visible={credentialTarget !== null} staff={credentialTarget} onClose={() => setCredentialTarget(null)} onSuccess={load} />
     </SafeAreaView>
   );
@@ -863,8 +1151,155 @@ const styles = StyleSheet.create({
   secondaryHeaderBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   addBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   addBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
-  filtersRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard },
-  searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },
+  filtersRow: {
+    padding: spacing.md,
+    gap: spacing.md,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    zIndex: 100,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+  },
+  searchIcon: {
+    marginRight: spacing.xs,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    fontSize: 13,
+    color: colors.navyText,
+  },
+  clearSearchBtn: {
+    padding: spacing.xs,
+  },
+  dropdownsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+    zIndex: 110,
+  },
+  dropdownContainer: {
+    flex: 1,
+    minWidth: 160,
+    position: 'relative',
+  },
+  dropdownLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.mutedText,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 40,
+  },
+  dropdownTriggerActive: {
+    borderColor: colors.primaryYellowDark,
+    backgroundColor: '#FFFDF0',
+  },
+  dropdownValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  dropdownValueText: {
+    fontSize: 13,
+    color: colors.mutedText,
+    fontWeight: '500',
+  },
+  dropdownValueTextSelected: {
+    color: colors.navyText,
+    fontWeight: '700',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  dropdownMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  dropdownMenuItemSelected: {
+    backgroundColor: '#FEF3C7',
+  },
+  dropdownMenuItemText: {
+    fontSize: 13,
+    color: colors.bodyText,
+  },
+  dropdownMenuItemTextSelected: {
+    color: colors.navyText,
+    fontWeight: '700',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  resetFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    alignSelf: 'flex-end',
+    marginBottom: 4,
+  },
+  resetFiltersBtnText: {
+    fontSize: 12,
+    color: colors.mutedText,
+    fontWeight: '600',
+  },
+  clearFiltersBtn: {
+    backgroundColor: colors.primaryYellow,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+  },
+  clearFiltersBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
   filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginRight: spacing.xs },
   filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   filterChipText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
@@ -932,6 +1367,128 @@ const styles = StyleSheet.create({
   confirmModal: { maxWidth: 420, width: '100%', alignSelf: 'center' },
   confirmRemoveBtn: { backgroundColor: '#DC2626' },
   confirmRemoveBtnText: { fontWeight: '700', color: colors.white },
+  modalDropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+  },
+  modalDropdownTriggerActive: {
+    borderColor: colors.primaryYellowDark,
+    backgroundColor: '#FFFDF0',
+  },
+  modalDropdownValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  modalDropdownValueText: {
+    fontSize: 14,
+    color: colors.mutedText,
+  },
+  modalDropdownValueTextSelected: {
+    color: colors.navyText,
+    fontWeight: '600',
+  },
+  modalDropdownMenu: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  modalDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  modalDropdownItemSelected: {
+    backgroundColor: '#FEF3C7',
+  },
+  modalDropdownItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  modalCheckbox: {
+    width: 18,
+    height: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgApp,
+  },
+  modalCheckboxChecked: {
+    backgroundColor: colors.primaryYellow,
+    borderColor: colors.primaryYellow,
+  },
+  modalDropdownItemText: {
+    fontSize: 13,
+    color: colors.bodyText,
+  },
+  modalDropdownItemTextSelected: {
+    color: colors.navyText,
+    fontWeight: '700',
+  },
+  assignedBadge: {
+    backgroundColor: '#FDE68A',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  assignedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  selectedRoleBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  selectedRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryYellow,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  selectedRoleBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  selectedRoleRemoveBtn: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   summaryRow: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, gap: spacing.xs },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
 });

@@ -65,7 +65,11 @@ function syncUrlToScreen(state: NavigationState | undefined): void {
       } catch {}
     }
     const query = sid ? `?studentId=${encodeURIComponent(sid)}` : '';
-    window.history.replaceState(null, '', `/${route.name}${query}`);
+    const newPath = `/${route.name}${query}`;
+    const currentPath = window.location.pathname + window.location.search;
+    if (currentPath !== newPath) {
+      window.history.pushState(null, '', newPath);
+    }
   }
 }
 
@@ -136,6 +140,27 @@ export default function RootNavigator() {
     if (nav.getCurrentRoute()?.name !== target) {
       window.history.replaceState(null, '', '/');
     }
+  }, [session]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || !session) return;
+    const handlePopState = () => {
+      const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      if (target && navRef.current) {
+        try {
+          const searchParams = new URLSearchParams(window.location.search);
+          const sid =
+            searchParams.get('studentId') ||
+            (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null) ||
+            'student-a';
+          navRef.current.navigate(target, { studentId: sid });
+        } catch {}
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [session]);
 
   return (

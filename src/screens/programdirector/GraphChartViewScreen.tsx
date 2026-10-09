@@ -67,8 +67,14 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
 
   const load = useCallback(async () => {
     try {
-      const { data: res } = await getChartData({ studentId, chartType });
-      setData(res);
+      const res = await getChartData({ studentId, chartType });
+      const raw = res?.data || res;
+      const goalCharts = Array.isArray(raw?.goalCharts)
+        ? raw.goalCharts
+        : Array.isArray(raw)
+        ? raw
+        : [];
+      setData({ goalCharts });
     } catch (err) {
       setData({ goalCharts: [] });
     }
@@ -84,9 +90,9 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
     lines.push('GRAPH & CHART VIEW EXPORT');
     lines.push(`Student: ${studentName} · Chart type: ${chartType} · Generated: ${new Date().toLocaleDateString()}`);
     lines.push('');
-    data.goalCharts.forEach((gc) => {
+    (data?.goalCharts || []).forEach((gc) => {
       lines.push(`${gc.goalName}`);
-      gc.series.forEach((p) => {
+      (gc.series || []).forEach((p) => {
         lines.push(`  ${p.label}: ${p.value}%`);
       });
       lines.push(`  Summary: ${gc.summary}`);
@@ -126,13 +132,19 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {data.goalCharts.map((gc) => (
-          <View key={gc.goalId} style={styles.card}>
-            <Text style={typography.h3}>{gc.goalName}</Text>
-            <SimpleLineChart series={gc.series} />
-            <Text style={typography.caption}>{gc.summary}</Text>
+        {(data?.goalCharts || []).length === 0 ? (
+          <View style={styles.card}>
+            <Text style={typography.caption}>No goal charts available for this student.</Text>
           </View>
-        ))}
+        ) : (
+          (data?.goalCharts || []).map((gc) => (
+            <View key={gc.goalId} style={styles.card}>
+              <Text style={typography.h3}>{gc.goalName}</Text>
+              <SimpleLineChart series={gc.series || []} />
+              <Text style={typography.caption}>{gc.summary}</Text>
+            </View>
+          ))
+        )}
       </ScrollView>
 
       <ExportPreviewModal

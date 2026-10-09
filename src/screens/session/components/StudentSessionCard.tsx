@@ -11,10 +11,28 @@ import { getPromptLevelOrder, getTrialConfig } from '../../../stores/promptLevel
 
 const TRIAL_ICON_COLOR: Record<string, string> = {
   INDEPENDENT: '#6fe99c',
+  '+': '#6fe99c',
   G: '#62acee',
   PP: '#fee635',
   FP: '#f171aa',
 };
+
+function formatTrialPrompt(level: string): { text: string; bg: string } {
+  const norm = (level || '').toUpperCase().trim();
+  if (norm === '+' || norm.includes('IND')) {
+    return { text: '+', bg: '#6fe99c' };
+  }
+  if (norm === 'G' || norm.includes('GEST')) {
+    return { text: 'G', bg: '#62acee' };
+  }
+  if (norm === 'PP' || norm.includes('PART')) {
+    return { text: 'PP', bg: '#fee635' };
+  }
+  if (norm === 'FP' || norm.includes('FULL')) {
+    return { text: 'FP', bg: '#f171aa' };
+  }
+  return { text: level || '+', bg: '#62acee' };
+}
 
 interface StudentSessionCardProps {
   student: Student;
@@ -59,8 +77,17 @@ export default function StudentSessionCard({
   const isTaskAnalysis =
     activeGoal?.goalType === 'task_analysis';
 
-  // Deduplicate trials by ID to prevent any UI duplication symptoms
-  const uniqueTrials = Array.from(new Map((student.trials || []).filter((t) => t.studentGoalId === activeGoal?.id).map((t) => [t.id, t])).values());
+  // Gather trials for the active goal: check activeGoal.trialLog, or student.trials matching activeGoal.id
+  const goalTrials = Array.isArray(activeGoal?.trialLog) && activeGoal.trialLog.length > 0
+    ? activeGoal.trialLog
+    : (student.trials || []).filter((t) => !t.studentGoalId || !activeGoal?.id || t.studentGoalId === activeGoal?.id);
+
+  // Deduplicate trials by ID or timestamp+index
+  const uniqueTrials = Array.from(
+    new Map(
+      goalTrials.map((t, idx) => [t.id || `trial-${idx}-${t.timestamp || ''}`, t])
+    ).values()
+  );
   const trials = uniqueTrials;
 
   const orderMap = getPromptLevelOrder();
@@ -176,7 +203,10 @@ export default function StudentSessionCard({
           </View>
 
           <Text style={typography.caption}>
-            {activeGoal.category}
+            {activeGoal.category || 'Adaptive'}
+            {trials.length > 0 || (activeGoal.totalTrials ?? 0) > 0
+              ? ` • ${trials.length || activeGoal.totalTrials || 0} trials • ${activeGoal.independencePercent ?? 0}% ind.`
+              : ''}
           </Text>
 
           <TouchableOpacity
@@ -227,9 +257,27 @@ export default function StudentSessionCard({
             </Text>
 
             {isActive && (
-              <TouchableOpacity onPress={() => onUndo(activeGoal?.id)} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Feather name="refresh-ccw" size={12} color={colors.bodyText} style={{ marginRight: 4 }} />
-                <Text style={styles.undoText}>
+              <TouchableOpacity
+                onPress={() => onUndo(activeGoal?.id)}
+                style={[
+                  styles.undoBtn,
+                  trialCount === 0 && styles.undoBtnDisabled,
+                ]}
+                activeOpacity={trialCount === 0 ? 0.8 : 0.6}
+                accessibilityLabel="Undo last trial"
+              >
+                <Feather
+                  name="refresh-ccw"
+                  size={12}
+                  color={trialCount === 0 ? colors.mutedText : colors.bodyText}
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={[
+                    styles.undoText,
+                    trialCount === 0 && { color: colors.mutedText },
+                  ]}
+                >
                   Undo
                 </Text>
               </TouchableOpacity>
@@ -255,37 +303,32 @@ export default function StudentSessionCard({
           {/* Trial Record */}
           <View style={styles.statsHeaderRow}>
             <Text style={typography.label}>
-              Trial Record
+              Trial Record ({trialCount} recent)
             </Text>
           </View>
 
           <View style={styles.trialsBox}>
             {trialCount > 0 ? (
               <View style={styles.trialRecordRow}>
-                {displayedTrials.map((t, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.trialRecordItem,
-                      {
-                        flex: 1,
-                        backgroundColor:
-                          TRIAL_ICON_COLOR[
-                            t.promptLevel
-                          ] || colors.mutedText,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={styles.trialRecordText}
+                {displayedTrials.map((t, i) => {
+                  const { text, bg } = formatTrialPrompt(t.promptLevel);
+                  return (
+                    <View
+                      key={t.id || `badge-${i}`}
+                      style={[
+                        styles.trialRecordItem,
+                        {
+                          flex: 1,
+                          backgroundColor: bg,
+                        },
+                      ]}
                     >
-                      {t.promptLevel ===
-                      'INDEPENDENT'
-                        ? '+'
-                        : t.promptLevel}
-                    </Text>
-                  </View>
-                ))}
+                      <Text style={styles.trialRecordText}>
+                        {text}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <Text
@@ -625,6 +668,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
 
+  undoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  undoBtnDisabled: {
+    opacity: 0.5,
+  },
+
   undoText: {
     color: colors.bodyText,
     fontSize: 12,
@@ -642,7 +700,7 @@ const styles = StyleSheet.create({
   trialRecordRow: {
     flexDirection: 'row',
     width: '100%',
-    gap: 0,
+    gap: spacing.xs,
     alignItems: 'stretch',
   },
 
