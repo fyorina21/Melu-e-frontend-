@@ -571,10 +571,125 @@ export const bulkApproveSummaries = async (summaryIds: string[]): Promise<{ data
 // SCR-TC-004: Student Progress Monitoring
 // ============================================================================
 export const getStudentProgressOverview = async (studentId: string): Promise<{ data: any }> => {
+  const assessmentLabel = (v: any): string => {
+    if (!v) return 'Not Started';
+    const s = String(v.status ?? '').toLowerCase();
+    if (s.includes('complete') || s === 'done' || s === 'finalized') return 'Completed';
+    if (s.includes('not_started') || s.includes('not started')) return 'Not Started';
+    return 'In Progress';
+  };
+
+  const toDateStr = (iso?: string | null): string => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+    return d.toISOString().slice(0, 10);
+  };
+
   try {
     const res = await client.get(`/coordinator/students/${studentId}/progress`);
-    if (res?.data && (res.data.currentGoals || res.data.abllsProgress)) {
-      return res;
+    if (res?.data && (res.data.currentGoals || res.data.goals || res.data.abllsProgress)) {
+      const d = res.data;
+      return {
+        ...res,
+        data: {
+          name: d.studentName || d.name || 'Student',
+          age: d.age || 6,
+          program: d.program || 'Comprehensive ABA',
+          assessmentSummary: d.assessmentSummary ?? {
+            skills: 'In Progress',
+            behavior: 'In Progress',
+            preferences: 'Completed',
+          },
+          goals: d.goals || d.currentGoals || [],
+          sessionHistory: d.sessionHistory || [],
+          incidentSummary: d.incidentSummary || '',
+          incidents: d.incidents || d.behaviorIncidents || [],
+          ...d,
+        },
+      };
+    }
+  } catch {}
+
+  // Also query live student progress monitoring if available
+  try {
+    let d: any = null;
+    try {
+      const { data: res } = await client.get<any>(`/students/${studentId}/progress_monitoring`);
+      d = res?.data ?? res;
+    } catch {
+      const { data: res } = await client.get<any>('/reports/student_progress', {
+        params: { student_id: studentId },
+      });
+      d = res?.data ?? res;
+    }
+
+    if (d && (d.student || d.current_goals || d.assessment_summary)) {
+      const charts: any[] = Array.isArray(d.goal_progress_charts) ? d.goal_progress_charts : [];
+      const trendFor = (goalName?: string): number[] => {
+        const chart = charts.find((c) => c?.goal_name === goalName);
+        const pts = Array.isArray(chart?.data_points) ? chart.data_points : [];
+        return pts.map((p: any) => Math.round(Number(p?.progress_percent) || 0));
+      };
+
+      const rawGoals: any[] = Array.isArray(d.current_goals) ? d.current_goals : [];
+      const goals = rawGoals.map((g) => ({
+        id: String(g?.id ?? g?.goal_id ?? Math.random()),
+        name: String(g?.goal_name ?? 'Goal'),
+        percent: Math.round(Number(g?.progress_percent) || 0),
+        status: g?.status || (Number(g?.progress_percent) >= 100 ? 'Mastered' : 'In Progress'),
+        domain: g?.domain || 'General',
+        trend: trendFor(g?.goal_name),
+      }));
+
+      const history = d.session_history ?? {};
+      const rawSessions: any[] = Array.isArray(history.recent_sessions)
+        ? history.recent_sessions
+        : [];
+      const sessionHistory = rawSessions.map((s, i) => ({
+        id: String(s?.session_id ?? i),
+        date: toDateStr(s?.started_at),
+        stationName: String(s?.teacher_name ? `${s.teacher_name} Session` : 'Session'),
+        bodyPreview: s?.summary?.strengths || s?.summary?.areas_for_growth || 'Session completed.',
+        status: s?.summary?.status || 'Approved',
+        independencePercent: Math.round(Number(s?.summary?.independence_percentage) || 75),
+      }));
+
+      const behavior = d.behavior_incident_trends ?? {};
+      const totalIncidents = Number(behavior.total_incidents) || 0;
+      const recent: any[] = Array.isArray(behavior.recent_incidents)
+        ? behavior.recent_incidents
+        : [];
+      const incidents = recent.map((inc) => ({
+        date: toDateStr(inc?.occurred_at),
+        type: String(inc?.behavior_name || 'Behavior Incident'),
+        detail: String(inc?.antecedent || inc?.notes || 'Incident recorded during session'),
+      }));
+
+      const assessment = d.assessment_summary ?? {};
+      const student = d.student ?? {};
+      const hasCycle =
+        !!assessment.latest_cycle || Number(assessment.cycles_count) > 0 || !!assessment.status;
+
+      return {
+        data: {
+          name: String(student.full_name || student.name || 'Student'),
+          age: Number(student.age) || 6,
+          program: String(student.program_type || 'Comprehensive ABA'),
+          assessmentSummary: {
+            skills: assessmentLabel(assessment.ablls),
+            behavior: hasCycle ? 'In Progress' : 'Not Started',
+            preferences: assessmentLabel(assessment.preference),
+          },
+          goals,
+          sessionHistory,
+          incidentSummary:
+            totalIncidents === 0
+              ? 'No incidents recorded.'
+              : `${totalIncidents} incident(s) recorded.`,
+          incidents,
+        },
+      };
     }
   } catch {}
 
@@ -588,8 +703,15 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
   const overview = {
     studentId,
     studentName,
-    program: 'Comprehensive ABA',
+    name: studentName,
+    age: match?.age || 6,
+    program: match?.program || 'Comprehensive ABA',
     flagged: isFlagged,
+    assessmentSummary: {
+      skills: 'In Progress',
+      behavior: 'In Progress',
+      preferences: 'Completed',
+    },
     abllsProgress: {
       overallPercent: 78,
       domains: [
@@ -599,6 +721,32 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         { code: 'D', name: 'Motor Imitation', percent: 80 },
       ],
     },
+    goals: [
+      {
+        id: 'g-1',
+        name: 'Receptive Identification of Common Objects',
+        domain: 'Receptive Language',
+        status: 'In Progress',
+        percent: 85,
+        trend: [60, 70, 85],
+      },
+      {
+        id: 'g-2',
+        name: 'Independent Manding with Vocal Approximation',
+        domain: 'Expressive Language',
+        status: 'In Progress',
+        percent: 70,
+        trend: [50, 65, 70],
+      },
+      {
+        id: 'g-3',
+        name: 'Gross Motor Imitation (Standing / Sitting)',
+        domain: 'Motor Skills',
+        status: 'Mastered',
+        percent: 100,
+        trend: [80, 90, 100],
+      },
+    ],
     currentGoals: [
       {
         id: 'g-1',
@@ -631,10 +779,15 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         date: '2026-03-27',
         teacher: 'Abeba Tadesse',
         station: 'Station 1',
+        stationName: 'Station 1',
         duration: 45,
         trials: 32,
         independence: 85,
+        independencePercent: 85,
         incidents: 0,
+        status: 'Approved',
+        bodyPreview:
+          'High motivation during receptive identification trials. Reinforcer delivered on FR-2 schedule.',
         notes:
           'High motivation during receptive identification trials. Reinforcer delivered on FR-2 schedule.',
       },
@@ -643,10 +796,15 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         date: '2026-03-25',
         teacher: 'Abeba Tadesse',
         station: 'Station 1',
+        stationName: 'Station 1',
         duration: 45,
         trials: 28,
         independence: 78,
+        independencePercent: 78,
         incidents: 1,
+        status: 'Approved',
+        bodyPreview:
+          'Mild vocal protest during transition away from sensory swing. Resolved within 1 minute.',
         notes:
           'Mild vocal protest during transition away from sensory swing. Resolved within 1 minute.',
       },
@@ -655,13 +813,25 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         date: '2026-03-23',
         teacher: 'Dawit Bekele',
         station: 'Station 2',
+        stationName: 'Station 2',
         duration: 40,
         trials: 24,
         independence: 80,
+        independencePercent: 80,
         incidents: 0,
+        status: 'Approved',
+        bodyPreview: 'Turn taking with preferred puzzle items achieved with gestural prompts.',
         notes: 'Turn taking with preferred puzzle items achieved with gestural prompts.',
       },
     ],
+    incidents: [
+      {
+        date: '2026-03-25',
+        type: 'Protest / Flopping',
+        detail: 'Task transition from sensory swing. Resolved within 1 minute.',
+      },
+    ],
+    incidentSummary: '1 behavior incident recorded. Most frequent: Protest / Flopping (1).',
     behaviorIncidents: [
       {
         id: 'inc-1',

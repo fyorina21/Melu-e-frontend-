@@ -159,9 +159,9 @@ export default function DirectorStudentProgressScreen({
           />
 
           <DirectorAssessmentSummaryCard
-            skillsStatus={data.assessmentSummary.skills}
-            behaviorStatus={data.assessmentSummary.behavior}
-            preferencesStatus={data.assessmentSummary.preferences}
+            skillsStatus={data.assessmentSummary?.skills || 'Not Started'}
+            behaviorStatus={data.assessmentSummary?.behavior || 'Not Started'}
+            preferencesStatus={data.assessmentSummary?.preferences || 'Not Started'}
           />
 
           <DirectorGoalsProgressCard goals={data.goals} />

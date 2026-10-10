@@ -30,7 +30,7 @@ export function BehaviorIncidentList({ overview }: BehaviorIncidentListProps) {
         </View>
       ))}
       {!overview && <Text style={styles.emptyText}>Loading incident data...</Text>}
-      {overview && (overview.incidents.length ?? 0) === 0 && (
+      {overview && (overview.incidents?.length ?? 0) === 0 && (
         <Text style={styles.emptyText}>{overview.incidentSummary || 'No incidents recorded.'}</Text>
       )}
     </View>
