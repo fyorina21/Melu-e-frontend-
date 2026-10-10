@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   SafeAreaView,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
+import { confirmAction } from '../../utils/dialogs';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { getScheduleCapacityConfig } from '../../api/institutionalAdminApi';
@@ -100,21 +100,20 @@ export default function DirectorSchedulingScreen({
   };
 
   const handleRemoveAll = (block: ScheduleBlock) => {
-    Alert.alert('Remove All Assignments', 'Remove all students assigned to this block?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove All',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await removeAllAssignments(block.id);
-            await load();
-          } catch {
-            // ignore
-          }
-        },
+    confirmAction({
+      title: 'Remove All Assignments',
+      message: 'Remove all students assigned to this block?',
+      confirmLabel: 'Remove All',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await removeAllAssignments(block.id);
+          await load();
+        } catch {
+          // ignore
+        }
       },
-    ]);
+    });
   };
 
   if (!blocks) return <ScreenLoader />;

@@ -9,11 +9,11 @@ import {
   TextInput,
   Modal,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../../theme/colors';
 import StatusPill from '../../../../components/StatusPill';
+import { notify } from '../../../../utils/dialogs';
 import type { MasteryDetail } from '../masteryApprovalTypes';
 
 interface ApprovalDetailModalProps {
@@ -28,6 +28,7 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = React.mem
   ({ visible, detail, onClose, onApprove, onReject }) => {
     const [notes, setNotes] = useState('');
     const [rejectReason, setRejectReason] = useState('');
+    const [showTrialLog, setShowTrialLog] = useState(false);
 
     useEffect(() => {
       if (
@@ -41,6 +42,7 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = React.mem
       if (visible) {
         setNotes('');
         setRejectReason('');
+        setShowTrialLog(false);
       }
     }, [visible]);
 
@@ -48,7 +50,7 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = React.mem
 
     const handleRejectClick = () => {
       if (!rejectReason.trim()) {
-        Alert.alert('Feedback Required', 'Please enter a rejection reason.');
+        notify('Feedback Required', 'Please enter a rejection reason.');
         return;
       }
       onReject(detail.checkId, rejectReason.trim(), notes.trim());
@@ -139,6 +141,43 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = React.mem
                   ) : null}
                 </View>
               </View>
+
+              {/* View Trial Log (SCR-DIR-003) */}
+              <TouchableOpacity
+                style={styles.trialLogToggle}
+                onPress={() => setShowTrialLog((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel="View trial log"
+              >
+                <Feather name="list" size={14} color={colors.navyText} />
+                <Text style={styles.trialLogToggleText}>
+                  {showTrialLog ? 'Hide Trial Log' : 'View Trial Log'}
+                </Text>
+                <Feather
+                  name={showTrialLog ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color={colors.bodyText}
+                />
+              </TouchableOpacity>
+
+              {showTrialLog && (
+                <View style={styles.trialLogSection}>
+                  <Text style={styles.sectionHeading}>TEACHER A — CHRONOLOGICAL TRIAL LOG</Text>
+                  {(detail.trialLog ?? []).map((t) => (
+                    <View key={t.id} style={styles.trialRow}>
+                      <Text style={styles.trialDate}>{t.date}</Text>
+                      <Text style={styles.trialPrompt}>{t.prompt}</Text>
+                      <StatusPill
+                        status={t.result === 'Correct' ? 'approved' : 'pending'}
+                        label={t.result}
+                      />
+                    </View>
+                  ))}
+                  {(detail.trialLog ?? []).length === 0 && (
+                    <Text style={styles.trialEmpty}>No trials logged yet.</Text>
+                  )}
+                </View>
+              )}
 
               {/* Notes & Feedback */}
               <View style={styles.field}>
@@ -280,6 +319,54 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.navyText,
     marginTop: 4,
+    fontStyle: 'italic',
+  },
+  trialLogToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bgApp,
+    marginBottom: spacing.sm,
+  },
+  trialLogToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.navyText,
+    flex: 1,
+    textAlign: 'center',
+  },
+  trialLogSection: {
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  trialRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.bgApp,
+  },
+  trialDate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.bodyText,
+    width: 84,
+  },
+  trialPrompt: {
+    fontSize: 12,
+    color: colors.navyText,
+    flex: 1,
+  },
+  trialEmpty: {
+    fontSize: 12,
+    color: colors.mutedText,
     fontStyle: 'italic',
   },
   field: {

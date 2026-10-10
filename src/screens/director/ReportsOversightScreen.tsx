@@ -1,14 +1,7 @@
 // src/screens/director/ReportsOversightScreen.tsx
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  useWindowDimensions,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
@@ -16,11 +9,11 @@ import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import {
   getSessionReports,
-  generateBiAnnualReport,
   getFoundationOverview,
   getDirectorStudentProgress,
 } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
+import { notify } from '../../utils/dialogs';
 import type { DirectorStackParamList } from '../../types';
 
 import { STATIONS, type Option, type SessionReport, type FoundationOverview } from './reportsTypes';
@@ -73,9 +66,6 @@ export default function ReportsOversightScreen({ navigation }: Props) {
     getStudentOptions()
       .then(({ data }) => {
         setStudents(data || []);
-        if (data && data.length > 0 && !selectedStudentId) {
-          setSelectedStudentId(data[0].id);
-        }
       })
       .catch(() => {});
 
@@ -154,16 +144,20 @@ export default function ReportsOversightScreen({ navigation }: Props) {
   };
 
   const handleGenerateBiAnnual = async () => {
-    try {
-      await generateBiAnnualReport({});
-    } catch {}
+    // Report is compiled locally from the already-fetched session summaries;
+    // there is no backend /director/reports/bi-annual endpoint.
     setBiAnnualContent(buildBiAnnualReportText(sessionReports));
   };
 
   const handlePreview = () => setBiAnnualContent(buildBiAnnualReportText(sessionReports));
 
-  const handleEmailParent = () =>
-    Alert.alert('Email to Parents', 'Bi-annual progress packet queued for parent portal delivery.');
+  const handleEmailParent = () => {
+    notify(
+      'Email to Parents',
+      'Bi-annual progress packet queued for parent portal delivery. Opening Parent Communication…',
+    );
+    navigation?.navigate?.('DirectorParentCommunication');
+  };
 
   const handleExportOverview = () => {
     setOverviewContent(buildFoundationOverviewText(overview));

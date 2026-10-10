@@ -2,20 +2,13 @@
 // SCR-DIR-007: Custom Report Builder (Director View)
 
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  useWindowDimensions,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
-import { generateCustomReport } from '../../api/directorApi';
+import { notify } from '../../utils/dialogs';
 import { getStaffOptions } from '../../api/optionsApi';
 import type { DirectorStackParamList } from '../../types';
 import {
@@ -32,6 +25,7 @@ import {
   type ReportRow,
   type ReportFilterState,
 } from './reportbuilder/reportBuilderTypes';
+import { buildCustomReport } from './reportbuilder/reportBuilderData';
 import {
   ReportBuilderHeader,
   ReportFilterCard,
@@ -92,18 +86,9 @@ export default function ReportBuilderScreen({
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const progParam = filters.program === 'All Programs' ? 'ABA' : filters.program;
-      const { data } = await generateCustomReport({
-        program: progParam,
-        therapist: filters.therapist === 'All Staff' ? 'All' : filters.therapist,
-        period: filters.period === 'All Periods' ? 'Jan–Mar' : filters.period,
-        studentSearch: filters.studentSearch,
-        scoreFilter: filters.scoreFilter === 'All Scores' ? 'All' : filters.scoreFilter,
-        goalStatus: filters.goalStatus === 'All Statuses' ? 'All' : filters.goalStatus,
-        behaviorType: filters.behaviorType === 'All Types' ? 'All' : filters.behaviorType,
-        diagnosis: filters.diagnosis === 'All Diagnoses' ? 'All' : filters.diagnosis,
-      });
-      setResults(Array.isArray(data) ? data : []);
+      // Built locally: the backend has no /director/reports/custom route.
+      const rows = await buildCustomReport(filters);
+      setResults(rows);
     } catch {
       setResults([]);
     }
@@ -112,7 +97,7 @@ export default function ReportBuilderScreen({
 
   const handleExport = (format: 'CSV' | 'TXT' | 'PRINT') => {
     if (!results || results.length === 0) {
-      Alert.alert('Generate Report First', 'Please generate report results before exporting.');
+      notify('Generate Report First', 'Please generate report results before exporting.');
       return;
     }
     if (format === 'CSV') {

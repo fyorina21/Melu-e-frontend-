@@ -2,14 +2,7 @@
 // SCR-DIR-006: Student Progress Monitoring (Director View)
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  useWindowDimensions,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
@@ -17,6 +10,7 @@ import { colors, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { notify } from '../../utils/dialogs';
 import { getDirectorStudentProgress } from '../../api/directorApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import client from '../../api/sessionApi';
@@ -114,7 +108,7 @@ export default function DirectorStudentProgressScreen({
       setTimeout(() => setNotesSaved(false), 2500);
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to save internal note';
-      Alert.alert('Error', msg);
+      notify('Error', msg);
     }
   };
 
