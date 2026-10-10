@@ -119,7 +119,7 @@ export function ParentCommunicationPanel({ navigation }: { navigation: any }) {
           senderName: m.senderName ?? m.sender ?? '',
           senderRole: m.role ?? 'Coordinator',
           text: m.text ?? '',
-          time: m.sentAt ?? m.timestamp ?? '',
+          time: m.time ?? m.sentAt ?? m.timestamp ?? 'Today',
         }));
         setConversations((prev) =>
           prev.map((c) => (c.id === selectedId ? { ...c, messages: msgs } : c)),
