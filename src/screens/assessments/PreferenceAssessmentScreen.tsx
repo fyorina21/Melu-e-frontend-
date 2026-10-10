@@ -63,7 +63,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
         const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
         if (isMounted && profileRes?.data) setProfile(profileRes.data);
         const res = await getPreferenceAssessment(studentId);
-        const savedData = res?.data?.data;
+        const savedData = res?.data?.data || res?.data;
         if (isMounted && savedData?.items && savedData.items.length > 0) {
           setItems(savedData.items);
         }

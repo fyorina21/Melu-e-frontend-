@@ -210,7 +210,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         responses: formattedResponses,
         scores,
         notes,
-      });
+      }).catch(() => {});
       await saveSkillsAssessment(studentId, { scores, notes, customFields, status });
       showToast(
         allAnswered

@@ -12,7 +12,11 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { useToast } from '../../context/ToastContext';
-import { getTeacherStudentProfile, saveSocialSkillsAssessment, getSocialSkillsAssessment } from '../../api/teacherExtrasApi';
+import {
+  getTeacherStudentProfile,
+  saveSocialSkillsAssessment,
+  getSocialSkillsAssessment,
+} from '../../api/teacherExtrasApi';
 import { useEffect } from 'react';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -60,27 +64,36 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
 
   const answered = Object.keys(scores).length;
   useEffect(() => {
-    getTeacherStudentProfile(studentId).then(res => {
-      if (res?.data) setProfile(res.data);
-    }).catch(() => {});
-    getSocialSkillsAssessment(studentId).then(res => {
-      if (res?.data?.data) {
-        if (res.data.data.scores) setScores(res.data.data.scores);
-        if (res.data.data.customValues) setCustomValues(res.data.data.customValues);
-      }
-    }).catch(() => {});
+    getTeacherStudentProfile(studentId)
+      .then((res) => {
+        if (res?.data) setProfile(res.data);
+      })
+      .catch(() => {});
+    getSocialSkillsAssessment(studentId)
+      .then((res) => {
+        const savedData = res?.data?.data || res?.data;
+        if (savedData) {
+          if (savedData.scores) setScores(savedData.scores);
+          if (savedData.customValues) setCustomValues(savedData.customValues);
+        }
+      })
+      .catch(() => {});
   }, [studentId]);
   const totalScore = Object.values(scores).reduce<number>((a, b) => a + b, 0);
   const maxScore = QUESTIONS.length * 3;
   const percent = maxScore ? Math.round((totalScore / maxScore) * 100) : 0;
 
-  const setScore = (id: string, value: Score) =>
-    setScores((prev) => ({ ...prev, [id]: value }));
+  const setScore = (id: string, value: Score) => setScores((prev) => ({ ...prev, [id]: value }));
 
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent, status: 'draft' });
+      await saveSocialSkillsAssessment(studentId, {
+        scores,
+        customValues,
+        percent,
+        status: 'draft',
+      });
       showToast('Social Skills Questionnaire draft saved', 'success');
     } catch (err) {
       showToast('Failed to save questionnaire draft', 'error');
@@ -93,13 +106,18 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
     if (answered < QUESTIONS.length) {
       Alert.alert(
         'Incomplete',
-        `Please answer all ${QUESTIONS.length} questions (${answered} answered).`
+        `Please answer all ${QUESTIONS.length} questions (${answered} answered).`,
       );
       return;
     }
     setSaving(true);
     try {
-      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent, status: 'submitted' });
+      await saveSocialSkillsAssessment(studentId, {
+        scores,
+        customValues,
+        percent,
+        status: 'submitted',
+      });
       showToast(`Social Skills Questionnaire submitted (${percent}%)`, 'success');
       navigation?.goBack?.();
     } catch (err) {
@@ -111,10 +129,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Session"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-      />
+      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
@@ -122,9 +137,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <Text style={typography.h1}>Social Skills Questionnaire</Text>
-        <Text style={typography.body}>
-          Student: {profile?.fullName || 'Student'}
-        </Text>
+        <Text style={typography.body}>Student: {profile?.fullName || 'Student'}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -148,18 +161,10 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
                 return (
                   <TouchableOpacity
                     key={s}
-                    style={[
-                      styles.scoreBtn,
-                      selected && styles.scoreBtnActive,
-                    ]}
+                    style={[styles.scoreBtn, selected && styles.scoreBtnActive]}
                     onPress={() => setScore(q.id, s)}
                   >
-                    <Text
-                      style={[
-                        styles.scoreBtnText,
-                        selected && styles.scoreBtnTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.scoreBtnText, selected && styles.scoreBtnTextActive]}>
                       {SCORE_LABEL[s]}
                     </Text>
                   </TouchableOpacity>
@@ -182,9 +187,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
             onPress={handleSaveDraft}
             disabled={saving}
           >
-            <Text style={styles.draftBtnText}>
-              {saving ? 'Saving…' : 'Save Draft'}
-            </Text>
+            <Text style={styles.draftBtnText}>{saving ? 'Saving…' : 'Save Draft'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -192,9 +195,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
             onPress={handleSave}
             disabled={saving}
           >
-            <Text style={styles.saveBtnText}>
-              {saving ? 'Saving…' : 'Submit Questionnaire'}
-            </Text>
+            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Submit Questionnaire'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

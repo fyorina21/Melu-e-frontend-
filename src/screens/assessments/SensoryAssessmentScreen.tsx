@@ -14,7 +14,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { saveSensoryAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import {
+  saveSensoryAssessment,
+  getSensoryAssessment,
+  getTeacherStudentProfile,
+} from '../../api/teacherExtrasApi';
+import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { radius, spacing } from '../../theme/colors';
@@ -43,6 +48,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 
+  const { showToast } = useToast();
   const [assessmentDate, setAssessmentDate] = useState('08/21/2026');
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [activities, setActivities] = useState<SensoryActivityItem[]>(INITIAL_ACTIVITIES);
@@ -65,6 +71,24 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
         if (isMounted && res?.data) setProfile(res.data);
       })
       .catch(() => {});
+
+    getSensoryAssessment(studentId)
+      .then((res) => {
+        if (!isMounted) return;
+        const savedData = res?.data?.data || res?.data;
+        if (
+          savedData?.activities &&
+          Array.isArray(savedData.activities) &&
+          savedData.activities.length > 0
+        ) {
+          setActivities(savedData.activities);
+        }
+        if (savedData?.assessmentDate) {
+          setAssessmentDate(savedData.assessmentDate);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       isMounted = false;
     };
@@ -101,18 +125,20 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
     async (status: 'draft' | 'submitted') => {
       try {
         await saveSensoryAssessment(studentId, { assessmentDate, activities, status });
-        Alert.alert(
-          status === 'submitted' ? 'Submitted' : 'Saved',
-          `Sensory assessment updated (${metrics.progressPercent}% complete).`,
+        showToast(
+          status === 'submitted'
+            ? 'Sensory assessment submitted successfully.'
+            : `Sensory assessment draft saved (${metrics.progressPercent}% complete).`,
+          'success',
         );
         if (status === 'submitted') {
           navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
         }
       } catch {
-        Alert.alert('Error', 'Failed to save sensory assessment.');
+        showToast('Failed to save sensory assessment draft', 'error');
       }
     },
-    [studentId, assessmentDate, activities, metrics.progressPercent, navigation],
+    [studentId, assessmentDate, activities, metrics.progressPercent, showToast, navigation],
   );
 
   const exportReportContent = useMemo(

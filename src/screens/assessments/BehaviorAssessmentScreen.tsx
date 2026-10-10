@@ -171,7 +171,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
   const persist = async (payload: Record<string, unknown>, message: string, goBack: boolean) => {
     try {
       await saveBehaviorAssessment(studentId, payload);
-      await load();
+      await load().catch(() => {});
       Alert.alert('Assessment saved', message);
       if (goBack) {
         navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);

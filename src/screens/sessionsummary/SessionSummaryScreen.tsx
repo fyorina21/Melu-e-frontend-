@@ -24,6 +24,7 @@ import {
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
 import { getStoredTrials, getStoredIncidents } from '../../stores/trialsStore';
 import { useToast } from '../../context/ToastContext';
+import { storage } from '../../utils/storage';
 import type {
   SessionStackParamList,
   SessionSummary,
@@ -219,7 +220,14 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
       const mergedIncidents = [...uniqueLocal, ...apiIncidents];
 
+      const storedDraft = sessionId
+        ? storage.getJSONSync<{ notes?: string; status?: string }>(
+            `melue_session_summary_draft_${sessionId}`,
+          )
+        : null;
+
       const initialNotes =
+        storedDraft?.notes ||
         summaryData?.notes ||
         notes ||
         'Session completed with active student engagement and consistent progress across goals.';
@@ -233,7 +241,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         durationMinutes: Number(
           summaryData?.durationMinutes || rosterData?.blockDurationMinutes || 90,
         ),
-        status: summaryData?.status || 'in_progress',
+        status: storedDraft?.status || summaryData?.status || 'in_progress',
         students: processedStudents,
         incidents: mergedIncidents as any,
       });
@@ -261,12 +269,19 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
   const handleSaveDraft = useCallback(async () => {
     try {
-      if (sessionId) await saveSessionDraft(sessionId, { notes });
-      Alert.alert('Draft saved');
+      if (sessionId) {
+        storage.setJSONSync(`melue_session_summary_draft_${sessionId}`, {
+          notes,
+          status: 'draft',
+        });
+        await saveSessionDraft(sessionId, { notes }).catch(() => {});
+      }
+      setSummary((prev) => (prev ? { ...prev, status: 'draft' } : prev));
+      showToast('Session summary notes saved as draft.', 'success');
     } catch {
-      Alert.alert('Saved locally', 'Will sync once connected.');
+      showToast('Notes saved locally as draft.', 'info');
     }
-  }, [sessionId, notes]);
+  }, [sessionId, notes, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!notes.trim()) {
