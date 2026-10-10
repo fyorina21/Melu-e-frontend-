@@ -88,3 +88,70 @@ describe('appNavConfig grouped navigation for Program Director', () => {
     expect(tabs.every((t) => typeof t === 'string')).toBe(true);
   });
 });
+
+describe('appNavConfig grouped navigation for Therapy Coordinator', () => {
+  it('renames Student Registration to Registered Student in coordinator tabs', () => {
+    expect(ROLE_TABS.coordinator).toContain('Registered Student');
+    expect(ROLE_TABS.coordinator).not.toContain('Student Registration');
+  });
+
+  it('provides grouped tabs for coordinator role', () => {
+    const session: AuthSession = {
+      userName: 'Coordinator Mike',
+      email: 'mike@melue.org',
+      role: 'coordinator',
+      roles: ['coordinator'],
+    };
+
+    const tabs = getGroupedTabsForSession(session, 'coordinator', ROLE_TABS.coordinator);
+    expect(tabs.length).toBe(5);
+
+    // Standalone tabs
+    expect(tabs[0]).toBe('Dashboard');
+    expect(tabs[4]).toBe('Parent Communication');
+
+    // Group tabs
+    const sessionsGroup = tabs[1];
+    expect(isNavGroup(sessionsGroup)).toBe(true);
+    if (isNavGroup(sessionsGroup)) {
+      expect(sessionsGroup.label).toBe('Sessions');
+      expect(sessionsGroup.items).toEqual(['Live Sessions', 'Session Summary']);
+    }
+
+    const studentsGroup = tabs[2];
+    expect(isNavGroup(studentsGroup)).toBe(true);
+    if (isNavGroup(studentsGroup)) {
+      expect(studentsGroup.label).toBe('Students');
+      expect(studentsGroup.items).toEqual([
+        'Registered Student',
+        'Student Progress',
+        'IUP Creation & Goal Assignment',
+      ]);
+    }
+
+    const operationsGroup = tabs[3];
+    expect(isNavGroup(operationsGroup)).toBe(true);
+    if (isNavGroup(operationsGroup)) {
+      expect(operationsGroup.label).toBe('Operations');
+      expect(operationsGroup.items).toEqual([
+        'Operational Management',
+        'Staff Management & Linking',
+      ]);
+    }
+  });
+
+  it('maps all coordinator group items, aliases, and Registered Student to valid routes', async () => {
+    const { COORDINATOR_ROUTE_BY_TAB } = await import('../appNavConfig');
+    expect(COORDINATOR_ROUTE_BY_TAB['Registered Student']).toBe('StudentEnrollment');
+    expect(COORDINATOR_ROUTE_BY_TAB['Registered Students']).toBe('StudentEnrollment');
+    expect(COORDINATOR_ROUTE_BY_TAB['Student Registration']).toBe('StudentEnrollment');
+    expect(COORDINATOR_ROUTE_BY_TAB['Sessions']).toBeDefined();
+    expect(COORDINATOR_ROUTE_BY_TAB['Students']).toBeDefined();
+    expect(COORDINATOR_ROUTE_BY_TAB['Operations']).toBeDefined();
+
+    const originalTabs = ROLE_TABS.coordinator;
+    for (const tab of originalTabs) {
+      expect(COORDINATOR_ROUTE_BY_TAB[tab]).toBeDefined();
+    }
+  });
+});

@@ -63,17 +63,24 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     }
   }, [studentId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (!studentId) {
     return (
       <SafeAreaView style={styles.safe}>
-        <AppNavbar activeTab="Student Profile" onTabPress={(t) => t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+        <AppNavbar
+          activeTab="Student Profile"
+          onTabPress={(t) =>
+            t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)
+          }
+        />
         <View style={styles.emptyState}>
           <Feather name="user" size={40} color={colors.mutedText} />
           <Text style={typography.body}>No student selected.</Text>
           <TouchableOpacity onPress={() => navigation?.navigate?.('StudentEnrollment')}>
-            <Text style={styles.linkText}>Pick a student from Student Registration →</Text>
+            <Text style={styles.linkText}>Pick a student from Registered Student →</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -83,7 +90,12 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
   if (!profile && loadFailed) {
     return (
       <SafeAreaView style={styles.safe}>
-        <AppNavbar activeTab="Student Profile" onTabPress={(t) => t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+        <AppNavbar
+          activeTab="Student Profile"
+          onTabPress={(t) =>
+            t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)
+          }
+        />
         <View style={styles.emptyState}>
           <Feather name="inbox" size={40} color={colors.mutedText} />
           <Text style={typography.body}>Profile not found.</Text>
@@ -94,7 +106,15 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
   if (!profile) return <ScreenLoader />;
 
-  const Section = ({ icon, title, children }: { icon: React.ComponentProps<typeof Feather>['name']; title: string; children: React.ReactNode }) => (
+  const Section = ({
+    icon,
+    title,
+    children,
+  }: {
+    icon: React.ComponentProps<typeof Feather>['name'];
+    title: string;
+    children: React.ReactNode;
+  }) => (
     <View style={styles.card}>
       <View style={styles.sectionHeader}>
         <Feather name={icon} size={16} color={colors.navyText} />
@@ -113,7 +133,10 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Enrollment" onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar
+        activeTab="Enrollment"
+        onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)}
+      />
 
       <View style={styles.backRow}>
         <TouchableOpacity onPress={() => navigation?.goBack?.()}>
@@ -131,9 +154,14 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         />
         <View style={{ flex: 1 }}>
           <Text style={typography.h1}>{profile.fullName}</Text>
-          <Text style={typography.caption}>{profile.id} · Age {profile.age} · {profile.programType}</Text>
+          <Text style={typography.caption}>
+            {profile.id} · Age {profile.age} · {profile.programType}
+          </Text>
         </View>
-        <StatusPill status={profile.status === 'active' ? 'approved' : 'revision'} label={profile.status === 'active' ? 'Active' : profile.status} />
+        <StatusPill
+          status={profile.status === 'active' ? 'approved' : 'revision'}
+          label={profile.status === 'active' ? 'Active' : profile.status}
+        />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -163,14 +191,25 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         )}
 
         <Section icon="bar-chart-2" title="Goals">
-          {profile.goals.length === 0 && <Text style={typography.caption}>No goals defined yet.</Text>}
+          {profile.goals.length === 0 && (
+            <Text style={typography.caption}>No goals defined yet.</Text>
+          )}
           {profile.goals.map((g) => (
             <View key={g.id} style={styles.goalRow}>
               <View style={{ flex: 1 }}>
                 <Text style={typography.bodyBold}>{g.name}</Text>
                 <Text style={typography.caption}>{g.progressPercent}% progress</Text>
               </View>
-              <StatusPill status={g.status === 'mastered' ? 'approved' : g.status === 'paused' ? 'revision' : 'inProgress'} label={g.status} />
+              <StatusPill
+                status={
+                  g.status === 'mastered'
+                    ? 'approved'
+                    : g.status === 'paused'
+                      ? 'revision'
+                      : 'inProgress'
+                }
+                label={g.status}
+              />
             </View>
           ))}
         </Section>
@@ -180,32 +219,83 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 }
 
 function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return ({
-    Dashboard: 'CoordinatorDashboard',
-    'Live Sessions': 'LiveSessionMonitoring',
-    Review: 'SessionSummaryReview',
-    Progress: 'CoordinatorStudentProgress',
-    Schedule: 'CoordinatorSchedule',
-    Parents: 'CoordinatorParentCommunication',
-    Enrollment: 'StudentEnrollment',
-    Workload: 'WorkloadDashboard',
-    Notifications: 'Notifications',
-    Rooms: 'RoomResourceScheduling',
-  } as Record<string, keyof CoordinatorStackParamList>)[tab];
+  return (
+    {
+      Dashboard: 'CoordinatorDashboard',
+      'Live Sessions': 'LiveSessionMonitoring',
+      Review: 'SessionSummaryReview',
+      Progress: 'CoordinatorStudentProgress',
+      Schedule: 'CoordinatorSchedule',
+      Parents: 'CoordinatorParentCommunication',
+      'Registered Student': 'StudentEnrollment',
+      'Registered Students': 'StudentEnrollment',
+      'Student Registration': 'StudentEnrollment',
+      Enrollment: 'StudentEnrollment',
+      Workload: 'WorkloadDashboard',
+      Notifications: 'Notifications',
+      Rooms: 'RoomResourceScheduling',
+    } as Record<string, keyof CoordinatorStackParamList>
+  )[tab];
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
   backText: { fontSize: 14, color: colors.bodyText, fontWeight: '500', marginLeft: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.promptG, alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.promptG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: { color: colors.white, fontWeight: '700', fontSize: 20 },
   content: { padding: spacing.lg, gap: spacing.lg },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  goalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  goalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   linkText: { color: colors.statusInProgressText, fontWeight: '600', fontSize: 13 },
 });

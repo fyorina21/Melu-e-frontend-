@@ -91,7 +91,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Student Progress',
     'Operational Management',
     'Parent Communication',
-    'Student Registration',
+    'Registered Student',
     'Staff Management & Linking',
     'IUP Creation & Goal Assignment',
   ],
@@ -139,6 +139,22 @@ export const isNavGroup = (tab: NavTabItem): tab is NavGroupTab => {
 };
 
 export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {
+  coordinator: [
+    'Dashboard',
+    {
+      label: 'Sessions',
+      items: ['Live Sessions', 'Session Summary'],
+    },
+    {
+      label: 'Students',
+      items: ['Registered Student', 'Student Progress', 'IUP Creation & Goal Assignment'],
+    },
+    {
+      label: 'Operations',
+      items: ['Operational Management', 'Staff Management & Linking'],
+    },
+    'Parent Communication',
+  ],
   program_director: [
     'Dashboard',
     {
@@ -327,11 +343,20 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   'Student Progress': 'CoordinatorStudentProgress',
   'Operational Management': 'CoordinatorSchedule',
   'Parent Communication': 'CoordinatorParentCommunication',
+  'Registered Student': 'StudentEnrollment',
+  'Registered Students': 'StudentEnrollment',
+  'registred student': 'StudentEnrollment',
+  'Registred Student': 'StudentEnrollment',
   'Student Registration': 'StudentEnrollment',
+  'Student Register': 'StudentEnrollment',
   'Enrollment Wizard': 'StudentEnrollmentWizard',
-  Enrollment: 'StudentEnrollmentWizard',
+  Enrollment: 'StudentEnrollment',
   'Staff Management & Linking': 'WorkloadDashboard',
   'IUP Creation & Goal Assignment': 'IupGeneration',
+  // Group aliases
+  Sessions: 'LiveSessionMonitoring',
+  Students: 'StudentEnrollment',
+  Operations: 'CoordinatorSchedule',
   // Legacy aliases (existing screens / internal links)
   Student: 'StudentProfile',
   Live: 'LiveSessionMonitoring',

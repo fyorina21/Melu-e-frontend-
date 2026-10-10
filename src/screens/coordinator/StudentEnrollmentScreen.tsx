@@ -162,8 +162,10 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
-        activeTab="Enrollment"
-        onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)}
+        activeTab="Registered Student"
+        onTabPress={(t) =>
+          t !== 'Registered Student' && navigation?.navigate?.(navRouteForTab(t) as never)
+        }
       />
 
       <View style={styles.header}>
@@ -266,6 +268,9 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
       Progress: 'CoordinatorStudentProgress',
       Schedule: 'CoordinatorSchedule',
       Parents: 'CoordinatorParentCommunication',
+      'Registered Student': 'StudentEnrollment',
+      'Registered Students': 'StudentEnrollment',
+      'Student Registration': 'StudentEnrollment',
       Enrollment: 'StudentEnrollment',
       Workload: 'WorkloadDashboard',
       Notifications: 'Notifications',
