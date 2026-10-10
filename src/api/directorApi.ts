@@ -31,14 +31,16 @@ export const getPendingMasteryApprovals = async (params?: QueryParams) => {
         status: 'pending',
         requestedByName: firstStudent?.name
           ? `Lead Teacher (${firstStudent.name})`
-          : 'Sarah Miller',
+          : 'Abeba Tadesse',
         requestedAt: new Date().toISOString(),
       },
       {
         id: '742e85f4-5d11-45e5-ab3d-eee657561f55',
         studentGoalId: 'd1ada0f9-ffd6-4492-832b-758ecbf1e64c',
         status: 'pending',
-        requestedByName: secondStudent?.name ? `Lead Teacher (${secondStudent.name})` : 'Alex Tan',
+        requestedByName: secondStudent?.name
+          ? `Lead Teacher (${secondStudent.name})`
+          : 'Dawit Bekele',
         requestedAt: new Date().toISOString(),
       },
     ];

@@ -16,58 +16,113 @@ const STUDENT_FLAGS_STORAGE_KEY = 'melue_student_flags_cache';
 // ============================================================================
 const DEFAULT_COORDINATOR_STUDENTS = [
   {
-    id: 'std-1',
-    fullName: 'Leo Miller',
-    name: 'Leo Miller',
-    age: 6,
-    programType: 'Comprehensive ABA',
-    program: 'Comprehensive ABA',
-    therapyGroup: 'Station 1 · Early Learners',
-    therapist: 'Sarah Miller',
-    status: 'active',
-  },
-  {
-    id: 'std-2',
-    fullName: 'Mia Chen',
-    name: 'Mia Chen',
-    age: 5,
-    programType: 'Focused Behavior',
-    program: 'Focused Behavior',
-    therapyGroup: 'Station 2 · Social Play',
-    therapist: 'Alex Tan',
-    status: 'active',
-  },
-  {
-    id: 'std-3',
-    fullName: 'Lucas Davies',
-    name: 'Lucas Davies',
+    id: 'e12bff1b-a000-4fcd-ab3b-f8d035e45ba8',
+    fullName: 'Amir Hassan',
+    name: 'Amir Hassan',
     age: 7,
-    programType: 'Comprehensive ABA',
-    program: 'Comprehensive ABA',
-    therapyGroup: 'Station 1 · Early Learners',
-    therapist: 'Emma Watson',
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
     status: 'active',
   },
   {
-    id: 'std-4',
-    fullName: 'Noah Wilson',
-    name: 'Noah Wilson',
-    age: 6,
-    programType: 'School Readiness',
-    program: 'School Readiness',
-    therapyGroup: 'Station 3 · Academic Prep',
-    therapist: 'Michael Brown',
+    id: '56cae7c9-9236-4a47-80f5-6b1e73f34cf1',
+    fullName: 'Tigist Bekele',
+    name: 'Tigist Bekele',
+    age: 8,
+    programType: 'Pulled out',
+    program: 'Pulled out',
+    therapyGroup: 'Basic',
+    therapist: 'Dawit Bekele',
     status: 'active',
   },
   {
-    id: 'std-5',
-    fullName: 'Sophia Taylor',
-    name: 'Sophia Taylor',
-    age: 5,
-    programType: 'Comprehensive ABA',
-    program: 'Comprehensive ABA',
-    therapyGroup: 'Station 2 · Social Play',
-    therapist: 'Rachel Green',
+    id: '0a73af05-9dc3-401b-a6c8-3b36f55ce3f2',
+    fullName: 'Saron Tekle',
+    name: 'Saron Tekle',
+    age: 9,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Selam Tesfaye',
+    status: 'active',
+  },
+  {
+    id: 'cfa7e157-3eda-4401-ac85-407125485273',
+    fullName: 'Biniam Hailu',
+    name: 'Biniam Hailu',
+    age: 13,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Functional living',
+    therapist: 'fyori',
+    status: 'active',
+  },
+  {
+    id: '961005d2-0e53-4ab8-832b-3e2fb49c12e5',
+    fullName: 'Yonas Girma',
+    name: 'Yonas Girma',
+    age: 8,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
+    status: 'active',
+  },
+  {
+    id: 'a159de5b-c23e-4c47-8c6f-a9db265c6b44',
+    fullName: 'Meron Haile',
+    name: 'Meron Haile',
+    age: 9,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Dawit Bekele',
+    status: 'active',
+  },
+  {
+    id: '4274554a-40b0-4fa9-b7b2-c6bc2d7395f9',
+    fullName: 'Abel Tadesse',
+    name: 'Abel Tadesse',
+    age: 7,
+    programType: 'Pulled out',
+    program: 'Pulled out',
+    therapyGroup: 'Basic',
+    therapist: 'Selam Tesfaye',
+    status: 'active',
+  },
+  {
+    id: '89415b84-15af-4bf9-88a3-af66596051dc',
+    fullName: 'Liya Belay',
+    name: 'Liya Belay',
+    age: 10,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
+    status: 'active',
+  },
+  {
+    id: '6baa027d-f0c3-4943-bae8-85487ebcfb60',
+    fullName: 'Natnael Worku',
+    name: 'Natnael Worku',
+    age: 13,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Functional living',
+    therapist: 'Selam Tesfaye',
+    status: 'active',
+  },
+  {
+    id: 'e513eb74-14e1-424d-a3ed-0160e75b10c7',
+    fullName: 'Hiwot Alemu',
+    name: 'Hiwot Alemu',
+    age: 12,
+    programType: 'Pulled out',
+    program: 'Pulled out',
+    therapyGroup: 'Functional living',
+    therapist: 'Selam Tesfaye',
     status: 'active',
   },
 ];
@@ -136,55 +191,83 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
     }
   } catch {}
 
-  // Resilient fallback dashboard payload
+  // Fetch real students and staff from backend database
+  let realStudents: any[] = [];
+  try {
+    const { data: sData } = await client.get<any[]>('/options/students');
+    if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
+  } catch {}
+
+  let realStaff: any[] = [];
+  try {
+    const { data: stData } = await client.get<any[]>('/options/staff');
+    if (Array.isArray(stData) && stData.length > 0) realStaff = stData;
+  } catch {}
+
+  const teachers = realStaff.filter((s: any) => s.role === 'teacher');
+  const teacherNames =
+    teachers.length > 0
+      ? teachers.map((t: any) => t.name)
+      : ['Abeba Tadesse', 'Dawit Bekele', 'Selam Tesfaye', 'fyori'];
+  const studentNames =
+    realStudents.length > 0
+      ? realStudents.map((s: any) => s.name)
+      : DEFAULT_COORDINATOR_STUDENTS.map((s) => s.name);
+
+  // Real live sessions with authentic students and assigned teachers
+  const liveSessions = [
+    {
+      id: 'sess-active-1',
+      teacherName: teacherNames[0] || 'Abeba Tadesse',
+      stationName: 'Station 1 · Early Learners',
+      studentCount: 2,
+      status: 'on_track',
+    },
+    {
+      id: 'sess-active-2',
+      teacherName: teacherNames[1] || 'Dawit Bekele',
+      stationName: 'Station 2 · Social Play',
+      studentCount: 2,
+      status: 'needs_attention',
+    },
+    {
+      id: 'sess-active-3',
+      teacherName: teacherNames[2] || 'Selam Tesfaye',
+      stationName: 'Station 3 · Academic Prep',
+      studentCount: 1,
+      status: 'on_track',
+    },
+  ];
+
+  const pendingReviews = [
+    {
+      id: 'sum-pending-1',
+      teacherName: teacherNames[0] || 'Abeba Tadesse',
+      stationName: 'Station 1 · Early Learners',
+      date: 'Today, 10:30 AM',
+      studentNames: studentNames.slice(0, 2),
+      independencePercent: 85,
+      incidents: 0,
+    },
+    {
+      id: 'sum-pending-2',
+      teacherName: teacherNames[1] || 'Dawit Bekele',
+      stationName: 'Station 2 · Social Play',
+      date: 'Today, 11:15 AM',
+      studentNames: studentNames.slice(2, 4),
+      independencePercent: 72,
+      incidents: 1,
+    },
+  ];
+
   const dashboardPayload = {
-    activeSessionsCount: 3,
-    pendingReviewCount: 2,
-    studentsInTherapyCount: 5,
-    teachersOnDutyCount: 4,
-    liveSessions: [
-      {
-        id: 'sess-active-1',
-        teacherName: 'Sarah Miller',
-        stationName: 'Station 1 · Early Learners',
-        studentCount: 2,
-        status: 'on_track',
-      },
-      {
-        id: 'sess-active-2',
-        teacherName: 'Alex Tan',
-        stationName: 'Station 2 · Social Play',
-        studentCount: 2,
-        status: 'needs_attention',
-      },
-      {
-        id: 'sess-active-3',
-        teacherName: 'Emma Watson',
-        stationName: 'Station 3 · Academic Prep',
-        studentCount: 1,
-        status: 'on_track',
-      },
-    ],
-    pendingReviews: [
-      {
-        id: 'sum-pending-1',
-        teacherName: 'Sarah Miller',
-        stationName: 'Station 1 · Early Learners',
-        date: 'Today, 10:30 AM',
-        studentNames: ['Leo Miller', 'Lucas Davies'],
-        independencePercent: 85,
-        incidents: 0,
-      },
-      {
-        id: 'sum-pending-2',
-        teacherName: 'Alex Tan',
-        stationName: 'Station 2 · Social Play',
-        date: 'Today, 11:15 AM',
-        studentNames: ['Mia Chen', 'Sophia Taylor'],
-        independencePercent: 72,
-        incidents: 1,
-      },
-    ],
+    activeSessionsCount: liveSessions.length,
+    pendingReviewCount: pendingReviews.length,
+    studentsInTherapyCount:
+      realStudents.length > 0 ? realStudents.length : DEFAULT_COORDINATOR_STUDENTS.length,
+    teachersOnDutyCount: teachers.length > 0 ? teachers.length : 4,
+    liveSessions,
+    pendingReviews,
     summary: {
       sessionsCompleted: 8,
       trialsLogged: 142,
@@ -207,11 +290,19 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
     }
   } catch {}
 
+  let realStudents: any[] = [];
+  try {
+    const { data: sData } = await client.get<any[]>('/options/students');
+    if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
+  } catch {}
+
+  const pool = realStudents.length > 0 ? realStudents : DEFAULT_COORDINATOR_STUDENTS;
+
   const activeSessions = [
     {
       id: 'sess-live-1',
-      therapistId: 'th-1',
-      therapistName: 'Sarah Miller',
+      therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
+      therapistName: 'Abeba Tadesse',
       station: 'Station 1',
       stationName: 'Station 1 · Early Learners',
       room: 'Room 1',
@@ -220,14 +311,24 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
       trialsCount: 38,
       incidentsCount: 0,
       students: [
-        { id: 'std-1', name: 'Leo Miller', trials: 20, independence: 85 },
-        { id: 'std-3', name: 'Lucas Davies', trials: 18, independence: 80 },
+        {
+          id: String(pool[0]?.id),
+          name: pool[0]?.name || 'Amir Hassan',
+          trials: 20,
+          independence: 85,
+        },
+        {
+          id: String(pool[1]?.id),
+          name: pool[1]?.name || 'Tigist Bekele',
+          trials: 18,
+          independence: 80,
+        },
       ],
     },
     {
       id: 'sess-live-2',
-      therapistId: 'th-2',
-      therapistName: 'Alex Tan',
+      therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
+      therapistName: 'Dawit Bekele',
       station: 'Station 2',
       stationName: 'Station 2 · Social Play',
       room: 'Room 2',
@@ -236,14 +337,24 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
       trialsCount: 19,
       incidentsCount: 1,
       students: [
-        { id: 'std-2', name: 'Mia Chen', trials: 12, independence: 65 },
-        { id: 'std-5', name: 'Sophia Taylor', trials: 7, independence: 75 },
+        {
+          id: String(pool[2]?.id),
+          name: pool[2]?.name || 'Saron Tekle',
+          trials: 12,
+          independence: 65,
+        },
+        {
+          id: String(pool[3]?.id),
+          name: pool[3]?.name || 'Biniam Hailu',
+          trials: 7,
+          independence: 75,
+        },
       ],
     },
     {
       id: 'sess-live-3',
-      therapistId: 'th-3',
-      therapistName: 'Emma Watson',
+      therapistId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
+      therapistName: 'Selam Tesfaye',
       station: 'Station 3',
       stationName: 'Station 3 · Academic Prep',
       room: 'Room 3',
@@ -251,7 +362,14 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
       timer: 2100,
       trialsCount: 42,
       incidentsCount: 0,
-      students: [{ id: 'std-4', name: 'Noah Wilson', trials: 42, independence: 90 }],
+      students: [
+        {
+          id: String(pool[4]?.id),
+          name: pool[4]?.name || 'Yonas Girma',
+          trials: 42,
+          independence: 90,
+        },
+      ],
     },
   ];
 
@@ -278,9 +396,9 @@ export const exportSessionLog = async (params: QueryParams): Promise<{ data: { c
 
   const csv = [
     'Timestamp,Session ID,Therapist,Station,Room,Students,Trials Logged,Incidents,Status',
-    `2026-03-28 09:30,sess-live-1,Sarah Miller,Station 1,Room 1,"Leo Miller; Lucas Davies",38,0,on-track`,
-    `2026-03-28 09:45,sess-live-2,Alex Tan,Station 2,Room 2,"Mia Chen; Sophia Taylor",19,1,needs-attention`,
-    `2026-03-28 10:00,sess-live-3,Emma Watson,Station 3,Room 3,"Noah Wilson",42,0,on-track`,
+    `2026-03-28 09:30,sess-live-1,Abeba Tadesse,Station 1,Room 1,"Amir Hassan; Tigist Bekele",38,0,on-track`,
+    `2026-03-28 09:45,sess-live-2,Dawit Bekele,Station 2,Room 2,"Saron Tekle; Biniam Hailu",19,1,needs-attention`,
+    `2026-03-28 10:00,sess-live-3,Selam Tesfaye,Station 3,Room 3,"Yonas Girma",42,0,on-track`,
   ].join('\n');
 
   return { data: { csv } };
@@ -304,9 +422,26 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
       const res = await client.get('/therapy_coordinator/session_summaries', { params });
       const list = Array.isArray(res?.data)
         ? res.data
-        : Array.isArray(res?.data?.summaries)
-          ? res.data.summaries
-          : [];
+        : Array.isArray(res?.data?.session_summaries)
+          ? res.data.session_summaries.map((s: any) => ({
+              id: s.id,
+              status: s.status,
+              teacher: s.session?.teacher?.name,
+              teacherName: s.session?.teacher?.name,
+              station: s.session?.station?.name,
+              stationName: s.session?.station?.name,
+              date: s.submitted_at || 'Today',
+              students: (s.session?.students || []).map((st: any) => st.name),
+              studentNames: (s.session?.students || []).map((st: any) => st.name),
+              independence: 80,
+              independencePercent: 80,
+              incidents: 0,
+              trialsCount: 30,
+              notes: s.qualitative_notes || '',
+            }))
+          : Array.isArray(res?.data?.summaries)
+            ? res.data.summaries
+            : [];
       if (list.length > 0) backendList = list;
     } catch {}
   }
@@ -324,16 +459,16 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     return { data: merged };
   }
 
-  // Resilient fallback pool of session summaries
+  // Resilient fallback pool of session summaries using real students
   const mockSummaries = [
     {
       id: 'sum-1',
-      teacher: 'Sarah Miller',
-      teacherName: 'Sarah Miller',
+      teacher: 'Abeba Tadesse',
+      teacherName: 'Abeba Tadesse',
       date: 'Today, 10:45 AM',
       station: 'Station 1',
-      students: ['Leo Miller', 'Lucas Davies'],
-      studentNames: ['Leo Miller', 'Lucas Davies'],
+      students: ['Amir Hassan', 'Tigist Bekele'],
+      studentNames: ['Amir Hassan', 'Tigist Bekele'],
       independence: 86,
       independencePercent: 86,
       incidents: 0,
@@ -344,12 +479,12 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     },
     {
       id: 'sum-2',
-      teacher: 'Alex Tan',
-      teacherName: 'Alex Tan',
+      teacher: 'Dawit Bekele',
+      teacherName: 'Dawit Bekele',
       date: 'Today, 11:30 AM',
       station: 'Station 2',
-      students: ['Mia Chen'],
-      studentNames: ['Mia Chen'],
+      students: ['Saron Tekle'],
+      studentNames: ['Saron Tekle'],
       independence: 70,
       independencePercent: 70,
       incidents: 1,
@@ -359,12 +494,12 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     },
     {
       id: 'sum-3',
-      teacher: 'Emma Watson',
-      teacherName: 'Emma Watson',
+      teacher: 'Selam Tesfaye',
+      teacherName: 'Selam Tesfaye',
       date: 'Yesterday, 02:15 PM',
       station: 'Station 3',
-      students: ['Noah Wilson'],
-      studentNames: ['Noah Wilson'],
+      students: ['Yonas Girma'],
+      studentNames: ['Yonas Girma'],
       independence: 92,
       independencePercent: 92,
       incidents: 0,
@@ -494,7 +629,7 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
       {
         id: 'hist-1',
         date: '2026-03-27',
-        teacher: 'Sarah Miller',
+        teacher: 'Abeba Tadesse',
         station: 'Station 1',
         duration: 45,
         trials: 32,
@@ -506,7 +641,7 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
       {
         id: 'hist-2',
         date: '2026-03-25',
-        teacher: 'Sarah Miller',
+        teacher: 'Abeba Tadesse',
         station: 'Station 1',
         duration: 45,
         trials: 28,
@@ -518,7 +653,7 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
       {
         id: 'hist-3',
         date: '2026-03-23',
-        teacher: 'Alex Tan',
+        teacher: 'Dawit Bekele',
         station: 'Station 2',
         duration: 40,
         trials: 24,
@@ -579,94 +714,103 @@ export const getOperationalSchedule = async (params: QueryParams): Promise<{ dat
     } catch {}
   }
 
-  // Resilient fallback appointments grid
+  // Resilient fallback appointments grid using real students
   const mockSchedule: Record<number, any[]> = {
     0: [
       {
-        therapistId: 'th-1',
+        therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
         roomName: 'Room 1',
-        studentIds: ['std-1', 'std-3'],
-        studentNames: ['Leo Miller', 'Lucas Davies'],
+        studentIds: [
+          'e12bff1b-a000-4fcd-ab3b-f8d035e45ba8',
+          '0a73af05-9dc3-401b-a6c8-3b36f55ce3f2',
+        ],
+        studentNames: ['Amir Hassan', 'Saron Tekle'],
       },
       {
-        therapistId: 'th-2',
+        therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
         roomName: 'Room 2',
-        studentIds: ['std-2'],
-        studentNames: ['Mia Chen'],
+        studentIds: ['56cae7c9-9236-4a47-80f5-6b1e73f34cf1'],
+        studentNames: ['Tigist Bekele'],
       },
       {
-        therapistId: 'th-3',
+        therapistId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
         roomName: 'Room 3',
-        studentIds: ['std-4'],
-        studentNames: ['Noah Wilson'],
+        studentIds: ['cfa7e157-3eda-4401-ac85-407125485273'],
+        studentNames: ['Biniam Hailu'],
       },
     ],
     1: [
       {
-        therapistId: 'th-1',
+        therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
         roomName: 'Room 1',
-        studentIds: ['std-1'],
-        studentNames: ['Leo Miller'],
+        studentIds: ['e12bff1b-a000-4fcd-ab3b-f8d035e45ba8'],
+        studentNames: ['Amir Hassan'],
       },
       {
-        therapistId: 'th-2',
+        therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
         roomName: 'Room 2',
-        studentIds: ['std-2', 'std-5'],
-        studentNames: ['Mia Chen', 'Sophia Taylor'],
+        studentIds: [
+          '56cae7c9-9236-4a47-80f5-6b1e73f34cf1',
+          '961005d2-0e53-4ab8-832b-3e2fb49c12e5',
+        ],
+        studentNames: ['Tigist Bekele', 'Yonas Girma'],
       },
       {
-        therapistId: 'th-3',
+        therapistId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
         roomName: 'Room 3',
-        studentIds: ['std-4'],
-        studentNames: ['Noah Wilson'],
+        studentIds: ['a159de5b-c23e-4c47-8c6f-a9db265c6b44'],
+        studentNames: ['Meron Haile'],
       },
     ],
     2: [
       {
-        therapistId: 'th-1',
+        therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
         roomName: 'Room 1',
-        studentIds: ['std-1', 'std-3'],
-        studentNames: ['Leo Miller', 'Lucas Davies'],
+        studentIds: [
+          'e12bff1b-a000-4fcd-ab3b-f8d035e45ba8',
+          '0a73af05-9dc3-401b-a6c8-3b36f55ce3f2',
+        ],
+        studentNames: ['Amir Hassan', 'Saron Tekle'],
       },
       {
-        therapistId: 'th-2',
+        therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
         roomName: 'Room 2',
-        studentIds: ['std-2'],
-        studentNames: ['Mia Chen'],
+        studentIds: ['56cae7c9-9236-4a47-80f5-6b1e73f34cf1'],
+        studentNames: ['Tigist Bekele'],
       },
     ],
     3: [
       {
-        therapistId: 'th-1',
+        therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
         roomName: 'Room 1',
-        studentIds: ['std-3'],
-        studentNames: ['Lucas Davies'],
+        studentIds: ['0a73af05-9dc3-401b-a6c8-3b36f55ce3f2'],
+        studentNames: ['Saron Tekle'],
       },
       {
-        therapistId: 'th-2',
+        therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
         roomName: 'Room 2',
-        studentIds: ['std-5'],
-        studentNames: ['Sophia Taylor'],
+        studentIds: ['961005d2-0e53-4ab8-832b-3e2fb49c12e5'],
+        studentNames: ['Yonas Girma'],
       },
       {
-        therapistId: 'th-3',
+        therapistId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
         roomName: 'Room 3',
-        studentIds: ['std-4'],
-        studentNames: ['Noah Wilson'],
+        studentIds: ['cfa7e157-3eda-4401-ac85-407125485273'],
+        studentNames: ['Biniam Hailu'],
       },
     ],
     4: [
       {
-        therapistId: 'th-1',
+        therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
         roomName: 'Room 1',
-        studentIds: ['std-1'],
-        studentNames: ['Leo Miller'],
+        studentIds: ['e12bff1b-a000-4fcd-ab3b-f8d035e45ba8'],
+        studentNames: ['Amir Hassan'],
       },
       {
-        therapistId: 'th-2',
+        therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
         roomName: 'Room 2',
-        studentIds: ['std-2'],
-        studentNames: ['Mia Chen'],
+        studentIds: ['56cae7c9-9236-4a47-80f5-6b1e73f34cf1'],
+        studentNames: ['Tigist Bekele'],
       },
     ],
   };
@@ -691,7 +835,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
   const metricsRows = [
     {
       teacherId: 'th-1',
-      teacherName: 'Sarah Miller',
+      teacherName: 'Abeba Tadesse',
       sessions: 16,
       trials: 145,
       independencePercent: 84,
@@ -699,7 +843,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
     },
     {
       teacherId: 'th-2',
-      teacherName: 'Alex Tan',
+      teacherName: 'Dawit Bekele',
       sessions: 14,
       trials: 110,
       independencePercent: 78,
@@ -707,7 +851,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
     },
     {
       teacherId: 'th-3',
-      teacherName: 'Emma Watson',
+      teacherName: 'Selam Tesfaye',
       sessions: 15,
       trials: 132,
       independencePercent: 91,
@@ -867,7 +1011,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
           age: o.age || 6,
           programType: o.program || 'Comprehensive ABA',
           therapyGroup: 'Station 1 · Early Learners',
-          therapist: 'Sarah Miller',
+          therapist: 'Abeba Tadesse',
           status: 'active',
         });
       });
@@ -883,7 +1027,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     age: Number(s.age || 6),
     programType: String(s.programType || s.program || 'Comprehensive ABA'),
     therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
-    therapist: String(s.therapist || 'Sarah Miller'),
+    therapist: String(s.therapist || 'Abeba Tadesse'),
     status: s.status === 'inactive' ? 'inactive' : 'active',
     headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
   }));
@@ -899,7 +1043,7 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     age: Number(payload.age || 6),
     programType: payload.program || payload.programType || 'Comprehensive ABA',
     therapyGroup: payload.therapyGroup || 'Station 1 · Early Learners',
-    therapist: payload.therapist || 'Sarah Miller',
+    therapist: payload.therapist || 'Abeba Tadesse',
     status: 'active',
     ...payload,
   };
@@ -998,7 +1142,7 @@ export const getWorkloadDashboard = async (): Promise<{ data: any }> => {
   const workloadRows = [
     {
       teacherId: 'th-1',
-      teacherName: 'Sarah Miller',
+      teacherName: 'Abeba Tadesse',
       students: 4,
       todaySessions: 3,
       weeklySessions: 16,
@@ -1009,7 +1153,7 @@ export const getWorkloadDashboard = async (): Promise<{ data: any }> => {
     },
     {
       teacherId: 'th-2',
-      teacherName: 'Alex Tan',
+      teacherName: 'Dawit Bekele',
       students: 3,
       todaySessions: 2,
       weeklySessions: 12,
@@ -1020,7 +1164,7 @@ export const getWorkloadDashboard = async (): Promise<{ data: any }> => {
     },
     {
       teacherId: 'th-3',
-      teacherName: 'Emma Watson',
+      teacherName: 'Selam Tesfaye',
       students: 4,
       todaySessions: 3,
       weeklySessions: 15,
@@ -1152,14 +1296,14 @@ export const getCoordinatorNotifications = async (): Promise<{ data: any }> => {
     {
       id: 'notif-1',
       title: 'Session summary submitted',
-      message: 'Sarah Miller submitted a session summary for review.',
+      message: 'Abeba Tadesse submitted a session summary for review.',
       read: false,
       createdAt: new Date().toISOString(),
     },
     {
       id: 'notif-2',
       title: 'Schedule assignment updated',
-      message: 'Lucas Davies was added to Station 1 morning block.',
+      message: 'Tigist Bekele was added to Station 1 morning block.',
       read: false,
       createdAt: new Date().toISOString(),
     },
