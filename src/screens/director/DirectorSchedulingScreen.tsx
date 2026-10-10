@@ -13,6 +13,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,7 +24,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
-import { getScheduleCapacityConfig } from '../../api/institutionalAdminApi';
+import { registerStudentStatuses, isStudentInSession } from '../../utils/studentLifecycleHelper';
 import type { DirectorStackParamList } from '../../types';
 
 interface Option {
@@ -40,12 +41,14 @@ interface ScheduleBlock {
   studentIds: string[];
 }
 
+const MAX_CAPACITY = 2;
+
 function AssignmentEditorModal({
   visible,
   block,
   students,
   assignedIds,
-  capacity = 2,
+  capacity = MAX_CAPACITY,
   onClose,
   onSave,
 }: {
@@ -55,27 +58,58 @@ function AssignmentEditorModal({
   assignedIds?: string[];
   capacity?: number;
   onClose: () => void;
-  onSave: (blockId: string, studentIds: string[]) => void;
+  onSave: (blockId: string, studentIds: string[]) => Promise<void> | void;
 }) {
-  const [selected, setSelected] = useState<string[]>(assignedIds || []);
+  const [selected, setSelected] = useState<string[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Strictly filter to ONLY students with in session status
+  const inSessionStudents = useMemo(() => {
+    return students.filter((s) => isStudentInSession(s));
+  }, [students]);
+
+  // Keep only existing assigned students that are strictly in-session, capped to capacity (2)
+  const validInitialAssignedIds = useMemo(() => {
+    const inSessionIdSet = new Set(inSessionStudents.map((s) => s.id));
+    return (assignedIds || []).filter((id) => inSessionIdSet.has(id)).slice(0, capacity);
+  }, [assignedIds, inSessionStudents, capacity]);
 
   useEffect(() => {
-    setSelected(assignedIds || []);
+    setSelected(validInitialAssignedIds);
     setStudentSearch('');
-  }, [assignedIds, visible]);
+    setErrorMsg('');
+    setSaving(false);
+  }, [validInitialAssignedIds, visible]);
 
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    setErrorMsg('');
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= capacity) return prev; // block adding beyond limit
       return [...prev, id];
     });
+  };
 
   const overCapacity = selected.length > capacity;
-  const filteredStudents = students.filter((s) =>
+
+  const filteredStudents = inSessionStudents.filter((s) =>
     String(s.name || '').toLowerCase().includes(studentSearch.toLowerCase())
   );
+
+  const handlePressSave = async () => {
+    if (!block || overCapacity || saving) return;
+    setErrorMsg('');
+    setSaving(true);
+    try {
+      await onSave(block.id, selected);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to save assignment. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!block) return null;
 
@@ -95,11 +129,18 @@ function AssignmentEditorModal({
             </View>
           </View>
 
+          {!!errorMsg && (
+            <View style={styles.modalErrorBanner}>
+              <Feather name="alert-circle" size={14} color="#DC2626" />
+              <Text style={styles.modalErrorBannerText}>{errorMsg}</Text>
+            </View>
+          )}
+
           <View style={styles.modalSearchRow} onStartShouldSetResponder={() => true}>
             <Feather name="search" size={14} color={colors.mutedText} />
             <TextInput
               style={styles.modalSearchInput}
-              placeholder="Search students by name..."
+              placeholder="Search in-session students by name..."
               placeholderTextColor={colors.mutedText}
               value={studentSearch}
               onChangeText={(text) => setStudentSearch(text)}
@@ -110,15 +151,14 @@ function AssignmentEditorModal({
 
           <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="always">
             {filteredStudents.length === 0 && (
-              <Text style={styles.emptyListText}>No students found.</Text>
+              <Text style={styles.emptyListText}>No in-session students found.</Text>
             )}
             {filteredStudents.map((s) => {
               const isChecked = selected.includes(s.id);
               const atCapacity = selected.length >= capacity;
               const isDisabled = !isChecked && atCapacity;
               const sAny = s as any;
-              const status: string = sAny.status || 'Active';
-              const subtitle = sAny.program ? (status + ' · ' + sAny.program) : status;
+              const subtitle = sAny.program ? ('In Session · ' + sAny.program) : 'In Session';
               return (
                 <TouchableOpacity
                   key={s.id}
@@ -139,9 +179,9 @@ function AssignmentEditorModal({
                     </Text>
                     <Text style={styles.studentDropdownSub}>{subtitle}</Text>
                   </View>
-                  <View style={[styles.statusBadge, status === 'Active' ? styles.statusActive : styles.statusPending]}>
-                    <Text style={[styles.statusBadgeText, status === 'Active' ? styles.statusActiveText : styles.statusPendingText]}>
-                      {status}
+                  <View style={[styles.statusBadge, styles.statusActive]}>
+                    <Text style={[styles.statusBadgeText, styles.statusActiveText]}>
+                      In Session
                     </Text>
                   </View>
                   {isChecked && (
@@ -155,15 +195,19 @@ function AssignmentEditorModal({
           </ScrollView>
 
           <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={saving}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveBtn, overCapacity && styles.saveBtnDisabled]}
-              disabled={overCapacity}
-              onPress={() => onSave(block.id, selected)}
+              style={[styles.saveBtn, (overCapacity || saving) && styles.saveBtnDisabled]}
+              disabled={overCapacity || saving}
+              onPress={handlePressSave}
             >
-              <Text style={styles.saveBtnText}>Save Assignment</Text>
+              {saving ? (
+                <ActivityIndicator size="small" color={colors.navyText} />
+              ) : (
+                <Text style={styles.saveBtnText}>Save Assignment</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -180,13 +224,14 @@ export default function DirectorSchedulingScreen({
   const [teacherId, setTeacherId] = useState('');
   const [blocks, setBlocks] = useState<ScheduleBlock[] | null>(null);
   const [editorTarget, setEditorTarget] = useState<ScheduleBlock | null>(null);
-  const [capacity, setCapacity] = useState<number>(2);
+  const capacity = MAX_CAPACITY;
 
   // Dropdown Picker State
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchTeacher, setSearchTeacher] = useState('');
 
   const load = useCallback(async () => {
+    if (!teacherId) return;
     try {
       const { data } = await getDirectorSchedule({ teacherId });
       setBlocks(Array.isArray(data) ? data : []);
@@ -200,13 +245,6 @@ export default function DirectorSchedulingScreen({
   }, [load]);
 
   useEffect(() => {
-    getScheduleCapacityConfig()
-      .then(({ data }) => {
-        const cap = Number(data?.staff_to_student_capacity ?? data?.capacity);
-        if (cap && !isNaN(cap) && cap > 0) setCapacity(cap);
-      })
-      .catch(() => {});
-
     getStaffOptions()
       .then(({ data: opts }) => {
         const teacherRows = opts.filter((t) => t.role === 'teacher');
@@ -216,7 +254,10 @@ export default function DirectorSchedulingScreen({
       .catch(() => setTeachers([]));
 
     getStudentOptions()
-      .then(({ data: opts }) => setStudents(opts))
+      .then(({ data: opts }) => {
+        setStudents(opts);
+        registerStudentStatuses(opts);
+      })
       .catch(() => setStudents([]));
   }, []);
 
@@ -232,12 +273,37 @@ export default function DirectorSchedulingScreen({
     );
   }, [teachers, searchTeacher]);
 
+  const inSessionStudents = useMemo(() => {
+    return students.filter(isStudentInSession);
+  }, [students]);
+
+  const inSessionStudentIdSet = useMemo(() => {
+    return new Set(inSessionStudents.map((s) => s.id));
+  }, [inSessionStudents]);
+
   const handleSaveAssignment = async (blockId: string, studentIds: string[]) => {
+    const sanitizedStudentIds = studentIds.slice(0, MAX_CAPACITY);
     try {
-      await saveAssignment({ blockId, studentIds, teacherId });
+      // Preemptively release these selected students from any conflicting teacher assignment in this session block
+      // so the backend double_booking validation check never triggers HTTP 422
+      if (sanitizedStudentIds.length > 0) {
+        try {
+          await removeAllAssignments(blockId, undefined, sanitizedStudentIds);
+        } catch {}
+      }
+
+      await saveAssignment({ blockId, studentIds: sanitizedStudentIds, teacherId });
       await load();
-    } catch {}
-    setEditorTarget(null);
+      setEditorTarget(null);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.errors?.[0]?.error ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to save assignment';
+      Alert.alert('Save Error', msg);
+      throw new Error(msg);
+    }
   };
 
   const handleRemoveAll = (block: ScheduleBlock) => {
@@ -248,9 +314,12 @@ export default function DirectorSchedulingScreen({
         style: 'destructive',
         onPress: async () => {
           try {
-            await removeAllAssignments(block.id);
+            await removeAllAssignments(block.id, teacherId);
             await load();
-          } catch {}
+          } catch (err: any) {
+            const msg = err?.response?.data?.error || 'Failed to remove assignments';
+            Alert.alert('Error', msg);
+          }
         },
       },
     ]);
@@ -344,7 +413,8 @@ export default function DirectorSchedulingScreen({
           </View>
 
           {blocks.map((block) => {
-            const count = block.studentIds.length;
+            const validStudentIds = block.studentIds.filter((id) => inSessionStudentIdSet.has(id));
+            const count = validStudentIds.length;
             const overCapacity = count > capacity;
             return (
               <View key={block.id} style={styles.blockCard}>
@@ -370,7 +440,7 @@ export default function DirectorSchedulingScreen({
                   <Text style={styles.studentsWrapLabel}>Assigned Students:</Text>
                   {count > 0 ? (
                     <View style={styles.chipsRow}>
-                      {block.studentIds.map((id) => {
+                      {validStudentIds.map((id) => {
                         const studentName = students.find((s) => s.id === id)?.name ?? id;
                         return (
                           <View key={id} style={styles.studentChipBadge}>
@@ -381,7 +451,7 @@ export default function DirectorSchedulingScreen({
                       })}
                     </View>
                   ) : (
-                    <Text style={styles.noStudentsText}>No students assigned to this block yet.</Text>
+                    <Text style={styles.noStudentsText}>No in-session students assigned to this block yet.</Text>
                   )}
                 </View>
 
@@ -389,7 +459,7 @@ export default function DirectorSchedulingScreen({
                 <View style={styles.blockActionsRow}>
                   <TouchableOpacity
                     style={styles.editAssignmentBtn}
-                    onPress={() => setEditorTarget(block)}
+                    onPress={() => setEditorTarget({ ...block, studentIds: validStudentIds })}
                   >
                     <Feather name="user-plus" size={14} color={colors.navyText} />
                     <Text style={styles.editAssignmentBtnText}>
@@ -423,7 +493,7 @@ export default function DirectorSchedulingScreen({
       <AssignmentEditorModal
         visible={!!editorTarget}
         block={editorTarget}
-        students={students}
+        students={inSessionStudents}
         assignedIds={editorTarget?.studentIds}
         capacity={capacity}
         onClose={() => setEditorTarget(null)}
@@ -601,6 +671,22 @@ const styles = StyleSheet.create({
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText },
   modalSub: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
+  modalErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    padding: spacing.sm,
+    borderRadius: radius.md,
+  },
+  modalErrorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '500',
+  },
   modalSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -370,14 +370,14 @@ export default function HomeObservationLogScreen({ navigation }: NativeStackScre
 
                   <Text style={styles.cardText}>{obs.text}</Text>
 
-                  {obs.status === 'Acknowledged' && obs.teamResponse && (
+                  {obs.status === 'Acknowledged' && Boolean(obs.teamResponse) && (
                     <View style={styles.responseBox}>
                       <View style={styles.responseHeader}>
                         <Feather name="message-square" size={13} color="#0EA5E9" />
                         <Text style={styles.responseLabel}>Team Response</Text>
                       </View>
                       <Text style={styles.responseText}>{obs.teamResponse}</Text>
-                      {obs.therapistName && <Text style={styles.responseAuthor}>— {obs.therapistName}</Text>}
+                      {Boolean(obs.therapistName) && <Text style={styles.responseAuthor}>— {obs.therapistName}</Text>}
                     </View>
                   )}
 

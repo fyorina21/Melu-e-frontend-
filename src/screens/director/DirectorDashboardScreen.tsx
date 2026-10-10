@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -34,6 +35,7 @@ export default function DirectorDashboardScreen({
   navigation,
 }: NativeStackScreenProps<DirectorStackParamList, 'DirectorDashboard'>) {
   const [data, setData] = useState<DirectorDashboardData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -41,11 +43,11 @@ export default function DirectorDashboardScreen({
       const res = (rawRes && typeof rawRes === 'object' && 'data' in rawRes) ? (rawRes as any).data : rawRes;
 
       const recentActivity: string[] = Array.isArray(res?.recentActivity)
-        ? res.recentActivity
+        ? [...res.recentActivity]
         : [];
-      if (recentActivity.length === 0 && res?.activity) {
+      if (res?.activity) {
         if (res.activity.trials_logged_today > 0) {
-          recentActivity.push(`${res.activity.trials_logged_today} trials logged today`);
+          recentActivity.push(`${res.activity.trials_logged_today} trial(s) logged today`);
         }
         if (res.activity.behavior_incidents_today > 0) {
           recentActivity.push(`${res.activity.behavior_incidents_today} behavior incident(s) logged today`);
@@ -54,17 +56,53 @@ export default function DirectorDashboardScreen({
           recentActivity.push(`${res.activity.goals_mastered_this_month} goal(s) mastered this month`);
         }
       }
+      if (res?.reviews) {
+        if (res.reviews.mastery_checks_pending_approval > 0) {
+          recentActivity.push(`${res.reviews.mastery_checks_pending_approval} goal mastery check(s) pending verification approval`);
+        }
+        if (res.reviews.session_summaries_pending_review > 0) {
+          recentActivity.push(`${res.reviews.session_summaries_pending_review} session summary report(s) pending review`);
+        }
+      }
+      if (res?.sessions?.in_progress > 0) {
+        recentActivity.push(`${res.sessions.in_progress} therapy session(s) active in facility`);
+      }
+      if (res?.students?.in_assessment > 0) {
+        recentActivity.push(`${res.students.in_assessment} student(s) currently in assessment phase`);
+      }
+      if (res?.students?.ready_for_iup > 0) {
+        recentActivity.push(`${res.students.ready_for_iup} student(s) ready for IUP creation`);
+      }
+      if (recentActivity.length === 0) {
+        recentActivity.push('All clinical reviews, session blocks and records are current for today');
+      }
+
+      const totalStudents =
+        (res?.students?.total_active ?? 0) +
+        (res?.students?.in_assessment ?? 0) +
+        (res?.students?.ready_for_iup ?? 0) ||
+        (res?.students?.total_active ?? res?.totalStudents ?? 0);
+
+      const activeTeachers =
+        (res?.staff?.teachers_on_duty && res.staff.teachers_on_duty > 0)
+          ? res.staff.teachers_on_duty
+          : (res?.staff?.total_teachers ?? res?.activeTeachers ?? 0);
+
+      const pendingApprovals = res?.reviews?.mastery_checks_pending_approval ?? res?.pendingApprovals ?? 0;
+      const pendingReports = res?.reviews?.session_summaries_pending_review ?? res?.pendingReports ?? 0;
+      const unreadCount = res?.unreadCount ?? (pendingApprovals + pendingReports);
 
       setData({
-        unreadCount: res?.unreadCount ?? 0,
-        totalStudents: res?.students?.total_active ?? res?.totalStudents ?? 0,
-        activeTeachers: res?.staff?.teachers_on_duty ?? res?.staff?.total_teachers ?? res?.activeTeachers ?? 0,
-        pendingApprovals: res?.reviews?.mastery_checks_pending_approval ?? res?.pendingApprovals ?? 0,
-        unreadParentMessages: res?.unreadParentMessages ?? 0,
-        pendingReports: res?.reviews?.session_summaries_pending_review ?? res?.pendingReports ?? 0,
+        unreadCount,
+        totalStudents,
+        activeTeachers,
+        pendingApprovals,
+        unreadParentMessages: res?.unreadParentMessages ?? (res?.conversations?.unread ?? 0),
+        pendingReports,
         recentActivity,
       });
-    } catch {
+    } catch (err) {
+      console.error('Error loading director dashboard:', err);
       setData({
         unreadCount: 0,
         totalStudents: 0,
@@ -72,10 +110,16 @@ export default function DirectorDashboardScreen({
         pendingApprovals: 0,
         unreadParentMessages: 0,
         pendingReports: 0,
-        recentActivity: [],
+        recentActivity: ['Unable to load live backend data. Please verify network connection.'],
       });
     }
   }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   useEffect(() => {
     load();
@@ -89,7 +133,18 @@ export default function DirectorDashboardScreen({
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Dashboard" onTabPress={goto} />
       
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primaryYellowDark]}
+            tintColor={colors.primaryYellowDark}
+          />
+        }
+      >
         {/* Header Row */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>

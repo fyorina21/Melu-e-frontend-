@@ -34,6 +34,9 @@ import {
   removeGoalFromSlot,
   getStudentCaseload,
   getStoredIupDraft,
+  isCandidateInSession,
+  isEligibleIupCandidate,
+  type IupCandidate,
 } from '../../api/programDirectorApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
@@ -46,19 +49,6 @@ interface GoalBankItem {
   goalType: string;
   masteryCriteria: string;
   active?: boolean;
-}
-
-interface IupCandidate {
-  id: string;
-  studentId?: string;
-  iupId?: string;
-  name: string;
-  status: string;
-  program?: string;
-  age?: number;
-  assessmentProgress?: number;
-  assessmentStatus?: string;
-  hasAssessmentData?: boolean;
 }
 
 interface IupContext {
@@ -76,42 +66,6 @@ interface IupContext {
 type StationKey = 'station1' | 'station2';
 type Slots = Record<StationKey, (GoalBankItem | null)[]>;
 
-const isEligibleIupCandidate = (c: IupCandidate): boolean => {
-  const s = ((c as any).rawStatus || c.status || '').toLowerCase().trim();
-  const assessStatus = (c.assessmentStatus || '').toLowerCase().trim();
-
-  // Explicitly exclude students who are still in assessment or draft/pending/inactive
-  if (
-    s === 'in_assessment' ||
-    s === 'in assessment' ||
-    s === 'assessment' ||
-    s === 'draft' ||
-    s === 'registered' ||
-    s === 'pending_review' ||
-    s === 'withdrawn' ||
-    s === 'discharged' ||
-    s === 'archived' ||
-    assessStatus.includes('in progress') ||
-    assessStatus.includes('in assessment')
-  ) {
-    return false;
-  }
-
-  // Only allow students whose status is Ready for IUP or In Session (or active_therapy / active)
-  return (
-    s === 'ready for iup' ||
-    s === 'ready_for_iup' ||
-    s === 'assessment_complete' ||
-    s === 'in session' ||
-    s === 'in_session' ||
-    s === 'active' ||
-    s === 'active therapy' ||
-    s === 'active_therapy' ||
-    assessStatus === 'ready for iup' ||
-    assessStatus === 'in session'
-  );
-};
-
 export default function IupGenerationScreen({
   navigation,
   route,
@@ -125,7 +79,7 @@ export default function IupGenerationScreen({
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [context, setContext] = useState<IupContext | null>(null);
   const [goalBank, setGoalBank] = useState<GoalBankItem[]>([]);
-  const [slots, setSlots] = useState<Slots>({ station1: [null, null], station2: [null, null] });
+  const [slots, setSlots] = useState<Slots>({ station1: [null], station2: [null] });
   const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<'assessment' | 'goals' | 'strategies'>('goals');
 
   // Custom Strategies State
@@ -153,13 +107,12 @@ export default function IupGenerationScreen({
     setLoading(true);
     let loadedCandidates: IupCandidate[] = [];
     try {
-      const { data: res } = await getIupCandidates();
-      loadedCandidates = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.candidates)
-        ? res.candidates
-        : Array.isArray(res?.data)
-        ? res.data
+      const response = await getIupCandidates();
+      const raw = (response as any)?.data ?? response;
+      loadedCandidates = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as any)?.candidates)
+        ? (raw as any).candidates
         : [];
     } catch {
       loadedCandidates = [];
@@ -199,8 +152,8 @@ export default function IupGenerationScreen({
   useEffect(() => {
     if (!selectedStudentId) return;
     
-    // Clear slots and fields when student changes
-    setSlots({ station1: [null, null], station2: [null, null] });
+    // Clear slots and fields when student changes (2 goals assigned at a time)
+    setSlots({ station1: [null], station2: [null] });
     setReinforcementSchedule('Fixed Ratio (FR-2)');
     setCrisisProtocol('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
     setAccommodations('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
@@ -212,7 +165,12 @@ export default function IupGenerationScreen({
     const cachedDraft = getStoredIupDraft(selectedStudentId);
     if (cachedDraft) {
       if (cachedDraft.slots) {
-        setSlots(cachedDraft.slots as Slots);
+        const s1 = Array.isArray((cachedDraft.slots as any).station1) ? (cachedDraft.slots as any).station1 : [];
+        const s2 = Array.isArray((cachedDraft.slots as any).station2) ? (cachedDraft.slots as any).station2 : [];
+        setSlots({
+          station1: [s1[0] || null],
+          station2: [s2[0] || null],
+        });
       }
       if (cachedDraft.reinforcementSchedule) {
         setReinforcementSchedule(String(cachedDraft.reinforcementSchedule));
@@ -239,20 +197,19 @@ export default function IupGenerationScreen({
       .then(({ data }) => setContext(data))
       .catch(() => setContext(null));
 
-    // Fetch existing assigned goals to populate slots
+    // Fetch existing assigned goals to populate slots (max 2 goals: 1 per station)
     if (goalBank.length > 0) {
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
           if (data?.goals) {
             setSlots((prev) => {
-              const next: Slots = { station1: [null, null], station2: [null, null] };
+              const next: Slots = { station1: [null], station2: [null] };
               data.goals.forEach((g: any) => {
                 const gbGoal = goalBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
-                  const slotIndex = typeof g.slot === 'number' ? g.slot : (next[stationKey][0] === null ? 0 : 1);
-                  if (slotIndex >= 0 && slotIndex <= 1) {
-                    next[stationKey][slotIndex] = gbGoal;
+                  if (next[stationKey][0] === null) {
+                    next[stationKey][0] = gbGoal;
                   }
                 }
               });
@@ -393,8 +350,13 @@ export default function IupGenerationScreen({
           customFields: customIupValues,
           form_values: customIupValues,
         });
-        showToast('IUP Finalized & Activated. Goals are now in the Teacher Session workbench.', 'success');
-        navigation?.navigate?.('SessionDataCollection' as never);
+        const studentName = context?.studentName || selectedCandidate?.name || 'Student';
+        showToast(`IUP for ${studentName} has been finalized and activated successfully.`, 'success');
+        Alert.alert(
+          'IUP Finalized & Activated',
+          `The Individualized Unit Plan for ${studentName} has been finalized and activated successfully.`
+        );
+        // Remain on the IUP Generation page without navigating away
       } catch {
         showToast('Failed to finalize IUP.', 'error');
       }
@@ -535,7 +497,7 @@ export default function IupGenerationScreen({
         <View style={styles.card}>
           <View style={styles.selectorHeaderRow}>
             <Text style={styles.sectionLabel}>SELECT STUDENT</Text>
-            {lastSavedTimestamp && (
+            {Boolean(lastSavedTimestamp) && (
               <Text style={styles.lastSavedText}>
                 <Feather name="check" size={11} color={colors.successGreen} /> Draft saved at {lastSavedTimestamp}
               </Text>
@@ -562,7 +524,7 @@ export default function IupGenerationScreen({
                   </Text>
                   <Text style={styles.dropdownSelectedMeta}>
                     {selectedCandidate
-                      ? `${selectedCandidate.assessmentStatus ?? selectedCandidate.status} · ${context?.program || 'Therapy'}`
+                      ? `${isCandidateInSession(selectedCandidate) ? 'In Session' : 'Ready for IUP'} · ${context?.program || selectedCandidate.program || 'Therapy'}`
                       : 'Click to select from enrollment caseload'}
                   </Text>
                 </View>
@@ -590,10 +552,11 @@ export default function IupGenerationScreen({
               </View>
               <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
                 {filteredCandidates.length === 0 ? (
-                  <Text style={styles.dropdownEmptyText}>No students ready for IUP</Text>
+                  <Text style={styles.dropdownEmptyText}>No students ready for IUP or in session</Text>
                 ) : (
                   filteredCandidates.map((c) => {
                     const isSelected = c.id === selectedStudentId;
+                    const inSession = isCandidateInSession(c);
                     return (
                       <TouchableOpacity
                         key={c.id}
@@ -616,26 +579,22 @@ export default function IupGenerationScreen({
                             {c.name}
                           </Text>
                           <Text style={styles.dropdownItemSub}>
-                            {c.assessmentStatus ?? c.status} · {c.program || 'ABA Therapy'}
+                            {inSession ? 'In Session' : 'Ready for IUP'} · {c.program || 'ABA Therapy'}
                           </Text>
                         </View>
                         <View
                           style={[
                             styles.statusBadge,
-                            c.status === 'In Session' || c.status === 'Active' || (c as any).rawStatus === 'active_therapy'
-                              ? styles.statusActive
-                              : styles.statusReadyIup,
+                            inSession ? styles.statusActive : styles.statusReadyIup,
                           ]}
                         >
                           <Text
                             style={[
                               styles.statusBadgeText,
-                              c.status === 'In Session' || c.status === 'Active' || (c as any).rawStatus === 'active_therapy'
-                                ? styles.statusActiveText
-                                : styles.statusReadyIupText,
+                              inSession ? styles.statusActiveText : styles.statusReadyIupText,
                             ]}
                           >
-                            {c.status}
+                            {inSession ? 'In Session' : 'Ready for IUP'}
                           </Text>
                         </View>
                       </TouchableOpacity>
@@ -659,7 +618,7 @@ export default function IupGenerationScreen({
               color={activeWorkbenchTab === 'goals' ? colors.navyText : colors.bodyText}
             />
             <Text style={[styles.tabBtnText, activeWorkbenchTab === 'goals' && styles.tabBtnTextActive]}>
-              Goal Assignment ({assignedGoalCount}/4)
+              Goal Assignment ({assignedGoalCount}/2)
             </Text>
           </TouchableOpacity>
 

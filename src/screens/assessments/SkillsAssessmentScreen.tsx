@@ -20,6 +20,7 @@ import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getSkillsAssessment, saveSkillsAssessment, bulkSaveAbllsResponses, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
+import { markStudentAssessmentCompleted } from '../../utils/studentLifecycleHelper';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import {
   DEFAULT_ABLLS_DOMAINS,
@@ -181,6 +182,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     try {
       const allAnswered = totalItems > 0 && totalAnswered >= totalItems;
       const status = allAnswered ? 'completed' : 'in_progress';
+      if (allAnswered) {
+        markStudentAssessmentCompleted(studentId);
+      }
       saveStorageAssessment(studentId, { scores, notes, customFields });
       const formattedResponses = Object.entries(scores).map(([k, v]) => ({
         skill_item_id: k,

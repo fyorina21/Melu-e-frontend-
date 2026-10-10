@@ -27,9 +27,19 @@ export const deleteRole = (roleId: string) => client.delete(`/sysadmin/roles/${r
 // The screen's MODULES/ACTIONS labels do not correspond to the backend's
 // `resource`/`action` taxonomy, and there is no permission catalog endpoint,
 // so this layer passes values through verbatim rather than guessing a mapping.
+export const getPermissionsCatalog = () => client.get('/sysadmin/permissions');
 export const getPermissionMatrix = (roleId: string) => client.get(`/sysadmin/roles/${roleId}/permissions`);
-export const savePermissionMatrix = (roleId: string, permissionIds: string[]) =>
-  client.post(`/sysadmin/roles/${roleId}/permissions`, { permission_ids: permissionIds });
+export const savePermissionMatrix = (
+  roleId: string,
+  payload: { permission_ids?: string[]; matrix?: Record<string, Record<string, boolean>> } | string[]
+) => {
+  const body = Array.isArray(payload) ? { permission_ids: payload } : payload;
+  return client.post(`/sysadmin/roles/${roleId}/permissions`, body);
+};
+export const resetDefaultPermissions = (roleId: string) =>
+  client.post(`/sysadmin/roles/${roleId}/permissions/reset_default`);
+export const copyPermissionsFromRole = (roleId: string, sourceRoleId: string) =>
+  client.post(`/sysadmin/roles/${roleId}/permissions/copy_from`, { source_role_id: sourceRoleId });
 export const getPermissionAuditTrail = (roleId: string) => client.get(`/sysadmin/roles/${roleId}/permissions/audit`);
 
 // MR-8: Audit Logging (System Admin view)

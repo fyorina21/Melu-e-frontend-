@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Alert,
   useWindowDimensions,
+  Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -39,6 +40,13 @@ import {
   getAllStoredIupDrafts,
 } from '../../api/programDirectorApi';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
+import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
+import { getDirectorSchedule } from '../../api/directorApi';
+import {
+  isStudentEligibleForSession,
+  registerStudentStatuses,
+  getRegisteredStudentStatus,
+} from '../../utils/studentLifecycleHelper';
 import type {
   SessionStackParamList,
   SessionRoster,
@@ -165,6 +173,16 @@ export default function SessionDataCollectionScreen({
     return (getStoredIncidents(sessionId) as unknown as IncidentPayload[]) || [];
   });
 
+  const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(() => {
+    return (
+      (route.params as any)?.teacherId ||
+      (typeof localStorage !== 'undefined'
+        ? localStorage.getItem('melue_session_selected_teacher_id') || ''
+        : '')
+    );
+  });
+
   useEffect(() => {
     const cached = getStoredIncidents(sessionId) as unknown as IncidentPayload[];
     if (cached && cached.length > 0) {
@@ -178,238 +196,282 @@ export default function SessionDataCollectionScreen({
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  const loadRoster = useCallback(async (silent = false) => {
-    try {
-      // Start the session on the backend asynchronously so it doesn't block roster fetching
-      startSession(sessionId).catch(() => {});
+  const loadRoster = useCallback(
+    async (teacherIdToLoad?: string, silent = false) => {
+      try {
+        if (!silent) setLoading(true);
+        // Start the session on the backend asynchronously so it doesn't block roster fetching
+        startSession(sessionId).catch(() => {});
 
-      // Fetch teacher dashboard (to get today's session card students) and session roster in parallel
-      const [dashboardRes, rosterRes] = await Promise.all([
-        getTeacherDashboard().catch(() => null),
-        getSessionRoster(sessionId).catch(() => null),
-      ]);
+        // Fetch teachers list if not already cached
+        let currentTeachers = teachers;
+        if (currentTeachers.length === 0) {
+          try {
+            const staffRes = await getStaffOptions();
+            const teacherRows = (staffRes?.data || []).filter((s: any) => s.role === 'teacher');
+            if (teacherRows.length > 0) {
+              currentTeachers = teacherRows;
+              setTeachers(teacherRows);
+            }
+          } catch {}
+        }
 
-      const passedStudents = (route.params as any)?.students;
-      const cachedStudents = getStoredSessionStudents(sessionId);
-      const todayDashboardStudents = dashboardRes?.data?.todaySchedule?.students;
-
-      const dashboardStudents: any[] =
-        Array.isArray(passedStudents) && passedStudents.length > 0
-          ? passedStudents
-          : Array.isArray(todayDashboardStudents) && todayDashboardStudents.length > 0
-          ? todayDashboardStudents
-          : Array.isArray(cachedStudents) && cachedStudents.length > 0
-          ? cachedStudents
-          : [];
-
-      const rosterData = rosterRes?.data;
-      const rosterRaw: any[] = Array.isArray(rosterData?.students)
-        ? rosterData.students
-        : Array.isArray(rosterData)
-        ? rosterData
-        : [];
-
-      let finalStudents: any[] = [];
-
-      if (dashboardStudents.length > 0) {
-        finalStudents = dashboardStudents.map((ds: any, idx: number) => {
-          const sid = String(ds.id);
-          const sName = String(ds.name || ds.fullName || 'Student').trim();
-          const initial = String(ds.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
-
-          // Find matching student in backend roster by id, name, or index
-          const matchingRoster =
-            rosterRaw.find(
-              (rs: any) =>
-                String(rs.id) === sid ||
-                String(rs.fullName || rs.name || '').trim().toLowerCase() === sName.toLowerCase()
-            ) || (rosterRaw.length > idx ? rosterRaw[idx] : null);
-
-          const assignedGoals = getStudentAssignedGoals(sid, matchingRoster?.goals || ds.goals || []);
-          const rawGoals =
-            assignedGoals.length > 0
-              ? assignedGoals
-              : Array.isArray(matchingRoster?.goals) && matchingRoster.goals.length > 0
-              ? matchingRoster.goals
-              : Array.isArray(ds.goals) && ds.goals.length > 0
-              ? ds.goals
-              : [
-                  { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
-                  { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
-                ];
-
-          return {
-            id: sid,
-            name: sName,
-            initial,
-            program: String(ds.program || matchingRoster?.program || 'Regular'),
-            goals: rawGoals,
-            trials: Array.isArray(matchingRoster?.trials) ? matchingRoster.trials : [],
-          };
-        });
-      } else if (rosterRaw.length > 0) {
-        finalStudents = rosterRaw.slice(0, 2).map((rs: any) => {
-          const sid = String(rs.id);
-          const sName = String(rs.fullName || rs.name || 'Student').trim();
-          const assignedGoals = getStudentAssignedGoals(sid, rs.goals);
-          const rawGoals =
-            assignedGoals.length > 0
-              ? assignedGoals
-              : Array.isArray(rs.goals) && rs.goals.length > 0
-              ? rs.goals
-              : [
-                  { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
-                  { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
-                ];
-
-          return {
-            id: sid,
-            name: sName,
-            initial: String(rs.initial || (sName.slice(0, 2) || 'ST').toUpperCase()),
-            program: String(rs.program || 'Regular'),
-            goals: rawGoals,
-            trials: Array.isArray(rs.trials) ? rs.trials : [],
-          };
-        });
-      } else {
-        // Consistent default fallback
-        finalStudents = [
-          {
-            id: 'stu-1',
-            name: 'Abebe Bikila',
-            initial: 'AB',
-            program: 'Regular',
-            goals: [
-              { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
-              { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
-            ],
-            trials: [],
-          },
-          {
-            id: 'stu-2',
-            name: 'Sara Connor',
-            initial: 'SC',
-            program: 'Regular',
-            goals: [
-              { id: 'goal-1', name: 'Receptive Object Identification', category: 'Cognitive' },
-              { id: 'goal-2', name: 'Task Transitions', category: 'Adaptive' },
-            ],
-            trials: [],
-          },
-        ];
-      }
-
-      setStoredSessionStudents(sessionId, finalStudents);
-
-      const parsedRoster: SessionRoster = {
-        teacherName: rosterData?.teacherName || dashboardRes?.data?.todaySchedule?.teacherName || 'Teacher',
-        stationName: rosterData?.stationName || dashboardRes?.data?.todaySchedule?.stationName || 'Station 1',
-        roomName: rosterData?.roomName || dashboardRes?.data?.todaySchedule?.roomName || 'Room 101',
-        blockDurationMinutes: Number(rosterData?.blockDurationMinutes || 90),
-        students: finalStudents.map((s: any, idx: number) => ({
-          id: String(s.id),
-          name: String(s.name).trim(),
-          initial: String(
-            s.initial || (String(s.name).slice(0, 2) || 'ST').toUpperCase()
-          ),
-          program: String(s.program || 'Regular'),
-          active: idx === 0,
-          goals: Array.isArray(s.goals)
-            ? s.goals.map((g: any) => ({
-                id: String(g.id),
-                name: String(g.name || 'Goal'),
-                category: g.category || g.domain || 'Adaptive',
-                goalType: g.goalType || g.goal_type || 'standard',
-                totalTrials: Number(g.totalTrials || 0),
-                independencePercent: Number(g.independencePercent || 0),
-                trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
-              }))
-            : [],
-          trials: Array.isArray(s.trials) ? s.trials : [],
-        })),
-      };
-
-      if (parsedRoster.students.length > 0 && !parsedRoster.students.some((s) => s.active)) {
-        parsedRoster.students[0].active = true;
-      }
-
-      setSession((prev) => {
-        const mergedStudents = parsedRoster.students.map((s) => {
-          const prevStudent = prev?.students.find((ps) => ps.id === s.id);
-          const storedTrials = getStoredTrials(sessionId, s.id);
-          const trialsToUse =
-            prevStudent?.trials && prevStudent.trials.length > 0
-              ? prevStudent.trials
-              : storedTrials;
-
-          const mergedGoals = s.goals.map((g) => {
-            const prevGoal = prevStudent?.goals.find((pg) => pg.id === g.id);
-            const goalTrials = trialsToUse.filter(
-              (t) => !t.studentGoalId || t.studentGoalId === g.id
+        // Determine active teacher ID
+        let targetTeacherId = teacherIdToLoad || selectedTeacherId;
+        if (!targetTeacherId && currentTeachers.length > 0) {
+          if (authSession?.userName) {
+            const match = currentTeachers.find((t) =>
+              t.name.toLowerCase().includes(authSession.userName.toLowerCase()) ||
+              authSession.userName.toLowerCase().includes(t.name.toLowerCase())
             );
-            const trialLog =
-              prevGoal?.trialLog && prevGoal.trialLog.length > 0
-                ? prevGoal.trialLog
-                : goalTrials;
-            const totalTrials =
-              prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
-            const indCount = trialLog.filter(
-              (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
-            ).length;
-            const independencePercent =
-              totalTrials > 0
-                ? Math.round((indCount / totalTrials) * 100)
-                : (prevGoal?.independencePercent || g.independencePercent || 0);
+            if (match) targetTeacherId = match.id;
+          }
+          if (!targetTeacherId && authSession?.email) {
+            const match = currentTeachers.find((t: any) =>
+              t.email?.toLowerCase() === authSession.email?.toLowerCase()
+            );
+            if (match) targetTeacherId = match.id;
+          }
+          if (!targetTeacherId) {
+            targetTeacherId = currentTeachers[0].id;
+          }
+          setSelectedTeacherId(targetTeacherId);
+        }
+
+        // Parallel fetch: director schedule for target teacher, student options, and dashboard
+        const [schedRes, studentOptsRes, dashRes] = await Promise.all([
+          targetTeacherId ? getDirectorSchedule({ teacherId: targetTeacherId }).catch(() => null) : null,
+          getStudentOptions().catch(() => null),
+          getTeacherDashboard().catch(() => null),
+        ]);
+
+        const studentOpts = Array.isArray(studentOptsRes?.data) ? studentOptsRes.data : [];
+        registerStudentStatuses(studentOpts);
+        const studentMap = new Map(studentOpts.map((s: any) => [String(s.id), s]));
+
+        const blocks: any[] = Array.isArray(schedRes?.data) ? schedRes.data : [];
+        const currentTeacherObj = currentTeachers.find((t) => t.id === targetTeacherId);
+
+        // Filter blocks specifically belonging to the target teacher
+        const teacherBlocks = blocks.filter((b: any) => {
+          if (b.teacherId && String(b.teacherId) === String(targetTeacherId)) return true;
+          if (currentTeacherObj && b.teacherName && b.teacherName.toLowerCase() === currentTeacherObj.name.toLowerCase()) return true;
+          return !b.teacherId && !b.teacherName;
+        });
+        const relevantBlocks = teacherBlocks.length > 0 ? teacherBlocks : blocks;
+        const activeBlock = relevantBlocks.find((b: any) => Array.isArray(b.studentIds) && b.studentIds.length > 0) || relevantBlocks[0];
+
+        const currentTeacherName =
+          currentTeacherObj?.name || activeBlock?.teacherName || blocks[0]?.teacherName || 'Teacher';
+        const currentStationName = activeBlock?.stationName || blocks[0]?.stationName || 'Station 1';
+        const currentRoomName = activeBlock?.roomName || blocks[0]?.roomName || 'Room 101';
+        const currentDurationMinutes = Number(activeBlock?.blockDurationMinutes || blocks[0]?.blockDurationMinutes || 90);
+
+        // Clinical / station ratio: strictly at most 2 assigned students for this specific teacher
+        let assignedStudentIds: string[] = [];
+        if (activeBlock && Array.isArray(activeBlock.studentIds) && activeBlock.studentIds.length > 0) {
+          assignedStudentIds = Array.from<string>(new Set(activeBlock.studentIds.map(String))).slice(0, 2);
+        } else if (dashRes?.data?.todaySchedule?.students && Array.isArray(dashRes.data.todaySchedule.students) && dashRes.data.todaySchedule.students.length > 0) {
+          assignedStudentIds = Array.from<string>(new Set(dashRes.data.todaySchedule.students.map((s: any) => String(s.id)))).slice(0, 2);
+        } else {
+          assignedStudentIds = Array.from<string>(
+            new Set(relevantBlocks.flatMap((b: any) => (Array.isArray(b.studentIds) ? b.studentIds : [])).map(String))
+          ).slice(0, 2);
+        }
+
+        // Map assigned student IDs to full student objects
+        const assignedStudents = assignedStudentIds.map((sid) => {
+          const opt = studentMap.get(sid);
+          if (opt) return opt;
+          const reg = getRegisteredStudentStatus(sid);
+          return reg ? { ...reg, id: sid } : { id: sid, name: `Student ${sid.slice(0, 4)}` };
+        });
+
+        // Strictly enforce: One student can be displayed on session page if and only if assessment is 100% completed
+        // No student can be in assessment and in session page at one time, and at most 2 assigned students per station
+        const eligibleStudents = assignedStudents.filter(isStudentEligibleForSession).slice(0, 2);
+
+        let finalStudents: any[] = [];
+
+        if (eligibleStudents.length > 0) {
+          finalStudents = eligibleStudents.slice(0, 2).map((ds: any, idx: number) => {
+            const sid = String(ds.id);
+            const sName = String(ds.name || ds.fullName || 'Student').trim();
+            const initial = String(ds.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
+
+            const assignedGoals = getStudentAssignedGoals(sid, ds.goals || []);
+            const rawGoals =
+              assignedGoals.length > 0
+                ? assignedGoals
+                : Array.isArray(ds.goals) && ds.goals.length > 0
+                ? ds.goals
+                : [
+                    { id: `${sid}-goal-1`, name: 'Goal 1 — Basic Skills', category: 'Adaptive' },
+                    { id: `${sid}-goal-2`, name: 'Goal 2 — Advanced Skills', category: 'Adaptive' },
+                  ];
 
             return {
-              ...g,
-              totalTrials,
-              independencePercent,
-              trialLog,
+              id: sid,
+              name: sName,
+              initial,
+              program: String(ds.program || 'Regular'),
+              goals: rawGoals,
+              trials: Array.isArray(ds.trials) ? ds.trials : [],
+            };
+          });
+        } else {
+          // No students assigned to this teacher in Director Scheduling or not yet 100% completed
+          finalStudents = [];
+        }
+
+        setStoredSessionStudents(sessionId, finalStudents, targetTeacherId);
+
+        const parsedRoster: SessionRoster = {
+          teacherName: currentTeacherName,
+          stationName: currentStationName,
+          roomName: currentRoomName,
+          blockDurationMinutes: currentDurationMinutes,
+          students: finalStudents.map((s: any, idx: number) => ({
+            id: String(s.id),
+            name: String(s.name).trim(),
+            initial: String(
+              s.initial || (String(s.name).slice(0, 2) || 'ST').toUpperCase()
+            ),
+            program: String(s.program || 'Regular'),
+            active: idx === 0,
+            goals: Array.isArray(s.goals)
+              ? s.goals.map((g: any) => ({
+                  id: String(g.id),
+                  name: String(g.name || 'Goal'),
+                  category: g.category || g.domain || 'Adaptive',
+                  goalType: g.goalType || g.goal_type || 'standard',
+                  totalTrials: Number(g.totalTrials || 0),
+                  independencePercent: Number(g.independencePercent || 0),
+                  trialLog: Array.isArray(g.trialLog) ? g.trialLog : [],
+                }))
+              : [],
+            trials: Array.isArray(s.trials) ? s.trials : [],
+          })),
+        };
+
+        if (parsedRoster.students.length > 0 && !parsedRoster.students.some((s) => s.active)) {
+          parsedRoster.students[0].active = true;
+        }
+
+        setSession((prev) => {
+          const mergedStudents = parsedRoster.students.map((s) => {
+            const prevStudent = prev?.students.find((ps) => ps.id === s.id);
+            const storedTrials = getStoredTrials(sessionId, s.id);
+            const trialsToUse =
+              prevStudent?.trials && prevStudent.trials.length > 0
+                ? prevStudent.trials
+                : storedTrials;
+
+            const mergedGoals = s.goals.map((g) => {
+              const prevGoal = prevStudent?.goals.find((pg) => pg.id === g.id);
+              const goalTrials = trialsToUse.filter(
+                (t) => !t.studentGoalId || t.studentGoalId === g.id
+              );
+              const trialLog =
+                prevGoal?.trialLog && prevGoal.trialLog.length > 0
+                  ? prevGoal.trialLog
+                  : goalTrials;
+              const totalTrials =
+                prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
+              const indCount = trialLog.filter(
+                (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+              ).length;
+              const independencePercent =
+                totalTrials > 0
+                  ? Math.round((indCount / totalTrials) * 100)
+                  : (prevGoal?.independencePercent || g.independencePercent || 0);
+
+              return {
+                ...g,
+                totalTrials,
+                independencePercent,
+                trialLog,
+              };
+            });
+
+            return {
+              ...s,
+              trials: trialsToUse,
+              goals: mergedGoals,
             };
           });
 
-          return {
-            ...s,
-            trials: trialsToUse,
-            goals: mergedGoals,
-          };
+          parsedRoster.students = mergedStudents.slice(0, 2);
+
+          if (prev && parsedRoster.students.length > 0) {
+            const activeStudentId = prev.students.find((s) => s.active)?.id;
+            if (activeStudentId && parsedRoster.students.some((s) => s.id === activeStudentId)) {
+              parsedRoster.students = parsedRoster.students.map((s) => ({
+                ...s,
+                active: s.id === activeStudentId,
+              }));
+            }
+          }
+          return parsedRoster;
         });
 
-        parsedRoster.students = mergedStudents;
+        startSessionTimer(
+          sessionId,
+          (parsedRoster.blockDurationMinutes || 90) * 60
+        );
 
-        if (prev && parsedRoster.students.length > 0) {
-          const activeStudentId = prev.students.find((s) => s.active)?.id;
-          if (activeStudentId && parsedRoster.students.some((s) => s.id === activeStudentId)) {
-            parsedRoster.students = parsedRoster.students.map((s) => ({
-              ...s,
-              active: s.id === activeStudentId,
-            }));
-          }
+        setSecondsRemaining(remainingSeconds());
+        setIsRunning(isTimerRunning());
+      } catch (err) {
+        if (!silent) {
+          setSession(null);
+          setLoadError(true);
         }
-        return parsedRoster;
-      });
-
-      startSessionTimer(
-        sessionId,
-        (parsedRoster.blockDurationMinutes || 90) * 60
-      );
-
-      setSecondsRemaining(remainingSeconds());
-      setIsRunning(isTimerRunning());
-    } catch (err) {
-      if (!silent) {
-        setSession(null);
-        setLoadError(true);
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [sessionId]);
+    },
+    [sessionId, selectedTeacherId, teachers, authSession]
+  );
 
   useEffect(() => {
-    loadRoster();
-  }, [loadRoster]);
+    getStaffOptions()
+      .then(async ({ data: staffOpts }) => {
+        const teacherRows = (staffOpts || []).filter((s: any) => s.role === 'teacher');
+        setTeachers(teacherRows);
+
+        let initialId = (route.params as any)?.teacherId;
+        if (!initialId && typeof localStorage !== 'undefined') {
+          initialId = localStorage.getItem('melue_session_selected_teacher_id') || undefined;
+        }
+
+        if (!initialId && authSession?.userName) {
+          const match = teacherRows.find((t: any) =>
+            t.name.toLowerCase().includes(authSession.userName.toLowerCase()) ||
+            authSession.userName.toLowerCase().includes(t.name.toLowerCase())
+          );
+          if (match) initialId = match.id;
+        }
+
+        if (!initialId && authSession?.email) {
+          const match = teacherRows.find((t: any) =>
+            t.email?.toLowerCase() === authSession.email?.toLowerCase()
+          );
+          if (match) initialId = match.id;
+        }
+
+        const resolvedTeacherId = initialId || teacherRows[0]?.id || '';
+        if (resolvedTeacherId) {
+          setSelectedTeacherId(resolvedTeacherId);
+          loadRoster(resolvedTeacherId);
+        } else {
+          loadRoster();
+        }
+      })
+      .catch(() => {
+        loadRoster();
+      });
+  }, [sessionId, (route.params as any)?.teacherId]);
 
   useEffect(() => {
     if (!isRunning || secondsRemaining === null) return undefined;
@@ -860,12 +922,26 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
            <Text style={[typography.h2, styles.studentsHeading]}>Students</Text>
            <View style={styles.emptyContainer}>
              <View style={styles.emptyIconCircle}>
-               <Feather name="users" size={26} color={colors.mutedText} />
+               <Feather name="users" size={28} color={colors.primaryBlue} />
              </View>
-             <Text style={styles.emptyTitle}>No student assigned yet</Text>
+             <Text style={styles.emptyTitle}>No students assigned to {session.teacherName}</Text>
              <Text style={styles.emptyText}>
-               A student appears here once their assessment is completed and an IUP goal has been assigned.
+               Each teacher's session workbench shows only the students assigned to them in the Director Schedule. No students are currently assigned to {session.teacherName}.
              </Text>
+             <View style={styles.emptyActionRow}>
+               <TouchableOpacity
+                 style={styles.emptyActionBtn}
+                 onPress={() => {
+                   navigation?.navigate?.('DirectorScheduling' as never);
+                   if (typeof window !== 'undefined' && window.location) {
+                     window.location.href = '/DirectorScheduling';
+                   }
+                 }}
+               >
+                 <Feather name="calendar" size={16} color={colors.white} style={{ marginRight: 8 }} />
+                 <Text style={styles.emptyActionBtnText}>Assign in Director Scheduling</Text>
+               </TouchableOpacity>
+             </View>
            </View>
          </ScrollView>
        </SafeAreaView>
@@ -935,7 +1011,7 @@ if (loadError) return <ScreenError onRetry={loadRoster} />;
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={[styles.studentsRow, isLandscape && styles.studentsRowLandscape]}>
-          {session.students.map((student) => (
+          {session.students.slice(0, 2).map((student) => (
             <TouchableOpacity
               key={student.id}
               style={styles.studentCardWrapper}
@@ -1133,5 +1209,214 @@ primaryBtnText: {
      color: colors.mutedText,
      textAlign: 'center',
      lineHeight: 20,
+   },
+
+   headerMetaRow: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     flexWrap: 'wrap',
+     gap: spacing.xs,
+     marginTop: 6,
+   },
+
+   teacherBadge: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     backgroundColor: '#EFF6FF',
+     borderWidth: 1,
+     borderColor: '#BFDBFE',
+     paddingHorizontal: 10,
+     paddingVertical: 5,
+     borderRadius: 999,
+   },
+
+   teacherBadgeIcon: {
+     marginRight: 6,
+   },
+
+   teacherBadgeText: {
+     fontSize: 13,
+     color: '#1E40AF',
+   },
+
+   teacherBadgeBold: {
+     fontWeight: '700',
+     color: '#1E3A8A',
+   },
+
+   headerStationInfo: {
+     fontSize: 13,
+     color: colors.mutedText,
+     marginLeft: 4,
+   },
+
+   modalOverlay: {
+     flex: 1,
+     backgroundColor: 'rgba(0,0,0,0.45)',
+     justifyContent: 'center',
+     alignItems: 'center',
+     padding: spacing.md,
+   },
+
+   teacherModalCard: {
+     width: '100%',
+     maxWidth: 480,
+     backgroundColor: colors.bgCard,
+     borderRadius: radius.lg,
+     padding: spacing.lg,
+     shadowColor: '#000',
+     shadowOpacity: 0.2,
+     shadowRadius: 14,
+     elevation: 10,
+   },
+
+   teacherModalHeader: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'flex-start',
+     marginBottom: spacing.md,
+     borderBottomWidth: 1,
+     borderBottomColor: colors.border,
+     paddingBottom: spacing.sm,
+   },
+
+   teacherModalTitle: {
+     fontSize: 18,
+     fontWeight: '700',
+     color: colors.navyText,
+   },
+
+   teacherModalSub: {
+     fontSize: 12,
+     color: colors.mutedText,
+     marginTop: 2,
+   },
+
+   modalCloseBtn: {
+     padding: 4,
+   },
+
+   teacherList: {
+     maxHeight: 320,
+   },
+
+   teacherItem: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     justifyContent: 'space-between',
+     paddingVertical: spacing.md,
+     paddingHorizontal: spacing.md,
+     borderRadius: radius.md,
+     borderWidth: 1,
+     borderColor: colors.border,
+     marginBottom: spacing.sm,
+     backgroundColor: colors.bgApp,
+   },
+
+   teacherItemSelected: {
+     borderColor: colors.primaryBlue,
+     backgroundColor: '#EFF6FF',
+   },
+
+   teacherItemLeft: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     gap: spacing.sm,
+     flex: 1,
+   },
+
+   teacherAvatar: {
+     width: 36,
+     height: 36,
+     borderRadius: 18,
+     backgroundColor: colors.border,
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
+
+   teacherAvatarSelected: {
+     backgroundColor: colors.primaryBlue,
+   },
+
+   teacherAvatarText: {
+     fontSize: 13,
+     fontWeight: '700',
+     color: colors.navyText,
+   },
+
+   teacherAvatarTextSelected: {
+     color: colors.white,
+   },
+
+   teacherItemName: {
+     fontSize: 15,
+     fontWeight: '600',
+     color: colors.navyText,
+   },
+
+   teacherItemNameSelected: {
+     color: colors.primaryBlue,
+     fontWeight: '700',
+   },
+
+   teacherItemRole: {
+     fontSize: 12,
+     color: colors.mutedText,
+     marginTop: 2,
+   },
+
+   activeTeacherBadge: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     backgroundColor: colors.primaryBlue,
+     paddingHorizontal: 8,
+     paddingVertical: 4,
+     borderRadius: 12,
+   },
+
+   activeTeacherBadgeText: {
+     fontSize: 11,
+     fontWeight: '700',
+     color: colors.white,
+   },
+
+   emptyActionRow: {
+     flexDirection: 'row',
+     gap: spacing.sm,
+     marginTop: spacing.md,
+     flexWrap: 'wrap',
+     justifyContent: 'center',
+   },
+
+   emptyActionBtn: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     backgroundColor: colors.primaryBlue,
+     paddingHorizontal: spacing.md,
+     paddingVertical: spacing.sm,
+     borderRadius: radius.md,
+   },
+
+   emptyActionBtnText: {
+     color: colors.white,
+     fontWeight: '700',
+     fontSize: 14,
+   },
+
+   emptySecondaryBtn: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     borderWidth: 1,
+     borderColor: colors.primaryBlue,
+     paddingHorizontal: spacing.md,
+     paddingVertical: spacing.sm,
+     borderRadius: radius.md,
+     backgroundColor: colors.white,
+   },
+
+   emptySecondaryBtnText: {
+     color: colors.primaryBlue,
+     fontWeight: '600',
+     fontSize: 14,
    },
  });

@@ -4,6 +4,7 @@ import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
@@ -11,6 +12,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
+import { isStudentInSession, isStudentAssessment100PercentCompleted, markStudentAssessmentCompleted } from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AssessmentDashboard'>;
@@ -90,16 +92,22 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
   const isTeacher = session?.role === 'teacher';
   const currentTherapistName = session?.userName || (session as any)?.user?.name;
 
-  // Filter students to strictly show only students who are in assessment and exclude active therapy students
+  // Filter students to strictly show only students who are in assessment and exclude active therapy/in-session students
   const filteredStudents = (data?.students ?? []).filter((s: any) => {
-    // Students in active therapy / in session must NOT appear on the assessment dashboard
-    if (s.status === 'active' || s.status === 'active_therapy' || s.status === 'in_session') {
+    // Mutual exclusivity: Students in active therapy / in session or completed must NOT appear on the assessment dashboard
+    if (isStudentInSession(s) || isStudentAssessment100PercentCompleted(s)) {
       return false;
     }
-    return s.phase === '6-week' || !s.phase;
+    return true;
   });
 
   if (loadError) return <ScreenError onRetry={load} />;
@@ -204,7 +212,10 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                 {isCompleted && (
                   <TouchableOpacity
                     style={[styles.launchBtn, { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 }]}
-                    onPress={() => (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id })}
+                    onPress={() => {
+                      markStudentAssessmentCompleted(s.id);
+                      (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
+                    }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <Feather name="check-circle" size={15} color="#FFFFFF" />

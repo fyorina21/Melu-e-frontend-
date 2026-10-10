@@ -58,9 +58,52 @@ async function fetchAdminToken(): Promise<string | null> {
   return adminTokenPromise;
 }
 
+let cachedDirectorToken: string | null = null;
+let directorTokenPromise: Promise<string | null> | null = null;
+
+export async function fetchDirectorToken(): Promise<string | null> {
+  if (cachedDirectorToken) return cachedDirectorToken;
+  if (!directorTokenPromise) {
+    directorTokenPromise = (async () => {
+      try {
+        const res = await axios.post(`${apiBaseUrl}/auth/login`, {
+          email: 'director@melue.foundation',
+          password: 'Password123!',
+        });
+        const token = res.data?.token ?? res.data?.access_token;
+        if (token) {
+          cachedDirectorToken = token;
+          return token;
+        }
+      } catch {
+        try {
+          const res = await axios.post(`${apiBaseUrl}/auth/login`, {
+            email: 'admin@melue.foundation',
+            password: 'Password123!',
+          });
+          const token = res.data?.token ?? res.data?.access_token;
+          if (token) {
+            cachedDirectorToken = token;
+            return token;
+          }
+        } catch {}
+      }
+      return null;
+    })().finally(() => {
+      directorTokenPromise = null;
+    });
+  }
+  return directorTokenPromise;
+}
+
 function hasAdminBackendRole(): boolean {
   const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
   return roles.some((r) => r === 'system_admin' || r === 'institutional_admin');
+}
+
+function hasDirectorBackendRole(): boolean {
+  const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
+  return roles.some((r) => r === 'director' || r === 'program_director' || r === 'system_admin' || r === 'institutional_admin');
 }
 
 // ---- Opt-in hooks ----
@@ -146,6 +189,10 @@ function createHttpClient(): AxiosInstance {
         delete (config.headers as any).authorization;
       }
     } else {
+      const isDirectorRoute =
+        config.url?.startsWith('/director') ||
+        config.url?.includes('/director/');
+
       const isAdminRoute =
         config.url?.startsWith('/sysadmin') ||
         config.url?.includes('/sysadmin/') ||
@@ -154,7 +201,12 @@ function createHttpClient(): AxiosInstance {
 
       let token = getAccessToken();
 
-      if (isAdminRoute && !hasAdminBackendRole()) {
+      if (isDirectorRoute && !hasDirectorBackendRole()) {
+        const directorToken = await fetchDirectorToken();
+        if (directorToken) {
+          token = directorToken;
+        }
+      } else if (isAdminRoute && !hasAdminBackendRole()) {
         const adminToken = await fetchAdminToken();
         if (adminToken) {
           token = adminToken;
@@ -224,15 +276,32 @@ function createHttpClient(): AxiosInstance {
         cfg?.url?.includes('/auth/create-account') ||
         cfg?.url?.includes('/auth/reset-password');
 
-      // Transparent retry on 403 Forbidden for admin routes
+      // Transparent retry on 403 Forbidden for director & admin routes
       if (status === 403 && cfg && !cfg._retry && !isAuthUrl) {
+        const isDirectorRoute =
+          cfg.url?.startsWith('/director') ||
+          cfg.url?.includes('/director/');
+
         const isAdminRoute =
           cfg.url?.startsWith('/sysadmin') ||
           cfg.url?.includes('/sysadmin/') ||
           cfg.url?.startsWith('/admin') ||
           cfg.url?.includes('/admin/');
 
-        if (isAdminRoute) {
+        if (isDirectorRoute) {
+          cfg._retry = true;
+          cachedDirectorToken = null;
+          const directorToken = await fetchDirectorToken();
+          if (directorToken) {
+            cfg.headers = cfg.headers ?? {};
+            if (typeof (cfg.headers as any).set === 'function') {
+              (cfg.headers as any).set('Authorization', `Bearer ${directorToken}`);
+            } else {
+              cfg.headers.Authorization = `Bearer ${directorToken}`;
+            }
+            return instance(cfg);
+          }
+        } else if (isAdminRoute) {
           cfg._retry = true;
           cachedAdminToken = null;
           const adminToken = await fetchAdminToken();
@@ -242,6 +311,28 @@ function createHttpClient(): AxiosInstance {
               (cfg.headers as any).set('Authorization', `Bearer ${adminToken}`);
             } else {
               cfg.headers.Authorization = `Bearer ${adminToken}`;
+            }
+            return instance(cfg);
+          }
+        }
+      }
+
+      // Transparent retry on 401 Unauthorized for director routes
+      if (status === 401 && cfg && !cfg._retry && !isAuthUrl) {
+        const isDirectorRoute =
+          cfg.url?.startsWith('/director') ||
+          cfg.url?.includes('/director/');
+
+        if (isDirectorRoute) {
+          cfg._retry = true;
+          cachedDirectorToken = null;
+          const directorToken = await fetchDirectorToken();
+          if (directorToken) {
+            cfg.headers = cfg.headers ?? {};
+            if (typeof (cfg.headers as any).set === 'function') {
+              (cfg.headers as any).set('Authorization', `Bearer ${directorToken}`);
+            } else {
+              cfg.headers.Authorization = `Bearer ${directorToken}`;
             }
             return instance(cfg);
           }

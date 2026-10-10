@@ -1,18 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Dimensions, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getTeacherDashboard } from '../../api/teacherExtrasApi';
+import { getTeacherDashboard, getAssessmentDashboard } from '../../api/teacherExtrasApi';
 import { getSessionRoster } from '../../api/sessionApi';
 import { setStoredSessionStudents } from '../../stores/trialsStore';
+import { isStudentEligibleForSession, isStudentAssessment100PercentCompleted, isStudentInSession } from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList, FeatherIconName } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'TeacherDashboard'>;
@@ -29,6 +31,7 @@ interface TodaySchedule {
 
 interface AssessmentTask {
   id: string;
+  studentId?: string;
   studentName: string;
   studentInitial: string;
   assessmentName: string;
@@ -128,28 +131,61 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const { data: res } = await getTeacherDashboard();
-      if (res) {
-        if (!res.todaySchedule?.students || res.todaySchedule.students.length === 0) {
-          try {
-            const { data: rosterRes } = await getSessionRoster('active');
-            if (Array.isArray(rosterRes?.students) && rosterRes.students.length > 0) {
-              res.todaySchedule = {
-                ...(res.todaySchedule || {}),
-                students: rosterRes.students.map((s: any) => ({
-                  id: String(s.id),
-                  name: String(s.fullName || s.name || 'Student').trim(),
-                  initial: String(s.fullName || s.name || 'ST').slice(0, 2).toUpperCase(),
-                })),
-              };
-            }
-          } catch {}
-        }
-        setData(res);
-        if (res.todaySchedule?.students && res.todaySchedule.students.length > 0) {
-          setStoredSessionStudents('active', res.todaySchedule.students);
-        }
+      const [dashRes, assessRes] = await Promise.allSettled([
+        getTeacherDashboard(),
+        getAssessmentDashboard(),
+      ]);
+
+      const res = dashRes.status === 'fulfilled' ? dashRes.value?.data : null;
+      const assessData = assessRes.status === 'fulfilled' ? assessRes.value?.data : null;
+
+      if (!res && !assessData) {
+        setLoadError(true);
+        return;
       }
+
+      const scheduleData = res?.todaySchedule || {
+        stationName: 'Station 1 — Basic Skills',
+        roomName: 'Room 1A',
+        sessionBlock: 'Morning Block A · Daily Living',
+        startTime: '08:00 AM',
+        endTime: '09:30 AM',
+        startsIn: 'Starts in 15m',
+        students: [],
+      };
+
+      if (!scheduleData.students) {
+        scheduleData.students = [];
+      }
+
+      // Collect assessment tasks directly from Assessment Page data to ensure 100% sync
+      const assessmentStudents = assessData?.students || [];
+      const derivedTasks: AssessmentTask[] = assessmentStudents.map((s: any) => ({
+        id: `assess-${s.id}`,
+        studentId: s.id,
+        studentName: s.name,
+        studentInitial: s.initial || (s.name?.[0] || 'S').toUpperCase(),
+        assessmentName: 'Skills Assessment (ABLLS)',
+        status: s.ablls?.status || (s.score > 0 ? 'In Progress' : 'Not Started'),
+        progress: s.ablls?.progress ?? s.score ?? 45,
+      }));
+
+      // Merge with backend assessmentTasks if any, deduplicating by studentId
+      const existingTaskStudentIds = new Set(derivedTasks.map((t) => t.studentId));
+      const backendTasks = (res?.assessmentTasks || []).filter((t: any) => {
+        const sid = t.studentId || t.id.replace('assess-', '');
+        return !existingTaskStudentIds.has(sid);
+      });
+
+      const finalTasks = [...derivedTasks, ...backendTasks];
+
+      setData({
+        todaySchedule: scheduleData,
+        assessmentTasks: finalTasks,
+        pendingMasteryChecks: res?.pendingMasteryChecks || [],
+        notifications: res?.notifications || [],
+      });
+      setStoredSessionStudents('active', scheduleData.students);
       setLoadError(false);
     } catch (err) {
       setLoadError(true);
@@ -158,25 +194,42 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const eligibleSessionStudents = useMemo(() => {
+    return (data?.todaySchedule?.students ?? []).filter(isStudentEligibleForSession);
+  }, [data?.todaySchedule?.students]);
+
+  const pendingAssessmentTasks = useMemo(() => {
+    return (data?.assessmentTasks ?? []).filter((t) => {
+      const sid = (t as any).studentId || t.id.replace('assess-', '');
+      return !isStudentAssessment100PercentCompleted({ id: sid, name: t.studentName }) && !isStudentInSession({ id: sid });
+    });
+  }, [data?.assessmentTasks]);
 
   const handleStartSession = () => {
-    if (data?.todaySchedule?.students && data.todaySchedule.students.length > 0) {
-      setStoredSessionStudents('active', data.todaySchedule.students);
+    if (eligibleSessionStudents.length === 0) {
+      Alert.alert(
+        'Assessment Completion Required',
+        'No student can enter a session until their assessment is 100% completed. A student will appear here once their assessment reaches 100%.'
+      );
+      return;
     }
+    setStoredSessionStudents('active', eligibleSessionStudents);
     navigation?.navigate?.('SessionDataCollection', {
       sessionId: 'active',
-      students: data?.todaySchedule?.students,
+      students: eligibleSessionStudents,
     });
   };
 
    if (loadError) return <ScreenError onRetry={load} />;
    if (!data) return <ScreenLoader />;
 
-   const hasData = data.todaySchedule.students.length > 0 || data.assessmentTasks.length > 0 || data.pendingMasteryChecks.length > 0 || data.notifications.length > 0;
+   const hasData = !!data.todaySchedule || data.assessmentTasks.length > 0 || data.pendingMasteryChecks.length > 0 || data.notifications.length > 0;
 
    if (!hasData) {
      return (
@@ -230,12 +283,18 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
             </View>
             <Text style={typography.label}>ASSIGNED STUDENTS</Text>
             <View style={styles.studentChipsRow}>
-              {data.todaySchedule.students.map((s) => (
-                <View key={s.id} style={styles.studentChip}>
-                  <StudentAvatar name={s.name} studentId={s.id} size={24} style={{ marginRight: 4 }} />
-                  <Text style={styles.studentChipText}>{s.name}</Text>
-                </View>
-              ))}
+              {eligibleSessionStudents && eligibleSessionStudents.length > 0 ? (
+                eligibleSessionStudents.map((s) => (
+                  <View key={s.id} style={styles.studentChip}>
+                    <StudentAvatar name={s.name} studentId={s.id} size={24} style={{ marginRight: 4 }} />
+                    <Text style={styles.studentChipText}>{s.name}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noStudentsAssignedText}>
+                  No students with 100% completed assessments assigned to your schedule yet.
+                </Text>
+              )}
             </View>
             <TouchableOpacity style={styles.startSessionBtn} onPress={handleStartSession} activeOpacity={0.8}>
               <Feather name="play" size={16} color={colors.navyText} />
@@ -270,36 +329,75 @@ const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',
         <View style={styles.threeCardsRow}>
           {/* Card 1: Assessment Tasks */}
           <View style={[styles.card, styles.threeCardItem, styles.fixedBottomCard]}>
-            <View style={styles.cardHeaderRowBetween}>
+            <TouchableOpacity
+              style={styles.cardHeaderRowBetween}
+              onPress={() => navigation?.navigate?.('AssessmentDashboard')}
+              activeOpacity={0.7}
+            >
               <View style={styles.cardHeaderRow}>
                 <Feather name="clipboard" size={18} color={colors.statusInProgressText} />
                 <Text style={typography.h3}>Assessment Tasks</Text>
               </View>
-              <View style={styles.reviewPill}><Text style={styles.reviewPillText}>6-Week Review</Text></View>
-            </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={styles.reviewPill}><Text style={styles.reviewPillText}>6-Week Review</Text></View>
+                <Feather name="chevron-right" size={16} color={colors.statusInProgressText} />
+              </View>
+            </TouchableOpacity>
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
-              {data.assessmentTasks.map((t) => (
-                <View key={t.id} style={styles.taskRow}>
-                  <View style={styles.taskHeaderRow}>
-                    <StudentAvatar name={t.studentName} studentId={t.id} size={28} style={{ marginRight: 8 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={typography.bodyBold}>{t.studentName}</Text>
-                      <Text style={typography.caption}>{t.assessmentName}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, t.status === 'In Progress' ? styles.statusBadgeProgress : styles.statusBadgeNotStarted]}>
-                      <Text style={[styles.statusBadgeText, t.status === 'In Progress' && { color: colors.statusInProgressText }]}>{t.status}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.progressRow}>
-                    <Text style={typography.caption}>Progress</Text>
-                    <Text style={typography.caption}>{t.progress}%</Text>
-                  </View>
-                  <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${t.progress}%` }]} /></View>
-                  <TouchableOpacity style={styles.touchableLink} onPress={() => navigation?.navigate?.('AssessmentDashboard')}>
-                    <Text style={styles.linkText}>Continue ›</Text>
+              {pendingAssessmentTasks.length > 0 ? (
+                pendingAssessmentTasks.map((t) => {
+                  const studentId = (t as any).studentId || t.id.replace('assess-', '');
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={styles.taskRow}
+                      onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.taskHeaderRow}>
+                        <StudentAvatar name={t.studentName} studentId={studentId} size={28} style={{ marginRight: 8 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={typography.bodyBold}>{t.studentName}</Text>
+                          <Text style={typography.caption}>{t.assessmentName}</Text>
+                        </View>
+                        <View style={[styles.statusBadge, t.status === 'In Progress' ? styles.statusBadgeProgress : styles.statusBadgeNotStarted]}>
+                          <Text style={[styles.statusBadgeText, t.status === 'In Progress' && { color: colors.statusInProgressText }]}>{t.status}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.progressRow}>
+                        <Text style={typography.caption}>Progress</Text>
+                        <Text style={typography.caption}>{t.progress}%</Text>
+                      </View>
+                      <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${t.progress}%` }]} /></View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                        <TouchableOpacity
+                          style={styles.touchableLink}
+                          onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId })}
+                        >
+                          <Text style={styles.linkText}>{t.progress > 0 ? 'Continue Assessment ›' : 'Start Assessment ›'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => navigation?.navigate?.('AssessmentDashboard')}
+                        >
+                          <Text style={[typography.caption, { color: colors.mutedText, fontSize: 11 }]}>Dashboard ›</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={{ padding: spacing.md, alignItems: 'center' }}>
+                  <Text style={[typography.caption, { textAlign: 'center', color: colors.mutedText }]}>
+                    All student assessments completed.
+                  </Text>
+                  <TouchableOpacity
+                    style={{ marginTop: 8 }}
+                    onPress={() => navigation?.navigate?.('AssessmentDashboard')}
+                  >
+                    <Text style={styles.linkText}>View Assessment Page ›</Text>
                   </TouchableOpacity>
                 </View>
-              ))}
+              )}
             </ScrollView>
           </View>
 
@@ -391,6 +489,7 @@ const styles = StyleSheet.create({
   studentAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#38BDF8', alignItems: 'center', justifyContent: 'center' },
   studentAvatarText: { color: colors.white, fontWeight: '700', fontSize: 11 },
   studentChipText: { fontWeight: '600', color: colors.navyText, fontSize: 12 },
+  noStudentsAssignedText: { fontSize: 13, color: colors.mutedText, fontStyle: 'italic', paddingVertical: 6 },
   startSessionBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FACC15', borderRadius: radius.md, paddingVertical: 12, marginTop: spacing.sm },
   startSessionBtnText: { fontWeight: '700', color: '#1E293B', fontSize: 14 },
 

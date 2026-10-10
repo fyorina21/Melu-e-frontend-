@@ -895,7 +895,7 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
                   {selectedItem ? `${getMaxCellsForItem(selectedItem)}-Cell Progress Tracker:` : 'Progress Tracker:'}
                 </Text>
                 <View style={styles.inspectorCellsRow}>
-                  {selectedItem &&
+                  {!!selectedItem &&
                     Array.from({ length: getMaxCellsForItem(selectedItem) }, (_, cIdx) => {
                       const filled = getFilledCells(selectedItem);
                       const isF = cIdx < filled;

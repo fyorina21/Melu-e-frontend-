@@ -5,46 +5,47 @@ import type { QueryParams, Payload } from '../types';
 // SCR-PD-001: Dashboard
 
 export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
-  // 1. Fetch dashboard metrics from real backend endpoint
+  // Parallel fetch of dashboard endpoints
+  const [metricsRes, studentsRes, pipelineRes, staffRes, notifRes] = await Promise.allSettled([
+    client.get('/program_director/dashboard'),
+    client.get<any[]>('/options/students'),
+    client.get<any>('/program_director/assessment_pipeline'),
+    client.get<any[]>('/options/staff'),
+    client.get<any>('/notifications'),
+  ]);
+
   let metrics: any = {};
-  try {
-    const { data: res } = await client.get('/program_director/dashboard');
-    metrics = res || {};
-  } catch {}
+  if (metricsRes.status === 'fulfilled' && metricsRes.value?.data) {
+    metrics = metricsRes.value.data;
+  }
 
-  // 2. Fetch students options from backend
   let rawStudents: any[] = [];
-  try {
-    const { data: sData } = await client.get<any[]>('/options/students');
-    if (Array.isArray(sData)) rawStudents = sData;
-  } catch {}
+  if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value?.data)) {
+    rawStudents = studentsRes.value.data;
+  }
 
-  // 3. Fetch assessment pipeline data
   let pipelineStudents: any[] = [];
-  try {
-    const { data: pData } = await client.get<any>('/program_director/assessment_pipeline');
+  if (pipelineRes.status === 'fulfilled') {
+    const pData = pipelineRes.value?.data;
     const pipe = pData?.pipeline || pData?.students || (Array.isArray(pData) ? pData : []);
     if (Array.isArray(pipe)) pipelineStudents = pipe;
-  } catch {}
+  }
 
-  // 4. Fetch staff options to assign therapist names
   let staffList: any[] = [];
-  try {
-    const { data: stData } = await client.get<any[]>('/options/staff');
-    if (Array.isArray(stData)) staffList = stData;
-  } catch {}
+  if (staffRes.status === 'fulfilled' && Array.isArray(staffRes.value?.data)) {
+    staffList = staffRes.value.data;
+  }
 
-  // 5. Fetch notifications
   let notifications: any[] = [];
-  try {
-    const { data: notifRes } = await client.get<any>('/notifications');
-    const rawNotifs = Array.isArray(notifRes) ? notifRes : Array.isArray(notifRes?.data) ? notifRes.data : [];
+  if (notifRes.status === 'fulfilled') {
+    const rawData = notifRes.value?.data;
+    const rawNotifs = Array.isArray(rawData) ? rawData : Array.isArray(rawData?.data) ? rawData.data : [];
     notifications = rawNotifs.map((n: any, idx: number) => ({
       id: String(n.id || `notif-${idx}`),
       text: n.title || n.message || n.payload?.title || n.text || 'Clinical notification',
       urgent: Boolean(n.urgent || n.type === 'alert' || n.priority === 'urgent'),
     }));
-  } catch {}
+  }
 
   if (notifications.length === 0) {
     notifications = [
@@ -111,7 +112,7 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
 
   // 7. Calculate workflow stages counts
   const workflowStages = [
-    { key: 'enrolled', name: 'Enrolled', count: dashboardStudents.filter((s) => s.currentStage === 'enrolled').length },
+    { key: 'enrolled', name: 'Not Started', count: dashboardStudents.filter((s) => s.currentStage === 'enrolled').length },
     { key: 'in-assessment', name: 'In Assessment', count: dashboardStudents.filter((s) => s.currentStage === 'in-assessment').length },
     { key: 'assessment-complete', name: 'Assessment Complete', count: dashboardStudents.filter((s) => s.currentStage === 'assessment-complete').length },
     { key: 'session-assigned', name: 'Session Assigned', count: dashboardStudents.filter((s) => s.currentStage === 'session-assigned').length },
@@ -228,55 +229,263 @@ export const addAssessmentNote = async (studentId: string, payload: Payload) => 
 
 // SCR-PD-003: IUP Generation & Management
 
-export const getIupCandidates = async () => {
-  try {
-    const res = await client.get('/program_director/assessment_pipeline');
-    const raw = res?.data;
-    const list = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.pipeline)
-      ? raw.pipeline
-      : Array.isArray(raw?.students)
-      ? raw.students
-      : Array.isArray(raw?.data)
-      ? raw.data
-      : [];
-    if (list.length > 0) {
-      const candidates = list.map((item: any) => ({
-        id: String(item.student_id || item.id),
-        studentId: String(item.student_id || item.id),
-        name: String(item.student_name || item.name || 'Unknown Student'),
-        status: String(item.status || item.stage || 'ready_for_iup'),
-        rawStatus: String(item.status || ''),
-        assessmentProgress: Number(item.assessment_progress ?? 100),
-        assessmentStatus: String(item.stage || item.status || 'Ready for IUP'),
-        hasAssessmentData: true,
-      }));
-      return { data: candidates, candidates };
-    }
-  } catch {}
+export interface IupCandidate {
+  id: string;
+  studentId?: string;
+  iupId?: string;
+  name: string;
+  status: string;
+  rawStatus?: string;
+  program?: string;
+  age?: number;
+  currentStage?: string;
+  sessionAssigned?: boolean;
+  assessmentProgress?: number;
+  assessmentStatus?: string;
+  hasAssessmentData?: boolean;
+}
 
-  // Fallback to /options/students
-  try {
-    const { data: students } = await client.get<any[]>('/options/students');
-    if (Array.isArray(students) && students.length > 0) {
-      const candidates = students.map((s: any) => ({
-        id: String(s.id),
-        studentId: String(s.id),
-        name: s.name,
-        status: 'ready_for_iup',
+export const isCandidateInSession = (c: IupCandidate): boolean => {
+  const s = ((c as any).rawStatus || c.status || '').toLowerCase().trim();
+  const stage = ((c as any).currentStage || (c as any).stage || '').toLowerCase().trim();
+  return (
+    s === 'in session' ||
+    s === 'in_session' ||
+    s === 'in-session' ||
+    s === 'active' ||
+    s === 'active therapy' ||
+    s === 'active_therapy' ||
+    s === 'session assigned' ||
+    s === 'session_assigned' ||
+    s === 'session-assigned' ||
+    stage === 'in-session' ||
+    stage === 'session-assigned' ||
+    Boolean((c as any).sessionAssigned)
+  );
+};
+
+export const isEligibleIupCandidate = (c: IupCandidate): boolean => {
+  const s = ((c as any).rawStatus || c.status || '').toLowerCase().trim();
+  const assessStatus = (c.assessmentStatus || '').toLowerCase().trim();
+  const stage = ((c as any).currentStage || (c as any).stage || '').toLowerCase().trim();
+
+  // Explicitly exclude students who are still in assessment or draft/pending/inactive/enrolled
+  if (
+    s === 'in_assessment' ||
+    s === 'in assessment' ||
+    s === 'in-assessment' ||
+    s === 'assessment' ||
+    s === 'not started' ||
+    s === 'not-started' ||
+    s === 'draft' ||
+    s === 'registered' ||
+    s === 'pending_review' ||
+    s === 'withdrawn' ||
+    s === 'discharged' ||
+    s === 'archived' ||
+    stage === 'in-assessment' ||
+    stage === 'enrolled' ||
+    assessStatus.includes('in progress') ||
+    assessStatus.includes('in assessment') ||
+    assessStatus === 'not-started'
+  ) {
+    return false;
+  }
+
+  // Allow students whose status is Ready for IUP or In Session
+  const isReadyForIup =
+    s === 'ready for iup' ||
+    s === 'ready_for_iup' ||
+    s === 'assessment_complete' ||
+    s === 'assessment completed' ||
+    s === 'assessment-complete' ||
+    stage === 'assessment-complete' ||
+    assessStatus === 'ready for iup';
+
+  return isReadyForIup || isCandidateInSession(c);
+};
+
+export const getIupCandidates = async () => {
+  // Fetch dashboard (which resolves normalized stages for all students),
+  // assessment pipeline, and student options in parallel.
+  const [dashboardRes, pipelineRes, optionsRes] = await Promise.allSettled([
+    getProgramDirectorDashboard().catch(() => null),
+    client.get<any>('/program_director/assessment_pipeline').catch(() => null),
+    client.get<any[]>('/options/students').catch(() => null),
+  ]);
+
+  const candidatesMap = new Map<string, any>();
+
+  // 1. Process from getProgramDirectorDashboard
+  const dashData = dashboardRes.status === 'fulfilled' ? dashboardRes.value?.data : null;
+  const dashStudents = Array.isArray(dashData?.students) ? dashData.students : [];
+
+  dashStudents.forEach((s: any) => {
+    const id = String(s.id);
+    const stage = String(s.currentStage || '').toLowerCase().trim();
+    const rawStatus = String(s.status || '').toLowerCase().trim();
+
+    let resolvedStatus = 'Ready for IUP';
+    if (
+      stage === 'in-session' ||
+      stage === 'session-assigned' ||
+      rawStatus === 'in session' ||
+      rawStatus === 'session assigned' ||
+      s.sessionAssigned
+    ) {
+      resolvedStatus = 'In Session';
+    } else if (
+      stage === 'assessment-complete' ||
+      rawStatus === 'assessment completed' ||
+      rawStatus === 'ready for iup' ||
+      rawStatus === 'ready_for_iup'
+    ) {
+      resolvedStatus = 'Ready for IUP';
+    } else if (stage === 'in-assessment' || rawStatus === 'in assessment') {
+      resolvedStatus = 'In Assessment';
+    } else if (stage === 'enrolled' || rawStatus === 'not started') {
+      resolvedStatus = 'Not Started';
+    }
+
+    candidatesMap.set(id, {
+      id,
+      studentId: id,
+      name: String(s.fullName || s.name || `Student ${id}`),
+      status: resolvedStatus,
+      rawStatus: resolvedStatus === 'In Session' ? 'in_session' : resolvedStatus === 'Ready for IUP' ? 'ready_for_iup' : rawStatus,
+      assessmentProgress: s.assessmentStatus === 'completed' ? 100 : 50,
+      assessmentStatus: resolvedStatus,
+      program: s.programType || s.program || 'Comprehensive ABA',
+      currentStage: s.currentStage,
+      sessionAssigned: Boolean(s.sessionAssigned),
+      hasAssessmentData: true,
+    });
+  });
+
+  // 2. Process from assessment_pipeline
+  const pData = pipelineRes.status === 'fulfilled' ? pipelineRes.value?.data : null;
+  const pipeList = Array.isArray(pData)
+    ? pData
+    : Array.isArray(pData?.pipeline)
+    ? pData.pipeline
+    : Array.isArray(pData?.students)
+    ? pData.students
+    : [];
+
+  pipeList.forEach((item: any) => {
+    const id = String(item.student_id || item.id);
+    const rawStage = String(item.stage || item.status || '').toLowerCase().trim();
+    const existing = candidatesMap.get(id);
+
+    let resolvedStatus = existing?.status || 'Ready for IUP';
+    if (
+      rawStage === 'in-session' ||
+      rawStage === 'in_session' ||
+      rawStage === 'in session' ||
+      rawStage === 'active_therapy' ||
+      rawStage === 'session_assigned'
+    ) {
+      resolvedStatus = 'In Session';
+    } else if (
+      rawStage === 'ready_for_iup' ||
+      rawStage === 'ready for iup' ||
+      rawStage === 'assessment_complete' ||
+      rawStage === 'assessment completed' ||
+      rawStage === 'assessment-complete'
+    ) {
+      resolvedStatus = 'Ready for IUP';
+    } else if (rawStage === 'in_assessment' || rawStage === 'in-assessment' || rawStage === 'in assessment') {
+      resolvedStatus = 'In Assessment';
+    }
+
+    candidatesMap.set(id, {
+      ...(existing || {}),
+      id,
+      studentId: id,
+      name: String(item.student_name || item.name || existing?.name || `Student ${id}`),
+      status: resolvedStatus,
+      rawStatus: resolvedStatus === 'In Session' ? 'in_session' : resolvedStatus === 'Ready for IUP' ? 'ready_for_iup' : rawStage,
+      assessmentProgress: Number(item.assessment_progress ?? existing?.assessmentProgress ?? 100),
+      assessmentStatus: resolvedStatus,
+      program: item.program || existing?.program || 'Comprehensive ABA',
+      hasAssessmentData: true,
+    });
+  });
+
+  // 3. Process from /options/students
+  const optData = optionsRes.status === 'fulfilled' ? optionsRes.value?.data : null;
+  const optStudents = Array.isArray(optData) ? optData : [];
+
+  optStudents.forEach((s: any) => {
+    const id = String(s.id);
+    const existing = candidatesMap.get(id);
+    if (!existing) {
+      const rawStatus = String(s.status || s.phase || '').toLowerCase().trim();
+      let resolvedStatus = 'Ready for IUP';
+      if (
+        rawStatus === 'in_session' ||
+        rawStatus === 'in-session' ||
+        rawStatus === 'in session' ||
+        rawStatus === 'active' ||
+        rawStatus === 'active_therapy' ||
+        rawStatus === 'session_assigned'
+      ) {
+        resolvedStatus = 'In Session';
+      } else if (
+        rawStatus === 'ready_for_iup' ||
+        rawStatus === 'ready for iup' ||
+        rawStatus === 'assessment_complete' ||
+        rawStatus === 'assessment completed'
+      ) {
+        resolvedStatus = 'Ready for IUP';
+      } else if (rawStatus === 'in_assessment' || rawStatus === 'in assessment') {
+        resolvedStatus = 'In Assessment';
+      } else if (rawStatus === 'not started' || rawStatus === 'enrolled') {
+        resolvedStatus = 'Not Started';
+      }
+
+      candidatesMap.set(id, {
+        id,
+        studentId: id,
+        name: String(s.name || `Student ${id}`),
+        status: resolvedStatus,
+        rawStatus: resolvedStatus === 'In Session' ? 'in_session' : resolvedStatus === 'Ready for IUP' ? 'ready_for_iup' : rawStatus,
+        assessmentProgress: resolvedStatus === 'In Assessment' ? 45 : resolvedStatus === 'Not Started' ? 0 : 100,
+        assessmentStatus: resolvedStatus,
+        program: s.program || 'Comprehensive ABA',
+        age: s.age || 6,
+        hasAssessmentData: true,
+      });
+    }
+  });
+
+  // 4. Merge stored IUP drafts from localStorage
+  const allDrafts = getAllStoredIupDrafts();
+  Object.keys(allDrafts).forEach((draftStudentId) => {
+    const draft = allDrafts[draftStudentId];
+    const existing = candidatesMap.get(draftStudentId);
+    if (existing) {
+      if (existing.status !== 'In Session') {
+        existing.status = 'Ready for IUP';
+        existing.assessmentStatus = 'Ready for IUP';
+      }
+    } else {
+      candidatesMap.set(draftStudentId, {
+        id: draftStudentId,
+        studentId: draftStudentId,
+        name: draft.studentName || `Student ${draftStudentId}`,
+        status: draft.status || 'Ready for IUP',
         rawStatus: 'ready_for_iup',
         assessmentProgress: 100,
         assessmentStatus: 'Ready for IUP',
-        program: s.program || 'Regular',
-        age: s.age || 6,
+        program: draft.program || 'Comprehensive ABA',
         hasAssessmentData: true,
-      }));
-      return { data: candidates, candidates };
+      });
     }
-  } catch {}
+  });
 
-  return { data: [], candidates: [] };
+  const allCandidates = Array.from(candidatesMap.values());
+  return { data: allCandidates, candidates: allCandidates };
 };
 
 export const getIupContext = async (studentId: string) => {

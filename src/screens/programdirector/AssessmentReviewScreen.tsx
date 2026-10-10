@@ -126,7 +126,7 @@ function ReportModal({ visible, report, onClose, onMarkReviewed, onExport }: {
             <Text style={[typography.h3, { marginTop: spacing.md }]}>Top Preferences</Text>
             <Text style={typography.body}>{(report.preferences || []).join(', ')}</Text>
 
-            {report.notes && report.notes !== 'No notes recorded.' && (
+            {Boolean(report.notes && report.notes !== 'No notes recorded.') && (
               <>
                 <Text style={[typography.h3, { marginTop: spacing.md }]}>Teacher Notes</Text>
                 <Text style={typography.body}>{report.notes}</Text>
@@ -136,7 +136,7 @@ function ReportModal({ visible, report, onClose, onMarkReviewed, onExport }: {
             <Text style={[typography.h3, { marginTop: spacing.md }]}>IUP Status</Text>
             <Text style={typography.body}>{report.iupStatus}</Text>
 
-            {report.assignedGoals && report.assignedGoals.length > 0 && (
+            {!!report.assignedGoals && report.assignedGoals.length > 0 && (
               <>
                 <Text style={[typography.h3, { marginTop: spacing.md }]}>Goal Status</Text>
                 {report.assignedGoals.map((g, idx) => (
@@ -147,7 +147,7 @@ function ReportModal({ visible, report, onClose, onMarkReviewed, onExport }: {
               </>
             )}
 
-            {report.dateCompleted && (
+            {Boolean(report.dateCompleted) && (
               <>
                 <Text style={[typography.h3, { marginTop: spacing.md }]}>Date Completed</Text>
                 <Text style={typography.body}>{report.dateCompleted}</Text>

@@ -204,7 +204,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
       )}
 
       <View style={styles.rightBlock}>
-        {notificationRoute && (
+        {Boolean(notificationRoute) && (
           <TouchableOpacity onPress={openNotifications} style={styles.iconBtn} accessibilityLabel="Notifications">
             <Feather name="bell" size={18} color={colors.navyText} />
             {effectiveUnread > 0 && (

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAr
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
@@ -111,6 +111,7 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
   const [pendingAttachments, setPendingAttachments] = useState<{ id: string; name: string }[]>([]);
   const [search, setSearch] = useState('');
   const [studentFilter, setStudentFilter] = useState('All');
+  const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
 
   const loadList = useCallback(async () => {
     try {
@@ -256,23 +257,141 @@ function TeacherCommunicationPanel({ navigation }: { navigation: any }) {
         }
       />
       <View style={styles.body}>
-        <View style={styles.sidebar}>
-          <View style={styles.searchArea}>
+        {studentDropdownOpen && (
+          <Pressable
+            style={styles.dropdownOverlay}
+            onPress={() => setStudentDropdownOpen(false)}
+          />
+        )}
+        <View style={[styles.sidebar, studentDropdownOpen && { zIndex: 90 }]}>
+          <View style={[styles.searchArea, studentDropdownOpen && { zIndex: 100 }]}>
             <Text style={styles.sidebarLabel}>Messages</Text>
             <View style={styles.searchWrap}>
               <Feather name="search" size={14} color="#94A3B8" style={styles.searchIcon} />
               <TextInput style={styles.searchInput} placeholder="Search student/parent..." placeholderTextColor="#94A3B8" value={search} onChangeText={setSearch} />
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabs}>
-              <TouchableOpacity onPress={() => setStudentFilter('All')} style={[styles.filterTab, studentFilter === 'All' && styles.filterTabActive]}>
-                <Text style={[styles.filterTabText, studentFilter === 'All' && styles.filterTabTextActive]}>All</Text>
+
+            <View style={styles.dropdownWrap}>
+              <TouchableOpacity
+                style={[
+                  styles.dropdownTrigger,
+                  studentFilter !== 'All' && styles.dropdownTriggerActive,
+                ]}
+                onPress={() => setStudentDropdownOpen((prev) => !prev)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.dropdownTriggerLeft}>
+                  <Feather
+                    name="users"
+                    size={14}
+                    color={studentFilter !== 'All' ? colors.navyText : '#64748B'}
+                    style={styles.dropdownIcon}
+                  />
+                  <Text
+                    style={[
+                      styles.dropdownTriggerText,
+                      studentFilter !== 'All' && styles.dropdownTriggerTextActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {studentFilter === 'All' ? 'All Students' : studentFilter}
+                  </Text>
+                </View>
+                <View style={styles.dropdownTriggerRight}>
+                  {studentFilter !== 'All' && (
+                    <TouchableOpacity
+                      style={styles.dropdownClearBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        setStudentFilter('All');
+                        setStudentDropdownOpen(false);
+                      }}
+                    >
+                      <Feather name="x" size={12} color="#64748B" />
+                    </TouchableOpacity>
+                  )}
+                  <Feather
+                    name={studentDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color="#64748B"
+                  />
+                </View>
               </TouchableOpacity>
-              {uniqueStudents.map((name) => (
-                <TouchableOpacity key={name} onPress={() => setStudentFilter(name)} style={[styles.filterTab, studentFilter === name && styles.filterTabActive]}>
-                  <Text style={[styles.filterTabText, studentFilter === name && styles.filterTabTextActive]}>{name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+
+              {studentDropdownOpen && (
+                <View style={styles.dropdownMenu}>
+                  <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownItem,
+                        studentFilter === 'All' && styles.dropdownItemActive,
+                      ]}
+                      onPress={() => {
+                        setStudentFilter('All');
+                        setStudentDropdownOpen(false);
+                      }}
+                    >
+                      <View style={styles.dropdownItemLeft}>
+                        <Feather
+                          name="users"
+                          size={13}
+                          color={studentFilter === 'All' ? colors.navyText : '#64748B'}
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text
+                          style={[
+                            styles.dropdownItemText,
+                            studentFilter === 'All' && styles.dropdownItemTextActive,
+                          ]}
+                        >
+                          All Students
+                        </Text>
+                      </View>
+                      {studentFilter === 'All' && (
+                        <Feather name="check" size={14} color={colors.navyText} />
+                      )}
+                    </TouchableOpacity>
+                    {uniqueStudents.map((name) => {
+                      const isSelected = studentFilter === name;
+                      return (
+                        <TouchableOpacity
+                          key={name}
+                          style={[
+                            styles.dropdownItem,
+                            isSelected && styles.dropdownItemActive,
+                          ]}
+                          onPress={() => {
+                            setStudentFilter(name);
+                            setStudentDropdownOpen(false);
+                          }}
+                        >
+                          <View style={styles.dropdownItemLeft}>
+                            <StudentAvatar
+                              name={name}
+                              size={20}
+                              style={{ marginRight: 8 }}
+                            />
+                            <Text
+                              style={[
+                                styles.dropdownItemText,
+                                isSelected && styles.dropdownItemTextActive,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {name}
+                            </Text>
+                          </View>
+                          {isSelected && (
+                            <Feather name="check" size={14} color={colors.navyText} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
           </View>
           <ScrollView>
             {visibleConversations.map((c) => (
@@ -695,18 +814,104 @@ export default function ParentCommunicationScreen(props: any) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  body: { flex: 1, flexDirection: 'row' },
+  body: { flex: 1, flexDirection: 'row', position: 'relative' },
   sidebar: { width: 320, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.bgCard },
-  searchArea: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.sm },
+  searchArea: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.sm, position: 'relative' },
   sidebarLabel: { fontSize: 16, fontWeight: '700', color: colors.navyText },
   searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgApp, borderRadius: radius.md, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border },
   searchIcon: { marginRight: spacing.xs },
   searchInput: { flex: 1, height: 38, fontSize: 13, color: colors.navyText },
-  filterTabs: { flexDirection: 'row', gap: spacing.xs },
-  filterTab: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.sm, backgroundColor: colors.bgApp },
-  filterTabActive: { backgroundColor: colors.primaryYellow },
-  filterTabText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
-  filterTabTextActive: { color: colors.navyText },
+  dropdownWrap: {
+    position: 'relative',
+    zIndex: 100,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgApp,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    height: 38,
+  },
+  dropdownTriggerActive: {
+    borderColor: colors.primaryYellowDark,
+    backgroundColor: '#FEF9C3',
+  },
+  dropdownTriggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.xs,
+  },
+  dropdownIcon: {
+    marginRight: spacing.xs,
+  },
+  dropdownTriggerText: {
+    fontSize: 13,
+    color: colors.bodyText,
+    fontWeight: '500',
+    flex: 1,
+  },
+  dropdownTriggerTextActive: {
+    color: colors.navyText,
+    fontWeight: '600',
+  },
+  dropdownTriggerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dropdownClearBtn: {
+    padding: 2,
+    borderRadius: radius.pill,
+    backgroundColor: '#E2E8F0',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 42,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...makeShadow(4, 12, 0.15, '0, 0, 0', 8),
+    zIndex: 999,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownItemActive: {
+    backgroundColor: '#FEF3C7',
+  },
+  dropdownItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.xs,
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    color: colors.navyText,
+  },
+  dropdownItemTextActive: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  dropdownOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 80,
+  },
   convoRow: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   convoRowActive: { backgroundColor: '#F8FAFC' },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },

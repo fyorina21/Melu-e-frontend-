@@ -661,7 +661,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         <View style={styles.behaviorAssessmentCard}>
           <View style={styles.behaviorAssessmentHeader}>
             <Text style={styles.behaviorAssessmentTitle}>Behavior Assessment</Text>
-            {studentId && (
+            {Boolean(studentId) && (
               <TouchableOpacity
                 style={styles.behaviorAssessmentClose}
                 onPress={() => setStudentId(undefined)}
@@ -735,7 +735,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   </View>
                 )}
 
-                {behaviorAssessment?.draftRecord && (behaviorAssessment.draftRecord.frequency?.trim() || behaviorAssessment.draftRecord.trigger?.trim() || behaviorAssessment.draftRecord.duration?.trim()) && (
+                {!!(behaviorAssessment?.draftRecord && (behaviorAssessment.draftRecord.frequency?.trim() || behaviorAssessment.draftRecord.trigger?.trim() || behaviorAssessment.draftRecord.duration?.trim())) && !!behaviorAssessment?.draftRecord && (
                   <View style={styles.behaviorAssessmentNote}>
                     <Text style={styles.behaviorAssessmentNoteLabel}>In-Progress Draft Incident</Text>
                     <Text style={styles.behaviorAssessmentNoteText}>
@@ -913,7 +913,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                         </>
                       )}
 
-                      {r.status !== 'Pending' && r.coordinatorFeedback && (
+                      {r.status !== 'Pending' && Boolean(r.coordinatorFeedback) && (
                         <TouchableOpacity
                           style={styles.feedbackActionBtn}
                           onPress={() => setFeedbackTarget(r)}
@@ -954,7 +954,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                       <Text style={styles.drawerNotesBody}>
                         {r.bodyMarkdown || 'No extended notes written for this session.'}
                       </Text>
-                      {r.coordinatorFeedback && (
+                      {Boolean(r.coordinatorFeedback) && (
                         <View style={styles.drawerFeedbackBox}>
                           <Text style={styles.drawerFeedbackLabel}>Coordinator Feedback:</Text>
                           <Text style={styles.drawerFeedbackText}>{r.coordinatorFeedback}</Text>
@@ -1152,7 +1152,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   </ScrollView>
                 </View>
 
-                {viewNoteTarget.coordinatorFeedback && (
+                {Boolean(viewNoteTarget.coordinatorFeedback) && (
                   <View style={styles.feedbackBox}>
                     <Text style={styles.modalInfoLabel}>Coordinator Feedback:</Text>
                     <Text style={styles.feedbackBoxText}>{viewNoteTarget.coordinatorFeedback}</Text>

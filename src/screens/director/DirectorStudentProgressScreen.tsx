@@ -427,10 +427,11 @@ export default function DirectorStudentProgressScreen({
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.cardTitle}>Director Notes & Instructions</Text>
-            {notesSaved && (
-              <Text style={styles.savedNoteText}>
-                <Feather name="check" size={12} color={colors.successGreen} /> Saved
-              </Text>
+            {Boolean(notesSaved) && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Feather name="check" size={12} color={colors.successGreen} />
+                <Text style={styles.savedNoteText}>Saved</Text>
+              </View>
             )}
           </View>
           <TextInput

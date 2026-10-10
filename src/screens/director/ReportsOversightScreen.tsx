@@ -315,7 +315,7 @@ export default function ReportsOversightScreen({
               <Feather name="filter" size={15} color={colors.navyText} />
               <Text style={styles.filterTitle}>Filter Controls</Text>
             </View>
-            {(selectedStudentId || selectedTeacherId || selectedStation || filterDate) && (
+            {Boolean(selectedStudentId || selectedTeacherId || selectedStation || filterDate) && (
               <TouchableOpacity
                 onPress={() => {
                   setSelectedStudentId('');

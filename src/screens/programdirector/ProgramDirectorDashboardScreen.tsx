@@ -66,6 +66,7 @@ interface DashboardData {
 
 const STAGE_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
   enrolled:              { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151', dot: '#9CA3AF' },
+  'not-started':         { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151', dot: '#9CA3AF' },
   'in-assessment':       { bg: '#FEF3C7', border: '#FCD34D', text: '#92400E', dot: '#F59E0B' },
   'assessment-complete': { bg: '#DBEAFE', border: '#93C5FD', text: '#1E40AF', dot: '#3B82F6' },
   'session-assigned':    { bg: '#EDE9FE', border: '#C4B5FD', text: '#5B21B6', dot: '#8B5CF6' },
@@ -82,6 +83,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const FILTER_OPTIONS = [
   { key: 'all',                label: 'All Students' },
+  { key: 'enrolled',           label: 'Not Started' },
   { key: 'in-assessment',     label: 'In Assessment' },
   { key: 'assessment-complete', label: 'Assessment Complete' },
   { key: 'session-assigned',   label: 'Session Assigned' },
@@ -226,6 +228,12 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
           >
             {stages.map((stage, i) => {
               const c = STAGE_COLORS[stage.key] ?? STAGE_COLORS.enrolled;
+              const displayName =
+                stage.key === 'enrolled' ||
+                stage.key === 'not-started' ||
+                stage.name?.toLowerCase() === 'enrolled'
+                  ? 'Not Started'
+                  : stage.name;
               return (
                 <View key={stage.key} style={styles.pipelineItem}>
                   <View
@@ -236,7 +244,7 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
                   >
                     <View style={[styles.pipelineDot, { backgroundColor: c.dot }]} />
                     <Text style={[styles.pipelineStageName, { color: c.text }]}>
-                      {stage.name}
+                      {displayName}
                     </Text>
                     <Text style={[styles.pipelineStageCount, { color: c.text }]}>
                       {stage.count}

@@ -173,7 +173,7 @@ export default function DirectorParentCommunicationScreen({ navigation }: Native
                 <TouchableOpacity key={c.id} style={[styles.convoRow, activeId === c.id && styles.convoRowActive]} onPress={() => setActiveId(c.id)}>
                   <Text style={typography.bodyBold}>{c.studentName}</Text>
                   <Text style={typography.caption} numberOfLines={1}>{c.lastMessagePreview}</Text>
-                  {c.escalated && <Text style={styles.escalatedTag}>Escalated</Text>}
+                  {Boolean(c.escalated) && <Text style={styles.escalatedTag}>Escalated</Text>}
                 </TouchableOpacity>
               ))}
             </ScrollView>

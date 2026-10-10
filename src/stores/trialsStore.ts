@@ -278,23 +278,32 @@ export function removeStoredAbcIncident(incidentId: string): void {
 
 const STUDENTS_STORAGE_KEY = 'melue_session_students_cache';
 
-export function setStoredSessionStudents(sessionId: string = 'active', students: any[]): void {
-  if (typeof localStorage === 'undefined' || !Array.isArray(students) || students.length === 0) return;
+export function setStoredSessionStudents(sessionId: string = 'active', students: any[], teacherId?: string): void {
+  if (typeof localStorage === 'undefined' || !Array.isArray(students)) return;
   try {
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
     const map = raw ? JSON.parse(raw) : {};
     map[sessionId] = students;
-    map['active'] = students;
+    if (teacherId) {
+      map[`${sessionId}_${teacherId}`] = students;
+      map[`teacher_${teacherId}`] = students;
+    } else {
+      map['active'] = students;
+    }
     localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(map));
   } catch {}
 }
 
-export function getStoredSessionStudents(sessionId: string = 'active'): any[] | null {
+export function getStoredSessionStudents(sessionId: string = 'active', teacherId?: string): any[] | null {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
     if (!raw) return null;
     const map = JSON.parse(raw);
+    if (teacherId) {
+      const scoped = map[`${sessionId}_${teacherId}`] || map[`teacher_${teacherId}`];
+      if (Array.isArray(scoped)) return scoped;
+    }
     const list = map[sessionId] || map['active'];
     return Array.isArray(list) && list.length > 0 ? list : null;
   } catch {

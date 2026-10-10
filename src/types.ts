@@ -164,7 +164,7 @@ export type SessionStackParamList = {
   PreferenceAssessment: { studentId: string };
   SensoryAssessment: { studentId: string };
   AbcLog: undefined;
-  SessionDataCollection: { sessionId?: string; students?: any[] } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
   DailyNotes: { studentId?: string };
   SessionNoteEditor: { sessionId: string; mode: 'view' | 'edit' };
   GoalProgress: { studentId: string; goalId: string };
@@ -198,7 +198,7 @@ export type CoordinatorStackParamList = {
   Notifications: undefined;
   StudentEnrollmentWizard: undefined;
   AssessmentDashboard: undefined;
-  SessionDataCollection: { sessionId?: string } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
   ChildProgress?: undefined;
 };
 
@@ -226,7 +226,7 @@ export type ProgramDirectorStackParamList = {
   StudentEnrollmentWizard: undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
   AssessmentDashboard: undefined;
-  SessionDataCollection: { sessionId?: string } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
 };
 
 export type InstitutionalAdminStackParamList = {
