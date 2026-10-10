@@ -1,6 +1,7 @@
 import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
+import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 
 // ============================================================================
 // Storage Keys
@@ -879,32 +880,34 @@ export const addAssessmentNote = async (
 // SCR-PD-003: IUP Generation & Management
 // ============================================================================
 export const getIupCandidates = async (): Promise<{ data: any[]; candidates: any[] }> => {
-  try {
-    const res = await client.get('/program_director/assessment_pipeline');
-    const raw = res?.data;
-    const list = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.pipeline)
-        ? raw.pipeline
-        : Array.isArray(raw?.students)
-          ? raw.students
-          : Array.isArray(raw?.data)
-            ? raw.data
-            : [];
-    if (list.length > 0) {
-      const candidates = list.map((item: any) => ({
-        id: String(item.student_id || item.id),
-        studentId: String(item.student_id || item.id),
-        name: String(item.student_name || item.name || 'Unknown Student'),
-        status: 'ready_for_iup',
-        rawStatus: String(item.status || 'ready_for_iup'),
-        assessmentProgress: 100,
-        assessmentStatus: 'Ready for IUP',
-        hasAssessmentData: true,
-      }));
-      return { data: candidates, candidates };
-    }
-  } catch {}
+  if (isUserDirectorOrAdmin()) {
+    try {
+      const res = await client.get('/program_director/assessment_pipeline');
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.pipeline)
+          ? raw.pipeline
+          : Array.isArray(raw?.students)
+            ? raw.students
+            : Array.isArray(raw?.data)
+              ? raw.data
+              : [];
+      if (list.length > 0) {
+        const candidates = list.map((item: any) => ({
+          id: String(item.student_id || item.id),
+          studentId: String(item.student_id || item.id),
+          name: String(item.student_name || item.name || 'Unknown Student'),
+          status: 'ready_for_iup',
+          rawStatus: String(item.status || 'ready_for_iup'),
+          assessmentProgress: 100,
+          assessmentStatus: 'Ready for IUP',
+          hasAssessmentData: true,
+        }));
+        return { data: candidates, candidates };
+      }
+    } catch {}
+  }
 
   try {
     const { data: students } = await client.get<any[]>('/options/students');
@@ -942,53 +945,69 @@ export const getIupCandidates = async (): Promise<{ data: any[]; candidates: any
 };
 
 export const getIupContext = async (studentId: string): Promise<{ data: any }> => {
-  try {
-    const res = await client.get(`/program_director/assessments/${studentId}`);
-    const data = res?.data;
-    if (data && (data.student || data.skills)) {
-      const student = data.student || {};
-      const skills = data.skills || {};
-      const behavior = data.behavior || {};
-      const preferences = data.preferences || {};
-      const visualizations = data.visualizations || {};
+  if (isUserDirectorOrAdmin()) {
+    try {
+      const res = await client.get(`/program_director/assessments/${studentId}`);
+      const data = res?.data;
+      if (data && (data.student || data.skills)) {
+        const student = data.student || {};
+        const skills = data.skills || {};
+        const behavior = data.behavior || {};
+        const preferences = data.preferences || {};
+        const visualizations = data.visualizations || {};
 
-      const topReinforcers = Array.isArray(visualizations.top_preferences)
-        ? visualizations.top_preferences.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
-        : Array.isArray(preferences.top_items)
-          ? preferences.top_items.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
-          : ['Sensory swing', 'Visual tokens', 'Bubbles'];
+        const topReinforcers = Array.isArray(visualizations.top_preferences)
+          ? visualizations.top_preferences.map((p: any) =>
+              typeof p === 'string' ? p : p.name || '',
+            )
+          : Array.isArray(preferences.top_items)
+            ? preferences.top_items.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
+            : ['Sensory swing', 'Visual tokens', 'Bubbles'];
 
-      return {
-        data: {
-          studentName:
-            student.name ||
-            `${student.first_name || ''} ${student.last_name || ''}`.trim() ||
-            'Student',
-          age: Number(student.age || 6),
-          dob: student.date_of_birth || '2020-04-12',
-          program: student.program_type || 'Comprehensive ABA',
-          enrollmentDate: student.created_at || 'Recently',
-          skillsStrengths:
-            skills.summary ||
-            (Array.isArray(data.strengths)
-              ? data.strengths.map((s: any) => s.domain).join(', ')
-              : 'Demonstrates emerging receptive skills.'),
-          behaviorFunctions:
-            behavior.summary || 'Escape / Attention seeking behaviors in structured tasks.',
-          topReinforcers,
-          sensorySummary: 'Responds positively to deep pressure and sensory breaks.',
-        },
-      };
-    }
-  } catch {}
+        return {
+          data: {
+            studentName:
+              student.name ||
+              `${student.first_name || ''} ${student.last_name || ''}`.trim() ||
+              'Student',
+            age: Number(student.age || 6),
+            dob: student.date_of_birth || '2020-04-12',
+            program: student.program_type || 'Comprehensive ABA',
+            enrollmentDate: student.created_at || 'Recently',
+            skillsStrengths:
+              skills.summary ||
+              (Array.isArray(data.strengths)
+                ? data.strengths.map((s: any) => s.domain).join(', ')
+                : 'Demonstrates emerging receptive skills.'),
+            behaviorFunctions:
+              behavior.summary || 'Escape / Attention seeking behaviors in structured tasks.',
+            topReinforcers,
+            sensorySummary: 'Responds positively to deep pressure and sensory breaks.',
+          },
+        };
+      }
+    } catch {}
+  }
 
-  // Resilient fallback context
+  // Resilient fallback context using real student details from options/students
   let studentName = 'Student';
   let studentAge = 6;
   let studentProgram = 'Comprehensive ABA';
 
+  try {
+    const { data: students } = await client.get<any[]>('/options/students');
+    const matched = Array.isArray(students)
+      ? students.find((s: any) => String(s.id) === String(studentId))
+      : null;
+    if (matched) {
+      studentName = matched.name || studentName;
+      if (matched.age) studentAge = matched.age;
+      if (matched.program) studentProgram = matched.program;
+    }
+  } catch {}
+
   const defaultMatch = DEFAULT_PD_STUDENTS.find((s) => s.id === studentId);
-  if (defaultMatch) {
+  if (defaultMatch && studentName === 'Student') {
     studentName = defaultMatch.name;
     studentAge = defaultMatch.age;
     studentProgram = defaultMatch.program;
@@ -1171,22 +1190,24 @@ export const archiveIup = async (iupId: string): Promise<{ data: any }> => {
 // ============================================================================
 export const getStudentCaseload = async (studentId: string): Promise<{ data: any }> => {
   const backendGoals: any[] = [];
-  try {
-    const res = await client.get(`/students/${studentId}/goals`);
-    const stations = res.data?.stations || [];
-    stations.forEach((st: any) => {
-      (st.goals || []).forEach((g: any) => {
-        backendGoals.push({
-          id: String(g.id || g.goal_id),
-          name: g.name || g.description || 'Assigned Goal',
-          domain: g.domain || 'Cognitive',
-          description: g.description || '',
-          station: st.station || 1,
-          slot: g.slot ?? 0,
+  if (isUserProgramDirector()) {
+    try {
+      const res = await client.get(`/students/${studentId}/goals`);
+      const stations = res.data?.stations || [];
+      stations.forEach((st: any) => {
+        (st.goals || []).forEach((g: any) => {
+          backendGoals.push({
+            id: String(g.id || g.goal_id),
+            name: g.name || g.description || 'Assigned Goal',
+            domain: g.domain || 'Cognitive',
+            description: g.description || '',
+            station: st.station || 1,
+            slot: g.slot ?? 0,
+          });
         });
       });
-    });
-  } catch {}
+    } catch {}
+  }
 
   // Check locally stored caseload assignments
   const caseloadMap = getStoredCaseloadMap();
@@ -1614,7 +1635,7 @@ export const getChartData = async (params: QueryParams): Promise<{ data: any }> 
   let goalCharts: any[] = [];
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
-  if (isUuid) {
+  if (isUuid && isUserProgramDirector()) {
     try {
       const res = await client.get(`/students/${studentId}/goals`);
       const stations = res.data?.stations || [];
