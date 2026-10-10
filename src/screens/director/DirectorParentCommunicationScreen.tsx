@@ -58,10 +58,17 @@ interface ConversationRow {
 
 interface RawThreadMessage {
   id: string;
-  from: string;
+  from?: string;
+  sender?: string;
   senderName?: string;
   text?: string;
-  sentAt: string;
+  content?: string;
+  message?: string;
+  sentAt?: string;
+  timestamp?: string;
+  created_at?: string;
+  isStaff?: boolean;
+  attachments?: { id: string; name: string }[];
 }
 
 export default function DirectorParentCommunicationScreen({
@@ -107,13 +114,23 @@ export default function DirectorParentCommunicationScreen({
       const { data } = await getDirectorConversationThread(activeId);
       const convo = (data ?? {}) as { messages?: RawThreadMessage[] };
       setThread(
-        (convo.messages ?? []).map((m) => ({
-          id: m.id,
-          sender: m.from,
-          senderLabel: m.senderName ?? m.from,
-          text: m.text ?? '',
-          timestamp: new Date(m.sentAt).toLocaleString([], { hour: 'numeric', minute: '2-digit' }),
-        })),
+        (convo.messages ?? []).map((m) => {
+          const rawDate = m.sentAt || m.timestamp || m.created_at;
+          const parsedDate = rawDate ? new Date(rawDate) : null;
+          const formattedTime =
+            parsedDate && !isNaN(parsedDate.getTime())
+              ? parsedDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })
+              : rawDate || 'Today';
+
+          return {
+            id: m.id,
+            sender: m.from || m.sender || 'director',
+            senderLabel: m.senderName || m.sender || m.from || 'Director',
+            text: m.text ?? m.content ?? m.message ?? '',
+            timestamp: formattedTime,
+            attachments: m.attachments,
+          };
+        }),
       );
     } catch (err) {
       setThread([]);
@@ -312,23 +329,29 @@ export default function DirectorParentCommunicationScreen({
                 style={styles.messagesScroll}
                 contentContainerStyle={styles.messagesContent}
               >
-                {thread.map((m) => (
-                  <View
-                    key={m.id}
-                    style={[styles.messageBubble, m.sender === 'team' && styles.messageBubbleMine]}
-                  >
-                    <Text style={typography.caption}>{m.senderLabel}</Text>
-                    {m.text ? <Text style={typography.body}>{m.text}</Text> : null}
-                    {m.attachments?.map((a) => (
-                      <View key={a.id} style={styles.messageAttachmentRow}>
-                        <Feather name="paperclip" size={12} color={colors.mutedText} />
-                        <Text style={styles.messageAttachmentText} numberOfLines={1}>
-                          {a.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ))}
+                {thread.map((m) => {
+                  const isMine =
+                    m.sender.toLowerCase().includes('director') ||
+                    m.sender.toLowerCase().includes('team') ||
+                    m.sender.toLowerCase().includes('staff');
+                  return (
+                    <View
+                      key={m.id}
+                      style={[styles.messageBubble, isMine && styles.messageBubbleMine]}
+                    >
+                      <Text style={typography.caption}>{m.senderLabel}</Text>
+                      {m.text ? <Text style={typography.body}>{m.text}</Text> : null}
+                      {m.attachments?.map((a) => (
+                        <View key={a.id} style={styles.messageAttachmentRow}>
+                          <Feather name="paperclip" size={12} color={colors.mutedText} />
+                          <Text style={styles.messageAttachmentText} numberOfLines={1}>
+                            {a.name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })}
               </ScrollView>
               {pendingAttachments.length > 0 && (
                 <View style={styles.pendingRow}>
