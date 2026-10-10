@@ -108,8 +108,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 export function useToast() {
   const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be used within a ToastProvider');
-  return ctx;
+  if (ctx) return ctx;
+  return {
+    showToast: (_message: string, _type?: ToastType) => {},
+  };
 }
 
 const styles = StyleSheet.create({

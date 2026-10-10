@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth, ROLES } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
+import { getActiveRole } from '../../../api/token';
 import {
   assignGoalToSlot,
   removeGoalFromSlot,
@@ -33,8 +34,13 @@ export type IupGenerationContainerProps = NativeStackScreenProps<
 >;
 
 export default function IupGenerationContainer({ navigation, route }: IupGenerationContainerProps) {
-  const { session } = useAuth();
-  const isCoordinator = session?.role === ROLES.COORDINATOR;
+  const auth = useAuth();
+  const session = auth?.session;
+  const currentRole = session?.role || getActiveRole() || 'coordinator';
+  const isCoordinator =
+    currentRole === ROLES.COORDINATOR ||
+    currentRole === 'coordinator' ||
+    currentRole === 'therapy_coordinator';
   const { showToast } = useToast();
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -443,7 +449,7 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       onNavbarTabPress={(t) => {
         if (t === 'IUP Creation & Goal Assignment') return;
         const routeMap = routeMapForRole(
-          session?.role ?? (isCoordinator ? 'coordinator' : 'program_director'),
+          currentRole ?? (isCoordinator ? 'coordinator' : 'program_director'),
         );
         const target = routeMap?.[t];
         if (target) navigation?.navigate?.(target as never);
