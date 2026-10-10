@@ -573,55 +573,67 @@ export const resetAbcListsToDefault = async () => {
   }
 };
 
+const DEFAULT_SCHEDULE_CAPACITY_CONFIG = {
+  morningStart: '08:00 AM',
+  morningEnd: '10:30 AM',
+  afternoonStart: '01:00 PM',
+  afternoonEnd: '03:30 PM',
+  preTherapyDuration: 30,
+  capacity: 2,
+  staff_to_student_capacity: 2,
+  draftExpiry: 7,
+  blocks: [
+    {
+      id: 'b1',
+      name: 'Morning Block 1',
+      startTime: '08:00 AM',
+      endTime: '09:15 AM',
+      type: 'Therapy',
+    },
+    {
+      id: 'b2',
+      name: 'Morning Block 2',
+      startTime: '09:15 AM',
+      endTime: '10:30 AM',
+      type: 'Therapy',
+    },
+    {
+      id: 'b3',
+      name: 'Afternoon Block 1',
+      startTime: '01:00 PM',
+      endTime: '02:15 PM',
+      type: 'Therapy',
+    },
+    {
+      id: 'b4',
+      name: 'Afternoon Block 2',
+      startTime: '02:15 PM',
+      endTime: '03:30 PM',
+      type: 'Therapy',
+    },
+  ],
+};
+
 // SCR-ADMIN-004: Session Schedule & Capacity
 export const getScheduleCapacityConfig = async () => {
+  if (!isUserAdmin()) {
+    const cached = storage.getJSONSync('admin_schedule_capacity_config');
+    return {
+      data: cached || DEFAULT_SCHEDULE_CAPACITY_CONFIG,
+    };
+  }
+
   try {
     const res = await client.get('/admin/schedule-capacity-config');
-    if (res?.data) return res;
+    if (res?.data) {
+      storage.setJSONSync('admin_schedule_capacity_config', res.data);
+      return res;
+    }
   } catch {}
 
   const cached = storage.getJSONSync('admin_schedule_capacity_config');
   return {
-    data: cached || {
-      morningStart: '08:00 AM',
-      morningEnd: '10:30 AM',
-      afternoonStart: '01:00 PM',
-      afternoonEnd: '03:30 PM',
-      preTherapyDuration: 30,
-      capacity: 2,
-      staff_to_student_capacity: 2,
-      draftExpiry: 7,
-      blocks: [
-        {
-          id: 'b1',
-          name: 'Morning Block 1',
-          startTime: '08:00 AM',
-          endTime: '09:15 AM',
-          type: 'Therapy',
-        },
-        {
-          id: 'b2',
-          name: 'Morning Block 2',
-          startTime: '09:15 AM',
-          endTime: '10:30 AM',
-          type: 'Therapy',
-        },
-        {
-          id: 'b3',
-          name: 'Afternoon Block 1',
-          startTime: '01:00 PM',
-          endTime: '02:15 PM',
-          type: 'Therapy',
-        },
-        {
-          id: 'b4',
-          name: 'Afternoon Block 2',
-          startTime: '02:15 PM',
-          endTime: '03:30 PM',
-          type: 'Therapy',
-        },
-      ],
-    },
+    data: cached || DEFAULT_SCHEDULE_CAPACITY_CONFIG,
   };
 };
 
