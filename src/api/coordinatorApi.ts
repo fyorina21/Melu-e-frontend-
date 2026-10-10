@@ -628,32 +628,7 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
     return d.toISOString().slice(0, 10);
   };
 
-  try {
-    const res = await client.get(`/coordinator/students/${studentId}/progress`);
-    if (res?.data && (res.data.currentGoals || res.data.goals || res.data.abllsProgress)) {
-      const d = res.data;
-      return {
-        ...res,
-        data: {
-          name: d.studentName || d.name || 'Student',
-          age: d.age || 6,
-          program: d.program || 'Comprehensive ABA',
-          assessmentSummary: d.assessmentSummary ?? {
-            skills: 'In Progress',
-            behavior: 'In Progress',
-            preferences: 'Completed',
-          },
-          goals: d.goals || d.currentGoals || [],
-          sessionHistory: d.sessionHistory || [],
-          incidentSummary: d.incidentSummary || '',
-          incidents: d.incidents || d.behaviorIncidents || [],
-          ...d,
-        },
-      };
-    }
-  } catch {}
-
-  // Also query live student progress monitoring if available
+  // Query live student progress monitoring
   try {
     let d: any = null;
     try {
