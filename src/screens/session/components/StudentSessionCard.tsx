@@ -17,7 +17,7 @@ const TRIAL_ICON_COLOR: Record<string, string> = {
   FP: '#f171aa',
 };
 
-function formatTrialPrompt(level: string): { text: string; bg: string } {
+function formatTrialPrompt(level?: string): { text: string; bg: string } {
   const norm = (level || '').toUpperCase().trim();
   if (norm === '+' || norm.includes('IND')) {
     return { text: '+', bg: '#6fe99c' };
@@ -40,22 +40,13 @@ interface StudentSessionCardProps {
     studentId: string,
     goalId: string | undefined,
     level: string,
-    stepId?: string
+    stepId?: string,
   ) => void;
-  onRecordIncident: (
-    studentId: string,
-    goalId: string | undefined
-  ) => void;
-  onMasteryCheck: (
-    studentId: string,
-    goalId: string | undefined
-  ) => void;
+  onRecordIncident: (studentId: string, goalId: string | undefined) => void;
+  onMasteryCheck: (studentId: string, goalId: string | undefined) => void;
   onUndo: (goalId: string | undefined) => void;
   onActivate: (studentId: string) => void;
-  onViewGoalProgress: (
-    studentId: string,
-    goalId: string
-  ) => void;
+  onViewGoalProgress: (studentId: string, goalId: string) => void;
   onViewProfile: (studentId: string) => void;
 }
 
@@ -74,19 +65,19 @@ export default function StudentSessionCard({
   const activeGoal = student.goals?.[activeGoalIndex];
   const isActive = student.active;
 
-  const isTaskAnalysis =
-    activeGoal?.goalType === 'task_analysis';
+  const isTaskAnalysis = activeGoal?.goalType === 'task_analysis';
 
   // Gather trials for the active goal: check activeGoal.trialLog, or student.trials matching activeGoal.id
-  const goalTrials = Array.isArray(activeGoal?.trialLog) && activeGoal.trialLog.length > 0
-    ? activeGoal.trialLog
-    : (student.trials || []).filter((t) => !t.studentGoalId || !activeGoal?.id || t.studentGoalId === activeGoal?.id);
+  const goalTrials =
+    Array.isArray(activeGoal?.trialLog) && activeGoal.trialLog.length > 0
+      ? activeGoal.trialLog
+      : (student.trials || []).filter(
+          (t) => !t.studentGoalId || !activeGoal?.id || t.studentGoalId === activeGoal?.id,
+        );
 
   // Deduplicate trials by ID or timestamp+index
   const uniqueTrials = Array.from(
-    new Map(
-      goalTrials.map((t, idx) => [t.id || `trial-${idx}-${t.timestamp || ''}`, t])
-    ).values()
+    new Map(goalTrials.map((t, idx) => [t.id || `trial-${idx}-${t.timestamp || ''}`, t])).values(),
   );
   const trials = uniqueTrials;
 
@@ -102,49 +93,33 @@ export default function StudentSessionCard({
   };
 
   return (
-    <View
-      style={[
-        styles.card,
-        isActive && styles.cardActive,
-      ]}
-    >
+    <View style={[styles.card, isActive && styles.cardActive]}>
       <View style={styles.headerRow}>
         <View style={styles.identity}>
           <StudentAvatar
             name={student.name}
             studentId={student.id}
-            photoUrl={(student as any).photoUrl || (student as any).headshotUrl || (student as any).photo}
+            photoUrl={
+              (student as any).photoUrl || (student as any).headshotUrl || (student as any).photo
+            }
             size={40}
           />
 
           <View>
             <TouchableOpacity
-              onPress={() =>
-                onViewProfile?.(student.id)
-              }
+              onPress={() => onViewProfile?.(student.id)}
               accessibilityLabel={`View ${student.name} profile`}
             >
-              <Text
-                style={[
-                  typography.h3,
-                  styles.studentNameLink,
-                ]}
-              >
-                {student.name}
-              </Text>
+              <Text style={[typography.h3, styles.studentNameLink]}>{student.name}</Text>
             </TouchableOpacity>
 
-            <Text style={typography.caption}>
-              {student.program}
-            </Text>
+            <Text style={typography.caption}>{student.program}</Text>
           </View>
         </View>
 
         {isActive && (
           <View style={styles.activePill}>
-            <Text style={styles.activePillText}>
-              Active
-            </Text>
+            <Text style={styles.activePillText}>Active</Text>
           </View>
         )}
       </View>
@@ -152,25 +127,15 @@ export default function StudentSessionCard({
       <View style={styles.goalTabs}>
         {[0, 1].map((idx) => {
           const goal = student.goals?.[idx];
-          const isGoalTabActive =
-            idx === activeGoalIndex && isActive;
+          const isGoalTabActive = idx === activeGoalIndex && isActive;
           return (
             <TouchableOpacity
               key={goal?.id ?? `goal-slot-${idx}`}
-              style={[
-                styles.goalTab,
-                isGoalTabActive && styles.goalTabActive,
-              ]}
+              style={[styles.goalTab, isGoalTabActive && styles.goalTabActive]}
               disabled={!isActive}
               onPress={() => setActiveGoalIndex(idx)}
             >
-              <Text
-                style={[
-                  styles.goalTabText,
-                  isGoalTabActive &&
-                    styles.goalTabTextActive,
-                ]}
-              >
+              <Text style={[styles.goalTabText, isGoalTabActive && styles.goalTabTextActive]}>
                 Goal {idx + 1}
               </Text>
             </TouchableOpacity>
@@ -181,17 +146,9 @@ export default function StudentSessionCard({
       {activeGoal ? (
         <View style={styles.goalDetail}>
           <View style={styles.goalDetailHeaderRow}>
-            <Text style={typography.bodyBold}>
-              {activeGoal.name}
-            </Text>
+            <Text style={typography.bodyBold}>{activeGoal.name}</Text>
 
-            <View
-              style={[
-                styles.goalTypeBadge,
-                isTaskAnalysis &&
-                  styles.goalTypeBadgeTA,
-              ]}
-            >
+            <View style={[styles.goalTypeBadge, isTaskAnalysis && styles.goalTypeBadgeTA]}>
               {/* <Text
                 style={styles.goalTypeBadgeText}
               >
@@ -210,41 +167,21 @@ export default function StudentSessionCard({
           </Text>
 
           <TouchableOpacity
-            onPress={() =>
-              onViewGoalProgress?.(
-                student.id,
-                activeGoal.id
-              )
-            }
-          >
-          </TouchableOpacity>
+            onPress={() => onViewGoalProgress?.(student.id, activeGoal.id)}
+          ></TouchableOpacity>
         </View>
       ) : (
         <View style={styles.goalDetail}>
-          <Text
-            style={[
-              typography.body,
-              { color: colors.mutedText },
-            ]}
-          >
-            No goal assigned
-          </Text>
+          <Text style={[typography.body, { color: colors.mutedText }]}>No goal assigned</Text>
         </View>
       )}
-
-
 
       {isTaskAnalysis ? (
         <TaskAnalysisStepList
           goal={activeGoal}
           disabled={!isActive}
           onStepPrompt={(stepId, level) =>
-            onSelectPromptLevel(
-              student.id,
-              activeGoal?.id,
-              level,
-              stepId
-            )
+            onSelectPromptLevel(student.id, activeGoal?.id, level, stepId)
           }
           onPressAnywhere={handlePromptBarPress}
         />
@@ -252,17 +189,12 @@ export default function StudentSessionCard({
         <>
           {/* Prompt Entry */}
           <View style={styles.promptHeaderRow}>
-            <Text style={typography.label}>
-              Prompt Entry
-            </Text>
+            <Text style={typography.label}>Prompt Entry</Text>
 
             {isActive && (
               <TouchableOpacity
                 onPress={() => onUndo(activeGoal?.id)}
-                style={[
-                  styles.undoBtn,
-                  trialCount === 0 && styles.undoBtnDisabled,
-                ]}
+                style={[styles.undoBtn, trialCount === 0 && styles.undoBtnDisabled]}
                 activeOpacity={trialCount === 0 ? 0.8 : 0.6}
                 accessibilityLabel="Undo last trial"
               >
@@ -272,39 +204,23 @@ export default function StudentSessionCard({
                   color={trialCount === 0 ? colors.mutedText : colors.bodyText}
                   style={{ marginRight: 4 }}
                 />
-                <Text
-                  style={[
-                    styles.undoText,
-                    trialCount === 0 && { color: colors.mutedText },
-                  ]}
-                >
+                <Text style={[styles.undoText, trialCount === 0 && { color: colors.mutedText }]}>
                   Undo
                 </Text>
               </TouchableOpacity>
             )}
           </View>
 
-          <TouchableOpacity
-            activeOpacity={isActive ? 1 : 0.6}
-            onPress={handlePromptBarPress}
-          >
+          <TouchableOpacity activeOpacity={isActive ? 1 : 0.6} onPress={handlePromptBarPress}>
             <PromptEntryRow
               disabled={!isActive}
-              onSelect={(level) =>
-                onSelectPromptLevel(
-                  student.id,
-                  activeGoal?.id,
-                  level
-                )
-              }
+              onSelect={(level) => onSelectPromptLevel(student.id, activeGoal?.id, level)}
             />
           </TouchableOpacity>
 
           {/* Trial Record */}
           <View style={styles.statsHeaderRow}>
-            <Text style={typography.label}>
-              Trial Record ({trialCount} recent)
-            </Text>
+            <Text style={typography.label}>Trial Record ({trialCount} recent)</Text>
           </View>
 
           <View style={styles.trialsBox}>
@@ -323,9 +239,7 @@ export default function StudentSessionCard({
                         },
                       ]}
                     >
-                      <Text style={styles.trialRecordText}>
-                        {text}
-                      </Text>
+                      <Text style={styles.trialRecordText}>{text}</Text>
                     </View>
                   );
                 })}
@@ -352,30 +266,15 @@ export default function StudentSessionCard({
         <TouchableOpacity
           style={styles.actionBtn}
           disabled={!isActive}
-          onPress={() =>
-            onRecordIncident(
-              student.id,
-              activeGoal?.id
-            )
-          }
+          onPress={() => onRecordIncident(student.id, activeGoal?.id)}
         >
           <Feather
             name="alert-triangle"
             size={14}
-            color={
-              isActive
-                ? colors.navyText
-                : colors.mutedText
-            }
+            color={isActive ? colors.navyText : colors.mutedText}
           />
 
-          <Text
-            style={[
-              styles.actionBtnText,
-              !isActive &&
-                styles.actionBtnTextDisabled,
-            ]}
-          >
+          <Text style={[styles.actionBtnText, !isActive && styles.actionBtnTextDisabled]}>
             Record Incident
           </Text>
         </TouchableOpacity>
@@ -383,30 +282,15 @@ export default function StudentSessionCard({
         <TouchableOpacity
           style={styles.actionBtn}
           disabled={!isActive}
-          onPress={() =>
-            onMasteryCheck(
-              student.id,
-              activeGoal?.id
-            )
-          }
+          onPress={() => onMasteryCheck(student.id, activeGoal?.id)}
         >
           <Feather
             name="check-circle"
             size={14}
-            color={
-              isActive
-                ? colors.navyText
-                : colors.mutedText
-            }
+            color={isActive ? colors.navyText : colors.mutedText}
           />
 
-          <Text
-            style={[
-              styles.actionBtnText,
-              !isActive &&
-                styles.actionBtnTextDisabled,
-            ]}
-          >
+          <Text style={[styles.actionBtnText, !isActive && styles.actionBtnTextDisabled]}>
             Mastery Check
           </Text>
         </TouchableOpacity>
@@ -427,10 +311,7 @@ interface TaskStep {
 interface TaskAnalysisStepListProps {
   goal: Goal | undefined;
   disabled: boolean;
-  onStepPrompt: (
-    stepId: string,
-    level: string
-  ) => void;
+  onStepPrompt: (stepId: string, level: string) => void;
   onPressAnywhere: () => void;
 }
 
@@ -440,29 +321,18 @@ function TaskAnalysisStepList({
   onStepPrompt,
   onPressAnywhere,
 }: TaskAnalysisStepListProps) {
-  const steps =
-    (goal?.steps as TaskStep[] | undefined) || [];
+  const steps = (goal?.steps as TaskStep[] | undefined) || [];
 
-  const masteredCount = steps.filter(
-    (s) => s.mastered
-  ).length;
+  const masteredCount = steps.filter((s) => s.mastered).length;
 
-  const overallPct = steps.length
-    ? Math.round(
-        (masteredCount / steps.length) * 100
-      )
-    : 0;
+  const overallPct = steps.length ? Math.round((masteredCount / steps.length) * 100) : 0;
 
   return (
     <View>
       <View style={styles.taOverallRow}>
-        <Text style={typography.label}>
-          Overall Progress
-        </Text>
+        <Text style={typography.label}>Overall Progress</Text>
 
-        <Text style={typography.bodyBold}>
-          {overallPct}%
-        </Text>
+        <Text style={typography.bodyBold}>{overallPct}%</Text>
       </View>
 
       <View style={styles.taProgressTrack}>
@@ -477,38 +347,26 @@ function TaskAnalysisStepList({
       </View>
 
       {steps.map((step, idx) => (
-        <View
-          key={step.id}
-          style={styles.taStepRow}
-        >
+        <View key={step.id} style={styles.taStepRow}>
           <Text style={typography.bodyBold}>
             Step {idx + 1}: {step.description}
           </Text>
 
-          <View
-            style={styles.taStepProgressTrack}
-          >
+          <View style={styles.taStepProgressTrack}>
             <View
               style={[
                 styles.taStepProgressFill,
                 {
-                  width: `${
-                    step.independencePercent || 0
-                  }%`,
+                  width: `${step.independencePercent || 0}%`,
                 },
               ]}
             />
           </View>
 
-          <TouchableOpacity
-            activeOpacity={disabled ? 0.6 : 1}
-            onPress={onPressAnywhere}
-          >
+          <TouchableOpacity activeOpacity={disabled ? 0.6 : 1} onPress={onPressAnywhere}>
             <PromptEntryRow
               disabled={disabled}
-              onSelect={(level) =>
-                onStepPrompt(step.id, level)
-              }
+              onSelect={(level) => onStepPrompt(step.id, level)}
             />
           </TouchableOpacity>
         </View>

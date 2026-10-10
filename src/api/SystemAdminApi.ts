@@ -4,33 +4,35 @@ import type { QueryParams, Payload } from '../types';
 // SCR-SYS-001: Staff Account Management
 export const getStaffAccounts = (params: QueryParams) => client.get('/sysadmin/staff', { params });
 export const createStaffAccount = (payload: Payload) => client.post('/sysadmin/staff', payload);
-export const updateStaffAccount = (staffId: string, payload: Payload) => client.patch(`/sysadmin/staff/${staffId}`, payload);
+export const updateStaffAccount = (staffId: string, payload: Payload) =>
+  client.patch(`/sysadmin/staff/${staffId}`, payload);
 export const deleteStaffAccount = (staffId: string) => client.delete(`/sysadmin/staff/${staffId}`);
-export const resetStaffPassword = (staffId: string, newPassword?: string) => client.post(`/sysadmin/staff/${staffId}/reset-password`, { newPassword });
-export const toggleStaffActive = (staffId: string, active: boolean) => client.post(`/sysadmin/staff/${staffId}/status`, { active });
-export const bulkStaffAction = (staffIds: string[], action: string) => client.post('/sysadmin/staff/bulk', { staffIds, action });
+export const resetStaffPassword = (staffId: string, newPassword?: string) =>
+  client.post(`/sysadmin/staff/${staffId}/reset-password`, { newPassword });
+export const toggleStaffActive = (staffId: string, active: boolean) =>
+  client.post(`/sysadmin/staff/${staffId}/status`, { active });
+export const bulkStaffAction = (staffIds: string[], action: string) =>
+  client.post('/sysadmin/staff/bulk', { staffIds, action });
 
 // SCR-SYS-002: Role Management
 export const getRoles = () => client.get('/sysadmin/roles');
 export const createRole = (payload: Payload) => client.post('/sysadmin/roles', payload);
-export const updateRole = (roleId: string, payload: Payload) => client.patch(`/sysadmin/roles/${roleId}`, payload);
+export const updateRole = (roleId: string, payload: Payload) =>
+  client.patch(`/sysadmin/roles/${roleId}`, payload);
 export const deleteRole = (roleId: string) => client.delete(`/sysadmin/roles/${roleId}`);
 
 // SCR-SYS-003: Permission Configuration (RBAC)
-//
-// Backend contract (roles_controller#permissions / #update_permissions):
-//   GET  -> { roleId, permissions: [{ id, resource, action, name }] }
-//   POST -> expects `permission_ids` (flat array of Permission UUIDs).
-//           Anything else is ignored, which silently clears the role.
-//   GET  -> the response is a bare array of audit entries.
-//
-// The screen's MODULES/ACTIONS labels do not correspond to the backend's
-// `resource`/`action` taxonomy, and there is no permission catalog endpoint,
-// so this layer passes values through verbatim rather than guessing a mapping.
-export const getPermissionMatrix = (roleId: string) => client.get(`/sysadmin/roles/${roleId}/permissions`);
+export const getPermissionCatalog = () => client.get('/sysadmin/permissions');
+export const getPermissionMatrix = (roleId: string) =>
+  client.get(`/sysadmin/roles/${roleId}/permissions`);
 export const savePermissionMatrix = (roleId: string, permissionIds: string[]) =>
   client.post(`/sysadmin/roles/${roleId}/permissions`, { permission_ids: permissionIds });
-export const getPermissionAuditTrail = (roleId: string) => client.get(`/sysadmin/roles/${roleId}/permissions/audit`);
+export const resetDefaultPermissions = (roleId: string) =>
+  client.post(`/sysadmin/roles/${roleId}/permissions/reset-default`);
+export const copyPermissionsFromRole = (roleId: string, sourceRoleId: string) =>
+  client.post(`/sysadmin/roles/${roleId}/permissions/copy-from`, { source_role_id: sourceRoleId });
+export const getPermissionAuditTrail = (roleId: string) =>
+  client.get(`/sysadmin/roles/${roleId}/permissions/audit`);
 
 // MR-8: Audit Logging (System Admin view)
 export const getAuditLogs = (params: QueryParams) =>

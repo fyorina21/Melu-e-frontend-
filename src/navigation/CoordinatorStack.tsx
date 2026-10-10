@@ -17,30 +17,49 @@ import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollm
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
+
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import ChildProgressScreen from '../screens/parent/ChildProgressScreen';
 
 const Stack = createNativeStackNavigator<CoordinatorStackParamList>();
 
 export default function CoordinatorStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="CoordinatorDashboard" component={CoordinatorDashboardScreen} />
-      <Stack.Screen name="LiveSessionMonitoring" component={LiveSessionMonitoringScreen} />
-      <Stack.Screen name="SessionSummaryReview" component={SessionSummaryReviewScreen} />
-      <Stack.Screen name="CoordinatorStudentProgress" component={CoordinatorStudentProgressScreen} />
-      <Stack.Screen name="CoordinatorSchedule" component={CoordinatorScheduleScreen} />
-      <Stack.Screen name="CoordinatorParentCommunication" component={CoordinatorParentCommunicationScreen} />
-      <Stack.Screen name="StudentEnrollment" component={StudentEnrollmentScreen} />
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
-      <Stack.Screen name="WorkloadDashboard" component={WorkloadDashboardScreen} />
-      <Stack.Screen name="RoomResourceScheduling" component={RoomResourceSchedulingScreen} />
-      <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
-      <Stack.Screen name="Notifications" component={CoordinatorNotificationsScreen} />
-      <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen as never} />
-      <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
-      <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen as never} />
-      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen as never} />
-      <Stack.Screen name="ChildProgress" component={ChildProgressScreen as never} />
-    </Stack.Navigator>
+    <ErrorBoundary screenName="Coordinator Navigator">
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="CoordinatorDashboard" component={CoordinatorDashboardScreen} />
+        <Stack.Screen name="LiveSessionMonitoring" component={LiveSessionMonitoringScreen} />
+        <Stack.Screen name="SessionSummaryReview" component={SessionSummaryReviewScreen} />
+        <Stack.Screen
+          name="CoordinatorStudentProgress"
+          component={CoordinatorStudentProgressScreen}
+        />
+        <Stack.Screen name="CoordinatorSchedule" component={CoordinatorScheduleScreen} />
+        <Stack.Screen
+          name="CoordinatorParentCommunication"
+          component={CoordinatorParentCommunicationScreen}
+        />
+        <Stack.Screen name="StudentEnrollment" component={StudentEnrollmentScreen} />
+        <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
+        <Stack.Screen name="WorkloadDashboard" component={WorkloadDashboardScreen} />
+        <Stack.Screen name="RoomResourceScheduling" component={RoomResourceSchedulingScreen} />
+        <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
+        <Stack.Screen name="Notifications" component={CoordinatorNotificationsScreen} />
+        <Stack.Screen
+          name="StudentEnrollmentWizard"
+          component={StudentEnrollmentWizardScreen as never}
+        />
+        <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
+        <Stack.Screen
+          name="SessionDataCollection"
+          component={SessionDataCollectionScreen as never}
+        />
+        <Stack.Screen
+          name="AssessmentSummaryReport"
+          component={AssessmentSummaryReportScreen as never}
+        />
+        <Stack.Screen name="ChildProgress" component={ChildProgressScreen as never} />
+      </Stack.Navigator>
+    </ErrorBoundary>
   );
 }

@@ -1,741 +1,347 @@
+// src/screens/systemadmin/PermissionConfigurationScreen.tsx
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  Modal,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing, makeShadow } from '../../theme/colors';
-import { typography } from '../../theme/typography';
+import { ScrollView, StyleSheet, SafeAreaView, Alert, useWindowDimensions } from 'react-native';
+import { colors, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getRoles,
+  getPermissionCatalog,
   getPermissionMatrix,
+  savePermissionMatrix,
+  resetDefaultPermissions,
+  copyPermissionsFromRole,
   getPermissionAuditTrail,
 } from '../../api/SystemAdminApi';
+import { useToast } from '../../context/ToastContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../../types';
+import {
+  ACTIONS,
+  type ActionType,
+  type CatalogModule,
+  type PermissionRole,
+  type PermissionMatrix,
+  type AuditEntry,
+  DEFAULT_SYSTEM_ROLES,
+  FALLBACK_MODULES,
+  toDisplayMatrix,
+} from './permissions/permissionTypes';
 
-const MODULES = [
-  'Students / Enrollment',
-  'Assessments',
-  'IUP & Goals',
-  'Active Therapy',
-  'Reports',
-  'Staff',
-  'Admin',
-];
+import {
+  buildPermissionSummaryList,
+  extractSelectedPermissionIds,
+  buildFullAccessMatrix,
+  buildReadOnlyMatrix,
+  toggleCellAction,
+  toggleRowActions,
+  toggleColumnAction,
+} from './permissions/permissionHelper';
 
-const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE'] as const;
-type ActionType = typeof ACTIONS[number];
+import { PermissionControlsBar } from './permissions/components/PermissionControlsBar';
+import { PermissionMatrixGrid } from './permissions/components/PermissionMatrixGrid';
+import { PermissionSummaryCard } from './permissions/components/PermissionSummaryCard';
+import { RolePickerModal } from './permissions/components/RolePickerModal';
+import { CopyPermissionsModal } from './permissions/components/CopyPermissionsModal';
+import { AuditTrailModal } from './permissions/components/AuditTrailModal';
+import PermissionConfigHeader from './permissions/components/PermissionConfigHeader';
+import PermissionSaveBar from './permissions/components/PermissionSaveBar';
 
-interface PermissionRole {
-  id: string;
-  name: string;
-  isSystemRole?: boolean;
-}
-
-type PermissionMatrix = Record<string, Record<ActionType, boolean>>;
-
-const blankActions = (): Record<ActionType, boolean> => ({
-  VIEW: false,
-  CREATE: false,
-  EDIT: false,
-  DELETE: false,
-  APPROVE: false,
-});
-
-// ---------------------------------------------------------------------------
-// Backend contract adapter.
-//
-// roles_controller#permissions returns `{ roleId, permissions: [...] }` where
-// each entry is `{ id, resource, action, name }` and `name` is "resource:action".
-// The backend taxonomy (`roles`, `staff_members` / `index`, `create`, ...) does
-// NOT correspond to the MODULES and ACTIONS this screen was designed around,
-// so only the pairs that genuinely line up are mapped. Anything else is
-// unrepresentable in this UI and is deliberately dropped rather than guessed.
-// ---------------------------------------------------------------------------
-const MODULE_BY_RESOURCE: Record<string, string> = {
-  roles: 'Admin',
-  staff_members: 'Staff',
-};
-
-const ACTION_BY_RESOURCE_ACTION: Record<string, ActionType> = {
-  index: 'VIEW',
-  show: 'VIEW',
-  create: 'CREATE',
-  update: 'EDIT',
-  destroy: 'DELETE',
-  approve: 'APPROVE',
-  manage: 'EDIT',
-};
-
-interface BackendPermission {
-  id?: string;
-  resource?: string;
-  action?: string;
-  name?: string;
-}
-
-function toDisplayMatrix(permissions: unknown): PermissionMatrix {
-  const matrix: PermissionMatrix = {};
-  if (!Array.isArray(permissions)) return matrix;
-  for (const p of permissions as BackendPermission[]) {
-    const mod = p.resource ? MODULE_BY_RESOURCE[p.resource] : undefined;
-    const act = p.action ? ACTION_BY_RESOURCE_ACTION[p.action] : undefined;
-    if (!mod || !act) continue;
-    matrix[mod] = { ...(matrix[mod] ?? blankActions()), [act]: true };
-  }
-  return matrix;
-}
-
-interface AuditEntry {
-  date: string;
-  user: string;
-  resource: string;
-  action: string;
-  roleName: string;
-}
+export { ACTIONS, DEFAULT_SYSTEM_ROLES };
+export type {
+  ActionType,
+  CatalogPermission,
+  CatalogModule,
+  PermissionRole,
+  PermissionMatrix,
+} from './permissions/permissionTypes';
 
 export default function PermissionConfigurationScreen({
   navigation,
 }: NativeStackScreenProps<SystemAdminStackParamList, 'PermissionConfiguration'>) {
+  const { showToast } = useToast();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+
   const [roles, setRoles] = useState<PermissionRole[]>([]);
+  const [catalogModules, setCatalogModules] = useState<CatalogModule[]>(FALLBACK_MODULES);
   const [selectedRoleId, setSelectedRoleId] = useState<string>('');
   const [matrix, setMatrix] = useState<PermissionMatrix>({});
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
 
+  // 1. Load permission catalog
+  const loadCatalog = useCallback(async () => {
+    try {
+      const { data } = await getPermissionCatalog();
+      if (data?.modules && Array.isArray(data.modules) && data.modules.length > 0) {
+        setCatalogModules(data.modules);
+        return data.modules as CatalogModule[];
+      }
+    } catch (err) {
+      console.warn('Failed to load permission catalog, using fallback modules:', err);
+    }
+    return FALLBACK_MODULES;
+  }, []);
+
+  // 2. Load system roles
   const loadRoles = useCallback(async () => {
     try {
       const { data } = await getRoles();
-      setRoles(data);
-      setSelectedRoleId((prev) => prev || data[0]?.id || '');
+      if (Array.isArray(data) && data.length > 0) {
+        setRoles(data);
+        setSelectedRoleId((prev) => prev || data[0]?.id || '');
+      } else {
+        setRoles(DEFAULT_SYSTEM_ROLES);
+        setSelectedRoleId((prev) => prev || DEFAULT_SYSTEM_ROLES[0].id);
+      }
     } catch (err) {
-      setRoles([]);
+      console.warn('Failed to load roles from API, using fallback system roles:', err);
+      setRoles(DEFAULT_SYSTEM_ROLES);
+      setSelectedRoleId((prev) => prev || DEFAULT_SYSTEM_ROLES[0].id);
     }
-    setLoading(false);
   }, []);
 
+  // Initialize screen data
   useEffect(() => {
-    loadRoles();
-  }, [loadRoles]);
+    Promise.all([loadCatalog(), loadRoles()]).finally(() => {
+      setLoading(false);
+    });
+  }, [loadCatalog, loadRoles]);
 
+  // Load role's permissions matrix and audit logs when role changes
   useEffect(() => {
     if (!selectedRoleId) return;
     getPermissionMatrix(selectedRoleId)
       .then(({ data }) => {
-        setMatrix(toDisplayMatrix(data?.permissions));
+        setMatrix(toDisplayMatrix(data?.permissions, catalogModules));
         setDirty(false);
       })
       .catch(() => {
-        setMatrix({});
+        setMatrix(toDisplayMatrix([], catalogModules));
         setDirty(false);
       });
+
     getPermissionAuditTrail(selectedRoleId)
-      .then(({ data }) => setAuditTrail(data))
+      .then(({ data }) => setAuditTrail(Array.isArray(data) ? data : []))
       .catch(() => setAuditTrail([]));
-  }, [selectedRoleId]);
+  }, [selectedRoleId, catalogModules]);
 
   const selectedRole = useMemo(
-    () => roles.find((r) => r.id === selectedRoleId) || { id: selectedRoleId, name: selectedRoleId },
-    [roles, selectedRoleId]
+    () => roles.find((r) => r.id === selectedRoleId) || { id: selectedRoleId, name: 'Select Role' },
+    [roles, selectedRoleId],
   );
 
-  const toggleCell = (module: string, action: ActionType) => {
-    setMatrix((prev) => ({
-      ...prev,
-      [module]: {
-        ...prev[module],
-        [action]: !prev[module]?.[action],
-      },
-    }));
-    setDirty(true);
-  };
+  const displayModules = useMemo(
+    () => (catalogModules.length > 0 ? catalogModules : FALLBACK_MODULES),
+    [catalogModules],
+  );
 
-  const toggleRow = (module: string) => {
-    setMatrix((prev) => {
-      const currentVal = prev[module];
-      const allChecked = ACTIONS.every((a) => currentVal?.[a]);
-      const nextState: Record<ActionType, boolean> = {
-        VIEW: !allChecked,
-        CREATE: !allChecked,
-        EDIT: !allChecked,
-        DELETE: !allChecked,
-        APPROVE: !allChecked,
-      };
-      return { ...prev, [module]: nextState };
-    });
+  const toggleCell = useCallback((moduleName: string, action: ActionType) => {
+    setMatrix((prev) => toggleCellAction(prev, moduleName, action));
     setDirty(true);
-  };
+  }, []);
 
-  const toggleColumn = (action: ActionType) => {
-    setMatrix((prev) => {
-      const allChecked = MODULES.every((m) => prev[m]?.[action]);
-      const updated = { ...prev };
-      MODULES.forEach((m) => {
-        updated[m] = { ...updated[m], [action]: !allChecked };
-      });
-      return updated;
-    });
+  const toggleRow = useCallback((moduleName: string) => {
+    setMatrix((prev) => toggleRowActions(prev, moduleName));
     setDirty(true);
-  };
+  }, []);
 
-  const handleFullAccess = () => {
-    const full: PermissionMatrix = {};
-    MODULES.forEach((m) => {
-      full[m] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    });
-    setMatrix(full);
+  const toggleColumn = useCallback(
+    (action: ActionType) => {
+      setMatrix((prev) => toggleColumnAction(prev, action, displayModules));
+      setDirty(true);
+    },
+    [displayModules],
+  );
+
+  const handleFullAccess = useCallback(() => {
+    setMatrix(buildFullAccessMatrix(displayModules));
     setDirty(true);
-  };
+  }, [displayModules]);
 
-  const handleReadOnly = () => {
-    const readOnly: PermissionMatrix = {};
-    MODULES.forEach((m) => {
-      readOnly[m] = { VIEW: true, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-    });
-    setMatrix(readOnly);
+  const handleReadOnly = useCallback(() => {
+    setMatrix(buildReadOnlyMatrix(displayModules));
     setDirty(true);
-  };
+  }, [displayModules]);
 
-  const handleCopyFromRole = async (sourceRoleId: string) => {
-    try {
-      const { data } = await getPermissionMatrix(sourceRoleId);
-      setMatrix(toDisplayMatrix(data?.permissions));
-    } catch (err) {
-      setMatrix({});
-    }
-    setDirty(true);
-    setCopyModalOpen(false);
-  };
-
-  // Saving is intentionally blocked.
-  //
-  // roles_controller#update_permissions replaces the role's entire permission
-  // set from `params[:permission_ids]` and ignores any other key. There is no
-  // permission catalog endpoint, so this screen cannot learn the ID of a
-  // permission the role does not already hold -- it could only ever submit the
-  // IDs it can see, which would strip every unrepresented permission off the
-  // role. Posting anyway would destroy access control data, so we refuse and
-  // surface the reason instead.
-  const handleSave = async () => {
+  const handleResetDefault = useCallback(() => {
     if (!selectedRoleId) return;
     Alert.alert(
-      'Cannot save permissions',
-      'The server replaces permissions by ID and exposes no catalog of assignable ' +
-        'permissions, so unchecking a box here could not be turned back into a valid ' +
-        'request. Saving is disabled to avoid stripping access from this role.\n\n' +
-        'Needs a permission catalog endpoint (GET /api/v1/sysadmin/permissions) and an ' +
-        'agreed resource/action taxonomy.',
+      'Reset to Default Permissions?',
+      `Are you sure you want to restore the standard system template permissions for "${selectedRole.name}"? (FR-018)`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset to Default',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSaving(true);
+              const { data } = await resetDefaultPermissions(selectedRoleId);
+              if (data?.permissions) {
+                setMatrix(toDisplayMatrix(data.permissions, displayModules));
+                setDirty(false);
+                showToast(
+                  `Permissions reset to standard template for ${selectedRole.name}`,
+                  'success',
+                );
+                getPermissionAuditTrail(selectedRoleId)
+                  .then(({ data: logs }) => setAuditTrail(Array.isArray(logs) ? logs : []))
+                  .catch(() => {});
+              }
+            } catch {
+              showToast('Failed to reset permissions to default', 'error');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
     );
-  };
+  }, [selectedRoleId, selectedRole.name, displayModules, showToast]);
 
-  // Helper function to format actions into dynamic sentence strings
-  const summaryList = useMemo(() => {
-    const statements: string[] = [];
-    MODULES.forEach((mod) => {
-      const perms = matrix[mod];
-      if (!perms) return;
-
-      const activeActions: string[] = [];
-      if (perms.VIEW) activeActions.push('view');
-      if (perms.CREATE) activeActions.push('create');
-      if (perms.EDIT) activeActions.push('edit');
-      if (perms.DELETE) activeActions.push('delete');
-      if (perms.APPROVE) activeActions.push('approve');
-
-      if (activeActions.length > 0) {
-        let actionStr = '';
-        if (activeActions.length === 1) {
-          actionStr = activeActions[0];
-        } else if (activeActions.length === 2) {
-          actionStr = `${activeActions[0]} and ${activeActions[1]}`;
-        } else {
-          const last = activeActions.pop();
-          actionStr = `${activeActions.join(', ')}, ${last}`;
+  const handleCopyFromRole = useCallback(
+    async (sourceRoleId: string) => {
+      try {
+        setSaving(true);
+        const { data } = await copyPermissionsFromRole(selectedRoleId, sourceRoleId);
+        if (data?.permissions) {
+          setMatrix(toDisplayMatrix(data.permissions, displayModules));
+          setDirty(false);
+          const sourceRole = roles.find((r) => r.id === sourceRoleId);
+          showToast(`Permissions copied from ${sourceRole?.name || 'selected role'}`, 'success');
+          getPermissionAuditTrail(selectedRoleId)
+            .then(({ data: logs }) => setAuditTrail(Array.isArray(logs) ? logs : []))
+            .catch(() => {});
         }
-        // Capitalize first letter
-        const sentence = `Can ${actionStr} ${mod}`;
-        statements.push(sentence);
+      } catch {
+        try {
+          const { data } = await getPermissionMatrix(sourceRoleId);
+          setMatrix(toDisplayMatrix(data?.permissions, displayModules));
+          setDirty(true);
+          showToast('Permissions loaded from role (unsaved)', 'info');
+        } catch {
+          showToast('Failed to copy permissions from selected role', 'error');
+        }
+      } finally {
+        setSaving(false);
+        setCopyModalOpen(false);
       }
-    });
-    return statements;
-  }, [matrix]);
+    },
+    [selectedRoleId, displayModules, roles, showToast],
+  );
+
+  const handleSave = useCallback(async () => {
+    if (!selectedRoleId) return;
+    setSaving(true);
+
+    try {
+      const selectedIds = extractSelectedPermissionIds(matrix, displayModules);
+      await savePermissionMatrix(selectedRoleId, selectedIds);
+      showToast(`Permissions updated successfully for ${selectedRole.name}`, 'success');
+      setDirty(false);
+
+      getPermissionAuditTrail(selectedRoleId)
+        .then(({ data }) => setAuditTrail(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    } catch {
+      showToast('Failed to save permissions. Please try again.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedRoleId, displayModules, matrix, selectedRole.name, showToast]);
+
+  const summaryList = useMemo(
+    () => buildPermissionSummaryList(matrix, displayModules),
+    [matrix, displayModules],
+  );
 
   if (loading) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
-        activeTab="Permissions"
+        activeTab="Permission Configuration"
         onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])}
       />
 
-      <View style={styles.subHeader}>
-        <View style={styles.titleRow}>
-          <Text style={typography.h1}>Permission Configuration</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>SCR-SYS-003</Text>
-          </View>
-        </View>
-        <Text style={styles.breadcrumbText}>
-          <Feather name="settings" size={12} color={colors.mutedText} /> System Configuration / Permission Configuration
-        </Text>
-        <Text style={typography.caption}>
-          SCR-SYS-003 · Define module access permissions per role
-        </Text>
-      </View>
+      <PermissionConfigHeader />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Controls Bar */}
-        <View style={styles.controlsRow}>
-          <View style={{ gap: spacing.xs }}>
-            <Text style={typography.label}>Select Role</Text>
-            <TouchableOpacity
-              style={styles.dropdownBtn}
-              onPress={() => setDropdownOpen(!dropdownOpen)}
-            >
-              <Text style={typography.bodyBold}>{selectedRole.name}</Text>
-              <Feather name="chevron-down" size={16} color={colors.navyText} />
-            </TouchableOpacity>
+      <ScrollView contentContainerStyle={[styles.content, isTablet && styles.contentTablet]}>
+        <PermissionControlsBar
+          selectedRole={selectedRole}
+          onOpenRolePicker={() => setDropdownOpen(true)}
+          onFullAccess={handleFullAccess}
+          onReadOnly={handleReadOnly}
+          onResetDefault={handleResetDefault}
+          onOpenCopyModal={() => setCopyModalOpen(true)}
+        />
 
-            {dropdownOpen && (
-              <View style={styles.dropdownMenu}>
-                {roles.map((r) => (
-                  <TouchableOpacity
-                    key={r.id}
-                    style={[
-                      styles.dropdownItem,
-                      selectedRoleId === r.id && styles.dropdownItemActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedRoleId(r.id);
-                      setDropdownOpen(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        typography.body,
-                        selectedRoleId === r.id && { color: '#0284C7', fontWeight: '700' },
-                      ]}
-                    >
-                      {r.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
+        <PermissionMatrixGrid
+          modules={displayModules}
+          matrix={matrix}
+          onToggleCell={toggleCell}
+          onToggleRow={toggleRow}
+          onToggleColumn={toggleColumn}
+        />
 
-          <View style={styles.presetsRow}>
-            <TouchableOpacity style={styles.presetBtn} onPress={handleFullAccess}>
-              <Text style={styles.presetBtnText}>Full Access</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.presetBtn} onPress={handleReadOnly}>
-              <Text style={styles.presetBtnText}>Read Only</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.presetBtn}
-              onPress={() => setCopyModalOpen(true)}
-            >
-              <Feather name="copy" size={12} color={colors.bodyText} />
-              <Text style={styles.presetBtnText}>Copy from Role...</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <PermissionSummaryCard roleName={selectedRole.name} summaryList={summaryList} />
 
-        {/* Permission Grid Card */}
-        <View style={styles.tableCard}>
-          <View style={styles.tableHeaderRow}>
-            <Text style={[styles.columnHeader, { flex: 2.2 }]}>MODULE</Text>
-            {ACTIONS.map((act) => (
-              <TouchableOpacity
-                key={act}
-                style={[styles.columnHeaderCell, { flex: 1 }]}
-                onPress={() => toggleColumn(act)}
-              >
-                <Text style={styles.columnHeader}>{act}</Text>
-                <Feather name="check-square" size={12} color="#0284C7" />
-              </TouchableOpacity>
-            ))}
-            <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'center' }]}>ALL</Text>
-          </View>
-
-          {MODULES.map((mod) => {
-            const isRowAllChecked = ACTIONS.every((a) => matrix[mod]?.[a]);
-
-            return (
-              <View key={mod} style={styles.tableRow}>
-                <Text style={[typography.bodyBold, { flex: 2.2 }]}>{mod}</Text>
-
-                {ACTIONS.map((act) => {
-                  const checked = !!matrix[mod]?.[act];
-                  return (
-                    <TouchableOpacity
-                      key={act}
-                      style={styles.cellBtn}
-                      onPress={() => toggleCell(mod, act)}
-                    >
-                      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                        {checked && <Feather name="check" size={12} color={colors.white} />}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-
-                <TouchableOpacity
-                  style={styles.cellBtn}
-                  onPress={() => toggleRow(mod)}
-                >
-                  <View style={[styles.checkbox, isRowAllChecked && styles.checkboxCheckedRowAll]}>
-                    {isRowAllChecked && <Feather name="check" size={12} color={colors.navyText} />}
-                  </View>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* PERMISSION SUMMARY COMPONENT */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>
-            PERMISSION SUMMARY — {selectedRole.name.toUpperCase()}
-          </Text>
-          {summaryList.length === 0 ? (
-            <Text style={styles.summaryTextEmpty}>No active permissions configured for this role.</Text>
-          ) : (
-            summaryList.map((statement, idx) => (
-              <View key={idx} style={styles.summaryRow}>
-                <Feather name="check" size={14} color="#10B981" />
-                <Text style={styles.summaryText}>{statement}</Text>
-              </View>
-            ))
-          )}
-        </View>
-
-        {/* Bottom Actions Row */}
-        <View style={styles.bottomActionsRow}>
-          <TouchableOpacity
-            style={[styles.saveConfigBtn, !dirty && styles.saveConfigBtnDisabled]}
-            disabled={!dirty}
-            onPress={handleSave}
-          >
-            <Feather name="save" size={16} color={colors.navyText} />
-            <Text style={styles.saveConfigBtnText}>Save Configuration</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.auditTrailLink}
-            onPress={() => setShowAuditModal(true)}
-          >
-            <Text style={styles.auditTrailLinkText}>View Audit Trail</Text>
-          </TouchableOpacity>
-        </View>
+        <PermissionSaveBar
+          dirty={dirty}
+          saving={saving}
+          onSave={handleSave}
+          onViewAuditTrail={() => setShowAuditModal(true)}
+        />
       </ScrollView>
 
-      {/* Copy Modal */}
-      <Modal visible={copyModalOpen} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={typography.h2}>Copy Permissions From</Text>
-            <Text style={typography.caption}>Select a role to copy permissions into {selectedRole.name}:</Text>
-            {roles
-              .filter((r) => r.id !== selectedRoleId)
-              .map((r) => (
-                <TouchableOpacity
-                  key={r.id}
-                  style={styles.copyRoleOption}
-                  onPress={() => handleCopyFromRole(r.id)}
-                >
-                  <Text style={typography.bodyBold}>{r.name}</Text>
-                  <Feather name="arrow-right" size={14} color={colors.navyText} />
-                </TouchableOpacity>
-              ))}
-            <TouchableOpacity
-              style={styles.closeModalBtn}
-              onPress={() => setCopyModalOpen(false)}
-            >
-              <Text style={styles.closeModalBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <RolePickerModal
+        visible={dropdownOpen}
+        roles={roles.length > 0 ? roles : DEFAULT_SYSTEM_ROLES}
+        selectedRoleId={selectedRoleId}
+        onSelectRole={(id) => {
+          setSelectedRoleId(id);
+          setDropdownOpen(false);
+        }}
+        onClose={() => setDropdownOpen(false)}
+      />
 
-      {/* Audit Trail Modal */}
-      <Modal visible={showAuditModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={typography.h2}>Audit Trail</Text>
-            <ScrollView style={{ maxHeight: 200 }}>
-              {auditTrail.map((a, i) => (
-                <Text key={i} style={[typography.caption, { marginBottom: spacing.xs }]}>
-                  {a.date} — {a.user} updated {a.resource}/{a.action} for {a.roleName}
-                </Text>
-              ))}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.closeModalBtn}
-              onPress={() => setShowAuditModal(false)}
-            >
-              <Text style={styles.closeModalBtnText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <CopyPermissionsModal
+        visible={copyModalOpen}
+        roles={roles}
+        selectedRoleId={selectedRoleId}
+        targetRoleName={selectedRole.name}
+        onCopyFromRole={handleCopyFromRole}
+        onClose={() => setCopyModalOpen(false)}
+      />
+
+      <AuditTrailModal
+        visible={showAuditModal}
+        roleName={selectedRole.name}
+        auditTrail={auditTrail}
+        onClose={() => setShowAuditModal(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  subHeader: {
-    padding: spacing.lg,
-    backgroundColor: colors.bgCard,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: spacing.xs,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  breadcrumbText: {
-    fontSize: 12,
-    color: colors.mutedText,
-  },
-  badge: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
-  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
+    width: '100%',
   },
-  controlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    zIndex: 10,
-  },
-  dropdownBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#0284C7',
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.bgCard,
-    minWidth: 180,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 60,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    zIndex: 99,
-    ...makeShadow(2, 4, 0.1, '0, 0, 0', 3),
-  },
-  dropdownItem: {
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dropdownItemActive: {
-    backgroundColor: '#F0F9FF',
-  },
-  presetsRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  presetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.bgCard,
-  },
-  presetBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.bodyText,
-  },
-  tableCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  tableHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: '#F8FAFC',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  columnHeaderCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  columnHeader: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.mutedText,
-    letterSpacing: 0.5,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  cellBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: '#0EA5E9',
-  },
-  checkboxCheckedRowAll: {
-    backgroundColor: colors.border,
-  },
-  /* PERMISSION SUMMARY STYLES */
-  summaryCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  summaryTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  summaryText: {
-    fontSize: 13,
-    color: '#334155',
-    fontWeight: '500',
-  },
-  summaryTextEmpty: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontStyle: 'italic',
-  },
-  /* BOTTOM ACTIONS STYLES */
-  bottomActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  saveConfigBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.primaryYellow,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-  },
-  saveConfigBtnDisabled: {
-    opacity: 0.5,
-  },
-  saveConfigBtnText: {
-    fontWeight: '700',
-    color: colors.navyText,
-    fontSize: 14,
-  },
-  auditTrailLink: {
-    paddingVertical: spacing.xs,
-  },
-  auditTrailLinkText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#0284C7',
-    textDecorationLine: 'underline',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: colors.bgCard,
-    width: '80%',
-    maxWidth: 400,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  copyRoleOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-  },
-  closeModalBtn: {
-    alignSelf: 'flex-end',
-    paddingTop: spacing.xs,
-  },
-  closeModalBtnText: {
-    color: colors.mutedText,
-    fontWeight: '600',
+  contentTablet: {
+    maxWidth: 1200,
+    alignSelf: 'center',
   },
 });

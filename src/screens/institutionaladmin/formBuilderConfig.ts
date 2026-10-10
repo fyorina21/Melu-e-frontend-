@@ -12,6 +12,7 @@ export const FORMS = [
 ];
 
 export const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File'];
+export type FieldType = 'Text' | 'Number' | 'Date' | 'Dropdown' | 'Radio' | 'File' | string;
 
 export const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
 
@@ -30,39 +31,89 @@ export const ABLLS_SECTIONS = [
 
 export const BEHAVIORAL_SECTIONS = ['MASS', 'FAST', 'ABC Tracking', 'General'];
 export const PREFERENCE_SECTIONS = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement', 'General'];
-export const SENSORY_SECTIONS = ['Tactile', 'Visual & Auditory', 'Proprioception & Vestibular', 'General'];
+export const SENSORY_SECTIONS = [
+  'Tactile',
+  'Visual & Auditory',
+  'Proprioception & Vestibular',
+  'General',
+];
 
 export const getSectionsForForm = (formName: string): string[] => {
   if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
   if (formName === 'ABLLS Assessment Form') return ABLLS_SECTIONS;
-  if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment') return BEHAVIORAL_SECTIONS;
+  if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment')
+    return BEHAVIORAL_SECTIONS;
   if (formName === 'Preference Assessment') return PREFERENCE_SECTIONS;
   if (formName === 'Sensory Assessment') return SENSORY_SECTIONS;
   return [];
 };
 
 export const ASSESSMENT_DIRECT_ROUTES: Record<string, { url: string; route: string }> = {
-  'Behavioral Assessment': { url: 'http://localhost:8081/BehaviorAssessment', route: 'BehaviorAssessment' },
-  'Preference Assessment': { url: 'http://localhost:8081/PreferenceAssessment', route: 'PreferenceAssessment' },
-  'Sensory Assessment': { url: 'http://localhost:8081/SensoryAssessment?', route: 'SensoryAssessment' },
-  'Behavior Incident Form': { url: 'http://localhost:8081/SessionDataCollection', route: 'SessionDataCollection' },
+  'Behavioral Assessment': {
+    url: 'http://localhost:8081/BehaviorAssessment',
+    route: 'BehaviorAssessment',
+  },
+  'Preference Assessment': {
+    url: 'http://localhost:8081/PreferenceAssessment',
+    route: 'PreferenceAssessment',
+  },
+  'Sensory Assessment': {
+    url: 'http://localhost:8081/SensoryAssessment?',
+    route: 'SensoryAssessment',
+  },
+  'Behavior Incident Form': {
+    url: 'http://localhost:8081/SessionDataCollection',
+    route: 'SessionDataCollection',
+  },
 };
 
 export const SCORE_SCALE_PRESETS = [
-  { label: '2-Level (0, 1, N/A)', short: '2-Lvl (0,1)', options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'] },
-  { label: '4-Level (0, 1, 2, 3, N/A)', short: '4-Lvl', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'] },
+  {
+    label: '2-Level (0, 1, N/A)',
+    short: '2-Lvl (0,1)',
+    options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'],
+  },
+  {
+    label: '4-Level (0, 1, 2, 3, N/A)',
+    short: '4-Lvl',
+    options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'],
+  },
 ];
 
 export const BEHAVIORAL_PRESETS = [
-  { label: 'Likert 6-Pt', short: 'Likert (6)', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+  {
+    label: 'Likert 6-Pt',
+    short: 'Likert (6)',
+    options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'],
+  },
   { label: 'Yes/No', short: 'Yes/No', options: ['Yes', 'No'] },
   { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
-  { label: 'ABC Behaviors', short: 'Behaviors', options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'] },
+  {
+    label: 'ABC Behaviors',
+    short: 'Behaviors',
+    options: [
+      'Aggression',
+      'Self-injury',
+      'Tantrum',
+      'Elopement',
+      'Non-compliance',
+      'Property destruction',
+      'Repetitive behaviors',
+    ],
+  },
 ];
 
 export const SENSORY_PRESETS = [
-  { label: 'Engagement Level', short: 'Engagement', options: ['Independent', 'Partial Physical Prompt', 'Full Physical Prompt', 'Not Applicable'] },
-  { label: 'Reaction', short: 'Reaction', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+  {
+    label: 'Engagement Level',
+    short: 'Engagement',
+    options: ['Independent', 'Partial Physical Prompt', 'Full Physical Prompt', 'Not Applicable'],
+  },
+  {
+    label: 'Reaction',
+    short: 'Reaction',
+    options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'],
+  },
 ];
 
 export const getPresetsForForm = (formName: string) => {
@@ -89,8 +140,8 @@ export const SECTION_LETTER: Record<string, string> = {
   'Requesting (Mands)': 'E',
   'Play and Leisure': 'F',
   'Social Interaction': 'G',
-  'Writing': 'H',
-  'Dressing': 'I',
+  Writing: 'H',
+  Dressing: 'I',
 };
 
 export const inferSectionFromId = (id: string): string | null => {
@@ -162,7 +213,11 @@ export const escapeRegExp = (str: string): string => {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-export const getNextIdForSection = (form: string, section: string | undefined, prevFields: FormField[]): string => {
+export const getNextIdForSection = (
+  form: string,
+  section: string | undefined,
+  prevFields: FormField[],
+): string => {
   if (form === 'ABLLS Assessment Form' && section) {
     const letter = getDomainLetterForAblls(section, prevFields);
     if (letter) {
@@ -255,7 +310,10 @@ export const getNextIdForSection = (form: string, section: string | undefined, p
 
     let prefix = 'SEC';
     if (cleanWords.length > 1) {
-      prefix = cleanWords.map((w) => w[0].toUpperCase()).join('').slice(0, 4);
+      prefix = cleanWords
+        .map((w) => w[0].toUpperCase())
+        .join('')
+        .slice(0, 4);
     } else if (cleanWords.length === 1) {
       const w = cleanWords[0].toUpperCase();
       prefix = w.length <= 4 ? w : w.slice(0, 3);
@@ -281,4 +339,3 @@ export const getNextIdForSection = (form: string, section: string | undefined, p
 
   return `f-${Date.now()}`;
 };
-

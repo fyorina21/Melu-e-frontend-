@@ -6,14 +6,35 @@
 // Screens only need to pass `activeTab` and `onTabPress` — everything else is
 // derived from the auth session.
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import IconButton from './IconButton';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, TEACHER_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
+import {
+  ROLE_TABS,
+  ROLE_LABELS,
+  ROLE_NOTIFICATION_ROUTE,
+  TEACHER_ROUTE_BY_TAB,
+  COORDINATOR_ROUTE_BY_TAB,
+  PD_ROUTE_BY_TAB,
+  DIRECTOR_ROUTE_BY_TAB,
+  IA_ROUTE_BY_TAB,
+  SYS_ROUTE_BY_TAB,
+  PARENT_ROUTE_BY_TAB,
+  getTabsForSession,
+} from './appNavConfig';
 import { notificationsApi } from '../api/resources/notifications';
 import { getAccessToken } from '../api/token';
 import { useBreakpoint } from '../utils/useBreakpoint';
@@ -78,7 +99,8 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     tabsScrollRef.current.scrollTo({ x: Math.max(0, target), animated: true });
   };
 
-  const tabs = ROLE_TABS[role] ?? [];
+  const defaultTabs = ROLE_TABS[role] ?? [];
+  const tabs = getTabsForSession(session, defaultTabs);
   const roleLabel = ROLE_LABELS[role] ?? '';
   const userName = session?.userName ?? 'User';
   const initial = userName.charAt(0).toUpperCase() || 'U';
@@ -95,14 +117,22 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const routeByTab = ((): Record<string, string> | undefined => {
     switch (role) {
       case 'teacher':
-      case 'therapist': return TEACHER_ROUTE_BY_TAB;
-      case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
-      case 'program_director': return PD_ROUTE_BY_TAB;
-      case 'director': return DIRECTOR_ROUTE_BY_TAB;
-      case 'institutional_admin': return IA_ROUTE_BY_TAB;
-      case 'system_admin': return SYS_ROUTE_BY_TAB;
-      case 'parent': return PARENT_ROUTE_BY_TAB;
-      default: return undefined;
+      case 'therapist':
+        return TEACHER_ROUTE_BY_TAB;
+      case 'coordinator':
+        return COORDINATOR_ROUTE_BY_TAB;
+      case 'program_director':
+        return PD_ROUTE_BY_TAB;
+      case 'director':
+        return DIRECTOR_ROUTE_BY_TAB;
+      case 'institutional_admin':
+        return IA_ROUTE_BY_TAB;
+      case 'system_admin':
+        return SYS_ROUTE_BY_TAB;
+      case 'parent':
+        return PARENT_ROUTE_BY_TAB;
+      default:
+        return undefined;
     }
   })();
 
@@ -158,6 +188,13 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             key={tab}
             style={[styles.tab, active && styles.tabActive]}
             onPress={() => handleTabPress(tab)}
+            accessibilityRole="tab"
+            accessibilityLabel={
+              isNotificationsTab && effectiveUnread > 0
+                ? `${tab}, ${effectiveUnread} unread notifications`
+                : tab
+            }
+            accessibilityState={{ selected: active }}
             onLayout={(e) => {
               const { x, width } = e.nativeEvent.layout;
               tabLayouts.current[tab] = { x, width };
@@ -182,11 +219,19 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
         {isCompact && !sidebarRole && (
-          <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.hamburgerBtn} accessibilityLabel="Open menu">
+          <TouchableOpacity
+            onPress={() => setDrawerOpen(true)}
+            style={styles.hamburgerBtn}
+            accessibilityLabel="Open menu"
+          >
             <Feather name="menu" size={20} color={colors.navyText} />
           </TouchableOpacity>
         )}
-        <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
 
@@ -206,21 +251,35 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
 
       <View style={styles.rightBlock}>
         {notificationRoute && (
-          <TouchableOpacity onPress={openNotifications} style={styles.iconBtn} accessibilityLabel="Notifications">
+          <TouchableOpacity
+            onPress={openNotifications}
+            style={styles.iconBtn}
+            accessibilityLabel="Notifications"
+          >
             <Feather name="bell" size={18} color={colors.navyText} />
             {effectiveUnread > 0 && (
-              <View style={styles.badge}><Text style={styles.badgeText}>{effectiveUnread}</Text></View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{effectiveUnread}</Text>
+              </View>
             )}
           </TouchableOpacity>
         )}
 
         <View style={styles.profileWrap}>
-          <TouchableOpacity onPress={() => setMenuOpen((v) => !v)} style={styles.profileBtn} accessibilityLabel="Profile menu">
-            <View style={styles.avatar}><Text style={styles.avatarText}>{initial}</Text></View>
+          <TouchableOpacity
+            onPress={() => setMenuOpen((v) => !v)}
+            style={styles.profileBtn}
+            accessibilityLabel="Profile menu"
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
             {!isCompact && (
               <>
                 <View style={styles.profileText}>
-                  <Text style={typography.bodyBold} numberOfLines={1}>{userName}</Text>
+                  <Text style={typography.bodyBold} numberOfLines={1}>
+                    {userName}
+                  </Text>
                   <Text style={typography.caption}>{roleLabel}</Text>
                 </View>
                 <Feather name="chevron-down" size={14} color={colors.mutedText} />
@@ -228,12 +287,19 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             )}
           </TouchableOpacity>
 
-          <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+          <Modal
+            transparent
+            visible={menuOpen}
+            animationType="fade"
+            onRequestClose={() => setMenuOpen(false)}
+          >
             <View style={styles.menuOverlay}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />
               <View style={styles.menuCard}>
                 <View style={styles.menuHeader}>
-                  <View style={[styles.avatar, styles.menuAvatar]}><Text style={styles.avatarText}>{initial}</Text></View>
+                  <View style={[styles.avatar, styles.menuAvatar]}>
+                    <Text style={styles.avatarText}>{initial}</Text>
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={typography.bodyBold}>{userName}</Text>
                     <Text style={typography.caption}>{roleLabel}</Text>
@@ -257,7 +323,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
                             accessibilityState={{ selected: active }}
                             label={`Switch to ${label} role`}
                           >
-                            <Text style={[styles.roleItemText, active && styles.roleItemTextActive]}>
+                            <Text
+                              style={[styles.roleItemText, active && styles.roleItemTextActive]}
+                            >
                               {label}
                             </Text>
                             {active && <Feather name="check" size={14} color={colors.navyText} />}
@@ -278,13 +346,26 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         </View>
       </View>
 
-      <Modal transparent visible={drawerOpen} animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
+      <Modal
+        transparent
+        visible={drawerOpen}
+        animationType="fade"
+        onRequestClose={() => setDrawerOpen(false)}
+      >
         <View style={styles.drawerRoot}>
           <View style={styles.drawer}>
             <View style={styles.drawerHeader}>
-              <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+              <Image
+                source={require('../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
               <Text style={styles.logo}>Melu'e Foundation</Text>
-              <TouchableOpacity onPress={() => setDrawerOpen(false)} style={styles.drawerClose} accessibilityLabel="Close menu">
+              <TouchableOpacity
+                onPress={() => setDrawerOpen(false)}
+                style={styles.drawerClose}
+                accessibilityLabel="Close menu"
+              >
                 <Feather name="x" size={20} color={colors.navyText} />
               </TouchableOpacity>
             </View>
@@ -299,7 +380,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
                     onPress={() => handleTabPress(tab)}
                   >
                     <View style={styles.tabContentRow}>
-                      <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>{tab}</Text>
+                      <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>
+                        {tab}
+                      </Text>
                       {isNotificationsTab && effectiveUnread > 0 && (
                         <View style={styles.tabBadge}>
                           <Text style={styles.tabBadgeText}>{effectiveUnread}</Text>
@@ -385,7 +468,14 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontWeight: '700', color: colors.navyText, fontSize: 14 },
   profileText: { maxWidth: 120 },
-  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.15)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 60, paddingRight: spacing.lg },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 60,
+    paddingRight: spacing.lg,
+  },
   menuCard: {
     minWidth: 220,
     backgroundColor: colors.bgCard,
@@ -396,12 +486,37 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  menuHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   menuAvatar: { width: 40, height: 40, borderRadius: 20 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, borderRadius: radius.md },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.md,
+  },
   menuItemText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
-  roleSection: { paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.xs },
-  roleSectionLabel: { fontSize: 10, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase', letterSpacing: 0.5 },
+  roleSection: {
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.xs,
+  },
+  roleSectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   roleList: { maxHeight: 160 },
   roleItem: {
     flexDirection: 'row',
@@ -417,15 +532,45 @@ const styles = StyleSheet.create({
 
   drawerRoot: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.4)' },
   drawerOverlay: { flex: 1 },
-  drawer: { width: 300, backgroundColor: colors.bgCard, height: '100%', padding: spacing.md, flexDirection: 'column' },
-  drawerHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  drawer: {
+    width: 300,
+    backgroundColor: colors.bgCard,
+    height: '100%',
+    padding: spacing.md,
+    flexDirection: 'column',
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   drawerClose: { marginLeft: 'auto', padding: spacing.xs },
   drawerList: { paddingVertical: spacing.sm, gap: spacing.xs },
-  drawerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  drawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
   drawerItemActive: { backgroundColor: colors.primaryYellow, borderRadius: radius.md },
   drawerItemText: { fontSize: 14, fontWeight: '500', color: colors.bodyText },
   drawerItemTextActive: { fontWeight: '700', color: colors.navyText },
-  drawerFooter: { marginTop: 'auto', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
-  drawerLogout: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  drawerFooter: {
+    marginTop: 'auto',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  drawerLogout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
   drawerLogoutText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
 });

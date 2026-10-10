@@ -13,7 +13,8 @@ import GoalProgressScreen from '../screens/goalprogress/GoalProgressScreen';
 // import SchedulingCalendarScreen from '../screens/scheduling/SchedulingCalendarScreen';
 // import AttendanceScreen from '../screens/attendance/AttendanceScreen';
 import GoalMasteryCheckScreen from '../screens/goalmastery/GoalMasteryCheckScreen';
-import { SessionSummaryScreen } from '../screens/sessionsummary/SessionSummaryScreen';import AbllsNeedAnalysisMapScreen from '../screens/assessments/AbllsNeedAnalysisMapScreen';
+import { SessionSummaryScreen } from '../screens/sessionsummary/SessionSummaryScreen';
+import AbllsNeedAnalysisMapScreen from '../screens/assessments/AbllsNeedAnalysisMapScreen';
 import SkillsAssessmentScreen from '../screens/assessments/SkillsAssessmentScreen';
 import BehaviorAssessmentScreen from '../screens/assessments/BehaviorAssessmentScreen';
 import PreferenceAssessmentScreen from '../screens/assessments/PreferenceAssessmentScreen';
@@ -29,35 +30,54 @@ import ChildProgressScreen from '../screens/parent/ChildProgressScreen';
 // AppointmentFormModal, reached from the Scheduling Calendar (MR-38) -
 // it doesn't need its own stack route since it's a modal, not a screen.
 
+import { useAuth } from '../context/AuthContext';
+import { ROLE_TABS, TEACHER_ROUTE_BY_TAB, getTabsForSession } from '../components/appNavConfig';
+
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
 const Stack = createNativeStackNavigator<SessionStackParamList>();
 
 export default function SessionStack() {
+  const { session } = useAuth();
+  const defaultTabs = ROLE_TABS[session?.role ?? 'teacher'] ?? [];
+  const tabs = getTabsForSession(session, defaultTabs);
+  const firstTab = tabs[0];
+  const initialRoute = (firstTab && TEACHER_ROUTE_BY_TAB[firstTab]) || 'TeacherDashboard';
+
   return (
-    <Stack.Navigator initialRouteName="TeacherDashboard" screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="TeacherDashboard" component={TeacherDashboardScreen} />
-      <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen} />
-      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen} />
-      <Stack.Screen name="AbcLog" component={AbcLogScreen} />
-      <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen} />
-      <Stack.Screen name="DailyNotes" component={DailyNotesScreen} />
-      <Stack.Screen name="SessionNoteEditor" component={SessionNoteEditorScreen} />
-      <Stack.Screen name="GoalProgress" component={GoalProgressScreen} />
-      {/* <Stack.Screen name="SchedulingCalendar" component={SchedulingCalendarScreen} /> */}
-      {/* <Stack.Screen name="Attendance" component={AttendanceScreen} /> */}
-      <Stack.Screen name="GoalMasteryCheck" component={GoalMasteryCheckScreen} />
-      <Stack.Screen name="SessionSummary" component={SessionSummaryScreen} />
-      <Stack.Screen name="SocialSkillsAssessment" component={SocialSkillsAssessmentScreen} />
-      <Stack.Screen name="SkillsAssessment" component={SkillsAssessmentScreen} />
-      <Stack.Screen name="AbllsNeedMap" component={AbllsNeedAnalysisMapScreen} />
-      <Stack.Screen name="BehaviorAssessment" component={BehaviorAssessmentScreen} />
-      <Stack.Screen name="PreferenceAssessment" component={PreferenceAssessmentScreen} />
-      <Stack.Screen name="SensoryAssessment" component={SensoryAssessmentScreen} />
-      <Stack.Screen name="ParentCommunication" component={ParentCommunicationScreen} />
-      <Stack.Screen name="Notifications" component={TeacherNotificationsScreen} />
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
-      <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen as never} />
-      <Stack.Screen name="IupGeneration" component={IupGenerationScreen as never} />
-      <Stack.Screen name="ChildProgress" component={ChildProgressScreen as never} />
-    </Stack.Navigator>
+    <ErrorBoundary screenName="Session Navigator">
+      <Stack.Navigator
+        initialRouteName={initialRoute as keyof SessionStackParamList}
+        screenOptions={{ headerShown: false }}
+      >
+        <Stack.Screen name="TeacherDashboard" component={TeacherDashboardScreen} />
+        <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen} />
+        <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen} />
+        <Stack.Screen name="AbcLog" component={AbcLogScreen} />
+        <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen} />
+        <Stack.Screen name="DailyNotes" component={DailyNotesScreen} />
+        <Stack.Screen name="SessionNoteEditor" component={SessionNoteEditorScreen} />
+        <Stack.Screen name="GoalProgress" component={GoalProgressScreen} />
+        {/* <Stack.Screen name="SchedulingCalendar" component={SchedulingCalendarScreen} /> */}
+        {/* <Stack.Screen name="Attendance" component={AttendanceScreen} /> */}
+        <Stack.Screen name="GoalMasteryCheck" component={GoalMasteryCheckScreen} />
+        <Stack.Screen name="SessionSummary" component={SessionSummaryScreen} />
+        <Stack.Screen name="SocialSkillsAssessment" component={SocialSkillsAssessmentScreen} />
+        <Stack.Screen name="SkillsAssessment" component={SkillsAssessmentScreen} />
+        <Stack.Screen name="AbllsNeedMap" component={AbllsNeedAnalysisMapScreen} />
+        <Stack.Screen name="BehaviorAssessment" component={BehaviorAssessmentScreen} />
+        <Stack.Screen name="PreferenceAssessment" component={PreferenceAssessmentScreen} />
+        <Stack.Screen name="SensoryAssessment" component={SensoryAssessmentScreen} />
+        <Stack.Screen name="ParentCommunication" component={ParentCommunicationScreen} />
+        <Stack.Screen name="Notifications" component={TeacherNotificationsScreen} />
+        <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
+        <Stack.Screen
+          name="StudentEnrollmentWizard"
+          component={StudentEnrollmentWizardScreen as never}
+        />
+        <Stack.Screen name="IupGeneration" component={IupGenerationScreen as never} />
+        <Stack.Screen name="ChildProgress" component={ChildProgressScreen as never} />
+      </Stack.Navigator>
+    </ErrorBoundary>
   );
 }

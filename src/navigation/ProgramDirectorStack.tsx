@@ -15,24 +15,34 @@ import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboar
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
 
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 
 export default function ProgramDirectorStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ProgramDirectorDashboard" component={ProgramDirectorDashboardScreen} />
-      <Stack.Screen name="AssessmentReview" component={AssessmentReviewScreen} />
-      <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
-      <Stack.Screen name="IupLibrary" component={IupLibraryScreen} />
-      <Stack.Screen name="StudentCaseload" component={StudentCaseloadScreen} />
-      <Stack.Screen name="GoalBankManagement" component={GoalBankManagementScreen} />
-      <Stack.Screen name="GoalMasteryApproval" component={GoalMasteryApprovalScreen} />
-      <Stack.Screen name="PdParentCommunication" component={ParentCommunicationScreen} />
-      <Stack.Screen name="GraphChartView" component={GraphChartViewScreen} />
-      <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen} />
-      <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen as never} />
-      <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
-      <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen as never} />
-    </Stack.Navigator>
+    <ErrorBoundary screenName="Program Director Navigator">
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="ProgramDirectorDashboard" component={ProgramDirectorDashboardScreen} />
+        <Stack.Screen name="AssessmentReview" component={AssessmentReviewScreen} />
+        <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
+        <Stack.Screen name="IupLibrary" component={IupLibraryScreen} />
+        <Stack.Screen name="StudentCaseload" component={StudentCaseloadScreen} />
+        <Stack.Screen name="GoalBankManagement" component={GoalBankManagementScreen} />
+        <Stack.Screen name="GoalMasteryApproval" component={GoalMasteryApprovalScreen} />
+        <Stack.Screen name="PdParentCommunication" component={ParentCommunicationScreen} />
+        <Stack.Screen name="GraphChartView" component={GraphChartViewScreen} />
+        <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen} />
+        <Stack.Screen
+          name="AssessmentSummaryReport"
+          component={AssessmentSummaryReportScreen as never}
+        />
+        <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
+        <Stack.Screen
+          name="SessionDataCollection"
+          component={SessionDataCollectionScreen as never}
+        />
+      </Stack.Navigator>
+    </ErrorBoundary>
   );
 }

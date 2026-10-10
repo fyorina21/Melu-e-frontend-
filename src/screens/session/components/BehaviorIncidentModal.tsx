@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { getFormConfig } from '../../../api/institutionalAdminApi';
 import DynamicFormFields, { type DynamicFormField } from '../../../components/DynamicFormFields';
 import { useAuth } from '../../../context/AuthContext';
+import AccessibleModal from '../../../components/AccessibleModal';
 
 export interface IncidentPayload {
   date: string;
@@ -48,14 +49,70 @@ const getCurrentTime = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = [
-  { id: 'b_loc', type: 'Text', label: 'Location', required: true, visible: true, placeholder: 'Enter location...' },
-  { id: 'b_beh', type: 'TextArea', label: 'Behavior', required: true, visible: true, placeholder: 'Describe the behavior observed...' },
-  { id: 'b_freq', type: 'Text', label: 'Frequency', required: true, visible: true, placeholder: 'Enter frequency...' },
-  { id: 'b_int', type: 'Text', label: 'Intensity', required: true, visible: true, placeholder: 'Enter intensity...' },
-  { id: 'b_cat', type: 'Text', label: 'Category', required: true, visible: true, placeholder: 'Enter category...' },
-  { id: 'b_ant', type: 'Text', label: 'Antecedent', required: true, visible: true, placeholder: 'Enter antecedent...' },
-  { id: 'b_con', type: 'Text', label: 'Consequence', required: true, visible: true, placeholder: 'Enter consequence...' },
-  { id: 'b_notes', type: 'TextArea', label: 'Note', required: false, visible: true, placeholder: 'Enter any additional notes or relevant information...' },
+  {
+    id: 'b_loc',
+    type: 'Text',
+    label: 'Location',
+    required: true,
+    visible: true,
+    placeholder: 'Enter location...',
+  },
+  {
+    id: 'b_beh',
+    type: 'TextArea',
+    label: 'Behavior',
+    required: true,
+    visible: true,
+    placeholder: 'Describe the behavior observed...',
+  },
+  {
+    id: 'b_freq',
+    type: 'Text',
+    label: 'Frequency',
+    required: true,
+    visible: true,
+    placeholder: 'Enter frequency...',
+  },
+  {
+    id: 'b_int',
+    type: 'Text',
+    label: 'Intensity',
+    required: true,
+    visible: true,
+    placeholder: 'Enter intensity...',
+  },
+  {
+    id: 'b_cat',
+    type: 'Text',
+    label: 'Category',
+    required: true,
+    visible: true,
+    placeholder: 'Enter category...',
+  },
+  {
+    id: 'b_ant',
+    type: 'Text',
+    label: 'Antecedent',
+    required: true,
+    visible: true,
+    placeholder: 'Enter antecedent...',
+  },
+  {
+    id: 'b_con',
+    type: 'Text',
+    label: 'Consequence',
+    required: true,
+    visible: true,
+    placeholder: 'Enter consequence...',
+  },
+  {
+    id: 'b_notes',
+    type: 'TextArea',
+    label: 'Note',
+    required: false,
+    visible: true,
+    placeholder: 'Enter any additional notes or relevant information...',
+  },
 ];
 
 export default function BehaviorIncidentModal({
@@ -84,7 +141,10 @@ export default function BehaviorIncidentModal({
       const { data } = await getFormConfig('Behavior Incident Form');
       if (Array.isArray(data?.fields) && data.fields.length > 0) {
         const loaded = data.fields.filter((f: DynamicFormField) => f.visible !== false);
-        const nonStandard = loaded.filter((f: DynamicFormField) => !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()));
+        const nonStandard = loaded.filter(
+          (f: DynamicFormField) =>
+            !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()),
+        );
         if (nonStandard.length === 0) {
           setFields(DEFAULT_INCIDENT_FIELDS);
         } else {
@@ -110,10 +170,9 @@ export default function BehaviorIncidentModal({
     }
   }, [visible, recordedBy, authSession?.userName, loadConfig]);
 
-  const isFormDirty =
-    Object.values(formValues).some(
-      (v) => v !== '' && v !== undefined && v !== null && (!Array.isArray(v) || v.length > 0)
-    );
+  const isFormDirty = Object.values(formValues).some(
+    (v) => v !== '' && v !== undefined && v !== null && (!Array.isArray(v) || v.length > 0),
+  );
 
   const resetForm = () => {
     setDate(getCurrentDate());
@@ -140,7 +199,11 @@ export default function BehaviorIncidentModal({
   const handleSave = () => {
     const findFieldValue = (keys: string[]) => {
       for (const k of keys) {
-        if (formValues[k] !== undefined && formValues[k] !== null && String(formValues[k]).trim() !== '') {
+        if (
+          formValues[k] !== undefined &&
+          formValues[k] !== null &&
+          String(formValues[k]).trim() !== ''
+        ) {
           return String(formValues[k]).trim();
         }
       }
@@ -152,15 +215,40 @@ export default function BehaviorIncidentModal({
     const behavior = findFieldValue(['Behavior', 'Observed Behavior', 'behavior', 'b_beh', 'b3']);
     const frequency = findFieldValue(['Frequency', 'frequency', 'b_freq', 'b4']);
     const intensity = findFieldValue(['Intensity', 'intensity', 'b_int', 'b5']);
-    const antecedent = findFieldValue(['Antecedent', 'antecedent', 'b_ant', 'b6', 'Trigger', 'Trigger / Antecedent']);
-    const consequence = findFieldValue(['Consequence', 'consequence', 'b_con', 'b7', 'Action Taken']);
-    const note = findFieldValue(['Note', 'note', 'Additional Notes', 'Incident Notes', 'Notes', 'notes', 'additionalNotes', 'b_notes', 'b8']);
+    const antecedent = findFieldValue([
+      'Antecedent',
+      'antecedent',
+      'b_ant',
+      'b6',
+      'Trigger',
+      'Trigger / Antecedent',
+    ]);
+    const consequence = findFieldValue([
+      'Consequence',
+      'consequence',
+      'b_con',
+      'b7',
+      'Action Taken',
+    ]);
+    const note = findFieldValue([
+      'Note',
+      'note',
+      'Additional Notes',
+      'Incident Notes',
+      'Notes',
+      'notes',
+      'additionalNotes',
+      'b_notes',
+      'b8',
+    ]);
 
     onSave({
       student_id: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),
       studentId: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),
-      student_goal_id: studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
-      studentGoalId: studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
+      student_goal_id:
+        studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
+      studentGoalId:
+        studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
       date: date.trim() || getCurrentDate(),
       time: time.trim() || getCurrentTime(),
       teacher: teacher.trim() || recordedBy || authSession?.userName || 'Rosa Delgado',
@@ -172,9 +260,24 @@ export default function BehaviorIncidentModal({
       intensity: intensity || (formValues['Intensity'] ?? ''),
       antecedent: antecedent || (formValues['Antecedent'] ?? ''),
       consequence: consequence || (formValues['Consequence'] ?? ''),
-      note: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
-      notes: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
-      additionalNotes: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
+      note:
+        note ||
+        (formValues['Note'] ??
+          formValues['Incident Notes'] ??
+          formValues['Additional Notes'] ??
+          ''),
+      notes:
+        note ||
+        (formValues['Note'] ??
+          formValues['Incident Notes'] ??
+          formValues['Additional Notes'] ??
+          ''),
+      additionalNotes:
+        note ||
+        (formValues['Note'] ??
+          formValues['Incident Notes'] ??
+          formValues['Additional Notes'] ??
+          ''),
       customFields: formValues,
       ...formValues,
     });
@@ -182,11 +285,12 @@ export default function BehaviorIncidentModal({
   };
 
   return (
-    <Modal
+    <AccessibleModal
       animationType="fade"
       transparent={true}
       visible={visible}
       onRequestClose={handleCloseAttempt}
+      accessibilityLabel={`Record Behavior Incident for ${studentName || 'Student'}`}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -196,14 +300,18 @@ export default function BehaviorIncidentModal({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.headerTitle}>Record Behavior Incident</Text>
-              <Text style={styles.headerSubtitle}>
+              <Text accessibilityRole="header" style={styles.headerTitle}>
+                Record Behavior Incident
+              </Text>
+              <Text accessibilityRole="text" style={styles.headerSubtitle}>
                 {studentName} • {goalName}
               </Text>
             </View>
             <TouchableOpacity
               onPress={handleCloseAttempt}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close Incident Form"
             >
               <Feather name="x" size={20} color="#0F172A" />
             </TouchableOpacity>
@@ -266,7 +374,12 @@ export default function BehaviorIncidentModal({
 
           {/* Footer Buttons */}
           <View style={styles.footer}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={handleCloseAttempt}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={handleCloseAttempt}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel Recording"
+            >
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
 
@@ -275,13 +388,11 @@ export default function BehaviorIncidentModal({
               disabled={!isValid}
               onPress={handleSave}
               activeOpacity={isValid ? 0.8 : 1}
+              accessibilityRole="button"
+              accessibilityLabel="Save Incident"
+              accessibilityState={{ disabled: !isValid }}
             >
-              <Text
-                style={[
-                  styles.saveBtnText,
-                  isValid && styles.saveBtnTextActive,
-                ]}
-              >
+              <Text style={[styles.saveBtnText, isValid && styles.saveBtnTextActive]}>
                 Save Incident
               </Text>
             </TouchableOpacity>
@@ -289,22 +400,28 @@ export default function BehaviorIncidentModal({
 
           {/* Discard Confirmation Alert Dialog */}
           {showDiscardConfirmation && (
-            <View style={styles.confirmationOverlay}>
+            <View style={styles.confirmationOverlay} accessibilityRole="alert">
               <View style={styles.confirmCard}>
-                <Text style={styles.confirmTitle}>Discard Changes?</Text>
-                <Text style={styles.confirmMessage}>
+                <Text accessibilityRole="header" style={styles.confirmTitle}>
+                  Discard Changes?
+                </Text>
+                <Text accessibilityRole="text" style={styles.confirmMessage}>
                   You have unsaved changes. Are you sure you want to close?
                 </Text>
                 <View style={styles.confirmActionRow}>
                   <TouchableOpacity
                     style={styles.keepEditingBtn}
                     onPress={() => setShowDiscardConfirmation(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Keep Editing Incident"
                   >
                     <Text style={styles.keepEditingBtnText}>Keep Editing</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.discardBtn}
                     onPress={handleConfirmDiscard}
+                    accessibilityRole="button"
+                    accessibilityLabel="Discard Incident Changes"
                   >
                     <Text style={styles.discardBtnText}>Discard</Text>
                   </TouchableOpacity>
@@ -314,7 +431,7 @@ export default function BehaviorIncidentModal({
           )}
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </AccessibleModal>
   );
 }
 

@@ -8,6 +8,7 @@
 // screens' `activeTab` props.
 import type {
   Role,
+  AuthSession,
   ParentStackParamList,
   DirectorStackParamList,
   SystemAdminStackParamList,
@@ -15,6 +16,70 @@ import type {
   ProgramDirectorStackParamList,
   CoordinatorStackParamList,
 } from '../types';
+
+export const MODULE_TO_TABS: Record<string, string[]> = {
+  iups: ['IUP Creation & Goal Assignment'],
+  assessments: ['Assessments'],
+  sessions: ['Session', 'Daily Notes'],
+  behavior_incidents: ['ABC Log'],
+  parent_portal: ['Parents'],
+  students: ['Enrollment Wizard'],
+  reports: ['Reports & Oversight'],
+  staff: ['Staff Scheduling'],
+  admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
+};
+
+/**
+ * Returns dynamic tabs for the current session.
+ * Core roles always retain their full canonical tab suite.
+ * For custom configured roles, only configured modules are enabled while preserving Dashboard.
+ */
+export function getTabsForSession(
+  session: AuthSession | null | undefined,
+  defaultRoleTabs: string[],
+): string[] {
+  if (!session) return defaultRoleTabs;
+
+  const CORE_ROLES = new Set([
+    'teacher',
+    'coordinator',
+    'director',
+    'program_director',
+    'institutional_admin',
+    'system_admin',
+    'parent',
+    'therapist',
+  ]);
+
+  if (session.role && CORE_ROLES.has(session.role)) {
+    return defaultRoleTabs;
+  }
+
+  if (session.modules && Array.isArray(session.modules) && session.modules.length > 0) {
+    const dynamicTabs: string[] = [];
+
+    if (defaultRoleTabs.includes('Dashboard')) {
+      dynamicTabs.push('Dashboard');
+    }
+
+    for (const mod of session.modules) {
+      const tabs = MODULE_TO_TABS[mod.toLowerCase()];
+      if (tabs) {
+        for (const t of tabs) {
+          if (!dynamicTabs.includes(t)) {
+            dynamicTabs.push(t);
+          }
+        }
+      }
+    }
+
+    if (dynamicTabs.length > 0) {
+      return dynamicTabs;
+    }
+  }
+
+  return defaultRoleTabs;
+}
 
 export const ROLE_TABS: Record<Role, string[]> = {
   teacher: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
@@ -30,7 +95,14 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Staff Management & Linking',
     'IUP Creation & Goal Assignment',
   ],
-  director: ['Dashboard', 'Staff Scheduling', 'Goal Mastery Approval', 'Parent Communication', 'Report & Oversight', 'Student Progress'],
+  director: [
+    'Dashboard',
+    'Staff Scheduling',
+    'Goal Mastery Approval',
+    'Parent Communication',
+    'Report & Oversight',
+    'Student Progress',
+  ],
   program_director: [
     'Dashboard',
     'Enrollment Wizard',
@@ -44,8 +116,14 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Parent Communication',
     'Reports',
   ],
-  institutional_admin: ['Goal Domains', 'Schedule & Capacity', 'ABC Dropdown Lists', 'Trial Logging Format', 'Form Builder'],
-  system_admin: ['Staff Accounts', 'Role Management', 'Permissions'],
+  institutional_admin: [
+    'Goal Domains',
+    'Schedule & Capacity',
+    'ABC Dropdown Lists',
+    'Trial Logging Format',
+    'Form Builder',
+  ],
+  system_admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
 
@@ -76,6 +154,7 @@ export const ROLE_NOTIFICATION_ROUTE: Record<Role, string | undefined> = {
 export const TEACHER_ROUTE_BY_TAB: Record<string, string> = {
   Dashboard: 'TeacherDashboard',
   Session: 'SessionDataCollection',
+  'Active Therapy': 'SessionDataCollection',
   Assessments: 'AssessmentDashboard',
   'Assessment Dashboard': 'AssessmentDashboard',
   'Assessment Summary Report': 'AssessmentSummaryReport',
@@ -83,6 +162,11 @@ export const TEACHER_ROUTE_BY_TAB: Record<string, string> = {
   'ABC Log': 'AbcLog',
   Parents: 'ParentCommunication',
   Notifications: 'Notifications',
+  'IUP Creation & Goal Assignment': 'IupGeneration',
+  IUPs: 'IupGeneration',
+  'Enrollment Wizard': 'StudentEnrollmentWizard',
+  'Student Profile': 'StudentProfile',
+  'Reports & Oversight': 'AssessmentSummaryReport',
 };
 
 export const PARENT_ROUTE_BY_TAB: Record<string, keyof ParentStackParamList> = {
@@ -99,8 +183,11 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
   'Staff Scheduling': 'DirectorScheduling',
   'Goal Mastery Approval': 'GoalMasteryApproval',
   'Parent Communication': 'DirectorParentCommunication',
+  'Reports & Oversight': 'ReportsOversight',
   'Report & Oversight': 'ReportsOversight',
   'Student Progress': 'DirectorStudentProgress',
+  Assessments: 'AssessmentSummaryReport',
+  'Assessment Summary Report': 'AssessmentSummaryReport',
   // Legacy aliases (existing screens / internal links)
   Scheduling: 'DirectorScheduling',
   Approvals: 'GoalMasteryApproval',
@@ -112,17 +199,18 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
 
 export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
   'Admin Panel': 'StaffAccountManagement',
-  'Staff account management': 'StaffAccountManagement',
   'Staff Accounts': 'StaffAccountManagement',
+  'Staff account management': 'StaffAccountManagement',
   'Staff Management': 'StaffAccountManagement',
   Staff: 'StaffAccountManagement',
   'Role Management': 'RoleManagement',
   Roles: 'RoleManagement',
+  'Permission Configuration': 'PermissionConfiguration',
   Permissions: 'PermissionConfiguration',
   Permission: 'PermissionConfiguration',
-  'Permission Configuration': 'PermissionConfiguration',
   'Audit Log': 'AuditLog',
   'Audit Logs': 'AuditLog',
+  Audit: 'AuditLog',
 };
 
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
@@ -163,6 +251,7 @@ export const PD_ROUTE_BY_TAB: Record<string, keyof ProgramDirectorStackParamList
   'Clinical Quality Monitoring': 'GoalBankManagement',
   'Parent Communication': 'PdParentCommunication',
   Reports: 'GraphChartView',
+  'Reports & Oversight': 'GraphChartView',
   // Legacy aliases (existing screens / internal links)
   Caseload: 'StudentCaseload',
   Assessments: 'AssessmentSummaryReport',
@@ -189,6 +278,8 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   'Operational Management': 'CoordinatorSchedule',
   'Parent Communication': 'CoordinatorParentCommunication',
   'Student Registration': 'StudentEnrollment',
+  'Enrollment Wizard': 'StudentEnrollmentWizard',
+  Enrollment: 'StudentEnrollmentWizard',
   'Staff Management & Linking': 'WorkloadDashboard',
   'IUP Creation & Goal Assignment': 'IupGeneration',
   // Legacy aliases (existing screens / internal links)
@@ -199,7 +290,6 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   Schedule: 'CoordinatorSchedule',
   Operational: 'CoordinatorSchedule',
   Parents: 'CoordinatorParentCommunication',
-  Enrollment: 'StudentEnrollment',
   Registration: 'StudentEnrollment',
   Workload: 'WorkloadDashboard',
   Staff: 'WorkloadDashboard',
@@ -212,13 +302,21 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
 export function routeMapForRole(role: Role): Record<string, string> | undefined {
   switch (role) {
     case 'teacher':
-    case 'therapist': return TEACHER_ROUTE_BY_TAB;
-    case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
-    case 'program_director': return PD_ROUTE_BY_TAB;
-    case 'director': return DIRECTOR_ROUTE_BY_TAB;
-    case 'institutional_admin': return IA_ROUTE_BY_TAB;
-    case 'system_admin': return SYS_ROUTE_BY_TAB;
-    case 'parent': return PARENT_ROUTE_BY_TAB;
-    default: return undefined;
+    case 'therapist':
+      return TEACHER_ROUTE_BY_TAB;
+    case 'coordinator':
+      return COORDINATOR_ROUTE_BY_TAB;
+    case 'program_director':
+      return PD_ROUTE_BY_TAB;
+    case 'director':
+      return DIRECTOR_ROUTE_BY_TAB;
+    case 'institutional_admin':
+      return IA_ROUTE_BY_TAB;
+    case 'system_admin':
+      return SYS_ROUTE_BY_TAB;
+    case 'parent':
+      return PARENT_ROUTE_BY_TAB;
+    default:
+      return undefined;
   }
 }

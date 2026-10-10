@@ -1,3 +1,5 @@
+import { storage } from '../../utils/storage';
+
 export interface AbllsItemDef {
   id: string;
   description: string;
@@ -127,14 +129,22 @@ export const DEFAULT_ABLLS_DOMAINS: AbllsDomainDef[] = [
 ];
 
 export function buildAbllsDomainsFromConfig(
-  fields?: Array<{ id: string; label: string; visible?: boolean; section?: string; options?: string[] }>,
+  fields?: Array<{
+    id: string;
+    label: string;
+    visible?: boolean;
+    section?: string;
+    options?: string[];
+  }>,
   customSections?: string[],
-  deletedSections?: string[]
+  deletedSections?: string[],
 ): AbllsDomainDef[] {
   const deletedSet = new Set((deletedSections || []).map((s) => s.trim().toLowerCase()));
 
   // 1. Filter out deleted default domains
-  const baseDomains = DEFAULT_ABLLS_DOMAINS.filter((d) => !deletedSet.has(d.name.trim().toLowerCase()));
+  const baseDomains = DEFAULT_ABLLS_DOMAINS.filter(
+    (d) => !deletedSet.has(d.name.trim().toLowerCase()),
+  );
 
   const domainMap = new Map<string, AbllsItemDef[]>();
   baseDomains.forEach((d) => domainMap.set(d.name, []));
@@ -157,7 +167,9 @@ export function buildAbllsDomainsFromConfig(
     });
   }
 
-  const visible = (fields && Array.isArray(fields) ? fields : []).filter((f) => f.visible !== false);
+  const visible = (fields && Array.isArray(fields) ? fields : []).filter(
+    (f) => f.visible !== false,
+  );
 
   visible.forEach((f) => {
     if (
@@ -206,10 +218,14 @@ export function buildAbllsDomainsFromConfig(
   visible.forEach((f) => {
     let domainName = f.section;
     if (!domainName || domainName === 'General') {
-      const match = [...baseDomains, ...additionalSections.map((s) => ({ name: s, code: '' }))].find(
+      const match = [
+        ...baseDomains,
+        ...additionalSections.map((s) => ({ name: s, code: '' })),
+      ].find(
         (d) =>
           f.label.toLowerCase().includes(d.name.toLowerCase()) ||
-          (d.code && (f.id.toUpperCase().startsWith(d.code) || f.label.toUpperCase().startsWith(d.code)))
+          (d.code &&
+            (f.id.toUpperCase().startsWith(d.code) || f.label.toUpperCase().startsWith(d.code))),
       );
       if (match) domainName = match.name;
     }
@@ -233,7 +249,10 @@ export function buildAbllsDomainsFromConfig(
     finalDomains.push({
       code: d.code,
       name: d.name,
-      items: list && list.length > 0 ? list : (DEFAULT_ABLLS_DOMAINS.find((def) => def.code === d.code)?.items ?? []),
+      items:
+        list && list.length > 0
+          ? list
+          : (DEFAULT_ABLLS_DOMAINS.find((def) => def.code === d.code)?.items ?? []),
     });
   });
 
@@ -276,10 +295,14 @@ export interface FormattedScoreOption {
   color: string;
 }
 
-export function getItemScoreOptions(item?: { options?: string[]; maxCells?: number }): FormattedScoreOption[] {
-  const raw = item?.options && Array.isArray(item.options) && item.options.length > 0
-    ? item.options
-    : ['0', '1', '2', 'N/A'];
+export function getItemScoreOptions(item?: {
+  options?: string[];
+  maxCells?: number;
+}): FormattedScoreOption[] {
+  const raw =
+    item?.options && Array.isArray(item.options) && item.options.length > 0
+      ? item.options
+      : ['0', '1', '2', 'N/A'];
 
   const nonNaList = raw.filter((opt) => {
     const t = String(opt).trim().toUpperCase();
@@ -287,14 +310,18 @@ export function getItemScoreOptions(item?: { options?: string[]; maxCells?: numb
   });
 
   // If options are 2 only (e.g. 2 numbers like [0, 1] or raw length 2 or maxCells === 2)
-  const isTwoOptions = nonNaList.length === 2 || raw.length === 2 || (item?.maxCells === 2 && nonNaList.length <= 2);
+  const isTwoOptions =
+    nonNaList.length === 2 || raw.length === 2 || (item?.maxCells === 2 && nonNaList.length <= 2);
 
   const result: FormattedScoreOption[] = [];
 
   for (let i = 0; i < raw.length; i++) {
     const opt = raw[i];
     const trimmed = String(opt).trim();
-    const isNA = trimmed.toUpperCase() === 'N/A' || trimmed.toUpperCase() === 'NA' || trimmed.toLowerCase().includes('not assessed');
+    const isNA =
+      trimmed.toUpperCase() === 'N/A' ||
+      trimmed.toUpperCase() === 'NA' ||
+      trimmed.toLowerCase().includes('not assessed');
 
     if (isNA) {
       // "and if the options are 2 only remove the N/A"
@@ -320,7 +347,11 @@ export function getItemScoreOptions(item?: { options?: string[]; maxCells?: numb
         color,
       });
     } else {
-      if (trimmed.toLowerCase().includes('pass') || trimmed.toLowerCase().includes('mastered') || trimmed.toLowerCase().includes('yes')) {
+      if (
+        trimmed.toLowerCase().includes('pass') ||
+        trimmed.toLowerCase().includes('mastered') ||
+        trimmed.toLowerCase().includes('yes')
+      ) {
         result.push({ label: '1', score: 1, color: '#16A34A' });
       } else {
         result.push({ label: '0', score: 0, color: '#EF4444' });
@@ -333,13 +364,23 @@ export function getItemScoreOptions(item?: { options?: string[]; maxCells?: numb
 
 export function parseScoreFromOption(opt: string): Score {
   const trimmed = String(opt).trim();
-  if (trimmed.toUpperCase() === 'N/A' || trimmed.toUpperCase() === 'NA' || trimmed.toLowerCase().includes('not assessed')) return 'NA';
+  if (
+    trimmed.toUpperCase() === 'N/A' ||
+    trimmed.toUpperCase() === 'NA' ||
+    trimmed.toLowerCase().includes('not assessed')
+  )
+    return 'NA';
   const numMatch = trimmed.match(/^(\d+)/);
   if (numMatch) {
     const n = parseInt(numMatch[1], 10);
     return (n >= 0 ? n : 0) as Score;
   }
-  if (trimmed.toLowerCase().includes('pass') || trimmed.toLowerCase().includes('mastered') || trimmed.toLowerCase().includes('yes')) return 1;
+  if (
+    trimmed.toLowerCase().includes('pass') ||
+    trimmed.toLowerCase().includes('mastered') ||
+    trimmed.toLowerCase().includes('yes')
+  )
+    return 1;
   return 0;
 }
 
@@ -347,32 +388,33 @@ const STORAGE_PREFIX = 'melue_skills_assessment_';
 
 export function saveStorageAssessment(
   studentId: string,
-  payload: { scores: Record<string, Score>; notes?: Record<string, string>; customFields?: Record<string, any> }
+  payload: {
+    scores: Record<string, Score>;
+    notes?: Record<string, string>;
+    customFields?: Record<string, any>;
+  },
 ) {
-  if (typeof localStorage === 'undefined' || !studentId) return;
-  try {
-    const key = `${STORAGE_PREFIX}${studentId}`;
-    const existingRaw = localStorage.getItem(key);
-    const existing = existingRaw ? JSON.parse(existingRaw) : {};
-    const merged = {
-      ...existing,
-      ...payload,
-      scores: {
-        ...(existing.scores || {}),
-        ...(payload.scores || {}),
-      },
-      notes: {
-        ...(existing.notes || {}),
-        ...(payload.notes || {}),
-      },
-      customFields: {
-        ...(existing.customFields || {}),
-        ...(payload.customFields || {}),
-      },
-      updatedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(key, JSON.stringify(merged));
-  } catch {}
+  if (!studentId) return;
+  const key = `${STORAGE_PREFIX}${studentId}`;
+  const existing = storage.getJSONSync<any>(key, {}) || {};
+  const merged = {
+    ...existing,
+    ...payload,
+    scores: {
+      ...(existing.scores || {}),
+      ...(payload.scores || {}),
+    },
+    notes: {
+      ...(existing.notes || {}),
+      ...(payload.notes || {}),
+    },
+    customFields: {
+      ...(existing.customFields || {}),
+      ...(payload.customFields || {}),
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  storage.setJSONSync(key, merged);
 }
 
 export function loadStorageAssessment(studentId: string): {
@@ -380,21 +422,19 @@ export function loadStorageAssessment(studentId: string): {
   notes?: Record<string, string>;
   customFields?: Record<string, any>;
 } | null {
-  if (typeof localStorage === 'undefined' || !studentId) return null;
-  try {
-    const key = `${STORAGE_PREFIX}${studentId}`;
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  if (!studentId) return null;
+  const key = `${STORAGE_PREFIX}${studentId}`;
+  return storage.getJSONSync<any>(key, null);
 }
 
 export const getMaxCellsForItem = (item: { options?: string[]; maxCells?: number }): number => {
   if (item.maxCells) return item.maxCells;
   if (item.options && Array.isArray(item.options) && item.options.length > 0) {
     const nonNA = item.options.filter(
-      (o) => o.trim().toUpperCase() !== 'N/A' && o.trim().toUpperCase() !== 'NA' && !o.toLowerCase().includes('not assessed')
+      (o) =>
+        o.trim().toUpperCase() !== 'N/A' &&
+        o.trim().toUpperCase() !== 'NA' &&
+        !o.toLowerCase().includes('not assessed'),
     );
     if (nonNA.length === 2) return 2;
     const numbers = nonNA
@@ -412,11 +452,14 @@ export const getMaxCellsForItem = (item: { options?: string[]; maxCells?: number
   return 4;
 };
 
-export const getFilledCells = (item: { score: Score | number; options?: string[]; maxCells?: number }): number => {
+export const getFilledCells = (item: {
+  score: Score | number;
+  options?: string[];
+  maxCells?: number;
+}): number => {
   if (item.score === 'NA' || item.score === undefined || item.score === null) return 0;
   if (item.score === 0) return 1;
   const num = typeof item.score === 'number' ? item.score : parseInt(String(item.score), 10);
   if (isNaN(num) || num <= 0) return 0;
   return num;
 };
-

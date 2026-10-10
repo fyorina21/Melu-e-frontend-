@@ -1,29 +1,38 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Platform, View } from 'react-native';
 import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
-import type { NavigationContainerRef, NavigationState, PartialState } from '@react-navigation/native';
+import type {
+  NavigationContainerRef,
+  NavigationState,
+  PartialState,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth, ROLES } from '../context/AuthContext';
 import type { Role } from '../types';
 import LoginScreen from '../screens/auth/LoginScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
-import SessionStack from './SessionStack';
-import CoordinatorStack from './CoordinatorStack';
-import ProgramDirectorStack from './ProgramDirectorStack';
-import DirectorStack from './DirectorStack';
-import InstitutionalAdminStack from './InstitutionalAdminStack';
-import SystemAdminStack from './SystemAdminStack';
-import ParentStack from './ParentStack';
 import RoleSidebar from '../components/RoleSidebar';
+import ScreenLoader from '../components/ScreenLoader';
 import { SidebarNavContext } from './SidebarNavContext';
+import { storage } from '../utils/storage';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
+// Lazy-loaded role stacks for optimal bundle splitting and fast initial page loads
+const SessionStack = lazy(() => import('./SessionStack'));
+const CoordinatorStack = lazy(() => import('./CoordinatorStack'));
+const ProgramDirectorStack = lazy(() => import('./ProgramDirectorStack'));
+const DirectorStack = lazy(() => import('./DirectorStack'));
+const InstitutionalAdminStack = lazy(() => import('./InstitutionalAdminStack'));
+const SystemAdminStack = lazy(() => import('./SystemAdminStack'));
+const ParentStack = lazy(() => import('./ParentStack'));
 
 const Stack = createNativeStackNavigator();
 
 // Roles whose navigation lives in a persistent docked sidebar instead of
 // the top navbar tabs.
-const SIDEBAR_ROLES = new Set<Role>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADMIN]);
+const SIDEBAR_ROLES = new Set<string>([ROLES.INSTITUTIONAL_ADMIN, ROLES.SYSTEM_ADMIN]);
 
-const STACK_BY_ROLE: Record<Role, () => React.JSX.Element> = {
+const STACK_BY_ROLE: Record<string, React.ComponentType> = {
   [ROLES.TEACHER]: SessionStack,
   [ROLES.THERAPIST]: SessionStack,
   [ROLES.COORDINATOR]: CoordinatorStack,
@@ -47,22 +56,14 @@ function getActiveRoute(
   return route as { name: string; params?: Record<string, any> } | undefined;
 }
 
-function getActiveRouteName(
-  state: NavigationState | PartialState<NavigationState> | undefined,
-): string | undefined {
-  return getActiveRoute(state)?.name;
-}
-
 /** Push the current screen name into the browser URL bar (web only). */
 function syncUrlToScreen(state: NavigationState | undefined): void {
   if (Platform.OS !== 'web' || !state) return;
   const route = getActiveRoute(state);
   if (route?.name) {
     const sid = route.params?.studentId;
-    if (sid && typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('last_assessment_student_id', sid);
-      } catch {}
+    if (sid) {
+      storage.setSync('last_assessment_student_id', sid);
     }
     const query = sid ? `?studentId=${encodeURIComponent(sid)}` : '';
     const newPath = `/${route.name}${query}`;
@@ -78,31 +79,37 @@ function AppNavigator() {
 
   if (!session) {
     return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-      </Stack.Navigator>
+      <ErrorBoundary screenName="Auth Navigator">
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        </Stack.Navigator>
+      </ErrorBoundary>
     );
   }
 
+  // Resolves the role's stack; configured custom roles fall back to SessionStack
   const RoleStack = STACK_BY_ROLE[session.role] || STACK_BY_ROLE[ROLES.TEACHER];
 
-  if (SIDEBAR_ROLES.has(session.role)) {
-    return (
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        <RoleSidebar role={session.role} />
-        <View style={{ flex: 1 }}>
+  return (
+    <ErrorBoundary screenName={`${session.role} Navigator`}>
+      <Suspense fallback={<ScreenLoader />}>
+        {SIDEBAR_ROLES.has(session.role) ? (
+          <View style={{ flex: 1, flexDirection: 'row' }}>
+            <RoleSidebar role={session.role} />
+            <View style={{ flex: 1 }}>
+              <RoleStack />
+            </View>
+          </View>
+        ) : (
           <RoleStack />
-        </View>
-      </View>
-    );
-  }
-
-  return <RoleStack />;
+        )}
+      </Suspense>
+    </ErrorBoundary>
+  );
 }
 
 export default function RootNavigator() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const navRef = React.useRef<NavigationContainerRef<any>>(null);
   const { session } = useAuth();
   const deepLinkRestored = React.useRef(false);
@@ -114,7 +121,6 @@ export default function RootNavigator() {
   React.useEffect(() => {
     if (Platform.OS !== 'web' || !session || !navRef.current) return;
     if (deepLinkRestored.current) {
-      // Session changed later (role switch/logout) — just re-sync the URL.
       syncUrlToScreen(navRef.current.getState() as NavigationState);
       return;
     }
@@ -131,7 +137,7 @@ export default function RootNavigator() {
       const searchParams = new URLSearchParams(window.location.search);
       const sid =
         searchParams.get('studentId') ||
-        (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null) ||
+        storage.getSync('last_assessment_student_id') ||
         'student-a';
       nav.navigate(target, { studentId: sid });
     } catch {
@@ -151,7 +157,9 @@ export default function RootNavigator() {
           const searchParams = new URLSearchParams(window.location.search);
           const sid =
             searchParams.get('studentId') ||
-            (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null) ||
+            (typeof localStorage !== 'undefined'
+              ? localStorage.getItem('last_assessment_student_id')
+              : null) ||
             'student-a';
           navRef.current.navigate(target, { studentId: sid });
         } catch {}
@@ -173,7 +181,6 @@ export default function RootNavigator() {
           setNavVersion((v) => v + 1);
         }}
         onReady={() => {
-          // Sync URL for the very first screen since onStateChange only fires on changes.
           if (Platform.OS === 'web' && navRef.current) {
             syncUrlToScreen(navRef.current.getState());
           }

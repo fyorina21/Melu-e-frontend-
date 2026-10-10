@@ -22,6 +22,16 @@ vi.mock('expo-secure-store', () => ({
   deleteItemAsync: vi.fn(async () => undefined),
 }));
 
+vi.mock('@expo/vector-icons', () => ({
+  Feather: 'Feather',
+  Ionicons: 'Ionicons',
+  MaterialIcons: 'MaterialIcons',
+}));
+
+vi.mock('@shopify/flash-list', () => ({
+  FlashList: 'FlashList',
+}));
+
 beforeEach(() => {
   // Node ships a non-functional `localStorage` global (object), so guard on
   // usability, not just typeof. Force the in-memory polyfill so every test

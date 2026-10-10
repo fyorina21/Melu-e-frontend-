@@ -26,8 +26,11 @@ export interface LoginResponse {
   refresh_token?: string;
   refreshToken?: string;
   role?: string;
+  roles?: string[];
   homeRoute?: string;
   home_route?: string;
+  modules?: string[];
+  permissions?: string[];
 }
 
 export interface CreateAccountRequest {
@@ -86,8 +89,10 @@ export const authApi = {
         refresh_token: currentRefreshToken,
         'refresh-token': currentRefreshToken,
       });
-      const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
-      const newRefreshToken = (data as any).refresh_token ?? (data as any).refreshToken ?? currentRefreshToken;
+      const token =
+        data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
+      const newRefreshToken =
+        (data as any).refresh_token ?? (data as any).refreshToken ?? currentRefreshToken;
 
       if (token) {
         await setAccessToken(token);
@@ -127,8 +132,24 @@ export const authApi = {
     return loadToken();
   },
 
-  async me(): Promise<{ id: string; name: string; email: string; role: string; roles?: string[] }> {
-    const { data } = await http.get<{ id: string; name: string; email: string; role: string; roles?: string[] }>('/auth/me');
+  async me(): Promise<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    roles?: string[];
+    modules?: string[];
+    permissions?: string[];
+  }> {
+    const { data } = await http.get<{
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      roles?: string[];
+      modules?: string[];
+      permissions?: string[];
+    }>('/auth/me');
     return data;
   },
 };
