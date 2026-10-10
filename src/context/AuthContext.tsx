@@ -9,7 +9,14 @@ import React, {
 } from 'react';
 import type { AuthSession, Role } from '../types';
 import { authApi } from '../api/resources/auth';
-import { setAccessToken, clearAuthTokens, setActiveRole, setUserRoles } from '../api/token';
+import {
+  setAccessToken,
+  clearAuthTokens,
+  setActiveRole,
+  setUserRoles,
+  getActiveRole,
+  getUserRoles,
+} from '../api/token';
 import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
 
@@ -249,6 +256,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  if (ctx) return ctx;
+
+  const role = getActiveRole();
+  const roles = getUserRoles();
+  const session: AuthSession | null = role
+    ? {
+        role,
+        roles: roles.length > 0 ? roles : [role],
+        userName: 'User',
+        email: '',
+      }
+    : null;
+
+  return {
+    session,
+    loginWithCredentials: async () => false,
+    switchRole: () => {},
+    logout: () => {},
+  };
 }

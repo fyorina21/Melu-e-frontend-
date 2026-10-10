@@ -49,11 +49,11 @@ export function TeacherMetricsCard({
         <View style={styles.metricHeaderLeft}>
           <View style={styles.avatarMedium}>
             <Text style={styles.avatarMediumText}>
-              {teacher.name.charAt(teacher.name.length - 1)}
+              {(teacher?.name || 'Teacher').trim().slice(-1).toUpperCase()}
             </Text>
           </View>
           <View>
-            <Text style={styles.metricTeacherName}>{teacher.name}</Text>
+            <Text style={styles.metricTeacherName}>{teacher?.name || 'Teacher'}</Text>
             <Text style={styles.metricTeacherMeta}>
               {teacher.station} · {teacher.room}
             </Text>
@@ -106,7 +106,7 @@ export function TeacherMetricsCard({
           onPress={() => onViewSummary(teacher)}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel={`View summary for ${teacher.name}`}
+          accessibilityLabel={`View summary for ${teacher?.name || 'Teacher'}`}
         >
           <Feather name="eye" size={14} color="#4B5563" />
           <Text style={styles.summaryButtonText}>View Teacher Summary</Text>
@@ -117,7 +117,7 @@ export function TeacherMetricsCard({
             onPress={() => onMarkUnavailable(teacher)}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel={`Mark ${teacher.name} unavailable`}
+            accessibilityLabel={`Mark ${teacher?.name || 'Teacher'} unavailable`}
           >
             <Feather name="user-minus" size={14} color="#EA580C" />
             <Text style={styles.unavailableButtonText}>Mark Unavailable</Text>
@@ -128,7 +128,7 @@ export function TeacherMetricsCard({
             disabled={teacher.students.length === 0}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel={`Reassign students from ${teacher.name}`}
+            accessibilityLabel={`Reassign students from ${teacher?.name || 'Teacher'}`}
           >
             <Feather name="repeat" size={14} color={colors.primaryYellowDark} />
             <Text style={styles.reassignButtonText}>Reassign Students</Text>

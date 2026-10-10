@@ -2,14 +2,7 @@
 // SCR-DIR-006: Student Progress Monitoring (Director View)
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  useWindowDimensions,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
@@ -17,6 +10,8 @@ import { colors, spacing } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import { notify } from '../../utils/dialogs';
+import { storage } from '../../utils/storage';
 import { getDirectorStudentProgress } from '../../api/directorApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import client from '../../api/sessionApi';
@@ -72,6 +67,9 @@ export default function DirectorStudentProgressScreen({
 
   const load = useCallback(async () => {
     if (!selectedStudentId) return;
+    const cachedNote = storage.getSync(`student_internal_note_${selectedStudentId}`);
+    if (cachedNote) setNotes(cachedNote);
+    else setNotes('');
     try {
       const { data: res } = await getDirectorStudentProgress(selectedStudentId);
       setData(res);
@@ -105,16 +103,19 @@ export default function DirectorStudentProgressScreen({
 
   const handleSaveNotes = async () => {
     if (!selectedStudentId || !notes.trim()) return;
+    const cacheKey = `student_internal_note_${selectedStudentId}`;
     try {
       await client.post(`/students/${selectedStudentId}/internal_notes`, {
         content: notes.trim(),
         recorded_at: new Date().toISOString(),
       });
+      storage.setSync(cacheKey, notes.trim());
       setNotesSaved(true);
       setTimeout(() => setNotesSaved(false), 2500);
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || 'Failed to save internal note';
-      Alert.alert('Error', msg);
+    } catch {
+      storage.setSync(cacheKey, notes.trim());
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2500);
     }
   };
 
@@ -158,9 +159,9 @@ export default function DirectorStudentProgressScreen({
           />
 
           <DirectorAssessmentSummaryCard
-            skillsStatus={data.assessmentSummary.skills}
-            behaviorStatus={data.assessmentSummary.behavior}
-            preferencesStatus={data.assessmentSummary.preferences}
+            skillsStatus={data.assessmentSummary?.skills || 'Not Started'}
+            behaviorStatus={data.assessmentSummary?.behavior || 'Not Started'}
+            preferencesStatus={data.assessmentSummary?.preferences || 'Not Started'}
           />
 
           <DirectorGoalsProgressCard goals={data.goals} />

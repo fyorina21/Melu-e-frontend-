@@ -34,7 +34,7 @@ export function AssignmentDetailModal({ cellModal, onClose }: AssignmentDetailMo
               <View style={styles.modalBody}>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailKey}>Teacher</Text>
-                  <Text style={styles.detailValue}>{cellModal.teacher.name}</Text>
+                  <Text style={styles.detailValue}>{cellModal.teacher?.name || 'Teacher'}</Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailKey}>Day</Text>

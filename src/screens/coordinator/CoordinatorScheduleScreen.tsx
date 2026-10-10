@@ -16,6 +16,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
 import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
+import { openPrintWindow, downloadTextFile } from '../../utils/webExport';
 import { colors, radius, spacing } from '../../theme/colors';
 
 import type { Teacher, Cell, MetricsRow, WeekAppointment } from './scheduleTypes';
@@ -65,9 +66,12 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         const first = appts[0];
         const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
         const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
+        const teacherId = m.teacherId || (m as any).teacher_id || (m as any).id || `teacher-${i}`;
+        const teacherName =
+          m.teacherName || (m as any).teacher_name || (m as any).name || 'Teacher';
         nextTeachers.push({
-          id: m.teacherId,
-          name: m.teacherName,
+          id: teacherId,
+          name: teacherName,
           station: i % 2 === 0 ? 'Station 1' : 'Station 2',
           room: first?.roomName ?? 'Room 1',
           students: studentNames,
@@ -165,10 +169,58 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
   const reassignOptions = teachers.map((t) => ({ id: t.id, name: t.name }));
 
   const handleExport = () => {
-    Alert.alert('Exporting...', 'Exporting schedule...');
-    setTimeout(() => {
-      Alert.alert('Export complete', 'Schedule exported as PDF');
-    }, 1500);
+    try {
+      const rows = teachers
+        .map((t) => {
+          const scheduleCells = DAYS.map((d) => {
+            const cell = scheduleData[t.id]?.[d];
+            return cell ? `${cell.station} (${cell.room})` : 'Off';
+          })
+            .map((c) => `<td style="padding: 8px; border: 1px solid #ddd;">${c}</td>`)
+            .join('');
+          return `<tr>
+            <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${t.name}</td>
+            ${scheduleCells}
+            <td style="padding: 8px; border: 1px solid #ddd;">${t.students.join(', ') || 'None'}</td>
+          </tr>`;
+        })
+        .join('');
+
+      const html = `
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2 style="color: #1A2233;">Weekly Operational Schedule</h2>
+          <p style="color: #6B7280; font-size: 13px;">Generated on ${new Date().toLocaleDateString()}</p>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;">
+            <thead>
+              <tr style="background: #F3F4F6; text-align: left;">
+                <th style="padding: 8px; border: 1px solid #ddd;">Teacher</th>
+                ${DAYS.map((d) => `<th style="padding: 8px; border: 1px solid #ddd;">${d}</th>`).join('')}
+                <th style="padding: 8px; border: 1px solid #ddd;">Assigned Students</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const opened = openPrintWindow(html, 'Weekly Operational Schedule');
+      if (!opened) {
+        const csvHeader = ['Teacher', ...DAYS, 'Students'].join(',');
+        const csvRows = teachers.map((t) => {
+          const cells = DAYS.map((d) => {
+            const c = scheduleData[t.id]?.[d];
+            return c ? `"${c.station} (${c.room})"` : '"Off"';
+          });
+          return [`"${t.name}"`, ...cells, `"${t.students.join('; ')}"`].join(',');
+        });
+        downloadTextFile('operational_schedule.csv', [csvHeader, ...csvRows].join('\n'));
+      }
+      Alert.alert('Export ready', 'Schedule exported successfully.');
+    } catch {
+      Alert.alert('Export failed', 'Could not export schedule.');
+    }
   };
 
   const handleTabPress = (tab: string) => {

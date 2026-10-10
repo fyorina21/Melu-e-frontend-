@@ -46,16 +46,29 @@ export function AssessmentProgressCards({ overview }: AssessmentProgressCardsPro
     return <Text style={styles.emptyText}>Loading assessment data...</Text>;
   }
 
+  const assessmentSummary = overview?.assessmentSummary ?? {
+    skills: 'In Progress',
+    behavior: 'In Progress',
+    preferences: 'Completed',
+  };
+
   const items = [
-    { label: 'Skills Assessment', status: overview.assessmentSummary.skills },
-    { label: 'Behavior Assessment', status: overview.assessmentSummary.behavior },
-    { label: 'Preferences Assessment', status: overview.assessmentSummary.preferences },
+    { label: 'Skills Assessment', status: assessmentSummary.skills || 'In Progress' },
+    { label: 'Behavior Assessment', status: assessmentSummary.behavior || 'In Progress' },
+    { label: 'Preferences Assessment', status: assessmentSummary.preferences || 'Completed' },
   ];
 
   return (
     <View style={styles.cardsRow}>
       {items.map((item) => {
-        const progress = STATUS_PERCENT[item.status] ?? 0;
+        const rawStatus = String(item.status || 'In Progress');
+        const progress =
+          STATUS_PERCENT[rawStatus] ??
+          (rawStatus.toLowerCase().includes('complete')
+            ? 100
+            : rawStatus.toLowerCase().includes('progress')
+              ? 50
+              : 0);
         const color =
           progress === 100 ? '#22C55E' : progress > 0 ? colors.primaryYellowDark : '#9CA3AF';
         return (

@@ -97,13 +97,34 @@ export default function HomeObservationLogScreen({
     Alert.alert('Observation submitted!');
   };
 
-  const handleSubmitStrategy = () => {
+  const handleSubmitStrategy = (text?: string) => {
     setShowStrategyModal(false);
-    Alert.alert('Strategy request sent to the team!');
+    if (text) {
+      parentApi
+        .createObservation({
+          behavior: text,
+          category: 'Concern',
+          location: 'Home',
+          notes: 'Home Strategy Request from Guardian',
+        })
+        .then(() => load())
+        .catch(() => {});
+    }
+    Alert.alert('Request Sent', 'Your strategy request has been submitted to the therapy team.');
   };
 
   const handleScheduleMeeting = () => {
-    Alert.alert('Meeting request sent!');
+    Alert.alert(
+      'Schedule a Meeting',
+      'Would you like to message the team to schedule a video or in-person meeting?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open Messages',
+          onPress: () => navigation?.navigate?.(PARENT_ROUTE_BY_TAB['Messages']),
+        },
+      ],
+    );
   };
 
   return (
@@ -122,16 +143,25 @@ export default function HomeObservationLogScreen({
 
           <View>
             <Text style={styles.sectionTitle}>Observation History</Text>
-            <View style={styles.list}>
-              {observations.map((obs) => (
-                <ObservationCard
-                  key={obs.id}
-                  observation={obs}
-                  isExpanded={expandedIds.has(obs.id)}
-                  onToggleExpand={toggleExpand}
-                />
-              ))}
-            </View>
+            {observations.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No observations logged yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Share achievements, behaviors, or general routines observed at home.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.list}>
+                {observations.map((obs) => (
+                  <ObservationCard
+                    key={obs.id}
+                    observation={obs}
+                    isExpanded={expandedIds.has(obs.id)}
+                    onToggleExpand={toggleExpand}
+                  />
+                ))}
+              </View>
+            )}
           </View>
 
           <HomeSupportCard
@@ -188,5 +218,24 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.md,
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

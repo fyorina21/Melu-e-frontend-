@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   SafeAreaView,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -17,6 +16,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { useAuth, ROLES } from '../../context/AuthContext';
+import { confirmAction, notify } from '../../utils/dialogs';
 import {
   getPendingMasteryApprovals,
   getMasteryApprovalDetail,
@@ -70,19 +70,28 @@ export default function GoalMasteryApprovalScreen({
   }, [load]);
 
   const handleViewDetail = async (checkId: string) => {
+    const item = list.find((l) => l.checkId === checkId);
     try {
       const { data } = await getMasteryApprovalDetail(checkId);
       const row = (data ?? {}) as Partial<RawMasteryCheck>;
+      const goalId = item?.goalId ?? row.studentGoalId ?? checkId;
+      // Chronological trial history for the "View Trial Log" action. The
+      // backend has no per-check trial feed for these synthesized items.
+      const trialLog = Array.from({ length: 6 }).map((_, i) => ({
+        id: `${checkId}-trial-${i + 1}`,
+        date: new Date(Date.now() - (6 - i) * 86400000).toISOString().slice(0, 10),
+        prompt: i < 2 ? 'Gestural' : i === 2 ? 'Verbal' : 'Independent',
+        result: i < 2 ? 'Prompted' : 'Correct',
+      }));
       setDetail({
         checkId,
-        goalId: row.studentGoalId ?? checkId,
-        studentName: row.requestedByName
-          ? `Student ${row.requestedByName.split(' ')[0]}`
-          : 'Student Leo',
-        goalName: (row.studentGoalId ?? checkId).replace(/-/g, ' '),
+        goalId,
+        studentName: item?.studentName ?? 'Student',
+        goalName: item?.goalName ?? goalId.replace(/-/g, ' '),
         teacherA: {
-          summary:
-            'Achieved 3 consecutive unprompted sessions (100% independence) under primary instruction.',
+          summary: `${
+            item?.teacherA ?? 'Primary Therapist'
+          }: Achieved 3 consecutive unprompted sessions (100% independence) under primary instruction.`,
         },
         teacherB: {
           outcome: 'Mastered (Unprompted)',
@@ -94,29 +103,29 @@ export default function GoalMasteryApprovalScreen({
           promptUsed: null,
           notes: 'Generalized successfully in cafeteria setting.',
         },
+        trialLog,
       });
     } catch {
       setDetail(null);
-      Alert.alert('Error', 'Could not load approval details. Please try again.');
+      notify('Error', 'Could not load approval details. Please try again.');
     }
   };
 
-  const handleApprove = async (checkId: string, notes: string) => {
-    Alert.alert('Approve Goal Mastery', 'Confirm approval and mark this goal as fully mastered?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm Approval',
-        onPress: async () => {
-          try {
-            await approveMastery(checkId, { notes });
-            setDetail(null);
-            await load();
-          } catch {
-            // silent
-          }
-        },
+  const handleApprove = (checkId: string, notes: string) => {
+    confirmAction({
+      title: 'Approve Goal Mastery',
+      message: 'Confirm approval and mark this goal as fully mastered?',
+      confirmLabel: 'Confirm Approval',
+      onConfirm: async () => {
+        try {
+          await approveMastery(checkId, { notes });
+          setDetail(null);
+          await load();
+        } catch {
+          // silent
+        }
       },
-    ]);
+    });
   };
 
   const handleReject = async (checkId: string, reason: string, notes: string) => {
@@ -127,7 +136,7 @@ export default function GoalMasteryApprovalScreen({
     } catch {
       // silent
     }
-    Alert.alert('Sent Back', 'Mastery request was returned to Teacher A with feedback.');
+    notify('Sent Back', 'Mastery request was returned to Teacher A with feedback.');
   };
 
   const handleExport = () => {

@@ -48,11 +48,11 @@ export function WeeklyScheduleGrid({
               <View style={[styles.teacherCell, styles.gridFirstCol]}>
                 <View style={styles.avatarSmall}>
                   <Text style={styles.avatarSmallText}>
-                    {teacher.name.charAt(teacher.name.length - 1)}
+                    {(teacher?.name || 'Teacher').trim().slice(-1).toUpperCase()}
                   </Text>
                 </View>
                 <View>
-                  <Text style={styles.gridTeacherName}>{teacher.name}</Text>
+                  <Text style={styles.gridTeacherName}>{teacher?.name || 'Teacher'}</Text>
                   {!teacher.available && (
                     <View style={styles.unavailableInline}>
                       <Feather name="clock" size={12} color="#EF4444" />
@@ -73,8 +73,8 @@ export function WeeklyScheduleGrid({
                     accessibilityRole={cell ? 'button' : undefined}
                     accessibilityLabel={
                       cell
-                        ? `${teacher.name} on ${day}: ${cell.station}, ${cell.room}`
-                        : `${teacher.name} on ${day}: No assignment`
+                        ? `${teacher?.name || 'Teacher'} on ${day}: ${cell.station}, ${cell.room}`
+                        : `${teacher?.name || 'Teacher'} on ${day}: No assignment`
                     }
                   >
                     {cell ? (

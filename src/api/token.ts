@@ -146,12 +146,7 @@ export async function loadToken(): Promise<string | null> {
 }
 
 export async function setAccessToken(token: string | null, persist = true): Promise<void> {
-  if (
-    !token ||
-    token === 'undefined' ||
-    token === 'null' ||
-    token.trim() === ''
-  ) {
+  if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
     accessToken = null;
 
     try {
@@ -163,9 +158,7 @@ export async function setAccessToken(token: string | null, persist = true): Prom
     return;
   }
 
-  const cleanToken = token.startsWith('Bearer ')
-    ? token.replace(/^Bearer\s+/i, '')
-    : token.trim();
+  const cleanToken = token.startsWith('Bearer ') ? token.replace(/^Bearer\s+/i, '') : token.trim();
 
   accessToken = cleanToken;
 
@@ -217,12 +210,7 @@ export async function loadRefreshToken(): Promise<string | null> {
 }
 
 export async function setRefreshToken(token: string | null): Promise<void> {
-  if (
-    !token ||
-    token === 'undefined' ||
-    token === 'null' ||
-    token.trim() === ''
-  ) {
+  if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
     refreshToken = null;
 
     try {
@@ -284,7 +272,11 @@ export function setUserRoles(roles: string[]): void {
 }
 
 export function getUserRoles(): string[] {
-  if ((!userRoles || userRoles.length === 0) && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+  if (
+    (!userRoles || userRoles.length === 0) &&
+    Platform.OS === 'web' &&
+    typeof localStorage !== 'undefined'
+  ) {
     try {
       const stored = localStorage.getItem(ROLES_KEY);
       if (stored) userRoles = JSON.parse(stored);
@@ -294,7 +286,9 @@ export function getUserRoles(): string[] {
 }
 
 export function isUserAdmin(): boolean {
-  const current = getActiveRole()?.toLowerCase().replace(/[\s-]+/g, '_');
+  const current = getActiveRole()
+    ?.toLowerCase()
+    .replace(/[\s-]+/g, '_');
   if (current) {
     return (
       current === 'institutional_admin' ||
@@ -307,11 +301,51 @@ export function isUserAdmin(): boolean {
   if (roles.length > 0) {
     return roles.some(
       (r) =>
-        r === 'institutional_admin' ||
-        r === 'system_admin' ||
-        r === 'admin' ||
-        r === 'sysadmin'
+        r === 'institutional_admin' || r === 'system_admin' || r === 'admin' || r === 'sysadmin',
     );
   }
   return false;
-}
+}
+
+export function isUserDirectorOrAdmin(): boolean {
+  const current = getActiveRole()
+    ?.toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (current) {
+    return (
+      current === 'program_director' ||
+      current === 'director' ||
+      current === 'institutional_admin' ||
+      current === 'system_admin' ||
+      current === 'admin' ||
+      current === 'sysadmin'
+    );
+  }
+  const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
+  if (roles.length > 0) {
+    return roles.some(
+      (r) =>
+        r === 'program_director' ||
+        r === 'director' ||
+        r === 'institutional_admin' ||
+        r === 'system_admin' ||
+        r === 'admin' ||
+        r === 'sysadmin',
+    );
+  }
+  return false;
+}
+
+export function isUserProgramDirector(): boolean {
+  const current = getActiveRole()
+    ?.toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (current) {
+    return current === 'program_director' || current === 'director';
+  }
+  const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
+  if (roles.length > 0) {
+    return roles.some((r) => r === 'program_director' || r === 'director');
+  }
+  return false;
+}

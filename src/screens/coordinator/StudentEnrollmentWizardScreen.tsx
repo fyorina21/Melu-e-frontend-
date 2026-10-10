@@ -252,7 +252,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar
         activeTab="Enrollment"
-        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)}
+        onTabPress={(t) => {
+          const r = PD_ROUTE_BY_TAB[t];
+          if (r) navigation?.navigate?.(r as never);
+        }}
       />
 
       <WizardHeader />

@@ -1,6 +1,7 @@
 import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
+import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 
 // ============================================================================
 // Storage Keys
@@ -15,84 +16,148 @@ const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
 // ============================================================================
 // Default Datasets for Resilient Fallbacks
 // ============================================================================
-const DEFAULT_THERAPIST_NAMES = [
-  'Sarah Miller',
-  'Alex Tan',
-  'Emma Watson',
-  'Michael Brown',
-  'Rachel Green',
-];
+const DEFAULT_THERAPIST_NAMES = ['Abeba Tadesse', 'Dawit Bekele', 'Selam Tesfaye', 'fyori'];
 
 const DEFAULT_PD_STUDENTS = [
   {
-    id: 'std-1',
-    fullName: 'Leo Miller',
-    name: 'Leo Miller',
-    age: 6,
-    programType: 'Comprehensive ABA',
-    program: 'Comprehensive ABA',
-    therapyGroup: 'Station 1 · Early Learners',
-    therapist: 'Sarah Miller',
+    id: 'e12bff1b-a000-4fcd-ab3b-f8d035e45ba8',
+    fullName: 'Amir Hassan',
+    name: 'Amir Hassan',
+    age: 7,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
     currentStage: 'in-assessment',
     status: 'In Assessment',
     assessmentStatus: 'in-progress' as const,
     sessionAssigned: false,
   },
   {
-    id: 'std-2',
-    fullName: 'Mia Chen',
-    name: 'Mia Chen',
-    age: 5,
-    programType: 'Focused Behavior',
-    program: 'Focused Behavior',
-    therapyGroup: 'Station 2 · Social Play',
-    therapist: 'Alex Tan',
-    currentStage: 'assessment-complete',
-    status: 'Assessment Completed',
+    id: '56cae7c9-9236-4a47-80f5-6b1e73f34cf1',
+    fullName: 'Tigist Bekele',
+    name: 'Tigist Bekele',
+    age: 8,
+    programType: 'Pulled out',
+    program: 'Pulled out',
+    therapyGroup: 'Basic',
+    therapist: 'Dawit Bekele',
+    currentStage: 'in-assessment',
+    status: 'In Assessment',
+    assessmentStatus: 'in-progress' as const,
+    sessionAssigned: false,
+  },
+  {
+    id: '0a73af05-9dc3-401b-a6c8-3b36f55ce3f2',
+    fullName: 'Saron Tekle',
+    name: 'Saron Tekle',
+    age: 9,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Selam Tesfaye',
+    currentStage: 'ready-for-iup',
+    status: 'Ready for IUP',
     assessmentStatus: 'completed' as const,
     sessionAssigned: false,
   },
   {
-    id: 'std-3',
-    fullName: 'Lucas Davies',
-    name: 'Lucas Davies',
-    age: 7,
-    programType: 'Comprehensive ABA',
-    program: 'Comprehensive ABA',
-    therapyGroup: 'Station 1 · Early Learners',
-    therapist: 'Emma Watson',
-    currentStage: 'session-assigned',
-    status: 'Session Assigned',
+    id: 'cfa7e157-3eda-4401-ac85-407125485273',
+    fullName: 'Biniam Hailu',
+    name: 'Biniam Hailu',
+    age: 13,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Functional living',
+    therapist: 'fyori',
+    currentStage: 'ready-for-iup',
+    status: 'Ready for IUP',
     assessmentStatus: 'completed' as const,
     sessionAssigned: true,
   },
   {
-    id: 'std-4',
-    fullName: 'Noah Wilson',
-    name: 'Noah Wilson',
-    age: 6,
-    programType: 'School Readiness',
-    program: 'School Readiness',
-    therapyGroup: 'Station 3 · Academic Prep',
-    therapist: 'Michael Brown',
+    id: '961005d2-0e53-4ab8-832b-3e2fb49c12e5',
+    fullName: 'Yonas Girma',
+    name: 'Yonas Girma',
+    age: 8,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
     currentStage: 'in-session',
     status: 'In Session',
     assessmentStatus: 'completed' as const,
     sessionAssigned: true,
   },
   {
-    id: 'std-5',
-    fullName: 'Sophia Taylor',
-    name: 'Sophia Taylor',
-    age: 5,
-    programType: 'Comprehensive ABA',
-    program: 'Comprehensive ABA',
-    therapyGroup: 'Station 2 · Social Play',
-    therapist: 'Rachel Green',
-    currentStage: 'enrolled',
-    status: 'Not Started',
-    assessmentStatus: 'not-started' as const,
-    sessionAssigned: false,
+    id: 'a159de5b-c23e-4c47-8c6f-a9db265c6b44',
+    fullName: 'Meron Haile',
+    name: 'Meron Haile',
+    age: 9,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Dawit Bekele',
+    currentStage: 'in-session',
+    status: 'In Session',
+    assessmentStatus: 'completed' as const,
+    sessionAssigned: true,
+  },
+  {
+    id: '4274554a-40b0-4fa9-b7b2-c6bc2d7395f9',
+    fullName: 'Abel Tadesse',
+    name: 'Abel Tadesse',
+    age: 7,
+    programType: 'Pulled out',
+    program: 'Pulled out',
+    therapyGroup: 'Basic',
+    therapist: 'Selam Tesfaye',
+    currentStage: 'in-session',
+    status: 'In Session',
+    assessmentStatus: 'completed' as const,
+    sessionAssigned: true,
+  },
+  {
+    id: '89415b84-15af-4bf9-88a3-af66596051dc',
+    fullName: 'Liya Belay',
+    name: 'Liya Belay',
+    age: 10,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
+    currentStage: 'in-session',
+    status: 'In Session',
+    assessmentStatus: 'completed' as const,
+    sessionAssigned: true,
+  },
+  {
+    id: '6baa027d-f0c3-4943-bae8-85487ebcfb60',
+    fullName: 'Natnael Worku',
+    name: 'Natnael Worku',
+    age: 13,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Functional living',
+    therapist: 'Selam Tesfaye',
+    currentStage: 'in-session',
+    status: 'In Session',
+    assessmentStatus: 'completed' as const,
+    sessionAssigned: true,
+  },
+  {
+    id: 'e513eb74-14e1-424d-a3ed-0160e75b10c7',
+    fullName: 'Hiwot Alemu',
+    name: 'Hiwot Alemu',
+    age: 12,
+    programType: 'Pulled out',
+    program: 'Pulled out',
+    therapyGroup: 'Functional living',
+    therapist: 'Selam Tesfaye',
+    currentStage: 'in-session',
+    status: 'In Session',
+    assessmentStatus: 'completed' as const,
+    sessionAssigned: true,
   },
 ];
 
@@ -196,7 +261,7 @@ const DEFAULT_IUP_LIBRARY = [
   {
     id: 'iup-std-1',
     studentId: 'std-1',
-    studentName: 'Leo Miller',
+    studentName: 'Amir Hassan',
     program: 'Comprehensive ABA',
     finalizedDate: '2026-03-25',
     goalCount: 4,
@@ -206,7 +271,7 @@ const DEFAULT_IUP_LIBRARY = [
   {
     id: 'iup-std-2',
     studentId: 'std-2',
-    studentName: 'Mia Chen',
+    studentName: 'Saron Tekle',
     program: 'Focused Behavior',
     finalizedDate: '2026-03-27',
     goalCount: 3,
@@ -216,7 +281,7 @@ const DEFAULT_IUP_LIBRARY = [
   {
     id: 'iup-std-3',
     studentId: 'std-3',
-    studentName: 'Lucas Davies',
+    studentName: 'Tigist Bekele',
     program: 'Comprehensive ABA',
     finalizedDate: '2026-03-20',
     goalCount: 4,
@@ -226,7 +291,7 @@ const DEFAULT_IUP_LIBRARY = [
   {
     id: 'iup-std-4',
     studentId: 'std-4',
-    studentName: 'Noah Wilson',
+    studentName: 'Yonas Girma',
     program: 'School Readiness',
     finalizedDate: '2026-02-15',
     goalCount: 4,
@@ -653,7 +718,7 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
   let studentName = 'Student';
   let studentAge = 6;
   let studentProgram = 'Comprehensive ABA';
-  let studentTherapist = 'Sarah Miller';
+  let studentTherapist = 'Abeba Tadesse';
 
   try {
     const { data: students } = await client.get<any[]>('/options/students');
@@ -815,32 +880,34 @@ export const addAssessmentNote = async (
 // SCR-PD-003: IUP Generation & Management
 // ============================================================================
 export const getIupCandidates = async (): Promise<{ data: any[]; candidates: any[] }> => {
-  try {
-    const res = await client.get('/program_director/assessment_pipeline');
-    const raw = res?.data;
-    const list = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.pipeline)
-        ? raw.pipeline
-        : Array.isArray(raw?.students)
-          ? raw.students
-          : Array.isArray(raw?.data)
-            ? raw.data
-            : [];
-    if (list.length > 0) {
-      const candidates = list.map((item: any) => ({
-        id: String(item.student_id || item.id),
-        studentId: String(item.student_id || item.id),
-        name: String(item.student_name || item.name || 'Unknown Student'),
-        status: 'ready_for_iup',
-        rawStatus: String(item.status || 'ready_for_iup'),
-        assessmentProgress: 100,
-        assessmentStatus: 'Ready for IUP',
-        hasAssessmentData: true,
-      }));
-      return { data: candidates, candidates };
-    }
-  } catch {}
+  if (isUserDirectorOrAdmin()) {
+    try {
+      const res = await client.get('/program_director/assessment_pipeline');
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.pipeline)
+          ? raw.pipeline
+          : Array.isArray(raw?.students)
+            ? raw.students
+            : Array.isArray(raw?.data)
+              ? raw.data
+              : [];
+      if (list.length > 0) {
+        const candidates = list.map((item: any) => ({
+          id: String(item.student_id || item.id),
+          studentId: String(item.student_id || item.id),
+          name: String(item.student_name || item.name || 'Unknown Student'),
+          status: 'ready_for_iup',
+          rawStatus: String(item.status || 'ready_for_iup'),
+          assessmentProgress: 100,
+          assessmentStatus: 'Ready for IUP',
+          hasAssessmentData: true,
+        }));
+        return { data: candidates, candidates };
+      }
+    } catch {}
+  }
 
   try {
     const { data: students } = await client.get<any[]>('/options/students');
@@ -878,53 +945,69 @@ export const getIupCandidates = async (): Promise<{ data: any[]; candidates: any
 };
 
 export const getIupContext = async (studentId: string): Promise<{ data: any }> => {
-  try {
-    const res = await client.get(`/program_director/assessments/${studentId}`);
-    const data = res?.data;
-    if (data && (data.student || data.skills)) {
-      const student = data.student || {};
-      const skills = data.skills || {};
-      const behavior = data.behavior || {};
-      const preferences = data.preferences || {};
-      const visualizations = data.visualizations || {};
+  if (isUserDirectorOrAdmin()) {
+    try {
+      const res = await client.get(`/program_director/assessments/${studentId}`);
+      const data = res?.data;
+      if (data && (data.student || data.skills)) {
+        const student = data.student || {};
+        const skills = data.skills || {};
+        const behavior = data.behavior || {};
+        const preferences = data.preferences || {};
+        const visualizations = data.visualizations || {};
 
-      const topReinforcers = Array.isArray(visualizations.top_preferences)
-        ? visualizations.top_preferences.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
-        : Array.isArray(preferences.top_items)
-          ? preferences.top_items.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
-          : ['Sensory swing', 'Visual tokens', 'Bubbles'];
+        const topReinforcers = Array.isArray(visualizations.top_preferences)
+          ? visualizations.top_preferences.map((p: any) =>
+              typeof p === 'string' ? p : p.name || '',
+            )
+          : Array.isArray(preferences.top_items)
+            ? preferences.top_items.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
+            : ['Sensory swing', 'Visual tokens', 'Bubbles'];
 
-      return {
-        data: {
-          studentName:
-            student.name ||
-            `${student.first_name || ''} ${student.last_name || ''}`.trim() ||
-            'Student',
-          age: Number(student.age || 6),
-          dob: student.date_of_birth || '2020-04-12',
-          program: student.program_type || 'Comprehensive ABA',
-          enrollmentDate: student.created_at || 'Recently',
-          skillsStrengths:
-            skills.summary ||
-            (Array.isArray(data.strengths)
-              ? data.strengths.map((s: any) => s.domain).join(', ')
-              : 'Demonstrates emerging receptive skills.'),
-          behaviorFunctions:
-            behavior.summary || 'Escape / Attention seeking behaviors in structured tasks.',
-          topReinforcers,
-          sensorySummary: 'Responds positively to deep pressure and sensory breaks.',
-        },
-      };
-    }
-  } catch {}
+        return {
+          data: {
+            studentName:
+              student.name ||
+              `${student.first_name || ''} ${student.last_name || ''}`.trim() ||
+              'Student',
+            age: Number(student.age || 6),
+            dob: student.date_of_birth || '2020-04-12',
+            program: student.program_type || 'Comprehensive ABA',
+            enrollmentDate: student.created_at || 'Recently',
+            skillsStrengths:
+              skills.summary ||
+              (Array.isArray(data.strengths)
+                ? data.strengths.map((s: any) => s.domain).join(', ')
+                : 'Demonstrates emerging receptive skills.'),
+            behaviorFunctions:
+              behavior.summary || 'Escape / Attention seeking behaviors in structured tasks.',
+            topReinforcers,
+            sensorySummary: 'Responds positively to deep pressure and sensory breaks.',
+          },
+        };
+      }
+    } catch {}
+  }
 
-  // Resilient fallback context
+  // Resilient fallback context using real student details from options/students
   let studentName = 'Student';
   let studentAge = 6;
   let studentProgram = 'Comprehensive ABA';
 
+  try {
+    const { data: students } = await client.get<any[]>('/options/students');
+    const matched = Array.isArray(students)
+      ? students.find((s: any) => String(s.id) === String(studentId))
+      : null;
+    if (matched) {
+      studentName = matched.name || studentName;
+      if (matched.age) studentAge = matched.age;
+      if (matched.program) studentProgram = matched.program;
+    }
+  } catch {}
+
   const defaultMatch = DEFAULT_PD_STUDENTS.find((s) => s.id === studentId);
-  if (defaultMatch) {
+  if (defaultMatch && studentName === 'Student') {
     studentName = defaultMatch.name;
     studentAge = defaultMatch.age;
     studentProgram = defaultMatch.program;
@@ -1107,22 +1190,24 @@ export const archiveIup = async (iupId: string): Promise<{ data: any }> => {
 // ============================================================================
 export const getStudentCaseload = async (studentId: string): Promise<{ data: any }> => {
   const backendGoals: any[] = [];
-  try {
-    const res = await client.get(`/students/${studentId}/goals`);
-    const stations = res.data?.stations || [];
-    stations.forEach((st: any) => {
-      (st.goals || []).forEach((g: any) => {
-        backendGoals.push({
-          id: String(g.id || g.goal_id),
-          name: g.name || g.description || 'Assigned Goal',
-          domain: g.domain || 'Cognitive',
-          description: g.description || '',
-          station: st.station || 1,
-          slot: g.slot ?? 0,
+  if (isUserProgramDirector()) {
+    try {
+      const res = await client.get(`/students/${studentId}/goals`);
+      const stations = res.data?.stations || [];
+      stations.forEach((st: any) => {
+        (st.goals || []).forEach((g: any) => {
+          backendGoals.push({
+            id: String(g.id || g.goal_id),
+            name: g.name || g.description || 'Assigned Goal',
+            domain: g.domain || 'Cognitive',
+            description: g.description || '',
+            station: st.station || 1,
+            slot: g.slot ?? 0,
+          });
         });
       });
-    });
-  } catch {}
+    } catch {}
+  }
 
   // Check locally stored caseload assignments
   const caseloadMap = getStoredCaseloadMap();
@@ -1550,7 +1635,7 @@ export const getChartData = async (params: QueryParams): Promise<{ data: any }> 
   let goalCharts: any[] = [];
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
-  if (isUuid) {
+  if (isUuid && isUserProgramDirector()) {
     try {
       const res = await client.get(`/students/${studentId}/goals`);
       const stations = res.data?.stations || [];

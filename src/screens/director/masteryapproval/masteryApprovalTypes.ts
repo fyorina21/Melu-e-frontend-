@@ -25,6 +25,13 @@ export interface TeacherVerification {
   notes: string;
 }
 
+export interface TrialLogEntry {
+  id: string;
+  date: string;
+  prompt: string;
+  result: string;
+}
+
 export interface MasteryDetail {
   checkId: string;
   goalId: string;
@@ -33,6 +40,7 @@ export interface MasteryDetail {
   teacherA: { summary: string };
   teacherB: TeacherVerification;
   teacherC: TeacherVerification;
+  trialLog: TrialLogEntry[];
 }
 
 export function formatDate(iso: string | null | undefined): string {

@@ -91,7 +91,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Student Progress',
     'Operational Management',
     'Parent Communication',
-    'Student Registration',
+    'Registered Student',
     'Staff Management & Linking',
     'IUP Creation & Goal Assignment',
   ],
@@ -126,6 +126,69 @@ export const ROLE_TABS: Record<Role, string[]> = {
   system_admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
   parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
 };
+
+export interface NavGroupTab {
+  label: string;
+  items: string[];
+}
+
+export type NavTabItem = string | NavGroupTab;
+
+export const isNavGroup = (tab: NavTabItem): tab is NavGroupTab => {
+  return typeof tab !== 'string' && Array.isArray((tab as any)?.items);
+};
+
+export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {
+  coordinator: [
+    'Dashboard',
+    {
+      label: 'Sessions',
+      items: ['Live Sessions', 'Session Summary'],
+    },
+    {
+      label: 'Students',
+      items: ['Registered Student', 'Student Progress', 'IUP Creation & Goal Assignment'],
+    },
+    {
+      label: 'Operations',
+      items: ['Operational Management', 'Staff Management & Linking'],
+    },
+    'Parent Communication',
+  ],
+  program_director: [
+    'Dashboard',
+    {
+      label: 'Students',
+      items: ['Enrollment Wizard', 'Student Caseload Management'],
+    },
+    {
+      label: 'Assessments',
+      items: ['Assessment Review', 'Assessment Summary Report'],
+    },
+    {
+      label: 'IUPs',
+      items: ['IUP Creation & Goal Assignment', 'IUP Library Management'],
+    },
+    {
+      label: 'Approvals & Quality',
+      items: ['Goal Mastery Approval', 'Clinical Quality Monitoring'],
+    },
+    'Parent Communication',
+    'Reports',
+  ],
+};
+
+export function getGroupedTabsForSession(
+  session: AuthSession | null | undefined,
+  role: Role,
+  defaultTabs: string[],
+): NavTabItem[] {
+  const grouped = ROLE_GROUPED_TABS[role];
+  if (grouped) {
+    return grouped;
+  }
+  return getTabsForSession(session, defaultTabs);
+}
 
 export const ROLE_LABELS: Record<Role, string> = {
   teacher: 'Teacher',
@@ -262,10 +325,13 @@ export const PD_ROUTE_BY_TAB: Record<string, keyof ProgramDirectorStackParamList
   Approvals: 'GoalMasteryApproval',
   'Clinical Quality': 'GoalBankManagement',
   Enrollment: 'StudentEnrollmentWizard',
-  'Students Registration': 'StudentEnrollmentWizard',
   Charts: 'GraphChartView',
   Progress: 'GraphChartView',
   Parents: 'PdParentCommunication',
+  Students: 'StudentEnrollmentWizard',
+  IUPs: 'IupGeneration',
+  'Approvals & Quality': 'GoalMasteryApproval',
+  Quality: 'GoalBankManagement',
 };
 
 export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackParamList> = {
@@ -277,11 +343,20 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   'Student Progress': 'CoordinatorStudentProgress',
   'Operational Management': 'CoordinatorSchedule',
   'Parent Communication': 'CoordinatorParentCommunication',
+  'Registered Student': 'StudentEnrollment',
+  'Registered Students': 'StudentEnrollment',
+  'registred student': 'StudentEnrollment',
+  'Registred Student': 'StudentEnrollment',
   'Student Registration': 'StudentEnrollment',
+  'Student Register': 'StudentEnrollment',
   'Enrollment Wizard': 'StudentEnrollmentWizard',
-  Enrollment: 'StudentEnrollmentWizard',
+  Enrollment: 'StudentEnrollment',
   'Staff Management & Linking': 'WorkloadDashboard',
   'IUP Creation & Goal Assignment': 'IupGeneration',
+  // Group aliases
+  Sessions: 'LiveSessionMonitoring',
+  Students: 'StudentEnrollment',
+  Operations: 'CoordinatorSchedule',
   // Legacy aliases (existing screens / internal links)
   Student: 'StudentProfile',
   Live: 'LiveSessionMonitoring',
