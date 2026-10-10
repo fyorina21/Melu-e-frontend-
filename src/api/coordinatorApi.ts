@@ -824,11 +824,35 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
       '/therapy_coordinator/operational_management/performance_metrics',
       { params },
     );
-    if (Array.isArray(res?.data) && res.data.length > 0) return res;
+    const normalizeMetrics = (data: any[]): any[] =>
+      data.map((r: any) => ({
+        teacherId: r.teacher_id || r.teacherId || r.id || '',
+        teacherName: r.teacher_name || r.teacherName || r.name || 'Teacher',
+        sessions: r.sessions_completed ?? r.sessions ?? 0,
+        trials: r.total_trials ?? r.trials ?? 0,
+        independencePercent: r.average_independence_percentage ?? r.independencePercent ?? 0,
+        incidents: r.total_incidents ?? r.incidents ?? 0,
+      }));
+
+    if (Array.isArray(res?.data) && res.data.length > 0) {
+      return { ...res, data: normalizeMetrics(res.data) };
+    }
   } catch {
     try {
       const res = await client.get('/coordinator/teachers/metrics', { params });
-      if (Array.isArray(res?.data) && res.data.length > 0) return res;
+      if (Array.isArray(res?.data) && res.data.length > 0) {
+        return {
+          ...res,
+          data: (res.data as any[]).map((r: any) => ({
+            teacherId: r.teacher_id || r.teacherId || r.id || '',
+            teacherName: r.teacher_name || r.teacherName || r.name || 'Teacher',
+            sessions: r.sessions_completed ?? r.sessions ?? 0,
+            trials: r.total_trials ?? r.trials ?? 0,
+            independencePercent: r.average_independence_percentage ?? r.independencePercent ?? 0,
+            incidents: r.total_incidents ?? r.incidents ?? 0,
+          })),
+        };
+      }
     } catch {}
   }
 
