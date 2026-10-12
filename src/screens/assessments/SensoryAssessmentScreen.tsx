@@ -17,6 +17,7 @@ import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { saveSensoryAssessment, getTeacherStudentProfile, getSensoryAssessment } from '../../api/teacherExtrasApi';
+import { getFormConfig } from '../../api/institutionalAdminApi';
 import type { SessionStackParamList } from '../../types';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 
@@ -31,7 +32,7 @@ export interface SensoryActivityItem {
   remark: string;
 }
 
-const INITIAL_ACTIVITIES: SensoryActivityItem[] = [
+const DEFAULT_ACTIVITIES: SensoryActivityItem[] = [
   { id: 'SEN-001', name: 'Sand Play', remark: '' },
   { id: 'SEN-002', name: 'Water Play', remark: '' },
   { id: 'SEN-003', name: 'Finger Painting', remark: '' },
@@ -72,8 +73,76 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
       if (res?.data) setProfile(res.data);
     }).catch(() => {});
   }, [studentId]);
-  const [activities, setActivities] = useState<SensoryActivityItem[]>(INITIAL_ACTIVITIES);
+  const [activities, setActivities] = useState<SensoryActivityItem[]>(DEFAULT_ACTIVITIES);
   const [showExport, setShowExport] = useState(false);
+
+  useEffect(() => {
+    const loadSensoryData = async () => {
+      try {
+        let configActivities: SensoryActivityItem[] = DEFAULT_ACTIVITIES;
+        try {
+          const { data: cfg } = await getFormConfig('Sensory Assessment');
+          if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+            const visible = cfg.fields.filter((f: any) => f.visible !== false);
+            if (visible.length > 0) {
+              configActivities = visible.map((f: any, idx: number) => ({
+                id: String(f.id || `SEN-${String(idx + 1).padStart(3, '0')}`),
+                name: String(f.label || f.name || 'Activity'),
+                remark: '',
+              }));
+            }
+          }
+        } catch {}
+
+        const res = await getSensoryAssessment(studentId).catch(() => null);
+        const savedData = res?.data?.data || res?.data;
+        if (savedData && savedData.activities && Array.isArray(savedData.activities) && savedData.activities.length > 0) {
+          const savedMap = new Map(savedData.activities.map((a: any) => [String(a.id), a]));
+          const merged = configActivities.map((ca) => {
+            const saved = savedMap.get(ca.id) || savedData.activities.find((a: any) => a.name === ca.name);
+            return saved ? { ...ca, ...saved, name: ca.name } : ca;
+          });
+          setActivities(merged);
+        } else {
+          setActivities(configActivities);
+        }
+        if (savedData?.assessmentDate) {
+          setAssessmentDate(savedData.assessmentDate);
+        }
+      } catch {}
+    };
+    loadSensoryData();
+  }, [studentId]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('sensory')) {
+        const cfg = e.detail?.config;
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          const visible = cfg.fields.filter((f: any) => f.visible !== false);
+          setActivities((prev) => {
+            const prevMap = new Map(prev.map((a) => [a.id, a]));
+            return visible.map((f: any, idx: number) => {
+              const sid = String(f.id || `SEN-${String(idx + 1).padStart(3, '0')}`);
+              const existing = prevMap.get(sid);
+              return {
+                id: sid,
+                name: String(f.label || f.name || 'Activity'),
+                engagementLevel: existing?.engagementLevel,
+                responseReaction: existing?.responseReaction,
+                remark: existing?.remark || '',
+              };
+            });
+          });
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, []);
 
   // Custom Activity Modal state
   const [isModalVisible, setIsModalVisible] = useState(false);

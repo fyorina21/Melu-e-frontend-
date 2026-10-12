@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,11 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { savePreferenceAssessment, getPreferenceAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import { getFormConfig } from '../../api/institutionalAdminApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
@@ -43,21 +45,72 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   Movement: { bg: '#DBEAFE', text: '#2563EB' },
 };
 
-const INITIAL_ITEMS: StimulusItem[] = [
+const DEFAULT_ITEMS: StimulusItem[] = [
   { id: '1', name: 'Light-up toys', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
   { id: '2', name: 'Bubbles', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
   { id: '3', name: 'Mirror', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
   { id: '4', name: 'Kaleidoscope', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
 ];
 
+type TabType = 'Sensory Time' | 'Circle Time' | 'Play Time';
+const TABS: TabType[] = ['Sensory Time', 'Circle Time', 'Play Time'];
+
+const createDefaultTabItems = (baseItems: StimulusItem[]): Record<TabType, StimulusItem[]> => ({
+  'Sensory Time': baseItems.map((i) => ({ ...i })),
+  'Circle Time': baseItems.map((i) => ({ ...i })),
+  'Play Time': baseItems.map((i) => ({ ...i })),
+});
+
+const mergeTabItems = (baseItems: StimulusItem[], savedItems?: StimulusItem[]): StimulusItem[] => {
+  if (!savedItems || !Array.isArray(savedItems) || savedItems.length === 0) {
+    return baseItems.map((i) => ({ ...i, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' }));
+  }
+  const savedMap = new Map(savedItems.map((it: any) => [String(it.id), it]));
+  const merged = baseItems.map((ci) => {
+    const saved =
+      savedMap.get(ci.id) ||
+      savedItems.find(
+        (it: any) => String(it.name).toLowerCase().trim() === String(ci.name).toLowerCase().trim()
+      );
+    return saved
+      ? {
+          ...ci,
+          ...saved,
+          name: ci.name,
+          category: saved.category || ci.category,
+          isRunning: false,
+        }
+      : { ...ci, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' };
+  });
+
+  const baseIds = new Set(baseItems.map((ci) => String(ci.id)));
+  const baseNames = new Set(baseItems.map((ci) => String(ci.name).toLowerCase().trim()));
+  const customSavedItems = savedItems
+    .filter(
+      (it: any) =>
+        !baseIds.has(String(it.id)) &&
+        !baseNames.has(String(it.name).toLowerCase().trim())
+    )
+    .map((it: any) => ({ ...it, isRunning: false }));
+
+  return [...merged, ...customSavedItems];
+};
+
 type Props = NativeStackScreenProps<SessionStackParamList, 'PreferenceAssessment'>;
 
 export default function PreferenceAssessmentScreen({ navigation, route }: Props) {
-  const { studentId } = route.params;
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
+  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'Sensory Time' | 'Circle Time' | 'Play Time'>('Sensory Time');
-  const [items, setItems] = useState<StimulusItem[]>(INITIAL_ITEMS);
+  const [activeTab, setActiveTab] = useState<TabType>('Sensory Time');
+  const [itemsByTab, setItemsByTab] = useState<Record<TabType, StimulusItem[]>>(() =>
+    createDefaultTabItems(DEFAULT_ITEMS)
+  );
   const [profile, setProfile] = useState<any>(null);
+
+  const currentItems = itemsByTab[activeTab] || [];
 
   // Modal State
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -66,36 +119,175 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    const loadData = async () => {
+    if (typeof localStorage !== 'undefined' && studentId) {
       try {
-        const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
-        if (profileRes?.data) setProfile(profileRes.data);
-        const res = await getPreferenceAssessment(studentId);
-        const savedData = res?.data?.data;
-        if (savedData && savedData.items && savedData.items.length > 0) {
-          setItems(savedData.items);
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
+    }
+  }, [studentId]);
+
+  const loadData = useCallback(async () => {
+    try {
+      const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
+      if (profileRes?.data) setProfile(profileRes.data);
+
+      // Fetch form config from FormBuilder
+      let configItems: StimulusItem[] = DEFAULT_ITEMS;
+      try {
+        const { data: cfg } = await getFormConfig('Preference Assessment');
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          const visible = cfg.fields.filter((f: any) => f.visible !== false);
+          if (visible.length > 0) {
+            configItems = visible.map((f: any, idx: number) => ({
+              id: String(f.id || `P${idx + 1}`),
+              name: String(f.label || f.name || 'Item'),
+              category: String(f.section || 'Visual'),
+              timerSeconds: 0,
+              isRunning: false,
+              frequency: 0,
+              durationSeconds: 0,
+              notes: '',
+            }));
+          }
         }
-        if (savedData && savedData.sessionTab) {
-          setActiveTab(savedData.sessionTab);
-        }
-      } catch (err) {}
-    };
-    loadData();
+      } catch {}
+
+      const res = await getPreferenceAssessment(studentId).catch(() => null);
+      const savedData = res?.data?.data || res?.data;
+
+      let storedItemsByTab = savedData?.itemsByTab;
+      let storedItems = savedData?.items;
+      let storedSessionTab = savedData?.sessionTab;
+
+      if (!storedItemsByTab && (!storedItems || storedItems.length === 0) && typeof localStorage !== 'undefined') {
+        try {
+          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          const raw =
+            localStorage.getItem(`melue_preference_assessment_${studentId}`) ||
+            (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.itemsByTab) {
+              storedItemsByTab = parsed.itemsByTab;
+            }
+            if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
+              storedItems = parsed.items;
+            }
+            if (parsed?.sessionTab) {
+              storedSessionTab = parsed.sessionTab;
+            }
+          }
+        } catch {}
+      }
+
+      const newItemsByTab: Record<TabType, StimulusItem[]> = {
+        'Sensory Time': mergeTabItems(
+          configItems,
+          storedItemsByTab?.['Sensory Time'] || (storedSessionTab === 'Sensory Time' ? storedItems : undefined)
+        ),
+        'Circle Time': mergeTabItems(
+          configItems,
+          storedItemsByTab?.['Circle Time'] || (storedSessionTab === 'Circle Time' ? storedItems : undefined)
+        ),
+        'Play Time': mergeTabItems(
+          configItems,
+          storedItemsByTab?.['Play Time'] || (storedSessionTab === 'Play Time' ? storedItems : undefined)
+        ),
+      };
+
+      setItemsByTab(newItemsByTab);
+
+      if (
+        storedSessionTab &&
+        TABS.includes(storedSessionTab as TabType)
+      ) {
+        setActiveTab(storedSessionTab as TabType);
+      }
+    } catch (err) {}
   }, [studentId]);
 
   useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleWindowFocus = () => {
+        loadData();
+      };
+      window.addEventListener('focus', handleWindowFocus);
+      return () => window.removeEventListener('focus', handleWindowFocus);
+    }
+  }, [loadData]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('preference')) {
+        const cfg = e.detail?.config;
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          const visible = cfg.fields.filter((f: any) => f.visible !== false);
+          const newConfigItems: StimulusItem[] = visible.map((f: any, idx: number) => ({
+            id: String(f.id || `P${idx + 1}`),
+            name: String(f.label || f.name || 'Item'),
+            category: String(f.section || 'Visual'),
+            timerSeconds: 0,
+            isRunning: false,
+            frequency: 0,
+            durationSeconds: 0,
+            notes: '',
+          }));
+
+          setItemsByTab((prev) => {
+            const updated = { ...prev };
+            for (const tab of TABS) {
+              updated[tab] = mergeTabItems(newConfigItems, prev[tab]);
+            }
+            return updated;
+          });
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
-      setItems((prevItems) =>
-        prevItems.map((item) =>
-          item.isRunning
-            ? {
-                ...item,
-                timerSeconds: item.timerSeconds + 1,
-                durationSeconds: item.durationSeconds + 1,
-              }
-            : item
-        )
-      );
+      setItemsByTab((prev) => {
+        let hasRunning = false;
+        for (const tab of TABS) {
+          if (prev[tab]?.some((i) => i.isRunning)) {
+            hasRunning = true;
+            break;
+          }
+        }
+        if (!hasRunning) return prev;
+
+        const next = { ...prev };
+        for (const tab of TABS) {
+          if (next[tab]?.some((i) => i.isRunning)) {
+            next[tab] = next[tab].map((item) =>
+              item.isRunning
+                ? {
+                    ...item,
+                    timerSeconds: item.timerSeconds + 1,
+                    durationSeconds: item.durationSeconds + 1,
+                  }
+                : item
+            );
+          }
+        }
+        return next;
+      });
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -107,20 +299,58 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   };
 
   const toggleTimer = (id: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, isRunning: !i.isRunning } : i)));
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, isRunning: !i.isRunning } : i
+      ),
+    }));
   };
 
   const resetTimer = (id: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i)));
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i
+      ),
+    }));
   };
 
   const updateFrequency = (id: string, delta: number) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i)));
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i
+      ),
+    }));
   };
 
-  const updateNotes = (id: string, notes: string) => { setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i))); };
-  const updateEngaged = (id: string, val: 'Engaged' | 'Did Not Engage') => { setItems(prev => prev.map(i => i.id === id ? { ...i, engaged: val } : i)); };
-  const updateApproached = (id: string, val: 'Approached' | 'Did Not Approach') => { setItems(prev => prev.map(i => i.id === id ? { ...i, approached: val } : i)); };
+  const updateNotes = (id: string, notes: string) => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, notes } : i
+      ),
+    }));
+  };
+
+  const updateEngaged = (id: string, val: 'Engaged' | 'Did Not Engage') => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, engaged: val } : i
+      ),
+    }));
+  };
+
+  const updateApproached = (id: string, val: 'Approached' | 'Did Not Approach') => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, approached: val } : i
+      ),
+    }));
+  };
 
   const handleExport = () => {
     const title = 'Preference Assessment Report';
@@ -146,7 +376,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
             <strong>Date:</strong> ${new Date().toLocaleDateString()}
           </div>
 
-          <div class="section-title">Tested Stimulus Items</div>
+          <div class="section-title">Tested Stimulus Items (${activeTab})</div>
           <table>
             <thead>
               <tr>
@@ -158,7 +388,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
               </tr>
             </thead>
             <tbody>
-              ${items.map((i) => `
+              ${currentItems.map((i) => `
                 <tr>
                   <td><strong>${i.name}</strong></td>
                   <td>${i.category}</td>
@@ -199,17 +429,83 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       notes: '',
     };
 
-    setItems((prev) => [...prev, newItem]);
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: [...(prev[activeTab] || []), newItem],
+    }));
     setIsModalVisible(false);
   };
 
   const handleSave = async (status: 'draft' | 'submitted') => {
     try {
-      await savePreferenceAssessment(studentId, { items, sessionTab: activeTab, status });
-      showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
-      if (status === 'submitted') {
-        navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
+      const allObservations: any[] = [];
+      for (const tab of TABS) {
+        const tabList = itemsByTab[tab] || [];
+        const sorted = [...tabList].sort((a, b) => {
+          const scoreA = (a.frequency * 60) + a.durationSeconds;
+          const scoreB = (b.frequency * 60) + b.durationSeconds;
+          return scoreB - scoreA;
+        });
+
+        sorted.forEach((item, idx) => {
+          const sec = item.durationSeconds;
+          const durStr = sec > 0
+            ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`)
+            : '0 min';
+
+          allObservations.push({
+            id: `${tab.toLowerCase().replace(/\s+/g, '-')}-${item.id}`,
+            itemId: item.id,
+            rank: idx + 1,
+            item: item.name,
+            name: item.name,
+            duration: durStr,
+            duration_seconds: sec,
+            durationSeconds: sec,
+            frequency: item.frequency,
+            frequency_count: item.frequency,
+            context: tab,
+            engaged: item.engaged || (item.frequency > 0 || sec > 0 ? 'High' : 'N/A'),
+            approached: item.approached || (item.frequency > 0 ? 'Initiated' : 'N/A'),
+            notes: item.notes,
+            category: item.category,
+          });
+        });
       }
+
+      const payload = {
+        studentId,
+        sessionTab: activeTab,
+        status,
+        items: itemsByTab[activeTab] || [],
+        itemsByTab,
+        allObservations,
+        ranked_observations: allObservations,
+        preferences: {
+          items: allObservations,
+          ranked_observations: allObservations,
+        },
+      };
+
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const enriched = { ...payload, updatedAt: new Date().toISOString() };
+          localStorage.setItem(`melue_preference_assessment_${studentId}`, JSON.stringify(enriched));
+          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          if (alias) {
+            localStorage.setItem(`melue_preference_assessment_${alias}`, JSON.stringify(enriched));
+          }
+        } catch {}
+      }
+
+      await savePreferenceAssessment(studentId, payload);
+      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        await savePreferenceAssessment(aliasSid, payload);
+      }
+
+      showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
+      // Saved successfully without navigating away
     } catch {
       showToast('Failed to save assessment data', 'error');
     }
@@ -252,7 +548,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
           ))}
         </View>
 
-        {items.map((item) => {
+        {currentItems.map((item) => {
           const categoryStyle = CATEGORY_COLORS[item.category] || { bg: '#F1F5F9', text: '#475569' };
           return (
             <View key={item.id} style={styles.itemCard}>

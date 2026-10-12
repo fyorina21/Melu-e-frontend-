@@ -88,7 +88,11 @@ export default function DynamicFormFields({
   }, [formName, initialFields]);
 
   const customFields = fields.filter((f) => {
-    if (excludeStandardLabels.some((l) => l.toLowerCase() === f.label.toLowerCase())) {
+    if (
+      excludeStandardLabels.some(
+        (l) => l.toLowerCase().trim() === f.label.toLowerCase().trim() || l.toLowerCase().trim() === f.id.toLowerCase().trim()
+      )
+    ) {
       return false;
     }
     if (section) {

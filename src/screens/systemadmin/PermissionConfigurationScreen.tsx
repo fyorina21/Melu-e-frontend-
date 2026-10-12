@@ -814,20 +814,8 @@ export default function PermissionConfigurationScreen({
     [roles, selectedRoleId]
   );
 
-  // Filtered page list
-  const filteredPages = useMemo(() => {
-    return ALL_PAGE_MODULES.filter((page) => {
-      const matchesRole = roleFilter === 'All' || page.role === roleFilter;
-      const term = searchQuery.trim().toLowerCase();
-      const matchesSearch =
-        !term ||
-        page.name.toLowerCase().includes(term) ||
-        page.role.toLowerCase().includes(term) ||
-        page.category.toLowerCase().includes(term) ||
-        page.description.toLowerCase().includes(term);
-      return matchesRole && matchesSearch;
-    });
-  }, [roleFilter, searchQuery]);
+  // Page list across all roles
+  const filteredPages = ALL_PAGE_MODULES;
 
   // Checkbox interactions
   const toggleCell = (pageId: string, action: ActionType) => {
@@ -1123,7 +1111,15 @@ export default function PermissionConfigurationScreen({
         {/* Top Control Bar: Role Selection & Quick Presets */}
         <View style={styles.controlsCard}>
           <View style={styles.roleSelectorBox}>
-            <Text style={styles.fieldLabel}>ACTIVE ROLE TO CONFIGURE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.fieldLabel}>ACTIVE ROLE TO CONFIGURE</Text>
+              {dirty && (
+                <View style={[styles.unsavedBadge, { marginBottom: 6 }]}>
+                  <Feather name="alert-circle" size={12} color="#D97706" />
+                  <Text style={styles.unsavedBadgeText}>Unsaved Changes</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
               style={styles.dropdownBtn}
               onPress={() => setDropdownOpen(!dropdownOpen)}
@@ -1180,10 +1176,6 @@ export default function PermissionConfigurationScreen({
                 <Feather name="eye" size={13} color="#0284C7" />
                 <Text style={styles.presetBtnText}>Read Only</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.presetBtn} onPress={handleRoleRecommended}>
-                <Feather name="zap" size={13} color="#D97706" />
-                <Text style={styles.presetBtnText}>Recommended</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.presetBtn} onPress={() => setCopyModalOpen(true)}>
                 <Feather name="copy" size={13} color="#475569" />
                 <Text style={styles.presetBtnText}>Copy Role...</Text>
@@ -1197,64 +1189,6 @@ export default function PermissionConfigurationScreen({
                 <Text style={styles.presetBtnTextDanger}>Reset</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-
-        {/* Search & Filter Toolbar */}
-        <View style={styles.filterToolbar}>
-          <View style={styles.searchBox}>
-            <Feather name="search" size={15} color="#94A3B8" style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search pages by name, role, route, or category..."
-              placeholderTextColor="#94A3B8"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {Boolean(searchQuery) && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={15} color="#94A3B8" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleFilterStrip}>
-            {[
-              'All',
-              'Director',
-              'Program Director',
-              'Therapy Coordinator',
-              'Teacher / Therapist',
-              'Institutional Admin',
-              'System Admin',
-              'Parent',
-            ].map((rf) => {
-              const active = roleFilter === rf;
-              return (
-                <TouchableOpacity
-                  key={rf}
-                  style={[styles.roleFilterTab, active && styles.roleFilterTabActive]}
-                  onPress={() => setRoleFilter(rf)}
-                >
-                  <Text style={[styles.roleFilterTabText, active && styles.roleFilterTabTextActive]}>
-                    {rf === 'All' ? 'All Roles' : rf}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.filterMetaRow}>
-            <Text style={styles.filterCountText}>
-              Showing <Text style={{ fontWeight: '700', color: colors.navyText }}>{filteredPages.length}</Text> of{' '}
-              {ALL_PAGE_MODULES.length} application pages across all roles
-            </Text>
-            {dirty && (
-              <View style={styles.unsavedBadge}>
-                <Feather name="alert-circle" size={12} color="#D97706" />
-                <Text style={styles.unsavedBadgeText}>Unsaved Changes</Text>
-              </View>
-            )}
           </View>
         </View>
 

@@ -132,7 +132,7 @@ export default function StudentCaseloadScreen({
   useEffect(() => {
     getGoalBank({})
       .then(({ data }) => {
-        const rawGoals = Array.isArray(data) ? data : data?.goals || [];
+        const rawGoals = Array.isArray(data) ? data : (data as any)?.goals || [];
         setGoalBank(
           rawGoals.map((g: any) => ({
             id: String(g.id),

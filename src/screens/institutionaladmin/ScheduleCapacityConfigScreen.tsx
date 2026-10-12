@@ -275,69 +275,6 @@ export default function ScheduleCapacityConfigScreen({
           </View>
         </View>
 
-        {/* Card 1: Session Schedule */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Session Schedule & Operational Hours</Text>
-            <Feather name="chevron-up" size={18} color="#64748B" />
-          </View>
-
-          {/* Morning Row */}
-          <View style={styles.gridRow}>
-            <View style={styles.fieldCol}>
-              <Text style={styles.label}>Morning Round Start</Text>
-              <TimePickerSelector
-                value={morningStart}
-                onPress={() =>
-                  openTimePicker('round', 'morningStart', morningStart)
-                }
-              />
-            </View>
-
-            <View style={styles.fieldCol}>
-              <Text style={styles.label}>Morning Round End</Text>
-              <TimePickerSelector
-                value={morningEnd}
-                onPress={() => openTimePicker('round', 'morningEnd', morningEnd)}
-              />
-            </View>
-          </View>
-
-          {/* Afternoon Row */}
-          <View style={styles.gridRow}>
-            <View style={styles.fieldCol}>
-              <Text style={styles.label}>Afternoon Round Start</Text>
-              <TimePickerSelector
-                value={afternoonStart}
-                onPress={() =>
-                  openTimePicker('round', 'afternoonStart', afternoonStart)
-                }
-              />
-            </View>
-
-            <View style={styles.fieldCol}>
-              <Text style={styles.label}>Afternoon Round End</Text>
-              <TimePickerSelector
-                value={afternoonEnd}
-                onPress={() =>
-                  openTimePicker('round', 'afternoonEnd', afternoonEnd)
-                }
-              />
-            </View>
-          </View>
-
-          {/* Pre-Therapy Duration */}
-          <View style={styles.singleFieldRow}>
-            <Text style={styles.label}>Pre-Therapy Duration (minutes)</Text>
-            <TextInput
-              style={styles.numberInput}
-              value={preTherapyDuration}
-              onChangeText={setPreTherapyDuration}
-              keyboardType="number-pad"
-            />
-          </View>
-        </View>
-
         {/* Card 2: Capacity & Draft Expiry Grid */}
         <View style={styles.capacityGridRow}>
           {/* Staff-to-Student Capacity Card */}
@@ -351,7 +288,6 @@ export default function ScheduleCapacityConfigScreen({
                 onChangeText={setCapacity}
                 keyboardType="number-pad"
               />
-              <Text style={styles.fieldHint}>Recommended standard ratio is 2 students per therapist.</Text>
             </View>
           </View>
 

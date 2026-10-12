@@ -25,6 +25,7 @@ import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { registerStudentStatuses, isStudentInSession } from '../../utils/studentLifecycleHelper';
+import { isStaffDeleted, onDeletedStaffChanged, filterOutDeletedStaff } from '../../utils/deletedStaffHelper';
 import type { DirectorStackParamList } from '../../types';
 
 interface Option {
@@ -244,22 +245,37 @@ export default function DirectorSchedulingScreen({
     load();
   }, [load]);
 
-  useEffect(() => {
+  const fetchTeachers = useCallback(() => {
     getStaffOptions()
       .then(({ data: opts }) => {
-        const teacherRows = opts.filter((t) => t.role === 'teacher');
+        const teacherRows = filterOutDeletedStaff(opts).filter((t) => t.role === 'teacher');
         setTeachers(teacherRows);
-        setTeacherId((prev) => prev || teacherRows[0]?.id || '');
+        setTeacherId((prev) => {
+          if (!prev || isStaffDeleted(prev) || !teacherRows.some((t) => t.id === prev)) {
+            return teacherRows[0]?.id || '';
+          }
+          return prev;
+        });
       })
       .catch(() => setTeachers([]));
+  }, []);
 
+  useEffect(() => {
+    fetchTeachers();
     getStudentOptions()
       .then(({ data: opts }) => {
         setStudents(opts);
         registerStudentStatuses(opts);
       })
       .catch(() => setStudents([]));
-  }, []);
+  }, [fetchTeachers]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(() => {
+      fetchTeachers();
+      load();
+    });
+  }, [fetchTeachers, load]);
 
   const selectedTeacher = useMemo(
     () => teachers.find((t) => t.id === teacherId) ?? null,

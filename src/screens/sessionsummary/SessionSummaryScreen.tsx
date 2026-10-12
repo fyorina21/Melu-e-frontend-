@@ -203,7 +203,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
   const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
-  const [expandedIncidentIndex, setExpandedIncidentIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -600,45 +599,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           ))
         )}
 
-        {incidents.length > 0 && (
-          <View style={styles.incidentCard}>
-            <View style={styles.incidentHeader}>
-              <Feather name="alert-triangle" size={18} color="#EA580C" />
-              <Text style={styles.incidentTitle}>
-                Behavior Incidents ({incidents.length})
-              </Text>
-            </View>
-              {incidents.map((inc, i) => (
-                <View key={i} style={styles.incidentBody}>
-                  <View style={styles.incidentRowTop}>
-                    <Text style={styles.incidentTime}>{inc.date ? `${inc.date} ` : ''}{inc.time}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setExpandedIncidentIndex(expandedIncidentIndex === i ? null : i);
-                      }}
-                    >
-                      <Text style={styles.linkText}>
-                        {expandedIncidentIndex === i ? 'Hide Details' : 'View Details'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.incidentABC}>
-                    <Text style={styles.boldText}>A:</Text> {(inc as any).antecedent || 'Not recorded'} •{' '}
-                    <Text style={styles.boldText}>B:</Text> {inc.behavior || 'Not recorded'} •{' '}
-                    <Text style={styles.boldText}>C:</Text> {(inc as any).consequence || 'Not recorded'}
-                  </Text>
-                  
-                  {expandedIncidentIndex === i && (
-                    <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 4 }}>
-                      <Text style={styles.boldText}>Student: <Text style={{fontWeight: 'normal'}}>{inc.studentName || 'Student'}</Text></Text>
-                      <Text style={[styles.boldText, {marginTop: 4}]}>Additional Notes:</Text>
-                      <Text style={{ marginTop: 2, color: '#334155' }}>{(inc as any).additionalNotes || 'None'}</Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-          </View>
-        )}
+
 
         <View style={styles.notesCard}>
           <Text style={styles.notesTitle}>
@@ -774,26 +735,6 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 13, color: '#0284C7', fontWeight: '500' },
   taContainer: { gap: 4 },
   taStepSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
-  incidentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: spacing.xs,
-  },
-  incidentHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  incidentTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  incidentBody: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#EA580C',
-    paddingLeft: spacing.md,
-    marginTop: spacing.xs,
-  },
-  incidentRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  incidentTime: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  incidentABC: { fontSize: 13, color: '#475569', marginTop: 2 },
-  boldText: { fontWeight: '700' },
   notesCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: radius.lg,

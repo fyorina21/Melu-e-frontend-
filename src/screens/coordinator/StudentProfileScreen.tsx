@@ -9,6 +9,7 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
+import { resolveStudentStatus } from '../../utils/studentStatusHelper';
 import { getStudentProfile } from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -133,7 +134,10 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           <Text style={typography.h1}>{profile.fullName}</Text>
           <Text style={typography.caption}>{profile.id} · Age {profile.age} · {profile.programType}</Text>
         </View>
-        <StatusPill status={profile.status === 'active' ? 'approved' : 'revision'} label={profile.status === 'active' ? 'Active' : profile.status} />
+        <StatusPill
+          status={resolveStudentStatus(profile.id, profile.fullName, profile.status) === 'Active' ? 'approved' : 'revision'}
+          label={resolveStudentStatus(profile.id, profile.fullName, profile.status)}
+        />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -147,7 +151,7 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         <Section icon="activity" title="Clinical Information">
           <InfoRow label="Program Type" value={profile.programType} />
           <InfoRow label="Therapy Group" value={profile.therapyGroup} />
-          <InfoRow label="Status" value={profile.status === 'active' ? 'Active' : profile.status} />
+          <InfoRow label="Status" value={resolveStudentStatus(profile.id, profile.fullName, profile.status)} />
         </Section>
 
         {profile.customFields && Object.keys(profile.customFields).length > 0 && (

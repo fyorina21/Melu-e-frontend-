@@ -1,7 +1,7 @@
 // screens/institutionaladmin/GoalDomainDefinitionsScreen.tsx
 // SCR-ADMIN-005 & SCR-ADMIN-006: Combined Goal Domains & Task Analysis Workbench
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -24,36 +25,25 @@ import {
   saveTaskAnalysisTemplate,
   deleteTaskAnalysisTemplate,
 } from '../../api/institutionalAdminApi';
+import {
+  type GoalDomain,
+  type TaskAnalysisStep,
+  type TaskAnalysisTemplate,
+  type GoalBankItem,
+  getStoredGoalBank,
+  saveGoalItem,
+  deleteGoalItem,
+} from '../../stores/goalBankStore';
 import ScreenLoader from '../../components/ScreenLoader';
 import { colors, radius, spacing } from '../../theme/colors';
 
-export type GoalDomain = {
-  id: string;
-  name: string;
-  description: string;
-  active: boolean;
-};
-
-interface TaskAnalysisStep {
-  id: string;
-  description: string;
-}
-
-interface TaskAnalysisTemplate {
-  id: string;
-  name: string;
-  description: string;
-  steps: TaskAnalysisStep[];
-  perStepMastery?: number;
-  overallMastery?: number;
-  active?: boolean;
-}
+export { GoalDomain };
 
 export default function GoalDomainDefinitionsScreen({
   navigation,
   route,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'GoalDomainDefinitions'>) {
-  const [activeSection, setActiveSection] = useState<'domains' | 'templates'>('domains');
+  const [activeSection, setActiveSection] = useState<'domains' | 'goals' | 'templates'>('domains');
 
   // Domains State
   const [domains, setDomains] = useState<GoalDomain[]>([]);
@@ -62,6 +52,19 @@ export default function GoalDomainDefinitionsScreen({
   const [showAddDomainForm, setShowAddDomainForm] = useState(false);
   const [newDomainName, setNewDomainName] = useState('');
   const [newDomainDesc, setNewDomainDesc] = useState('');
+
+  // Target Goals State
+  const [goals, setGoals] = useState<GoalBankItem[]>([]);
+  const [goalSearch, setGoalSearch] = useState('');
+  const [selectedGoalDomain, setSelectedGoalDomain] = useState('All');
+  const [showGoalEditor, setShowGoalEditor] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<GoalBankItem | null>(null);
+  const [goalFormName, setGoalFormName] = useState('');
+  const [goalFormDomain, setGoalFormDomain] = useState('Communication');
+  const [goalFormDesc, setGoalFormDesc] = useState('');
+  const [goalFormMastery, setGoalFormMastery] = useState('80% accuracy across 3 consecutive sessions');
+  const [goalFormType, setGoalFormType] = useState<'standard' | 'task_analysis'>('standard');
+  const [goalFormActive, setGoalFormActive] = useState(true);
 
   // Task Analysis Templates State
   const [templates, setTemplates] = useState<TaskAnalysisTemplate[]>([]);
@@ -74,10 +77,7 @@ export default function GoalDomainDefinitionsScreen({
   const [overallMastery, setOverallMastery] = useState('80');
 
   const loadAll = useCallback(async () => {
-    // `Promise.all` would reject wholesale the moment one call 404s, so a
-    // broken sibling (e.g. the unimplemented task-analysis endpoint) would blank
-    // out goal domains too, even though that endpoint works. Settle them
-    // independently so each section renders whatever the server actually served.
+    // Settle endpoints independently
     const [domainRes, templateRes] = await Promise.allSettled([
       getGoalDomains(),
       getTaskAnalysisTemplates(),
@@ -92,19 +92,26 @@ export default function GoalDomainDefinitionsScreen({
     if (templateRes.status === 'fulfilled') {
       setTemplates(Array.isArray(templateRes.value.data) ? templateRes.value.data : []);
     } else {
-      // No task-analysis endpoint on the backend yet; leave the section empty
-      // instead of letting it take the goal domains down with it.
       setTemplates([]);
     }
 
+    setGoals(getStoredGoalBank());
     setLoading(false);
   }, []);
 
   useEffect(() => {
     loadAll();
-  }, [loadAll]);
 
-  if (loading) return <ScreenLoader />;
+    const handleBankChange = () => {
+      setGoals(getStoredGoalBank());
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_goal_bank_changed', handleBankChange);
+      return () => {
+        window.removeEventListener('melue_goal_bank_changed', handleBankChange);
+      };
+    }
+  }, [loadAll]);
 
   // Domain Handlers
   const handleMoveDomainUp = (index: number) => {
@@ -170,13 +177,91 @@ export default function GoalDomainDefinitionsScreen({
       return;
     }
     try {
-      await saveGoalDomains(domains);
+      await saveGoalDomains(domains as unknown as Payload[]);
       await loadAll();
-      Alert.alert('Success', 'Goal Domains saved and updated in Goal Banks.');
+      Alert.alert('Success', 'Goal Domains saved and updated in Goal Banks & IUP Generation.');
     } catch {
       Alert.alert('Success', 'Goal Domains configuration saved.');
     }
   };
+
+  // Goal Handlers
+  const openGoalEditor = (goal?: GoalBankItem) => {
+    if (goal) {
+      setEditingGoal(goal);
+      setGoalFormName(goal.name);
+      setGoalFormDomain(goal.domain || domains[0]?.name || 'Communication');
+      setGoalFormDesc(goal.description);
+      setGoalFormMastery(goal.masteryCriteria || '80% accuracy across 3 consecutive sessions');
+      setGoalFormType(goal.goalType || 'standard');
+      setGoalFormActive(goal.active !== false);
+    } else {
+      setEditingGoal(null);
+      setGoalFormName('');
+      setGoalFormDomain(domains.find((d) => d.active !== false)?.name || 'Communication');
+      setGoalFormDesc('');
+      setGoalFormMastery('80% accuracy across 3 consecutive sessions');
+      setGoalFormType('standard');
+      setGoalFormActive(true);
+    }
+    setShowGoalEditor(true);
+  };
+
+  const handleSaveGoal = () => {
+    if (!goalFormName.trim()) {
+      Alert.alert('Validation Error', 'Please enter a Goal Name.');
+      return;
+    }
+    const item = saveGoalItem({
+      id: editingGoal?.id,
+      name: goalFormName.trim(),
+      domain: goalFormDomain,
+      description: goalFormDesc.trim(),
+      masteryCriteria: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
+      goalType: goalFormType,
+      active: goalFormActive,
+      status: goalFormActive ? 'active' : 'inactive',
+    });
+    setGoals(getStoredGoalBank());
+    setShowGoalEditor(false);
+    setEditingGoal(null);
+    Alert.alert('Success', `Goal "${item.name}" saved and updated in IUP Generation.`);
+  };
+
+  const handleDeleteGoal = (goal: GoalBankItem) => {
+    Alert.alert('Delete Goal', `Are you sure you want to delete "${goal.name}" from the Goal Bank and IUP Generation?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          deleteGoalItem(goal.id);
+          setGoals(getStoredGoalBank());
+        },
+      },
+    ]);
+  };
+
+  const handleToggleGoalActive = (goal: GoalBankItem) => {
+    saveGoalItem({
+      ...goal,
+      active: !goal.active,
+      status: !goal.active ? 'active' : 'inactive',
+    });
+    setGoals(getStoredGoalBank());
+  };
+
+  const filteredGoals = useMemo(() => {
+    const term = goalSearch.trim().toLowerCase();
+    return goals.filter((g) => {
+      if (selectedGoalDomain !== 'All' && g.domain !== selectedGoalDomain) return false;
+      if (term) {
+        const match = `${g.name} ${g.description} ${g.masteryCriteria} ${g.domain}`.toLowerCase();
+        if (!match.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [goals, goalSearch, selectedGoalDomain]);
 
   // Template Handlers
   const openTemplateEditor = (template?: TaskAnalysisTemplate) => {
@@ -272,6 +357,8 @@ export default function GoalDomainDefinitionsScreen({
     );
   };
 
+  if (loading) return <ScreenLoader />;
+
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Goal Domains" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
@@ -310,6 +397,25 @@ export default function GoalDomainDefinitionsScreen({
               ]}
             >
               Goal Domains ({domains.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.switcherBtn, activeSection === 'goals' && styles.switcherBtnActive]}
+            onPress={() => setActiveSection('goals')}
+          >
+            <Feather
+              name="flag"
+              size={15}
+              color={activeSection === 'goals' ? colors.navyText : colors.bodyText}
+            />
+            <Text
+              style={[
+                styles.switcherBtnText,
+                activeSection === 'goals' && styles.switcherBtnTextActive,
+              ]}
+            >
+              Target Goals ({goals.length})
             </Text>
           </TouchableOpacity>
 
@@ -490,7 +596,152 @@ export default function GoalDomainDefinitionsScreen({
           </View>
         )}
 
-        {/* SECTION 2: TASK ANALYSIS TEMPLATES */}
+        {/* SECTION 2: TARGET GOALS */}
+        {activeSection === 'goals' && (
+          <View style={{ gap: spacing.md }}>
+            <View style={styles.tableCard}>
+              <View style={styles.tableCardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardHeaderTitle}>Target Goals & Clinical Bank</Text>
+                  <Text style={styles.cardHeaderSubtitle}>
+                    Goals configured here are dynamically available in IUP Generation & Session Logging
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.headerAddBtn}
+                  onPress={() => openGoalEditor()}
+                >
+                  <Feather name="plus" size={14} color={colors.navyText} />
+                  <Text style={styles.headerAddBtnText}>Add Target Goal</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Filter and Search Bar */}
+              <View style={styles.goalFilterBar}>
+                <View style={styles.goalSearchWrap}>
+                  <Feather name="search" size={14} color={colors.mutedText} />
+                  <TextInput
+                    style={styles.goalSearchInput}
+                    placeholder="Search goals by name, description, domain, or mastery..."
+                    placeholderTextColor={colors.mutedText}
+                    value={goalSearch}
+                    onChangeText={setGoalSearch}
+                  />
+                  {Boolean(goalSearch) && (
+                    <TouchableOpacity onPress={() => setGoalSearch('')}>
+                      <Feather name="x" size={14} color={colors.mutedText} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.domainChipRow}>
+                  {['All', ...domains.filter((d) => d.active !== false).map((d) => d.name)].map((d) => (
+                    <TouchableOpacity
+                      key={d}
+                      style={[
+                        styles.domainFilterChip,
+                        selectedGoalDomain === d && styles.domainFilterChipActive,
+                      ]}
+                      onPress={() => setSelectedGoalDomain(d)}
+                    >
+                      <Text
+                        style={[
+                          styles.domainFilterText,
+                          selectedGoalDomain === d && styles.domainFilterTextActive,
+                        ]}
+                      >
+                        {d}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Table Header */}
+              <View style={styles.tableHeaderRow}>
+                <Text style={[styles.th, { flex: 2.8 }]}>GOAL NAME & DOMAIN</Text>
+                <Text style={[styles.th, { flex: 3.5 }]}>OBJECTIVE / DESCRIPTION</Text>
+                <Text style={[styles.th, { flex: 2.2 }]}>MASTERY CRITERIA</Text>
+                <Text style={[styles.th, { width: 80, textAlign: 'center' }]}>STATUS</Text>
+                <Text style={[styles.th, { width: 70, textAlign: 'right' }]}>ACTIONS</Text>
+              </View>
+
+              {/* Goals List */}
+              {filteredGoals.map((g) => (
+                <View key={g.id} style={styles.tableRow}>
+                  <View style={{ flex: 2.8, paddingRight: 8 }}>
+                    <Text style={styles.goalRowName}>{g.name}</Text>
+                    <View style={styles.goalMetaRow}>
+                      <View style={styles.goalDomainBadge}>
+                        <Text style={styles.goalDomainBadgeText}>{g.domain}</Text>
+                      </View>
+                      {g.goalType === 'task_analysis' && (
+                        <View style={styles.goalTaskBadge}>
+                          <Text style={styles.goalTaskBadgeText}>Task Analysis</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={{ flex: 3.5, paddingRight: 8 }}>
+                    <Text style={styles.domainDescText} numberOfLines={3}>
+                      {g.description || '—'}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 2.2, paddingRight: 8 }}>
+                    <Text style={styles.goalMasteryPillText}>
+                      {g.masteryCriteria || '80% across 3 sessions'}
+                    </Text>
+                  </View>
+
+                  <View style={{ width: 80, alignItems: 'center' }}>
+                    <TouchableOpacity
+                      style={g.active !== false ? styles.activePill : styles.inactivePill}
+                      onPress={() => handleToggleGoalActive(g)}
+                    >
+                      <Text style={g.active !== false ? styles.activePillText : styles.inactivePillText}>
+                        {g.active !== false ? 'Active' : 'Inactive'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.actionsCol}>
+                    <TouchableOpacity
+                      onPress={() => openGoalEditor(g)}
+                      style={{ padding: 4 }}
+                    >
+                      <Feather name="edit-2" size={15} color={colors.navyText} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteGoal(g)}
+                      style={{ padding: 4 }}
+                    >
+                      <Feather name="trash-2" size={15} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+
+              {filteredGoals.length === 0 && (
+                <View style={styles.emptyTableState}>
+                  <Text style={styles.emptyTableText}>No target goals match the selected filter.</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Quick Navigation to IUP Generation */}
+            <TouchableOpacity
+              style={styles.addDomainLinkBtn}
+              onPress={() => navigation?.navigate?.('IupGeneration' as never)}
+            >
+              <Feather name="external-link" size={14} color={colors.navyText} />
+              <Text style={styles.addDomainLinkText}>View Goals in IUP Generation</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* SECTION 3: TASK ANALYSIS TEMPLATES */}
         {activeSection === 'templates' && (
           <View style={{ gap: spacing.md }}>
             <View style={styles.tableCard}>
@@ -669,6 +920,145 @@ export default function GoalDomainDefinitionsScreen({
           </View>
         )}
       </ScrollView>
+
+      {/* ADD / EDIT GOAL MODAL */}
+      <Modal
+        visible={showGoalEditor}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowGoalEditor(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  {editingGoal ? 'Edit Target Goal' : 'Add New Target Goal'}
+                </Text>
+                <Text style={styles.modalSub}>
+                  Configure goal title, domain, objective, and mastery criteria for IUPs
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowGoalEditor(false)} hitSlop={8}>
+                <Feather name="x" size={20} color={colors.navyText} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 450 }} contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}>
+              {/* Goal Name */}
+              <View style={styles.modalFieldCol}>
+                <Text style={styles.modalLabel}>Goal Name *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g. Receptive Identification of Common Objects"
+                  placeholderTextColor={colors.mutedText}
+                  value={goalFormName}
+                  onChangeText={setGoalFormName}
+                />
+              </View>
+
+              {/* Domain Selector */}
+              <View style={styles.modalFieldCol}>
+                <Text style={styles.modalLabel}>Goal Domain *</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+                  {domains.filter((d) => d.active !== false).map((d) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={[
+                        styles.domainPickChip,
+                        goalFormDomain === d.name && styles.domainPickChipActive,
+                      ]}
+                      onPress={() => setGoalFormDomain(d.name)}
+                    >
+                      <Text
+                        style={[
+                          styles.domainPickText,
+                          goalFormDomain === d.name && styles.domainPickTextActive,
+                        ]}
+                      >
+                        {d.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Description */}
+              <View style={styles.modalFieldCol}>
+                <Text style={styles.modalLabel}>Clinical Objective & Description *</Text>
+                <TextInput
+                  style={[styles.modalInput, { height: 72, textAlignVertical: 'top' }]}
+                  placeholder="Enter targeted behavioral response, stimulus conditions, and protocol notes..."
+                  placeholderTextColor={colors.mutedText}
+                  value={goalFormDesc}
+                  onChangeText={setGoalFormDesc}
+                  multiline
+                />
+              </View>
+
+              {/* Mastery Criteria */}
+              <View style={styles.modalFieldCol}>
+                <Text style={styles.modalLabel}>Mastery Criteria *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g. 80% accuracy across 3 consecutive sessions"
+                  placeholderTextColor={colors.mutedText}
+                  value={goalFormMastery}
+                  onChangeText={setGoalFormMastery}
+                />
+              </View>
+
+              {/* Goal Type & Status */}
+              <View style={{ flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1, minWidth: 140, gap: 4 }}>
+                  <Text style={styles.modalLabel}>Goal Architecture Type</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                    <TouchableOpacity
+                      style={[styles.typeSelectBtn, goalFormType === 'standard' && styles.typeSelectBtnActive]}
+                      onPress={() => setGoalFormType('standard')}
+                    >
+                      <Text style={[styles.typeSelectBtnText, goalFormType === 'standard' && styles.typeSelectBtnTextActive]}>
+                        Standard
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.typeSelectBtn, goalFormType === 'task_analysis' && styles.typeSelectBtnActive]}
+                      onPress={() => setGoalFormType('task_analysis')}
+                    >
+                      <Text style={[styles.typeSelectBtnText, goalFormType === 'task_analysis' && styles.typeSelectBtnTextActive]}>
+                        Task Analysis
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={{ width: 120, gap: 4 }}>
+                  <Text style={styles.modalLabel}>Status</Text>
+                  <TouchableOpacity
+                    style={[styles.statusToggleBtn, goalFormActive ? styles.statusToggleActive : styles.statusToggleInactive]}
+                    onPress={() => setGoalFormActive((prev) => !prev)}
+                  >
+                    <Feather name={goalFormActive ? 'check' : 'x'} size={14} color={goalFormActive ? '#166534' : '#991B1B'} />
+                    <Text style={[styles.statusToggleText, { color: goalFormActive ? '#166534' : '#991B1B' }]}>
+                      {goalFormActive ? 'Active' : 'Inactive'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooterRow}>
+              <TouchableOpacity style={styles.saveTemplateBtn} onPress={handleSaveGoal}>
+                <Feather name="save" size={14} color={colors.navyText} />
+                <Text style={styles.saveTemplateBtnText}>Save Target Goal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowGoalEditor(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -929,4 +1319,248 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   cancelBtnText: { fontSize: 13, fontWeight: '600', color: colors.navyText },
+
+  /* Target Goals styles */
+  cardHeaderSubtitle: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
+  goalFilterBar: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  goalSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  goalSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.navyText,
+    paddingVertical: 2,
+  },
+  domainChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  domainFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  domainFilterChipActive: {
+    backgroundColor: colors.primaryYellow,
+    borderColor: colors.primaryYellow,
+  },
+  domainFilterText: {
+    fontSize: 12,
+    color: colors.bodyText,
+    fontWeight: '500',
+  },
+  domainFilterTextActive: {
+    color: colors.navyText,
+    fontWeight: '700',
+  },
+  goalRowName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  goalMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  goalDomainBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  goalDomainBadgeText: {
+    fontSize: 11,
+    color: '#1E40AF',
+    fontWeight: '600',
+  },
+  goalTaskBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  goalTaskBadgeText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: '600',
+  },
+  goalMasteryPillText: {
+    fontSize: 12,
+    color: colors.bodyText,
+    fontWeight: '500',
+  },
+  inactivePill: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  inactivePillText: { fontSize: 11, fontWeight: '700', color: '#991B1B' },
+  emptyTableState: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTableText: {
+    fontSize: 13,
+    color: colors.mutedText,
+  },
+
+  /* Modal Styles */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  modalSheet: {
+    width: '100%',
+    maxWidth: 620,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+    maxHeight: '90%',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: colors.mutedText,
+    marginTop: 2,
+  },
+  modalFieldCol: {
+    gap: 4,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  modalInput: {
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 13,
+    color: colors.navyText,
+  },
+  domainPickChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  domainPickChipActive: {
+    backgroundColor: colors.primaryYellow,
+    borderColor: colors.primaryYellow,
+  },
+  domainPickText: {
+    fontSize: 12,
+    color: colors.bodyText,
+    fontWeight: '600',
+  },
+  domainPickTextActive: {
+    color: colors.navyText,
+    fontWeight: '700',
+  },
+  typeSelectBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  typeSelectBtnActive: {
+    backgroundColor: colors.primaryYellow,
+    borderColor: colors.primaryYellow,
+  },
+  typeSelectBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.bodyText,
+  },
+  typeSelectBtnTextActive: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  statusToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  statusToggleActive: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+  },
+  statusToggleInactive: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  statusToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
 });

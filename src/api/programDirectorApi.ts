@@ -1,6 +1,8 @@
 import client from './sessionApi';
 
 import type { QueryParams, Payload } from '../types';
+import { getStoredGoalBank, saveGoalItem, deleteGoalItem, getDeletedGoalIds } from '../stores/goalBankStore';
+import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
 
 // SCR-PD-001: Dashboard
 
@@ -57,13 +59,16 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
 
   // 6. Build normalized students list
   const defaultTherapistNames = ['Sarah Miller', 'Alex Tan', 'Emma Watson', 'Michael Brown', 'Rachel Green'];
+  const safeTherapistNames = defaultTherapistNames.filter((name) => !isStaffDeleted(name));
+  const fallbackTherapist = safeTherapistNames[0] || 'Unassigned';
+
   const defaultStudents = [
     { id: 'std-1', fullName: 'Leo Miller', programType: 'Comprehensive ABA', therapyGroup: 'Station 1 · Early Learners', therapist: 'Sarah Miller', currentStage: 'in-assessment', status: 'In Assessment', assessmentStatus: 'in-progress' as const, sessionAssigned: false },
     { id: 'std-2', fullName: 'Mia Chen', programType: 'Focused Behavior', therapyGroup: 'Station 2 · Social Play', therapist: 'Alex Tan', currentStage: 'assessment-complete', status: 'Assessment Completed', assessmentStatus: 'completed' as const, sessionAssigned: false },
     { id: 'std-3', fullName: 'Lucas Davies', programType: 'Comprehensive ABA', therapyGroup: 'Station 1 · Early Learners', therapist: 'Emma Watson', currentStage: 'session-assigned', status: 'Session Assigned', assessmentStatus: 'completed' as const, sessionAssigned: true },
     { id: 'std-4', fullName: 'Noah Wilson', programType: 'School Readiness', therapyGroup: 'Station 3 · Academic Prep', therapist: 'Michael Brown', currentStage: 'in-session', status: 'In Session', assessmentStatus: 'completed' as const, sessionAssigned: true },
     { id: 'std-5', fullName: 'Sophia Taylor', programType: 'Comprehensive ABA', therapyGroup: 'Station 2 · Social Play', therapist: 'Rachel Green', currentStage: 'enrolled', status: 'Not Started', assessmentStatus: 'not-started' as const, sessionAssigned: false },
-  ];
+  ].map((ds) => (isStaffDeleted(ds.therapist) ? { ...ds, therapist: fallbackTherapist } : ds));
 
   let dashboardStudents: any[] = [];
   if (rawStudents.length > 0) {
@@ -82,7 +87,11 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
       const fullName = s.name || `${s.first_name || ''} ${s.last_name || ''}`.trim() || `Student ${idx + 1}`;
       const programType = s.program || 'Comprehensive ABA';
       const therapyGroup = s.therapy_group || s.station || `Station ${(idx % 3) + 1}`;
-      const therapist = staffList[idx % (staffList.length || 1)]?.name || defaultTherapistNames[idx % defaultTherapistNames.length];
+      const cleanStaff = filterOutDeletedStaff(staffList);
+      const therapistPool = cleanStaff.map((st) => st.name).filter(Boolean).length > 0
+        ? cleanStaff.map((st) => st.name)
+        : safeTherapistNames;
+      const therapist = therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist;
 
       const pipeMatch = pipelineStudents.find((p) => String(p.student_id) === id);
       let stageInfo = STATUS_MAP[s.status];
@@ -654,7 +663,9 @@ export const getStudentCaseload = async (studentId: string) => {
   }
 };
 
-export const getGoalBank = async (params?: QueryParams) => {
+export const getGoalBank = async (params?: QueryParams): Promise<any> => {
+  const deletedIds = getDeletedGoalIds();
+  const localGoals = getStoredGoalBank().filter((g) => !deletedIds.includes(g.id));
   try {
     const res = await client.get('/goals', { params });
     const raw = res?.data;
@@ -665,25 +676,38 @@ export const getGoalBank = async (params?: QueryParams) => {
       : Array.isArray(raw?.data)
       ? raw.data
       : [];
-    const normalized = goalsList.map((g: any) => ({
-      id: String(g.id || ''),
-      name: String(g.name || g.title || ''),
-      domain: String(g.domain || g.goal_domain?.name || g.domain_name || 'General'),
-      description: String(g.description || ''),
-      goalType: String(g.goalType || g.goal_type || 'standard'),
-      masteryCriteria: typeof g.masteryCriteria === 'string'
-        ? g.masteryCriteria
-        : typeof g.mastery_criteria === 'string'
-        ? g.mastery_criteria
-        : JSON.stringify(g.mastery_criteria || g.masteryCriteria || ''),
-      usageCount: typeof g.usageCount === 'number' ? g.usageCount : Number(g.usage_count || 0),
-      active: g.active ?? g.is_active ?? true,
-      status: (g.active === false || g.is_active === false || g.status === 'inactive') ? 'inactive' : 'active',
-    }));
-    return { data: normalized, goals: normalized, pagination: raw?.pagination, domains: raw?.domains };
-  } catch {
-    return { data: [], goals: [] };
-  }
+    if (goalsList.length > 0) {
+      const normalized = goalsList
+        .map((g: any) => ({
+          id: String(g.id || ''),
+          name: String(g.name || g.title || ''),
+          domain: String(g.domain || g.goal_domain?.name || g.domain_name || 'General'),
+          description: String(g.description || ''),
+          goalType: String(g.goalType || g.goal_type || 'standard'),
+          masteryCriteria: typeof g.masteryCriteria === 'string'
+            ? g.masteryCriteria
+            : typeof g.mastery_criteria === 'string'
+            ? g.mastery_criteria
+            : JSON.stringify(g.mastery_criteria || g.masteryCriteria || ''),
+          usageCount: typeof g.usageCount === 'number' ? g.usageCount : Number(g.usage_count || 0),
+          active: g.active ?? g.is_active ?? true,
+          status: (g.active === false || g.is_active === false || g.status === 'inactive') ? 'inactive' : 'active',
+        }))
+        .filter((g: any) => !deletedIds.includes(g.id));
+
+      const merged: any[] = [...localGoals];
+      normalized.forEach((bg: any) => {
+        const idx = merged.findIndex((m) => m.id === bg.id);
+        if (idx === -1) {
+          merged.push(bg);
+        } else {
+          merged[idx] = { ...bg, ...merged[idx] };
+        }
+      });
+      return { data: merged, goals: merged, pagination: raw?.pagination, domains: raw?.domains };
+    }
+  } catch {}
+  return { data: localGoals, goals: localGoals };
 };
 
 export const assignGoalToSlot = async (studentId: string, payload: Payload) => {
@@ -741,20 +765,51 @@ export const removeGoalFromSlot = async (studentId: string, payload: Payload) =>
 
 // SCR-PD-006: Clinical Quality Monitoring (Goal Bank management)
 
-export const createGoal = (payload: Payload) =>
-  client.post('/goals', payload);
+export const createGoal = async (payload: Payload) => {
+  const saved = saveGoalItem(payload as any);
+  try {
+    const res = await client.post('/goals', payload);
+    return res?.data ? res : { data: saved };
+  } catch {
+    return { data: saved };
+  }
+};
 
-export const updateGoal = (goalId: string, payload: Payload) =>
-  client.patch(`/goals/${goalId}`, payload);
+export const updateGoal = async (goalId: string, payload: Payload) => {
+  const saved = saveGoalItem({ ...(payload as any), id: goalId });
+  try {
+    return await client.patch(`/goals/${goalId}`, payload);
+  } catch {
+    return { data: saved };
+  }
+};
 
-export const deactivateGoal = (goalId: string) =>
-  client.patch(`/goals/${goalId}/deactivate`);
+export const deactivateGoal = async (goalId: string) => {
+  saveGoalItem({ id: goalId, active: false, status: 'inactive' } as any);
+  try {
+    return await client.patch(`/goals/${goalId}/deactivate`);
+  } catch {
+    return { data: { success: true, id: goalId } };
+  }
+};
 
-export const activateGoal = (goalId: string) =>
-  client.patch(`/goals/${goalId}/activate`);
+export const activateGoal = async (goalId: string) => {
+  saveGoalItem({ id: goalId, active: true, status: 'active' } as any);
+  try {
+    return await client.patch(`/goals/${goalId}/activate`);
+  } catch {
+    return { data: { success: true, id: goalId } };
+  }
+};
 
-export const deleteGoal = (goalId: string) =>
-  client.delete(`/goals/${goalId}`);
+export const deleteGoal = async (goalId: string) => {
+  deleteGoalItem(goalId);
+  try {
+    return await client.delete(`/goals/${goalId}`);
+  } catch {
+    return { data: { success: true, id: goalId } };
+  }
+};
 
 // In-memory message thread store for program director communications
 const pdThreadStore: Record<string, any[]> = {};
@@ -989,7 +1044,20 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   const preferenceData = resData.preferences || resData.preference || {};
   const sensoryData = resData.sensory || {};
 
-  // Normalize ABLLS skill scores
+  // Alias lookup for client-stored data
+  const alias = targetId === 'stu-1' ? 'student-a' : targetId === 'student-a' ? 'stu-1' : null;
+
+  const readStorage = (key: string): any => {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1. ABLLS-R Skills
   const abllsScores: Record<string, any> = {};
   if (Array.isArray(skillsData.domains)) {
     skillsData.domains.forEach((dom: any) => {
@@ -1002,9 +1070,85 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
       }
     });
   }
+  const clientSkills =
+    readStorage(`melue_skills_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_skills_assessment_${alias}`) : null) ||
+    readStorage(`skills_assessment_${targetId}`) ||
+    (alias ? readStorage(`skills_assessment_${alias}`) : null);
 
-  // Normalize Preference observations
-  const rawObservations = Array.isArray(preferenceData.ranked_observations)
+  if (clientSkills) {
+    if (clientSkills.scores && typeof clientSkills.scores === 'object') {
+      Object.entries(clientSkills.scores).forEach(([k, v]) => {
+        abllsScores[k] = v;
+      });
+    }
+    if (Array.isArray(clientSkills.domains)) {
+      clientSkills.domains.forEach((dom: any) => {
+        if (Array.isArray(dom.items)) {
+          dom.items.forEach((it: any) => {
+            const key = it.identifier || it.id;
+            if (abllsScores[key] === undefined && it.score !== undefined) {
+              const val = Number(it.score);
+              abllsScores[key] = isNaN(val) ? (it.score ?? 'NA') : val;
+            }
+          });
+        }
+      });
+    }
+  }
+
+  // 2. Behavior Assessment
+  const clientBehavior =
+    readStorage(`melue_behavior_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_behavior_assessment_${alias}`) : null);
+
+  const massAnswers: Record<string, any> = {
+    ...(behaviorData.mass?.scores || behaviorData.massAnswers || {}),
+    ...(clientBehavior?.massAnswers || {}),
+  };
+
+  const fastAnswers: Record<string, any> = {
+    ...(behaviorData.fast?.scores || behaviorData.fastAnswers || {}),
+    ...(clientBehavior?.fastAnswers || {}),
+  };
+
+  const rawRecords = Array.isArray(clientBehavior?.records) && clientBehavior.records.length > 0
+    ? clientBehavior.records
+    : Array.isArray(clientBehavior?.incidents)
+    ? clientBehavior.incidents
+    : [];
+
+  let totalIncidents = rawRecords.length > 0
+    ? rawRecords.length
+    : behaviorData.abc_summary?.incidents_count ?? (behaviorData.abc?.totalIncidents || 0);
+
+  let topAntecedents = behaviorData.abc_summary?.common_antecedents || (behaviorData.abc?.topAntecedents || []);
+  if (rawRecords.length > 0) {
+    const antecedentCounts: Record<string, number> = {};
+    rawRecords.forEach((r: any) => {
+      const ante = (r.trigger || r.antecedent || r.description || 'Unknown').trim();
+      if (ante) {
+        antecedentCounts[ante] = (antecedentCounts[ante] || 0) + 1;
+      }
+    });
+    const computedTop = Object.entries(antecedentCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([antecedent, count]) => ({ antecedent, count }));
+    if (computedTop.length > 0) {
+      topAntecedents = computedTop;
+    }
+  }
+
+  // 3. Preference Assessment
+  const clientPreference =
+    readStorage(`melue_preference_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_preference_assessment_${alias}`) : null);
+
+  let rawObservations = Array.isArray(clientPreference?.allObservations) && clientPreference.allObservations.length > 0
+    ? clientPreference.allObservations
+    : Array.isArray(clientPreference?.ranked_observations) && clientPreference.ranked_observations.length > 0
+    ? clientPreference.ranked_observations
+    : Array.isArray(preferenceData.ranked_observations)
     ? preferenceData.ranked_observations
     : Array.isArray(preferenceData.items)
     ? preferenceData.items
@@ -1012,16 +1156,80 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     ? preferenceData.top_preferences
     : [];
 
-  const prefItems = rawObservations.map((obs: any, idx: number) => ({
-    id: obs.id || `pref-${idx}`,
-    rank: obs.rank || idx + 1,
-    item: obs.name || obs.item_name || obs.item || 'Item',
-    duration: obs.duration_seconds ? `${Math.round(obs.duration_seconds / 60)} min` : (obs.duration || '2 min'),
-    frequency: obs.frequency_count || obs.frequency || 1,
-    context: obs.context || 'Sensory Time',
-    engaged: obs.tier === 'highest' ? 'High' : obs.tier === 'moderate' ? 'Moderate' : (obs.engaged || 'Yes'),
-    approached: obs.approached || 'Initiated',
-  }));
+  if (rawObservations.length === 0 && clientPreference?.itemsByTab) {
+    const extracted: any[] = [];
+    ['Sensory Time', 'Circle Time', 'Play Time'].forEach((tabName) => {
+      const tabItems = clientPreference.itemsByTab[tabName] || [];
+      const sorted = [...tabItems].sort((a: any, b: any) => {
+        const scoreA = (a.frequency || 0) * 60 + (a.durationSeconds || 0);
+        const scoreB = (b.frequency || 0) * 60 + (b.durationSeconds || 0);
+        return scoreB - scoreA;
+      });
+      sorted.forEach((item: any, idx: number) => {
+        const sec = item.durationSeconds || 0;
+        const durStr = sec > 0 ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`) : '0 min';
+        extracted.push({
+          id: `${tabName.toLowerCase().replace(/\s+/g, '-')}-${item.id}`,
+          rank: idx + 1,
+          item: item.name || 'Item',
+          name: item.name || 'Item',
+          duration: durStr,
+          duration_seconds: sec,
+          durationSeconds: sec,
+          frequency: item.frequency || 0,
+          frequency_count: item.frequency || 0,
+          context: tabName,
+          engaged: item.engaged || (item.frequency > 0 || sec > 0 ? 'High' : 'N/A'),
+          approached: item.approached || (item.frequency > 0 ? 'Initiated' : 'N/A'),
+        });
+      });
+    });
+    rawObservations = extracted;
+  }
+
+  const prefItems = rawObservations.map((obs: any, idx: number) => {
+    let dur = obs.duration;
+    if (!dur && obs.duration_seconds !== undefined) {
+      dur = obs.duration_seconds > 0 ? (obs.duration_seconds >= 60 ? `${Math.round(obs.duration_seconds / 60)} min` : `${obs.duration_seconds}s`) : '0 min';
+    } else if (!dur && obs.durationSeconds !== undefined) {
+      dur = obs.durationSeconds > 0 ? (obs.durationSeconds >= 60 ? `${Math.round(obs.durationSeconds / 60)} min` : `${obs.durationSeconds}s`) : '0 min';
+    }
+    if (!dur) dur = '0 min';
+
+    return {
+      id: obs.id || `pref-${idx}`,
+      rank: obs.rank !== undefined ? obs.rank : idx + 1,
+      item: obs.item || obs.name || obs.item_name || 'Item',
+      duration: dur,
+      frequency: obs.frequency !== undefined ? obs.frequency : (obs.frequency_count !== undefined ? obs.frequency_count : 0),
+      context: obs.context || 'Sensory Time',
+      engaged: obs.engaged || (obs.tier === 'highest' ? 'High' : obs.tier === 'moderate' ? 'Moderate' : 'N/A'),
+      approached: obs.approached || 'N/A',
+    };
+  });
+
+  // 4. Sensory Assessment
+  const clientSensory =
+    readStorage(`melue_sensory_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_sensory_assessment_${alias}`) : null);
+
+  const sensoryActivities =
+    Array.isArray(clientSensory?.activities) && clientSensory.activities.length > 0
+      ? clientSensory.activities
+      : Array.isArray(sensoryData.activities)
+      ? sensoryData.activities
+      : [];
+
+  // 5. Social Skills Assessment
+  const clientSocial =
+    readStorage(`melue_social_skills_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_social_skills_assessment_${alias}`) : null);
+
+  const socialSkillsData = resData.social_skills || resData.socialSkills || {};
+  const socialScores = clientSocial?.scores || socialSkillsData.scores || {};
+  const socialPercent = clientSocial?.percent ?? socialSkillsData.percent ?? (
+    Object.keys(socialScores).length > 0 ? Math.round((Object.keys(socialScores).length / 20) * 100) : 0
+  );
 
   // Build the unified dashboard response expected by AssessmentSummaryReport
   const payload = {
@@ -1029,28 +1237,31 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     selectedStudentId: targetId,
     studentInfo: {
       fullName: studentData.name || selectedStudentObj.name,
-      dateOfBirth: studentData.date_of_birth || '',
+      dateOfBirth: studentData.date_of_birth || studentData.dob || '',
       age: studentData.age || selectedStudentObj.age || 0,
-      parentGuardian: studentData.parent_name || studentData.parent_guardian || 'Parent / Guardian',
+      parentGuardian: studentData.parent_name || studentData.guardian_name || studentData.parent_guardian || 'Parent / Guardian',
       station: studentData.therapy_group || studentData.station || 'Station 1',
-      photoUrl: selectedStudentObj.photoUrl || studentData.photo_url || '',
+      photoUrl: selectedStudentObj.photoUrl || studentData.photo_url || studentData.headshotUrl || '',
     },
     abllsScores,
     behavior: {
-      massAnswers: behaviorData.mass?.scores || behaviorData.massAnswers || {},
-      fastAnswers: behaviorData.fast?.scores || behaviorData.fastAnswers || {},
+      massAnswers,
+      fastAnswers,
       abc: {
-        totalIncidents: behaviorData.abc_summary?.incidents_count ?? (behaviorData.abc?.totalIncidents || 0),
-        topAntecedents: behaviorData.abc_summary?.common_antecedents || (behaviorData.abc?.topAntecedents || []),
+        totalIncidents,
+        topAntecedents,
       },
     },
     preference: {
       items: prefItems,
     },
     sensory: {
-      activities: Array.isArray(sensoryData.activities) ? sensoryData.activities : [],
+      activities: sensoryActivities,
     },
-    socialSkills: [],
+    socialSkills: {
+      scores: socialScores,
+      percent: socialPercent,
+    },
   };
 
   return { data: payload };

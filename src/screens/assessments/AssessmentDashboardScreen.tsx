@@ -12,7 +12,13 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
-import { isStudentInSession, isStudentAssessment100PercentCompleted, markStudentAssessmentCompleted } from '../../utils/studentLifecycleHelper';
+import {
+  isStudentInSession,
+  isStudentAssessment100PercentCompleted,
+  markStudentAssessmentCompleted,
+  getStudentSkillsProgress,
+  getStudentBehaviorProgress,
+} from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AssessmentDashboard'>;
@@ -98,6 +104,20 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     }, [load])
   );
 
+  useEffect(() => {
+    const handleSync = () => { load(); };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleSync);
+      window.addEventListener('focus', handleSync);
+      window.addEventListener('melue_assessment_updated' as any, handleSync);
+      return () => {
+        window.removeEventListener('storage', handleSync);
+        window.removeEventListener('focus', handleSync);
+        window.removeEventListener('melue_assessment_updated' as any, handleSync);
+      };
+    }
+  }, [load]);
+
   const isTeacher = session?.role === 'teacher';
   const currentTherapistName = session?.userName || (session as any)?.user?.name;
 
@@ -145,21 +165,39 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
           <View style={styles.statCard}>
             <Feather name="check-circle" size={16} color="#22C55E" />
             <Text style={styles.statValue}>
-              {filteredStudents.filter((s) => s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed').length}
+              {
+                filteredStudents.filter((s) => {
+                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  return sk.status === 'Completed' && bh.status === 'Completed';
+                }).length
+              }
             </Text>
             <Text style={typography.caption}>Completed</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="clock" size={16} color={colors.statusInProgressText} />
             <Text style={styles.statValue}>
-              {filteredStudents.filter((s) => (s.ablls?.status === 'In Progress' || s.behavior?.status === 'In Progress')).length}
+              {
+                filteredStudents.filter((s) => {
+                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  return (sk.status === 'In Progress' || bh.status === 'In Progress') && !(sk.status === 'Completed' && bh.status === 'Completed');
+                }).length
+              }
             </Text>
             <Text style={typography.caption}>In Progress</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="alert-circle" size={16} color={colors.mutedText} />
             <Text style={styles.statValue}>
-              {filteredStudents.filter((s) => s.ablls?.status === 'Not Started' && s.behavior?.status === 'Not Started').length}
+              {
+                filteredStudents.filter((s) => {
+                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  return sk.status === 'Not Started' && bh.status === 'Not Started';
+                }).length
+              }
             </Text>
             <Text style={typography.caption}>Not Started</Text>
           </View>
@@ -168,10 +206,14 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <Text style={typography.h3}>Student Assessments</Text>
         <View style={styles.studentsGrid}>
           {filteredStudents.map((s) => {
-            const skillsProg = Number(s.ablls?.progress || 0);
-            const skillsStat = s.ablls?.status || (skillsProg >= 100 ? 'Completed' : skillsProg > 0 ? 'In Progress' : 'Not Started');
-            const behaviorProg = Number(s.behavior?.progress || 0);
-            const behaviorStat = s.behavior?.status || (behaviorProg >= 100 ? 'Completed' : behaviorProg > 0 ? 'In Progress' : 'Not Started');
+            const skillsData = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+            const behaviorData = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+
+            const skillsProg = skillsData.progress;
+            const skillsStat = skillsData.status;
+
+            const behaviorProg = behaviorData.progress;
+            const behaviorStat = behaviorData.status;
             
             const isCompleted =
               s.score === 100 ||

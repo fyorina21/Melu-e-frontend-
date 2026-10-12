@@ -77,7 +77,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     try {
       const { data: cfg } = await getFormConfig('ABLLS Assessment Form');
       if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-        setDomains(buildAbllsDomainsFromConfig(cfg.fields));
+        setDomains(buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections));
       }
     } catch (err) {
       setDomains(DEFAULT_ABLLS_DOMAINS);
@@ -120,13 +120,37 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     }, [load])
   );
 
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('ablls') || name.includes('skill')) {
+        const cfg = e.detail?.config;
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          setDomains(buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections));
+        } else {
+          load();
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, [load]);
+
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalItems = domains.reduce((sum, d) => sum + d.items.length, 0);
   const totalAnswered = Object.keys(scores).length;
 
   const persistBulkResponses = useCallback((updatedScores: Record<string, Score>, updatedNotes: Record<string, string>, status = 'in_progress') => {
-    saveStorageAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields });
+    const answered = Object.keys(updatedScores).length;
+    const progress = totalItems > 0 ? Math.min(100, Math.round((answered / totalItems) * 100)) : 0;
+    saveStorageAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, progress, status });
+    const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+    if (aliasSid) {
+      saveStorageAssessment(aliasSid, { scores: updatedScores, notes: updatedNotes, customFields, progress, status });
+    }
     const formattedResponses = Object.entries(updatedScores).map(([k, v]) => ({
       skill_item_id: k,
       score: String(v),
@@ -138,8 +162,11 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       scores: updatedScores,
       notes: updatedNotes,
     }).catch(() => {});
-    saveSkillsAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, status }).catch(() => {});
-  }, [assessmentId, studentId, customFields]);
+    saveSkillsAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, status, progress }).catch(() => {});
+    if (aliasSid) {
+      saveSkillsAssessment(aliasSid, { scores: updatedScores, notes: updatedNotes, customFields, status, progress }).catch(() => {});
+    }
+  }, [assessmentId, studentId, customFields, totalItems]);
 
   useEffect(() => {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
@@ -181,11 +208,16 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const handleSaveDraft = async () => {
     try {
       const allAnswered = totalItems > 0 && totalAnswered >= totalItems;
-      const status = allAnswered ? 'completed' : 'in_progress';
+      const status = allAnswered ? 'completed' : totalAnswered > 0 ? 'in_progress' : 'not_started';
+      const progress = totalItems > 0 ? Math.min(100, Math.round((totalAnswered / totalItems) * 100)) : 0;
       if (allAnswered) {
         markStudentAssessmentCompleted(studentId);
       }
-      saveStorageAssessment(studentId, { scores, notes, customFields });
+      saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
+      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        saveStorageAssessment(aliasSid, { scores, notes, customFields, progress, status });
+      }
       const formattedResponses = Object.entries(scores).map(([k, v]) => ({
         skill_item_id: k,
         score: String(v),
@@ -197,11 +229,14 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         scores,
         notes,
       });
-      await saveSkillsAssessment(studentId, { scores, notes, customFields, status });
+      await saveSkillsAssessment(studentId, { scores, notes, customFields, status, progress });
+      if (aliasSid) {
+        await saveSkillsAssessment(aliasSid, { scores, notes, customFields, status, progress });
+      }
       showToast(
         allAnswered
           ? `${studentName} ABLLS assessment completed!`
-          : `${studentName} ABLLS assessment draft saved.`,
+          : `${studentName} ABLLS assessment draft saved (${progress}%).`,
         'success'
       );
     } catch (err) {

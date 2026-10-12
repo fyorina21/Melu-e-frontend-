@@ -24,6 +24,7 @@ import {
   getDirectorStudentProgress,
 } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { DirectorStackParamList } from '../../types';
 
 const REPORT_TABS: string[] = [
@@ -97,12 +98,26 @@ export default function ReportsOversightScreen({
       })
       .catch(() => {});
 
+  }, []);
+
+  const loadTeachers = useCallback(() => {
     getStaffOptions()
       .then(({ data }) => {
-        setTeachers(data?.filter((t: any) => t.role === 'teacher') || []);
+        const clean = filterOutDeletedStaff(data || []);
+        const cleanTeachers = clean.filter((t: any) => t.role === 'teacher');
+        setTeachers(cleanTeachers);
+        setSelectedTeacherId((prev) => (!prev || cleanTeachers.some((t: any) => t.id === prev) ? prev : ''));
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadTeachers();
+  }, [loadTeachers]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(loadTeachers);
+  }, [loadTeachers]);
 
   const load = useCallback(async () => {
     try {

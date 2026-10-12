@@ -1,8 +1,15 @@
 import client from './sessionApi';
 import type { QueryParams, Payload } from '../types';
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 
 // SCR-SYS-001: Staff Account Management
-export const getStaffAccounts = (params: QueryParams) => client.get('/sysadmin/staff', { params });
+export const getStaffAccounts = async (params: QueryParams) => {
+  const res = await client.get('/sysadmin/staff', { params });
+  if (Array.isArray(res?.data)) {
+    return { ...res, data: filterOutDeletedStaff(res.data) };
+  }
+  return res;
+};
 export const createStaffAccount = (payload: Payload) => client.post('/sysadmin/staff', payload);
 export const updateStaffAccount = (staffId: string, payload: Payload) => client.patch(`/sysadmin/staff/${staffId}`, payload);
 export const deleteStaffAccount = (staffId: string) => client.delete(`/sysadmin/staff/${staffId}`);

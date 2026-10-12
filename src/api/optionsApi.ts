@@ -5,6 +5,7 @@
 // with the actual data instead of relying on hardcoded constants.
 
 import client from './sessionApi';
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 
 export interface StudentOption {
   id: string;
@@ -29,5 +30,11 @@ export interface RoomOption {
 }
 
 export const getStudentOptions = () => client.get<StudentOption[]>('/options/students');
-export const getStaffOptions = () => client.get<StaffOption[]>('/options/staff');
+export const getStaffOptions = async () => {
+  const res = await client.get<StaffOption[]>('/options/staff');
+  if (Array.isArray(res?.data)) {
+    return { ...res, data: filterOutDeletedStaff(res.data) };
+  }
+  return res;
+};
 export const getRoomOptions = () => client.get<RoomOption[]>('/options/rooms');

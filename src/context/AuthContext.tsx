@@ -94,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setActiveRole(roles[0]);
             setUserRoles(roles);
             setSession({
+              userId: user.id,
               role: roles[0],
               roles,
               userName: user.name,
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setActiveRole(roles[0]);
                 setUserRoles(roles);
                 setSession({
+                  userId: user.id,
                   role: roles[0],
                   roles,
                   userName: user.name,
@@ -155,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setActiveRole(roles[0]);
       setUserRoles(roles);
       setSession({
+        userId: user.id,
         role: roles[0],
         roles,
         userName: user.name,

@@ -39,6 +39,7 @@ import {
   type IupCandidate,
 } from '../../api/programDirectorApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
+import { getStoredGoalDomains, getStoredGoalBank, type GoalDomain } from '../../stores/goalBankStore';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 interface GoalBankItem {
@@ -79,6 +80,7 @@ export default function IupGenerationScreen({
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [context, setContext] = useState<IupContext | null>(null);
   const [goalBank, setGoalBank] = useState<GoalBankItem[]>([]);
+  const [domains, setDomains] = useState<GoalDomain[]>(getStoredGoalDomains());
   const [slots, setSlots] = useState<Slots>({ station1: [null], station2: [null] });
   const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<'assessment' | 'goals' | 'strategies'>('goals');
 
@@ -97,6 +99,39 @@ export default function IupGenerationScreen({
   const [selectorTarget, setSelectorTarget] = useState<{ station: StationKey; slotIndex: number } | null>(null);
   const [goalSearch, setGoalSearch] = useState('');
   const [domainFilter, setDomainFilter] = useState('All');
+
+  // Computed dynamic domain options from GoalDomainDefinitions and goal bank
+  const domainOptions = useMemo(() => {
+    const activeNames = domains.filter((d) => d.active !== false).map((d) => d.name);
+    const goalDomains = Array.from(new Set(goalBank.map((g) => g.domain).filter(Boolean)));
+    const all = Array.from(new Set([...activeNames, ...goalDomains]));
+    return ['All', ...(all.length > 0 ? all : ['Communication', 'Motor', 'Social', 'Self-Help', 'Cognition', 'Adaptive'])];
+  }, [domains, goalBank]);
+
+  // Immediately refresh goal bank and open selector
+  const handleOpenGoalSelector = useCallback(async (station: StationKey, slotIndex: number) => {
+    const localGoals = getStoredGoalBank();
+    const localDomains = getStoredGoalDomains();
+    setGoalBank(localGoals);
+    setDomains(localDomains);
+    setDomainFilter('All');
+    setGoalSearch('');
+    setSelectorTarget({ station, slotIndex });
+
+    try {
+      const { data: res } = await getGoalBank({});
+      const loadedGoals = Array.isArray(res)
+        ? res
+        : Array.isArray((res as any)?.goals)
+        ? (res as any).goals
+        : Array.isArray((res as any)?.data)
+        ? (res as any).data
+        : [];
+      if (loadedGoals.length > 0) {
+        setGoalBank(loadedGoals);
+      }
+    } catch {}
+  }, []);
 
   // Preview & Export State
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -121,18 +156,19 @@ export default function IupGenerationScreen({
     setCandidates(eligibleCandidates);
 
     try {
-      const { data: res } = await getGoalBank({});
-      const loadedGoals = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.goals)
-        ? res.goals
-        : Array.isArray(res?.data)
-        ? res.data
+      const response = await getGoalBank({});
+      const rawRes = response?.data || response?.goals || response;
+      const loadedGoals = Array.isArray(rawRes)
+        ? rawRes
+        : Array.isArray((rawRes as any)?.goals)
+        ? (rawRes as any).goals
         : [];
-      setGoalBank(loadedGoals);
+      setGoalBank(loadedGoals.length > 0 ? loadedGoals : getStoredGoalBank());
     } catch {
-      setGoalBank([]);
+      setGoalBank(getStoredGoalBank());
     }
+
+    setDomains(getStoredGoalDomains());
 
     const preId = (route.params as { studentId?: string })?.studentId;
     if (preId && eligibleCandidates.some((c) => c.id === preId)) {
@@ -147,7 +183,64 @@ export default function IupGenerationScreen({
 
   useEffect(() => {
     loadData();
+
+    const handleBankChange = async () => {
+      try {
+        const response = await getGoalBank({});
+        const rawRes = response?.data || response?.goals || response;
+        const loadedGoals = Array.isArray(rawRes)
+          ? rawRes
+          : Array.isArray((rawRes as any)?.goals)
+          ? (rawRes as any).goals
+          : [];
+        setGoalBank(loadedGoals.length > 0 ? loadedGoals : getStoredGoalBank());
+      } catch {
+        setGoalBank(getStoredGoalBank());
+      }
+      setDomains(getStoredGoalDomains());
+    };
+
+    const handleDomainsChange = () => {
+      setDomains(getStoredGoalDomains());
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_goal_bank_changed', handleBankChange);
+      window.addEventListener('melue_goal_domains_changed', handleDomainsChange);
+      return () => {
+        window.removeEventListener('melue_goal_bank_changed', handleBankChange);
+        window.removeEventListener('melue_goal_domains_changed', handleDomainsChange);
+      };
+    }
   }, [loadData]);
+
+  // Synchronize slot goals when goal details are edited from institutional admin GoalDomainDefinitions
+  useEffect(() => {
+    if (goalBank.length === 0) return;
+    setSlots((prev) => {
+      let changed = false;
+      const next: Slots = { station1: [...prev.station1], station2: [...prev.station2] };
+      (['station1', 'station2'] as StationKey[]).forEach((stationKey) => {
+        next[stationKey] = prev[stationKey].map((slotGoal) => {
+          if (!slotGoal) return null;
+          const updated = goalBank.find((g) => g.id === slotGoal.id);
+          if (
+            updated &&
+            (updated.name !== slotGoal.name ||
+              updated.domain !== slotGoal.domain ||
+              updated.description !== slotGoal.description ||
+              updated.masteryCriteria !== slotGoal.masteryCriteria ||
+              updated.goalType !== slotGoal.goalType)
+          ) {
+            changed = true;
+            return updated;
+          }
+          return slotGoal;
+        });
+      });
+      return changed ? next : prev;
+    });
+  }, [goalBank]);
 
   useEffect(() => {
     if (!selectedStudentId) return;
@@ -250,7 +343,17 @@ export default function IupGenerationScreen({
     if (selectedStudentId) {
       try {
         const stationNumber = station === 'station1' ? 1 : 2;
-        await assignGoalToSlot(selectedStudentId, { goalId: goal.id, station: stationNumber, slot: slotIndex });
+        await assignGoalToSlot(selectedStudentId, {
+          goalId: goal.id,
+          name: goal.name,
+          goalName: goal.name,
+          domain: goal.domain,
+          category: goal.domain,
+          goalType: goal.goalType,
+          masteryCriteria: goal.masteryCriteria,
+          station: stationNumber,
+          slot: slotIndex,
+        });
         
         const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
         await saveIupDraft(targetIupId, {
@@ -695,7 +798,19 @@ export default function IupGenerationScreen({
                         <View style={styles.goalActions}>
                           <TouchableOpacity
                             style={styles.changeGoalBtn}
-                            onPress={() => setSelectorTarget({ station: 'station1', slotIndex: idx })}
+                            onPress={() => {
+                              if (typeof window !== 'undefined') {
+                                window.location.href = '/GoalDomainDefinitions';
+                              } else {
+                                navigation?.navigate?.('GoalDomainDefinitions' as never);
+                              }
+                            }}
+                          >
+                            <Feather name="edit-2" size={14} color={colors.navyText} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.changeGoalBtn}
+                            onPress={() => handleOpenGoalSelector('station1', idx)}
                           >
                             <Feather name="refresh-cw" size={14} color={colors.navyText} />
                           </TouchableOpacity>
@@ -710,7 +825,7 @@ export default function IupGenerationScreen({
                     ) : (
                       <TouchableOpacity
                         style={styles.emptyGoalSlot}
-                        onPress={() => setSelectorTarget({ station: 'station1', slotIndex: idx })}
+                        onPress={() => handleOpenGoalSelector('station1', idx)}
                       >
                         <View style={styles.plusIconWrap}>
                           <Feather name="plus" size={16} color={colors.navyText} />
@@ -764,7 +879,19 @@ export default function IupGenerationScreen({
                         <View style={styles.goalActions}>
                           <TouchableOpacity
                             style={styles.changeGoalBtn}
-                            onPress={() => setSelectorTarget({ station: 'station2', slotIndex: idx })}
+                            onPress={() => {
+                              if (typeof window !== 'undefined') {
+                                window.location.href = '/GoalDomainDefinitions';
+                              } else {
+                                navigation?.navigate?.('GoalDomainDefinitions' as never);
+                              }
+                            }}
+                          >
+                            <Feather name="edit-2" size={14} color={colors.navyText} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.changeGoalBtn}
+                            onPress={() => handleOpenGoalSelector('station2', idx)}
                           >
                             <Feather name="refresh-cw" size={14} color={colors.navyText} />
                           </TouchableOpacity>
@@ -779,7 +906,7 @@ export default function IupGenerationScreen({
                     ) : (
                       <TouchableOpacity
                         style={styles.emptyGoalSlot}
-                        onPress={() => setSelectorTarget({ station: 'station2', slotIndex: idx })}
+                        onPress={() => handleOpenGoalSelector('station2', idx)}
                       >
                         <View style={styles.plusIconWrap}>
                           <Feather name="plus" size={16} color={colors.navyText} />
@@ -979,6 +1106,20 @@ export default function IupGenerationScreen({
                   Assigning to {selectorTarget?.station === 'station1' ? 'Station 1 (Basic)' : 'Station 2 (Advanced)'} · Slot {(selectorTarget?.slotIndex ?? 0) + 1}
                 </Text>
               </View>
+              <TouchableOpacity
+                style={styles.manageGoalsLinkBtn}
+                onPress={() => {
+                  setSelectorTarget(null);
+                  if (typeof window !== 'undefined') {
+                    window.location.href = '/GoalDomainDefinitions';
+                  } else {
+                    navigation?.navigate?.('GoalDomainDefinitions' as never);
+                  }
+                }}
+              >
+                <Feather name="settings" size={12} color={colors.navyText} />
+                <Text style={styles.manageGoalsLinkText}>Edit in Admin</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => setSelectorTarget(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Feather name="x" size={20} color={colors.navyText} />
               </TouchableOpacity>
@@ -997,7 +1138,7 @@ export default function IupGenerationScreen({
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {['All', 'Communication', 'Motor', 'Social', 'Self-Help', 'Cognition'].map((d) => (
+              {domainOptions.map((d) => (
                 <TouchableOpacity
                   key={d}
                   style={[styles.domainFilterChip, domainFilter === d && styles.domainFilterChipActive]}
@@ -1500,6 +1641,21 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 17, fontWeight: '700', color: colors.navyText },
   modalSub: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
+  manageGoalsLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primaryYellow,
+    marginRight: spacing.sm,
+  },
+  manageGoalsLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
   modalSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',

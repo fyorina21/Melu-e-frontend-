@@ -40,6 +40,7 @@ export interface AuthSession {
   roles?: Role[];
   userName: string;
   email?: string;
+  userId?: string;
 }
 
 // ---- Domain models ----
@@ -180,6 +181,7 @@ export type SessionStackParamList = {
   StudentEnrollmentWizard: undefined;
   IupGeneration: { studentId?: string } | undefined;
   ChildProgress?: undefined;
+  GoalMasteryApproval?: undefined;
 };
 
 export type CoordinatorStackParamList = {
@@ -224,9 +226,11 @@ export type ProgramDirectorStackParamList = {
   PdParentCommunication: undefined;
   GraphChartView: { studentId?: string; goalIds?: string[] } | undefined;
   StudentEnrollmentWizard: undefined;
+  StudentEnrollment?: undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
   AssessmentDashboard: undefined;
   SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
+  GoalDomainDefinitions?: undefined;
 };
 
 export type InstitutionalAdminStackParamList = {

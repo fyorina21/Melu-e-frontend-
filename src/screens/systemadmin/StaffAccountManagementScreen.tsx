@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Modal, Alert, Platform } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -741,6 +741,15 @@ function TeacherLinkingPanel({ teacher, onClose }: TeacherLinkingPanelProps) {
 );
 }
 
+import {
+  getDeletedStaffKeys,
+  recordDeletedStaff,
+  removeDeletedStaffKey,
+  isStaffDeleted,
+  filterOutDeletedStaff,
+  onDeletedStaffChanged,
+} from '../../utils/deletedStaffHelper';
+
 export default function StaffAccountManagementScreen({ navigation }: NativeStackScreenProps<SystemAdminStackParamList, 'StaffAccountManagement'>) {
   const { showToast } = useToast();
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
@@ -753,6 +762,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   const [formTarget, setFormTarget] = useState<StaffMember | null | undefined>(undefined);
   const [credentialTarget, setCredentialTarget] = useState<StaffMember | null>(null);
   const [linkTarget, setLinkTarget] = useState<StaffMember | null>(null);
+  const [deletedKeys, setDeletedKeys] = useState<Set<string>>(() => getDeletedStaffKeys());
 
   const [systemRoles, setSystemRoles] = useState<string[]>([]);
 
@@ -783,15 +793,18 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   const load = useCallback(async () => {
     try {
       const { data } = await getStaffAccounts({ search, role: roleFilter, status: statusFilter });
-      setStaff(data);
+      const raw = Array.isArray(data) ? data : [];
+      const clean = filterOutDeletedStaff(raw);
+      setStaff(clean);
     } catch (err) {
       setStaff([]);
     }
   }, [search, roleFilter, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => onDeletedStaffChanged(load), [load]);
 
-  const filtered = (staff ?? []).filter(
+  const filtered = filterOutDeletedStaff(staff ?? []).filter(
     (s) =>
       (roleFilter === 'All' || s.roles.includes(roleFilter)) &&
       (statusFilter === 'All' || (statusFilter === 'Active') === s.active) &&
@@ -806,6 +819,12 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
         await updateStaffAccount(payload.id, payload);
         showToast('Staff account updated successfully', 'success');
       } else {
+        if (payload.email) {
+          removeDeletedStaffKey(payload.email);
+        }
+        if (payload.name) {
+          removeDeletedStaffKey(payload.name);
+        }
         await createStaffAccount(payload);
         showToast('Staff account created successfully', 'success');
       }
@@ -830,31 +849,81 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
   };
 
   const handleDelete = (s: StaffMember) => {
-    Alert.alert('Delete staff account?', `${s.name} (${s.email}) will be permanently removed. This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try { await deleteStaffAccount(s.id); showToast('Staff account deleted successfully', 'success'); } catch (err) { showToast('Failed to delete staff account', 'error'); }
-          load();
+    const message = `${s.name} (${s.email}) will be permanently removed. This cannot be undone.`;
+    const runDelete = async () => {
+      // 1. Optimistically remove from state and persist across ALL pages
+      recordDeletedStaff(s);
+      setStaff((prev) => (prev ? prev.filter((item) => item.id !== s.id && !isStaffDeleted(item)) : []));
+
+      // 2. Immediate feedback to user
+      showToast('Staff account deleted successfully', 'success');
+
+      // 3. Dispatch delete and deactivation to backend
+      try {
+        await Promise.allSettled([
+          deleteStaffAccount(s.id),
+          bulkStaffAction([s.id], 'delete'),
+          toggleStaffActive(s.id, false),
+        ]);
+      } catch {}
+
+      // 4. Reload staff list while keeping deleted items filtered
+      await load();
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(`Delete staff account?\n\n${message}`)) {
+        runDelete();
+      }
+    } else {
+      Alert.alert('Delete staff account?', message, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: runDelete,
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   const handleBulkAction = (action: string) => {
-    Alert.alert(`${action} ${selectedIds.length} accounts?`, undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm',
-        onPress: async () => {
-          try { await bulkStaffAction(selectedIds, action); showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success'); } catch (err) { showToast(`Bulk ${action.toLowerCase()} failed`, 'error'); }
-          setSelectedIds([]);
-          load();
+    const runBulk = async () => {
+      try {
+        if (action.toLowerCase().includes('del')) {
+          selectedIds.forEach((id) => {
+            const item = staff?.find((m) => m.id === id);
+            if (item) {
+              recordDeletedStaff(item);
+            } else {
+              recordDeletedStaff({ id });
+            }
+          });
+          setStaff((prev) => (prev ? prev.filter((m) => !selectedIds.includes(m.id) && !isStaffDeleted(m)) : []));
+        }
+        await bulkStaffAction(selectedIds, action);
+        showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
+        setSelectedIds([]);
+        await load();
+      } catch (err: any) {
+        const errorMsg = err?.response?.data?.error || err?.response?.data?.message || `Bulk ${action.toLowerCase()} failed`;
+        showToast(errorMsg, 'error');
+      }
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(`${action} ${selectedIds.length} accounts?`)) {
+        runBulk();
+      }
+    } else {
+      Alert.alert(`${action} ${selectedIds.length} accounts?`, undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: runBulk,
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   if (staff === null) return <ScreenLoader />;
@@ -865,17 +934,9 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
       <View style={styles.header}>
         <View>
           <Text style={typography.h1}>Staff Account Management</Text>
-          <Text style={typography.caption}>Manage user accounts, roles, and station linkings</Text>
+          <Text style={typography.caption}>Manage user accounts and roles</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
-          <TouchableOpacity
-            style={styles.secondaryHeaderBtn}
-            onPress={() => navigation?.navigate?.('PermissionConfiguration')}
-            accessibilityLabel="Configure Role Permissions"
-          >
-            <Feather name="shield" size={14} color={colors.navyText} />
-            <Text style={styles.secondaryHeaderBtnText}>Permissions</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.addBtn} onPress={() => setFormTarget(null)}>
             <Feather name="plus" size={14} color={colors.navyText} />
             <Text style={styles.addBtnText}>Add Staff</Text>
@@ -1082,22 +1143,7 @@ export default function StaffAccountManagementScreen({ navigation }: NativeStack
               >
                 <Feather name="edit-2" size={14} color={colors.navyText} />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                accessibilityLabel="Configure role permissions"
-                onPress={() => navigation?.navigate?.('PermissionConfiguration')}
-              >
-                <Feather name="shield" size={14} color="#0284C7" />
-              </TouchableOpacity>
-              {s.roles.includes('Teacher') && (
-                <TouchableOpacity
-                  style={[styles.iconBtn, linkTarget?.id === s.id && styles.iconBtnActive]}
-                  accessibilityLabel="Link teacher to students"
-                  onPress={() => setLinkTarget(linkTarget?.id === s.id ? null : s)}
-                >
-                  <Feather name="link-2" size={14} color={colors.navyText} />
-                </TouchableOpacity>
-              )}
+
               <TouchableOpacity
                 style={styles.iconBtn}
                 accessibilityLabel="Manage credentials and password"

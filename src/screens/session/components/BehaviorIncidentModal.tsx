@@ -14,6 +14,11 @@ import { Feather } from '@expo/vector-icons';
 import { getFormConfig } from '../../../api/institutionalAdminApi';
 import DynamicFormFields, { type DynamicFormField } from '../../../components/DynamicFormFields';
 import { useAuth } from '../../../context/AuthContext';
+import {
+  getActiveAbcDropdownOptions,
+  BASE_INCIDENT_FIELDS,
+  applyAbcDropdownOptions,
+} from '../../../stores/abcListsStore';
 
 export interface IncidentPayload {
   date: string;
@@ -47,64 +52,8 @@ const getCurrentDate = () => new Date().toISOString().split('T')[0];
 const getCurrentTime = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = [
-  {
-    id: 'b_loc',
-    type: 'Dropdown',
-    label: 'Location',
-    required: true,
-    visible: true,
-    options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
-  },
-  {
-    id: 'b_beh',
-    type: 'Dropdown',
-    label: 'Behavior Type',
-    required: true,
-    visible: true,
-    options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'],
-  },
-  {
-    id: 'b_int',
-    type: 'Dropdown',
-    label: 'Intensity',
-    required: true,
-    visible: true,
-    options: ['Low', 'Medium', 'High'],
-  },
-  {
-    id: 'b_dur',
-    type: 'Number',
-    label: 'Duration (mins)',
-    required: true,
-    visible: true,
-    placeholder: 'Enter duration...',
-  },
-  {
-    id: 'b_ant',
-    type: 'Dropdown',
-    label: 'Antecedent / Trigger',
-    required: false,
-    visible: true,
-    options: ['Demand / Task', 'Transition', 'Denied Access', 'Attention Diverted', 'Sensory Overload', 'Loud Noise', 'Peer Interaction'],
-  },
-  {
-    id: 'b_con',
-    type: 'Dropdown',
-    label: 'Consequence / Action Taken',
-    required: false,
-    visible: true,
-    options: ['Redirection', 'Verbal Prompt', 'Break Given', 'Sensory Break', 'Physical Prompt', 'Planned Ignoring'],
-  },
-  {
-    id: 'b_notes',
-    type: 'TextArea',
-    label: 'Notes & Observations',
-    required: false,
-    visible: true,
-    placeholder: 'Enter any additional notes or relevant information...',
-  },
-];
+export { BASE_INCIDENT_FIELDS, applyAbcDropdownOptions };
+export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = applyAbcDropdownOptions(BASE_INCIDENT_FIELDS) as DynamicFormField[];
 
 export default function BehaviorIncidentModal({
   visible,
@@ -123,7 +72,7 @@ export default function BehaviorIncidentModal({
   const [time, setTime] = useState(getCurrentTime());
   const [teacher, setTeacher] = useState(defaultTeacher);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
-  const [fields, setFields] = useState<DynamicFormField[]>(DEFAULT_INCIDENT_FIELDS);
+  const [fields, setFields] = useState<DynamicFormField[]>(() => applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
   const [isValid, setIsValid] = useState(false);
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
 
@@ -134,15 +83,15 @@ export default function BehaviorIncidentModal({
         const loaded = data.fields.filter((f: DynamicFormField) => f.visible !== false);
         const nonStandard = loaded.filter((f: DynamicFormField) => !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()));
         if (nonStandard.length === 0) {
-          setFields(DEFAULT_INCIDENT_FIELDS);
+          setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
         } else {
-          setFields(loaded);
+          setFields(applyAbcDropdownOptions(loaded));
         }
       } else {
-        setFields(DEFAULT_INCIDENT_FIELDS);
+        setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
       }
     } catch {
-      setFields(DEFAULT_INCIDENT_FIELDS);
+      setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
     }
   }, []);
 
@@ -164,6 +113,7 @@ export default function BehaviorIncidentModal({
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', handleSync);
       window.addEventListener('melue_form_config_changed', handleSync as EventListener);
+      window.addEventListener('melue_abc_lists_changed', handleSync as EventListener);
       window.addEventListener('focus', handleSync);
     }
 
@@ -171,6 +121,7 @@ export default function BehaviorIncidentModal({
       if (typeof window !== 'undefined') {
         window.removeEventListener('storage', handleSync);
         window.removeEventListener('melue_form_config_changed', handleSync as EventListener);
+        window.removeEventListener('melue_abc_lists_changed', handleSync as EventListener);
         window.removeEventListener('focus', handleSync);
       }
     };

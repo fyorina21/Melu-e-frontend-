@@ -13,6 +13,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { useToast } from '../../context/ToastContext';
 import { getTeacherStudentProfile, saveSocialSkillsAssessment, getSocialSkillsAssessment } from '../../api/teacherExtrasApi';
+import { getFormConfig } from '../../api/institutionalAdminApi';
 import { useEffect } from 'react';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -22,10 +23,10 @@ import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SocialSkillsAssessment'>;
 
-type Score = 0 | 1 | 2 | 3;
+type Score = number;
 const SCORES: Score[] = [0, 1, 2, 3];
 
-const SCORE_LABEL: Record<Score, string> = {
+const SCORE_LABEL: Record<number, string> = {
   0: 'Never',
   1: 'Sometimes',
   2: 'Often',
@@ -35,28 +36,80 @@ const SCORE_LABEL: Record<Score, string> = {
 interface Question {
   id: string;
   text: string;
+  section?: string;
+  options?: string[];
 }
 
-const QUESTIONS: Question[] = [
-  { id: 'q1', text: 'Initiates interactions with peers without prompting' },
-  { id: 'q2', text: 'Maintains eye contact during conversations' },
-  { id: 'q3', text: 'Takes turns during play or group activities' },
-  { id: 'q4', text: 'Responds appropriately to greetings' },
-  { id: 'q5', text: 'Shares materials or toys with others' },
-  { id: 'q6', text: 'Recognizes and respects personal space' },
-  { id: 'q7', text: 'Uses polite language (please, thank you, sorry)' },
-  { id: 'q8', text: 'Joins group activities without hesitation' },
-  { id: 'q9', text: 'Identifies others’ emotions accurately' },
-  { id: 'q10', text: 'Resolves minor conflicts with words' },
+const DEFAULT_QUESTIONS: Question[] = [
+  { id: 'q1', text: 'Initiates interactions with peers without prompting', section: 'Social Interaction' },
+  { id: 'q2', text: 'Maintains eye contact during conversations', section: 'Communication' },
+  { id: 'q3', text: 'Takes turns during play or group activities', section: 'Social Interaction' },
+  { id: 'q4', text: 'Responds appropriately to greetings', section: 'Communication' },
+  { id: 'q5', text: 'Shares materials or toys with others', section: 'Social Interaction' },
+  { id: 'q6', text: 'Recognizes and respects personal space', section: 'Social Interaction' },
+  { id: 'q7', text: 'Uses polite language (please, thank you, sorry)', section: 'Communication' },
+  { id: 'q8', text: 'Joins group activities without hesitation', section: 'Social Interaction' },
+  { id: 'q9', text: 'Identifies others’ emotions accurately', section: 'Social Interaction' },
+  { id: 'q10', text: 'Resolves minor conflicts with words', section: 'Communication' },
 ];
 
 export default function SocialSkillsAssessmentScreen({ route, navigation }: Props) {
   const studentId = route.params?.studentId ?? 'student-a';
   const { showToast } = useToast();
+  const [questions, setQuestions] = useState<Question[]>(DEFAULT_QUESTIONS);
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+
+  const loadQuestions = React.useCallback(async () => {
+    try {
+      const { data } = await getFormConfig('Social Skills Questionnaire');
+      if (data && Array.isArray(data.fields) && data.fields.length > 0) {
+        const visibleFields = data.fields.filter((f: any) => f.visible !== false);
+        setQuestions(
+          visibleFields.map((f: any) => ({
+            id: String(f.id),
+            text: String(f.label || f.text || 'Question'),
+            section: f.section,
+            options: Array.isArray(f.options) && f.options.length > 0 ? f.options : undefined,
+          }))
+        );
+        return;
+      }
+    } catch {}
+    setQuestions(DEFAULT_QUESTIONS);
+  }, []);
+
+  useEffect(() => {
+    loadQuestions();
+  }, [loadQuestions]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('social')) {
+        const cfg = e.detail?.config;
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          const visibleFields = cfg.fields.filter((f: any) => f.visible !== false);
+          setQuestions(
+            visibleFields.map((f: any) => ({
+              id: String(f.id),
+              text: String(f.label || f.text || 'Question'),
+              section: f.section,
+              options: Array.isArray(f.options) && f.options.length > 0 ? f.options : undefined,
+            }))
+          );
+        } else {
+          loadQuestions();
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, [loadQuestions]);
 
   const answered = Object.keys(scores).length;
   useEffect(() => {
@@ -71,7 +124,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
     }).catch(() => {});
   }, [studentId]);
   const totalScore = Object.values(scores).reduce<number>((a, b) => a + b, 0);
-  const maxScore = QUESTIONS.length * 3;
+  const maxScore = questions.reduce<number>((sum, q) => sum + ((q.options?.length || 4) - 1), 0);
   const percent = maxScore ? Math.round((totalScore / maxScore) * 100) : 0;
 
   const setScore = (id: string, value: Score) =>
@@ -90,10 +143,10 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
   };
 
   const handleSave = async () => {
-    if (answered < QUESTIONS.length) {
+    if (answered < questions.length) {
       Alert.alert(
         'Incomplete',
-        `Please answer all ${QUESTIONS.length} questions (${answered} answered).`
+        `Please answer all ${questions.length} questions (${answered} answered).`
       );
       return;
     }
@@ -117,10 +170,25 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
       />
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
-          <Feather name="arrow-left" size={16} color={colors.navyText} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+            <Feather name="arrow-left" size={16} color={colors.navyText} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.editFormBtn}
+            onPress={() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/FormBuilder?form=Social+Skills+Questionnaire';
+              } else if (navigation?.navigate) {
+                (navigation.navigate as any)('FormBuilder', { form: 'Social Skills Questionnaire' });
+              }
+            }}
+          >
+            <Feather name="edit-3" size={13} color="#2563EB" />
+            <Text style={styles.editFormBtnText}>Edit in Form Builder</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={typography.h1}>Social Skills Questionnaire</Text>
         <Text style={typography.body}>
           Student: {profile?.fullName || 'Student'}
@@ -130,50 +198,65 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.progressBox}>
           <Text style={styles.progressLabel}>
-            Progress: {answered}/{QUESTIONS.length} · Score {percent}%
+            Progress: {answered}/{questions.length} · Score {percent}%
           </Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${percent}%` }]} />
           </View>
         </View>
 
-        {QUESTIONS.map((q, idx) => (
-          <View key={q.id} style={styles.questionCard}>
-            <Text style={styles.questionText}>
-              {idx + 1}. {q.text}
-            </Text>
-            <View style={styles.scoreRow}>
-              {SCORES.map((s) => {
-                const selected = scores[q.id] === s;
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      styles.scoreBtn,
-                      selected && styles.scoreBtnActive,
-                    ]}
-                    onPress={() => setScore(q.id, s)}
-                  >
-                    <Text
+        {questions.map((q, idx) => {
+          const itemOptions =
+            q.options && q.options.length > 0
+              ? q.options
+              : ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'];
+
+          return (
+            <View key={q.id} style={styles.questionCard}>
+              <View style={styles.questionHeaderRow}>
+                <Text style={styles.questionText}>
+                  {idx + 1}. {q.text}
+                </Text>
+                {q.section && (
+                  <View style={styles.sectionBadge}>
+                    <Text style={styles.sectionBadgeText}>{q.section}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.scoreRow}>
+                {itemOptions.map((opt, sIdx) => {
+                  const selected = scores[q.id] === sIdx;
+                  const displayLabel = opt.includes('—') ? opt.split('—')[1].trim() : opt;
+                  return (
+                    <TouchableOpacity
+                      key={sIdx}
                       style={[
-                        styles.scoreBtnText,
-                        selected && styles.scoreBtnTextActive,
+                        styles.scoreBtn,
+                        selected && styles.scoreBtnActive,
                       ]}
+                      onPress={() => setScore(q.id, sIdx)}
                     >
-                      {SCORE_LABEL[s]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                      <Text
+                        style={[
+                          styles.scoreBtnText,
+                          selected && styles.scoreBtnTextActive,
+                        ]}
+                      >
+                        {displayLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
 
         <DynamicFormFields
           formName="Social Skills Questionnaire"
           values={customValues}
           onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-          excludeStandardLabels={['Student Name']}
+          excludeStandardLabels={['Student Name', ...questions.map((q) => q.text), ...questions.map((q) => q.id)]}
         />
 
         <View style={styles.actionsRow}>
@@ -211,8 +294,30 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     gap: spacing.xs,
   },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   backText: { color: colors.navyText, fontSize: 14, fontWeight: '500' },
+  editFormBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.md,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  editFormBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
   content: { padding: spacing.lg, gap: spacing.md },
   progressBox: {
     backgroundColor: colors.bgCard,
@@ -238,7 +343,26 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.md,
   },
-  questionText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
+  questionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  questionText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.navyText },
+  sectionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  sectionBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
   scoreRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' },
   scoreBtn: {
     flex: 1,

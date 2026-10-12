@@ -109,6 +109,109 @@ export function clearStudentAssessmentCompleted(studentId: string | number): voi
 }
 
 /**
+ * Retrieves the current skills assessment progress percentage and status for a student.
+ */
+export function getStudentSkillsProgress(
+  studentId: string | number,
+  fallbackProgress: number = 0,
+  fallbackStatus: string = 'Not Started'
+): { progress: number; status: string } {
+  if (typeof localStorage === 'undefined' || !studentId) {
+    return { progress: fallbackProgress, status: fallbackStatus };
+  }
+  try {
+    const sid = String(studentId);
+    const aliasSid = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : sid;
+
+    if (
+      localStorage.getItem(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${sid}`) === 'true' ||
+      localStorage.getItem(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${aliasSid}`) === 'true'
+    ) {
+      return { progress: 100, status: 'Completed' };
+    }
+
+    const raw =
+      localStorage.getItem(`melue_skills_assessment_${sid}`) ||
+      localStorage.getItem(`melue_skills_assessment_${aliasSid}`) ||
+      localStorage.getItem(`skills_assessment_${sid}`);
+
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.status === 'completed' || parsed.progress === 100) {
+        return { progress: 100, status: 'Completed' };
+      }
+      if (parsed.progress !== undefined && parsed.progress !== null) {
+        const prog = Math.min(100, Math.max(0, Number(parsed.progress)));
+        const stat = prog >= 100 ? 'Completed' : prog > 0 ? 'In Progress' : 'Not Started';
+        return { progress: prog, status: stat };
+      }
+      if (parsed.scores && typeof parsed.scores === 'object') {
+        const scoredKeys = Object.keys(parsed.scores).filter(
+          (k) => parsed.scores[k] !== undefined && parsed.scores[k] !== null && parsed.scores[k] !== ''
+        );
+        const answered = scoredKeys.length;
+        const prog = Math.min(100, Math.round((answered / 55) * 100));
+        const stat = prog >= 100 ? 'Completed' : prog > 0 ? 'In Progress' : 'Not Started';
+        return { progress: prog, status: stat };
+      }
+    }
+  } catch {}
+  return { progress: fallbackProgress, status: fallbackStatus };
+}
+
+/**
+ * Retrieves the current behavior assessment progress percentage and status for a student.
+ */
+export function getStudentBehaviorProgress(
+  studentId: string | number,
+  fallbackProgress: number = 0,
+  fallbackStatus: string = 'Not Started'
+): { progress: number; status: string } {
+  if (typeof localStorage === 'undefined' || !studentId) {
+    return { progress: fallbackProgress, status: fallbackStatus };
+  }
+  try {
+    const sid = String(studentId);
+    const aliasSid = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : sid;
+
+    const raw =
+      localStorage.getItem(`melue_behavior_assessment_${sid}`) ||
+      localStorage.getItem(`melue_behavior_assessment_${aliasSid}`);
+
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.status === 'submitted' || parsed.progress === 100) {
+        return { progress: 100, status: 'Completed' };
+      }
+      if (parsed.progress !== undefined && parsed.progress !== null) {
+        const prog = Math.min(100, Math.max(0, Number(parsed.progress)));
+        const stat = prog >= 100 ? 'Completed' : prog > 0 ? 'In Progress' : 'Not Started';
+        return { progress: prog, status: stat };
+      }
+      const massCount =
+        parsed.massAnswers && typeof parsed.massAnswers === 'object'
+          ? Object.keys(parsed.massAnswers).filter((k) => parsed.massAnswers[k]).length
+          : 0;
+      const fastCount =
+        parsed.fastAnswers && typeof parsed.fastAnswers === 'object'
+          ? Object.keys(parsed.fastAnswers).filter((k) => parsed.fastAnswers[k] !== undefined).length
+          : 0;
+      const totalAnswered = massCount + fastCount;
+      if (totalAnswered > 0) {
+        const prog = Math.min(100, Math.round((totalAnswered / 20) * 100));
+        const stat = prog >= 100 ? 'Completed' : 'In Progress';
+        return { progress: prog, status: stat };
+      }
+      if (Array.isArray(parsed.records) && parsed.records.length > 0) {
+        const prog = Math.min(100, parsed.records.length * 20);
+        return { progress: prog, status: 'In Progress' };
+      }
+    }
+  } catch {}
+  return { progress: fallbackProgress, status: fallbackStatus };
+}
+
+/**
  * Determines whether a student has 100% completed their assessment.
  */
 export function isStudentAssessment100PercentCompleted(student: any): boolean {

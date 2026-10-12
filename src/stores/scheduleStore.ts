@@ -105,12 +105,19 @@ function emit() {
   listeners.forEach((listener) => listener());
 }
 
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
+
 export function getWeekData(): WeekData {
-  return schedule;
+  const filtered: WeekData = {};
+  for (const day of Object.keys(schedule)) {
+    const dayNum = Number(day);
+    filtered[dayNum] = filterOutDeletedStaff(schedule[dayNum] || []);
+  }
+  return filtered;
 }
 
 export function getUnavailability(): UnavailabilityEntry[] {
-  return unavailability;
+  return filterOutDeletedStaff(unavailability);
 }
 
 function findDayOf(id: string): number | null {

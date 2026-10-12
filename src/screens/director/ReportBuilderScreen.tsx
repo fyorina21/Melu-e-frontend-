@@ -2,7 +2,7 @@
 // screens/director/ReportBuilderScreen.tsx
 // SCR-DIR-007: Custom Report Builder (Director View)
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import StatusPill from '../../components/StatusPill';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { generateCustomReport } from '../../api/directorApi';
 import { getStaffOptions } from '../../api/optionsApi';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { DirectorStackParamList } from '../../types';
 
 const PROGRAMS = ['All Programs', 'ABA', 'Speech Therapy', 'Occupational Therapy'];
@@ -126,13 +127,24 @@ export default function ReportBuilderScreen({
     onSelect: (val: string) => void;
   } | null>(null);
 
-  useEffect(() => {
+  const loadTherapists = useCallback(() => {
     getStaffOptions()
-      .then(({ data: opts }) =>
-        setTherapists(['All Staff', ...opts.filter((t) => t.role === 'teacher').map((t) => t.name)])
-      )
+      .then(({ data: opts }) => {
+        const clean = filterOutDeletedStaff(opts);
+        const list = ['All Staff', ...clean.filter((t) => t.role === 'teacher').map((t) => t.name)];
+        setTherapists(list);
+        setTherapist((prev) => (list.includes(prev) ? prev : 'All Staff'));
+      })
       .catch(() => setTherapists(['All Staff']));
   }, []);
+
+  useEffect(() => {
+    loadTherapists();
+  }, [loadTherapists]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(loadTherapists);
+  }, [loadTherapists]);
 
   const handleGenerate = async () => {
     setGenerating(true);

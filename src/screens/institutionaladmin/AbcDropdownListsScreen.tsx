@@ -17,17 +17,14 @@ import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAbcLists, saveAbcList, resetAbcListsToDefault } from '../../api/institutionalAdminApi';
 import { useToast } from '../../context/ToastContext';
+import {
+  getStoredAbcLists,
+  setStoredAbcLists,
+  resetStoredAbcLists,
+  type AbcItem,
+} from '../../stores/abcListsStore';
 
 type ListTab = 'Behaviors' | 'Antecedents' | 'Consequences' | 'Locations';
-
-interface AbcItem {
-  id: string;
-  name: string;
-  definition?: string;
-  category?: string;
-  type?: string;
-  status: 'Active' | 'Inactive';
-}
 
 const CATEGORY_OPTIONS = ['Physical', 'Safety', 'Verbal', 'Social'];
 
@@ -38,50 +35,11 @@ export default function AbcDropdownListsScreen({
   const [activeTab, setActiveTab] = useState<ListTab>('Behaviors');
   const [saving, setSaving] = useState(false);
 
-  // Demo datasets per tab matching screenshots
-  const [behaviors, setBehaviors] = useState<AbcItem[]>([
-    {
-      id: 'b1',
-      name: 'Self-Injurious Behavior',
-      definition: 'Any behavior that causes harm to self',
-      category: 'Physical',
-      status: 'Active',
-    },
-    {
-      id: 'b2',
-      name: 'Aggression',
-      definition: 'Physical or verbal acts directed toward others',
-      category: 'Physical',
-      status: 'Active',
-    },
-    {
-      id: 'b3',
-      name: 'Elopement',
-      definition: 'Leaving designated area without permission',
-      category: 'Safety',
-      status: 'Active',
-    },
-  ]);
-
-  const [antecedents, setAntecedents] = useState<AbcItem[]>([
-    { id: 'a1', name: 'Task demand', type: 'Academic', status: 'Active' },
-    { id: 'a2', name: 'Transition', type: 'Environmental', status: 'Active' },
-    { id: 'a3', name: 'Denial of access', type: 'Social', status: 'Active' },
-    { id: 'a4', name: 'Unstructured time', type: 'Environmental', status: 'Active' },
-  ]);
-
-  const [consequences, setConsequences] = useState<AbcItem[]>([
-    { id: 'c1', name: 'Escape task', type: 'Negative Reinforcement', status: 'Active' },
-    { id: 'c2', name: 'Attention', type: 'Positive Reinforcement', status: 'Active' },
-    { id: 'c3', name: 'Tangible item', type: 'Positive Reinforcement', status: 'Active' },
-  ]);
-
-  const [locations, setLocations] = useState<AbcItem[]>([
-    { id: 'l1', name: 'Classroom A', status: 'Active' },
-    { id: 'l2', name: 'Therapy Room 1', status: 'Active' },
-    { id: 'l3', name: 'Outdoor Area', status: 'Active' },
-    { id: 'l4', name: 'Sensory Room', status: 'Inactive' },
-  ]);
+  // Datasets per tab initialized from abcListsStore
+  const [behaviors, setBehaviors] = useState<AbcItem[]>(() => getStoredAbcLists().behaviors);
+  const [antecedents, setAntecedents] = useState<AbcItem[]>(() => getStoredAbcLists().antecedents);
+  const [consequences, setConsequences] = useState<AbcItem[]>(() => getStoredAbcLists().consequences);
+  const [locations, setLocations] = useState<AbcItem[]>(() => getStoredAbcLists().locations);
 
   const toWire = (items: AbcItem[]) =>
     items.map((i) => ({
@@ -158,12 +116,25 @@ export default function AbcDropdownListsScreen({
           : item
       );
 
-    if (tab === 'Behaviors') setBehaviors(updater);
-    else if (tab === 'Antecedents') setAntecedents(updater);
-    else if (tab === 'Consequences') setConsequences(updater);
-    else if (tab === 'Locations') setLocations(updater);
+    if (tab === 'Behaviors') {
+      const next = updater(behaviors);
+      setBehaviors(next);
+      setStoredAbcLists({ behaviors: next });
+    } else if (tab === 'Antecedents') {
+      const next = updater(antecedents);
+      setAntecedents(next);
+      setStoredAbcLists({ antecedents: next });
+    } else if (tab === 'Consequences') {
+      const next = updater(consequences);
+      setConsequences(next);
+      setStoredAbcLists({ consequences: next });
+    } else if (tab === 'Locations') {
+      const next = updater(locations);
+      setLocations(next);
+      setStoredAbcLists({ locations: next });
+    }
 
-    showToast('Status toggled — press Save Changes to persist', 'info');
+    showToast('Status toggled — changes saved', 'info');
   };
 
   // Generic inline Add State (Antecedents / Consequences / Locations tabs)
@@ -189,16 +160,18 @@ export default function AbcDropdownListsScreen({
     withType: boolean
   ) => {
     if (!newName.trim()) return;
-    setList([
-      ...list,
-      {
-        id: Date.now().toString(),
-        name: newName.trim(),
-        ...(withType ? { type: newType.trim() || 'General' } : {}),
-        status: 'Active',
-      },
-    ]);
-    showToast('Item added — press Save Changes to persist', 'info');
+    const newItem: AbcItem = {
+      id: Date.now().toString(),
+      name: newName.trim(),
+      ...(withType ? { type: newType.trim() || 'General' } : {}),
+      status: 'Active',
+    };
+    const next = [...list, newItem];
+    setList(next);
+    if (activeTab === 'Antecedents') setStoredAbcLists({ antecedents: next });
+    else if (activeTab === 'Consequences') setStoredAbcLists({ consequences: next });
+    else if (activeTab === 'Locations') setStoredAbcLists({ locations: next });
+    showToast('Item added — changes saved', 'info');
     cancelAdd();
   };
 
@@ -207,25 +180,28 @@ export default function AbcDropdownListsScreen({
     setList: React.Dispatch<React.SetStateAction<AbcItem[]>>
   ) => {
     if (!editName.trim() || !editingId) return;
-    setList(
-      list.map((i) =>
-        i.id === editingId
-          ? {
-              ...i,
-              name: editName.trim(),
-              status: editStatus,
-              ...(i.type !== undefined ? { type: editType.trim() } : {}),
-              ...(i.definition !== undefined
-                ? { definition: editDefinition.trim() }
-                : {}),
-              ...(i.category !== undefined
-                ? { category: editCategory.trim() }
-                : {}),
-            }
-          : i
-      )
+    const next = list.map((i) =>
+      i.id === editingId
+        ? {
+            ...i,
+            name: editName.trim(),
+            status: editStatus,
+            ...(i.type !== undefined ? { type: editType.trim() } : {}),
+            ...(i.definition !== undefined
+              ? { definition: editDefinition.trim() }
+              : {}),
+            ...(i.category !== undefined
+              ? { category: editCategory.trim() }
+              : {}),
+          }
+        : i
     );
-    showToast('Changes applied — press Save Changes to persist', 'info');
+    setList(next);
+    if (activeTab === 'Behaviors') setStoredAbcLists({ behaviors: next });
+    else if (activeTab === 'Antecedents') setStoredAbcLists({ antecedents: next });
+    else if (activeTab === 'Consequences') setStoredAbcLists({ consequences: next });
+    else if (activeTab === 'Locations') setStoredAbcLists({ locations: next });
+    showToast('Changes applied and saved', 'info');
     setEditingId(null);
   };
 
@@ -239,8 +215,10 @@ export default function AbcDropdownListsScreen({
       category: newBehaviorCategory,
       status: 'Active',
     };
-    setBehaviors([...behaviors, newItem]);
-    showToast('Behavior added — press Save Changes to persist', 'info');
+    const next = [...behaviors, newItem];
+    setBehaviors(next);
+    setStoredAbcLists({ behaviors: next });
+    showToast('Behavior added — changes saved', 'info');
     setIsAddingBehavior(false);
     setNewBehaviorName('');
     setNewBehaviorDefinition('');
@@ -253,30 +231,43 @@ export default function AbcDropdownListsScreen({
   };
 
   const handleDeleteBehavior = (id: string) => {
-    setBehaviors((prev) => prev.filter((item) => item.id !== id));
-    showToast('Behavior removed — press Save Changes to persist', 'info');
+    const next = behaviors.filter((item) => item.id !== id);
+    setBehaviors(next);
+    setStoredAbcLists({ behaviors: next });
+    showToast('Behavior removed — changes saved', 'info');
   };
 
   const handleDeleteAntecedent = (id: string) => {
-    setAntecedents((prev) => prev.filter((item) => item.id !== id));
-    showToast('Antecedent removed — press Save Changes to persist', 'info');
+    const next = antecedents.filter((item) => item.id !== id);
+    setAntecedents(next);
+    setStoredAbcLists({ antecedents: next });
+    showToast('Antecedent removed — changes saved', 'info');
   };
 
   const handleDeleteConsequence = (id: string) => {
-    setConsequences((prev) => prev.filter((item) => item.id !== id));
-    showToast('Consequence removed — press Save Changes to persist', 'info');
+    const next = consequences.filter((item) => item.id !== id);
+    setConsequences(next);
+    setStoredAbcLists({ consequences: next });
+    showToast('Consequence removed — changes saved', 'info');
   };
 
   const handleDeleteLocation = (id: string) => {
-    setLocations((prev) => prev.filter((item) => item.id !== id));
-    showToast('Location removed — press Save Changes to persist', 'info');
+    const next = locations.filter((item) => item.id !== id);
+    setLocations(next);
+    setStoredAbcLists({ locations: next });
+    showToast('Location removed — changes saved', 'info');
   };
 
   const handleResetToDefault = async () => {
     try {
-      await resetAbcListsToDefault();
-      const { data } = await getAbcLists();
-      applyLoaded(data as Record<string, unknown>);
+      try {
+        await resetAbcListsToDefault();
+      } catch {}
+      const resetData = resetStoredAbcLists();
+      setBehaviors(resetData.behaviors);
+      setAntecedents(resetData.antecedents);
+      setConsequences(resetData.consequences);
+      setLocations(resetData.locations);
       showToast('ABC lists reset to defaults', 'success');
     } catch (err) {
       showToast('Failed to reset ABC lists', 'error');
@@ -286,12 +277,17 @@ export default function AbcDropdownListsScreen({
   const handleSaveConfiguration = async () => {
     setSaving(true);
     try {
-      await Promise.all([
-        saveAbcList('Behaviors', toWire(behaviors)),
-        saveAbcList('Antecedents', toWire(antecedents)),
-        saveAbcList('Consequences', toWire(consequences)),
-        saveAbcList('Locations', toWire(locations)),
-      ]);
+      setStoredAbcLists({ behaviors, antecedents, consequences, locations });
+      try {
+        await Promise.all([
+          saveAbcList('Behaviors', toWire(behaviors)),
+          saveAbcList('Antecedents', toWire(antecedents)),
+          saveAbcList('Consequences', toWire(consequences)),
+          saveAbcList('Locations', toWire(locations)),
+        ]);
+      } catch (apiErr) {
+        console.warn('API save warning:', apiErr);
+      }
       showToast('Configuration saved successfully', 'success');
     } catch (err) {
       showToast('Failed to save configuration', 'error');

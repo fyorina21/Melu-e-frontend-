@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { markAttendance, markBulkAttendance, getAttendanceHistory, getAttendanceReport } from '../../api/sessionApi';
 import StudentAvatar from '../../components/StudentAvatar';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'Attendance'>;
@@ -67,7 +68,11 @@ export default function AttendanceScreen({ route, navigation }: Props) {
   const load = useCallback(async () => {
     try {
       const { data } = await getAttendanceHistory({ sessionId });
-      setRoster(data);
+      setRoster({
+        student: data.student || [],
+        therapist: filterOutDeletedStaff(data.therapist || []),
+        support_staff: filterOutDeletedStaff(data.support_staff || []),
+      });
     } catch (err) {
       setRoster({ student: [], therapist: [], support_staff: [] });
     }
@@ -76,6 +81,10 @@ export default function AttendanceScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(load);
   }, [load]);
 
   if (loading) return <ScreenLoader />;

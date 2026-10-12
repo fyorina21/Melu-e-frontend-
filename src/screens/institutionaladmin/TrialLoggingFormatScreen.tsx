@@ -114,15 +114,20 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
     }
     try {
       setActionLoadingId(id);
-      const res = await updatePromptLevelApi(id, {
-        label: editBuf.name.trim(),
-        name: editBuf.name.trim(),
-        color: editBuf.color,
-        display_order: editBuf.order,
-        order: editBuf.order,
-        is_active: true,
-      });
-      const updated = res.data;
+      let updated: any = null;
+      try {
+        const res = await updatePromptLevelApi(id, {
+          label: editBuf.name.trim(),
+          name: editBuf.name.trim(),
+          color: editBuf.color,
+          display_order: editBuf.order,
+          order: editBuf.order,
+          is_active: true,
+        });
+        updated = res.data;
+      } catch (apiErr) {
+        console.warn('API update failed, saving locally', apiErr);
+      }
       const next = levels
         .map((l) =>
           l.id === id
@@ -181,15 +186,20 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
     }
     try {
       setSubmitting(true);
-      const res = await createPromptLevelApi({
-        label: newLevel.name.trim(),
-        name: newLevel.name.trim(),
-        color: newLevel.color,
-        display_order: newLevel.order,
-        order: newLevel.order,
-        is_active: true,
-      });
-      const created = res.data;
+      let created: any = null;
+      try {
+        const res = await createPromptLevelApi({
+          label: newLevel.name.trim(),
+          name: newLevel.name.trim(),
+          color: newLevel.color,
+          display_order: newLevel.order,
+          order: newLevel.order,
+          is_active: true,
+        });
+        created = res.data;
+      } catch (apiErr) {
+        console.warn('API create failed, adding locally', apiErr);
+      }
       const createdItem: LevelItem = {
         id: String(created?.id ?? Date.now()),
         name: created?.name || created?.label || newLevel.name.trim(),
@@ -228,10 +238,12 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
           console.warn('Reorder endpoint warning:', reorderErr);
         }
       }
+      const numConsecutive = Number(consecutive) || 5;
+      const numStream = Number(streamCount) || 5;
       try {
         await saveTrialLoggingConfig({
-          streamCount,
-          consecutive,
+          streamCount: numStream,
+          consecutive: numConsecutive,
           independence,
           autoSuggest,
           layout,
@@ -239,7 +251,8 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       } catch {
         // Fallback gracefully if separate trial logging config endpoint is not configured
       }
-      syncPromptLevelsFromApi(levels, consecutive, streamCount);
+      setPromptLevels(levels, numConsecutive, numStream);
+      syncPromptLevelsFromApi(levels, numConsecutive, numStream);
       showToast('Trial logging format saved successfully', 'success');
     } catch (err: any) {
       console.error('Failed to save configuration', err);
@@ -367,7 +380,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                       <ActivityIndicator size="small" color="#0284C7" />
                     ) : (
                       <>
-                        <TouchableOpacity onPress={() => saveEdit(lv.id)} style={styles.actionBtn}>
+                        <TouchableOpacity onPress={() => saveEdit(lv.id)} style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}>
                           <Feather name="check" size={14} color={colors.white} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => setEditingId(null)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
@@ -497,7 +510,19 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 <Text style={styles.fieldLabel}>Consecutive Trials</Text>
                 <TextInput
                   value={String(consecutive)}
-                  onChangeText={(e) => setConsecutive(Number(e))}
+                  onChangeText={(e) => {
+                    const parsed = parseInt(e, 10);
+                    const val = isNaN(parsed) ? 0 : parsed;
+                    setConsecutive(val);
+                    if (val > 0) {
+                      setPromptLevels(levels, val, streamCount);
+                    }
+                  }}
+                  onBlur={() => {
+                    const val = Number(consecutive) || 5;
+                    setConsecutive(val);
+                    setPromptLevels(levels, val, streamCount);
+                  }}
                   style={styles.numberInput}
                   keyboardType="numeric"
                 />

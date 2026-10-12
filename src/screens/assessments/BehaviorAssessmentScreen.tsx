@@ -9,6 +9,7 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getBehaviorAssessment, saveBehaviorAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import { getFormConfig } from '../../api/institutionalAdminApi';
 import type { SessionStackParamList } from '../../types';
 
 type AssessmentTab = 'MASS' | 'FAST' | 'ABC';
@@ -31,7 +32,7 @@ interface MassItem {
   function: 'Sensory' | 'Escape' | 'Attention' | 'Tangible';
 }
 
-const MASS_ITEMS: MassItem[] = [
+const DEFAULT_MASS_ITEMS: MassItem[] = [
   { id: 'M1', text: 'Would the behavior occur continuously if left alone for long periods of time?', function: 'Sensory' },
   { id: 'M2', text: 'Does the behavior occur when the person is asked to do a difficult task?', function: 'Escape' },
   { id: 'M3', text: 'Does the behavior seem to occur when the person is ignored?', function: 'Attention' },
@@ -52,7 +53,7 @@ interface FastItem {
   category: 'Social - Positive' | 'Social - Negative' | 'Automatic - Positive' | 'Automatic - Negative';
 }
 
-const FAST_ITEMS: FastItem[] = [
+const DEFAULT_FAST_ITEMS: FastItem[] = [
   { id: 'F1', text: 'Does the behavior occur when others are present, and does attention follow?', category: 'Social - Positive' },
   { id: 'F2', text: 'Does the behavior occur to avoid or escape a task, demand, or request?', category: 'Social - Negative' },
   { id: 'F3', text: 'Does the behavior produce a rewarding sensory effect without others?', category: 'Automatic - Positive' },
@@ -62,6 +63,24 @@ const FAST_ITEMS: FastItem[] = [
   { id: 'F7', text: 'Does an adult typically react by giving attention or talking to the person?', category: 'Social - Positive' },
   { id: 'F8', text: 'Is the behavior reduced when a preferred item or activity is provided freely?', category: 'Social - Positive' },
 ];
+
+
+function inferMassFunction(id: string, text: string): 'Sensory' | 'Escape' | 'Attention' | 'Tangible' {
+  const t = (text || '').toLowerCase();
+  if (t.includes('alone') || t.includes('sensory') || t.includes('stimulat')) return 'Sensory';
+  if (t.includes('difficult') || t.includes('escape') || t.includes('undesirable') || t.includes('not enjoy')) return 'Escape';
+  if (t.includes('ignored') || t.includes('attention') || t.includes('reaction')) return 'Attention';
+  if (t.includes('item') || t.includes('tangible') || t.includes('food') || t.includes('toy') || t.includes('access')) return 'Tangible';
+  return 'Sensory';
+}
+
+function inferFastCategory(id: string, text: string): 'Social - Positive' | 'Social - Negative' | 'Automatic - Positive' | 'Automatic - Negative' {
+  const t = (text || '').toLowerCase();
+  if (t.includes('avoid') || t.includes('escape') || t.includes('demand') || t.includes('transition')) return 'Social - Negative';
+  if (t.includes('alone') || t.includes('unoccupied') || (t.includes('rewarding') && t.includes('sensory'))) return 'Automatic - Positive';
+  if (t.includes('unpleasant') || t.includes('pain')) return 'Automatic - Negative';
+  return 'Social - Positive';
+}
 
 interface BehaviorRecord {
   id: string;
@@ -86,9 +105,23 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'BehaviorAssessment'>
 
 export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
   const { logout } = useAuth();
-  const { studentId } = route.params;
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
+  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && studentId) {
+      try {
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
+    }
+  }, [studentId]);
+
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [massItems, setMassItems] = useState<MassItem[]>(DEFAULT_MASS_ITEMS);
+  const [fastItems, setFastItems] = useState<FastItem[]>(DEFAULT_FAST_ITEMS);
   const [tab, setTab] = useState<AssessmentTab>('MASS');
   const [massAnswers, setMassAnswers] = useState<Record<string, string>>({});
   const [fastAnswers, setFastAnswers] = useState<Record<string, boolean>>({});
@@ -112,6 +145,33 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
       setProfile(null);
     }
     try {
+      const { data: cfg } = await getFormConfig('Behavioral Assessment');
+      if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+        const visibleFields = cfg.fields.filter((f: any) => f.visible !== false);
+        const mFields = visibleFields.filter((f: any) =>
+          (f.section && f.section.toUpperCase().includes('MASS')) || /^M\d+/i.test(f.id)
+        );
+        const fFields = visibleFields.filter((f: any) =>
+          (f.section && f.section.toUpperCase().includes('FAST')) || /^F\d+/i.test(f.id)
+        );
+
+        if (mFields.length > 0) {
+          setMassItems(mFields.map((f: any) => ({
+            id: String(f.id),
+            text: String(f.label || f.text || ''),
+            function: (f.level || inferMassFunction(f.id, f.label || '')) as any,
+          })));
+        }
+        if (fFields.length > 0) {
+          setFastItems(fFields.map((f: any) => ({
+            id: String(f.id),
+            text: String(f.label || f.text || ''),
+            category: (f.level || inferFastCategory(f.id, f.label || '')) as any,
+          })));
+        }
+      }
+    } catch {}
+    try {
       const { data: saved } = await getBehaviorAssessment(studentId);
       const savedData = (saved?.data ?? {}) as {
         massAnswers?: Record<string, string>;
@@ -131,17 +191,30 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('behavior') && !name.includes('incident')) {
+        load();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, [load]);
+
   if (loading) return <ScreenLoader />;
 
   const setMassAnswer = (id: string, value: string) => setMassAnswers((prev) => ({ ...prev, [id]: value }));
   const setFastAnswer = (id: string, value: boolean) => setFastAnswers((prev) => ({ ...prev, [id]: value }));
 
-  const massAnswered = MASS_ITEMS.filter((i) => massAnswers[i.id]).length;
-  const fastAnswered = FAST_ITEMS.filter((i) => fastAnswers[i.id] !== undefined).length;
+  const massAnswered = massItems.filter((i) => massAnswers[i.id]).length;
+  const fastAnswered = fastItems.filter((i) => fastAnswers[i.id] !== undefined).length;
 
   const massFunctionTotals = (() => {
     const totals: Record<string, number> = { Sensory: 0, Escape: 0, Attention: 0, Tangible: 0 };
-    MASS_ITEMS.forEach((i) => {
+    massItems.forEach((i) => {
       if (massAnswers[i.id]) totals[i.function] += LIKERT_SCORE[massAnswers[i.id]] || 0;
     });
     return totals;
@@ -154,7 +227,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
 
   const fastCategoryTotals = (() => {
     const totals: Record<string, number> = { 'Social - Positive': 0, 'Social - Negative': 0, 'Automatic - Positive': 0, 'Automatic - Negative': 0 };
-    FAST_ITEMS.forEach((i) => {
+    fastItems.forEach((i) => {
       if (fastAnswers[i.id]) totals[i.category] += 1;
     });
     return totals;
@@ -192,7 +265,11 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
 
   const persist = async (payload: Record<string, unknown>, message: string, goBack: boolean) => {
     try {
+      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
       await saveBehaviorAssessment(studentId, payload);
+      if (aliasSid) {
+        await saveBehaviorAssessment(aliasSid, payload);
+      }
       await load();
       Alert.alert('Assessment saved', message);
       if (goBack) {
@@ -203,8 +280,20 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleSaveDraft = () =>
-    persist({ tab, massAnswers, fastAnswers, records, status: 'draft' }, 'Behavior assessment draft saved (MASS + FAST + ABC).', false);
+  const handleSaveDraft = () => {
+    const totalQuestions = massItems.length + fastItems.length;
+    const answeredCount =
+      massItems.filter((i) => massAnswers[i.id]).length +
+      fastItems.filter((i) => fastAnswers[i.id] !== undefined).length;
+    const progress = Math.min(100, Math.round((answeredCount / totalQuestions) * 100));
+    const status = answeredCount >= totalQuestions ? 'completed' : answeredCount > 0 ? 'in_progress' : 'draft';
+
+    persist(
+      { tab, massAnswers, fastAnswers, records, status, progress },
+      `Behavior assessment draft saved (${progress}%).`,
+      false
+    );
+  };
 
   const handleSubmit = () => {
     if (massAnswered === 0 && fastAnswered === 0 && records.length === 0) {
@@ -213,7 +302,15 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
     }
     Alert.alert('Submit behavior assessment?', 'This will send the completed assessment for Program Director review.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Submit', onPress: () => persist({ tab, massAnswers, fastAnswers, records, status: 'submitted' }, 'Behavior assessment submitted for review.', true) },
+      {
+        text: 'Submit',
+        onPress: () =>
+          persist(
+            { tab, massAnswers, fastAnswers, records, status: 'submitted', progress: 100 },
+            'Behavior assessment submitted for review (100%).',
+            true
+          ),
+      },
     ]);
   };
 
@@ -251,7 +348,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
           <View style={styles.card}>
             <Text style={typography.h3}>MASS — Motivation Assessment Scale</Text>
             <Text style={typography.caption}>Rate each statement: how often the behavior occurs in that situation.</Text>
-            {MASS_ITEMS.map((item) => (
+            {massItems.map((item) => (
               <View key={item.id} style={styles.itemBlock}>
                 <Text style={typography.body}><Text style={typography.bodyBold}>{item.id}.</Text> {item.text}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -285,7 +382,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
           <View style={styles.card}>
             <Text style={typography.h3}>FAST — Functional Analysis Screening Tool</Text>
             <Text style={typography.caption}>Answer Yes or No for each statement.</Text>
-            {FAST_ITEMS.map((item) => (
+            {fastItems.map((item) => (
               <View key={item.id} style={styles.itemBlock}>
                 <Text style={typography.body}><Text style={typography.bodyBold}>{item.id}.</Text> {item.text}</Text>
                 <View style={styles.yesNoRow}>
@@ -372,7 +469,7 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
 
         <View style={styles.card}>
           <Text style={typography.h3}>Assessment Summary</Text>
-          <Text style={typography.body}>MASS: {massAnswered}/{MASS_ITEMS.length} answered · FAST: {fastAnswered}/{FAST_ITEMS.length} answered · ABC: {records.length} incidents</Text>
+          <Text style={typography.body}>MASS: {massAnswered}/{massItems.length} answered · FAST: {fastAnswered}/{fastItems.length} answered · ABC: {records.length} incidents</Text>
           {(massAnswered > 0 || fastAnswered > 0) && (
             <View style={styles.summaryBox}>
               <Text style={typography.bodyBold}>Identified function: {identifiedFunction}</Text>

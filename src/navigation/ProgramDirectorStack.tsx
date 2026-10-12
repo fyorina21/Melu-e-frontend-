@@ -10,10 +10,12 @@ import GoalBankManagementScreen from '../screens/programdirector/GoalBankManagem
 import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScreen';
 import GraphChartViewScreen from '../screens/programdirector/GraphChartViewScreen';
 import GoalMasteryApprovalScreen from '../screens/director/GoalMasteryApprovalScreen';
+import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
+import GoalDomainDefinitionsScreen from '../screens/institutionaladmin/GoalDomainDefinitionsScreen';
 
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 
@@ -29,10 +31,12 @@ export default function ProgramDirectorStack() {
       <Stack.Screen name="GoalMasteryApproval" component={GoalMasteryApprovalScreen} />
       <Stack.Screen name="PdParentCommunication" component={ParentCommunicationScreen} />
       <Stack.Screen name="GraphChartView" component={GraphChartViewScreen} />
+      <Stack.Screen name="StudentEnrollment" component={StudentEnrollmentScreen as never} />
       <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen} />
       <Stack.Screen name="AssessmentSummaryReport" component={AssessmentSummaryReportScreen as never} />
       <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
       <Stack.Screen name="SessionDataCollection" component={SessionDataCollectionScreen as never} />
+      <Stack.Screen name="GoalDomainDefinitions" component={GoalDomainDefinitionsScreen as never} />
     </Stack.Navigator>
   );
 }

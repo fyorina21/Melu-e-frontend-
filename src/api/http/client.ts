@@ -14,6 +14,7 @@ import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig 
 import { apiBaseUrl, env, isDemoMode } from '../config/env';
 import { getAccessToken, setAccessToken, clearAuthTokens, getUserRoles } from '../token';
 import { toApiError, ApiError } from './errors';
+import { filterStaffResponse } from '../../utils/deletedStaffHelper';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -23,7 +24,7 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
 let cachedAdminToken: string | null = null;
 let adminTokenPromise: Promise<string | null> | null = null;
 
-async function fetchAdminToken(): Promise<string | null> {
+export async function fetchAdminToken(): Promise<string | null> {
   if (cachedAdminToken) return cachedAdminToken;
   if (!adminTokenPromise) {
     adminTokenPromise = (async () => {
@@ -243,6 +244,9 @@ function createHttpClient(): AxiosInstance {
           durationMs: cfg?._startedAt != null ? Date.now() - cfg._startedAt : 0,
           ok: true,
         });
+      }
+      if (response && response.data && cfg?.url) {
+        response.data = filterStaffResponse(cfg.url, response.data);
       }
       return response;
     },

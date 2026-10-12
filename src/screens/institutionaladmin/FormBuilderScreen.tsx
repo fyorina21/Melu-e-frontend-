@@ -19,7 +19,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
+import { getFormConfig, saveFormConfig, resetFormToDefault, getDefaultFormConfig } from '../../api/institutionalAdminApi';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useToast } from '../../context/ToastContext';
 import DynamicFormFields from '../../components/DynamicFormFields';
@@ -33,9 +33,11 @@ import {
   BEHAVIORAL_SECTIONS,
   PREFERENCE_SECTIONS,
   SENSORY_SECTIONS,
+  SOCIAL_SKILLS_SECTIONS,
   getSectionsForForm,
   ASSESSMENT_DIRECT_ROUTES,
   SCORE_SCALE_PRESETS,
+  SOCIAL_SKILLS_PRESETS,
   BEHAVIORAL_PRESETS,
   SENSORY_PRESETS,
   getPresetsForForm,
@@ -80,13 +82,42 @@ export const FORM_METADATA: Record<string, { id: string; revision: string; pages
   'Behavior Incident Form': { id: 'FRM-BIF-001', revision: 'Rev 1.4 · 2026-09-19', pages: 'Page 1 of 1' },
 };
 
-export default function FormBuilderScreen({ navigation }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
+export default function FormBuilderScreen({ navigation, route }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'FormBuilder'>) {
   const { showToast } = useToast();
-  const [selectedForm, setSelectedForm] = useState<string>(FORMS[0]);
+  const [selectedForm, setSelectedForm] = useState<string>(() => {
+    const fromParam = (route?.params as any)?.form;
+    const fromUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('form') : null;
+    const candidate = fromParam || fromUrl;
+    if (candidate) {
+      const match = FORMS.find(
+        (f) =>
+          f.toLowerCase() === candidate.toLowerCase() ||
+          (candidate.toLowerCase().includes('social') && f.toLowerCase().includes('social'))
+      );
+      if (match) return match;
+    }
+    return FORMS[0];
+  });
   const [fields, setFields] = useState<FormField[]>([]);
   const [isDefault, setIsDefault] = useState<boolean>(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fromParam = (route?.params as any)?.form;
+    const fromUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('form') : null;
+    const candidate = fromParam || fromUrl;
+    if (candidate) {
+      const match = FORMS.find(
+        (f) =>
+          f.toLowerCase() === candidate.toLowerCase() ||
+          (candidate.toLowerCase().includes('social') && f.toLowerCase().includes('social'))
+      );
+      if (match && match !== selectedForm) {
+        setSelectedForm(match);
+      }
+    }
+  }, [route?.params]);
 
   // Form Dropdown State
   const [showFormModal, setShowFormModal] = useState<boolean>(false);
@@ -153,6 +184,14 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       if (/^F\d+/i.test(id)) return 'FAST';
       if (/^ABC/i.test(id) || /^b_/i.test(id)) return 'ABC Tracking';
     }
+    if (currentForm === 'Social Skills Questionnaire') {
+      const num = parseInt(id.replace(/^q/i, ''), 10);
+      if (!isNaN(num)) {
+        if ([2, 4, 7, 10].includes(num)) return 'Communication';
+        return 'Social Interaction';
+      }
+      return 'Social Interaction';
+    }
     return null;
   };
 
@@ -160,6 +199,12 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
     try {
       const { data } = await getFormConfig(selectedForm);
       let loadedFields = Array.isArray(data?.fields) ? data.fields : [];
+      if (loadedFields.length === 0) {
+        const defaultCfg = getDefaultFormConfig(selectedForm);
+        if (defaultCfg && Array.isArray(defaultCfg.fields)) {
+          loadedFields = defaultCfg.fields;
+        }
+      }
       loadedFields = loadedFields.map((f: FormField) => {
         if (!f.section || f.section === 'General') {
           const inferred = inferSectionFromId(f.id);
@@ -182,10 +227,11 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
       const loadedDeleted: string[] = Array.isArray(data?.deletedSections) ? data.deletedSections : [];
       setDeletedSections(loadedDeleted);
     } catch (err) {
-      setFields([]);
+      const defaultCfg = getDefaultFormConfig(selectedForm);
+      setFields(defaultCfg?.fields || []);
       setIsDefault(true);
       setHistory([]);
-      setCustomSections([]);
+      setCustomSections(defaultCfg?.customSections || []);
       setDeletedSections([]);
     } finally {
       setLoading(false);
@@ -794,14 +840,18 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
             <TouchableOpacity
               style={styles.openAssessmentBtn}
               onPress={() => {
-                const targetRoute = ASSESSMENT_DIRECT_ROUTES[selectedForm];
-                if (targetRoute && navigation?.navigate) {
-                  navigation.navigate(targetRoute.route as any);
+                const target = ASSESSMENT_DIRECT_ROUTES[selectedForm];
+                if (typeof window !== 'undefined' && target.url) {
+                  window.location.href = target.url;
+                } else if (navigation?.navigate) {
+                  (navigation.navigate as any)(target.route);
                 }
               }}
             >
-              <Feather name="external-link" size={14} color="#0284C7" />
-              <Text style={styles.openAssessmentBtnText}>Open Assessment</Text>
+              <Feather name="external-link" size={13} color="#0284C7" />
+              <Text style={styles.openAssessmentBtnText}>
+                Live {selectedForm === 'Social Skills Questionnaire' ? 'Questionnaire' : 'Assessment'}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -869,6 +919,18 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                 <Text style={styles.addSkillTypeTopBtnText}>Add a Info Type</Text>
               </TouchableOpacity>
             )}
+            {selectedForm !== 'ABLLS Assessment Form' && selectedForm !== 'Enrollment Wizard' && (
+              <TouchableOpacity
+                style={styles.addSkillTypeTopBtn}
+                onPress={() => {
+                  setNewSkillTypeName('');
+                  setShowAddSkillTypeModal(true);
+                }}
+              >
+                <Feather name="folder-plus" size={13} color="#0284C7" />
+                <Text style={styles.addSkillTypeTopBtnText}>Add a Section</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Quick Scoring Scale Presets — ONLY on ABLLS Assessment Form */}
@@ -880,6 +942,27 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
               </View>
               <View style={styles.presetButtonsRow}>
                 {SCORE_SCALE_PRESETS.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.label}
+                    style={styles.presetBtn}
+                    onPress={() => applyBulkPreset(preset.options)}
+                  >
+                    <Text style={styles.presetBtnText}>{preset.short}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Quick Rating Scale Presets — Social Skills Questionnaire */}
+          {selectedForm === 'Social Skills Questionnaire' && (
+            <View style={styles.abllsPresetBar}>
+              <View style={styles.abllsPresetHeader}>
+                <Feather name="sliders" size={14} color="#0369A1" />
+                <Text style={styles.abllsPresetTitle}>Apply Rating Scale Preset to All Social Skill Items:</Text>
+              </View>
+              <View style={styles.presetButtonsRow}>
+                {SOCIAL_SKILLS_PRESETS.map((preset) => (
                   <TouchableOpacity
                     key={preset.label}
                     style={styles.presetBtn}
@@ -932,10 +1015,23 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                             setAddingToSection(sec);
                             setNewFieldSection(sec);
                             const isAblls = selectedForm === 'ABLLS Assessment Form';
-                            setNewFieldType(selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking' ? 'Text' : isAblls ? 'Radio' : 'Text');
+                            const isSocial = selectedForm === 'Social Skills Questionnaire';
+                            setNewFieldType(
+                              selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
+                                ? 'Text'
+                                : isAblls || isSocial
+                                ? 'Radio'
+                                : 'Text'
+                            );
                             setNewFieldLabel('');
-                            setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
-                            setNewFieldPlaceholder('');
+                            setNewFieldOptions(
+                              isAblls
+                                ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
+                                : isSocial
+                                ? '0 — Never, 1 — Sometimes, 2 — Often, 3 — Always'
+                                : ''
+                            );
+                            setNewFieldPlaceholder(isSocial ? `e.g. ${nextId}: Expresses empathy to peers` : '');
                             setNewFieldRequired(true);
                             setShowAddFieldBox(true);
                           }}
@@ -982,10 +1078,23 @@ export default function FormBuilderScreen({ navigation }: NativeStackScreenProps
                             setAddingToSection(sec);
                             setNewFieldSection(sec);
                             const isAblls = selectedForm === 'ABLLS Assessment Form';
-                            setNewFieldType(selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking' ? 'Text' : isAblls ? 'Radio' : 'Text');
+                            const isSocial = selectedForm === 'Social Skills Questionnaire';
+                            setNewFieldType(
+                              selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
+                                ? 'Text'
+                                : isAblls || isSocial
+                                ? 'Radio'
+                                : 'Text'
+                            );
                             setNewFieldLabel('');
-                            setNewFieldOptions(isAblls ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A' : '');
-                            setNewFieldPlaceholder('');
+                            setNewFieldOptions(
+                              isAblls
+                                ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
+                                : isSocial
+                                ? '0 — Never, 1 — Sometimes, 2 — Often, 3 — Always'
+                                : ''
+                            );
+                            setNewFieldPlaceholder(isSocial ? `e.g. ${nextId}: Expresses empathy to peers` : '');
                             setNewFieldRequired(true);
                             setShowAddFieldBox(true);
                           }}

@@ -10,6 +10,12 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { getEnrollmentStudents } from '../../api/coordinatorApi';
 import { getStaffOptions } from '../../api/optionsApi';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
+import {
+  resolveStudentStatus,
+  toggleStudentStatus,
+  onStudentStatusChanged,
+} from '../../utils/studentStatusHelper';
 import type { CoordinatorStackParamList } from '../../types';
 
 const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
@@ -54,26 +60,35 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
   const [diagnosisFilter, setDiagnosisFilter] = useState('All');
   const [ageFilter, setAgeFilter] = useState('All');
 
-  useEffect(() => {
+  const fetchTherapists = useCallback(() => {
     getStaffOptions()
       .then(({ data }) => {
-        const therapists = data.filter((s) => s.role === 'teacher').map((t) => t.name);
+        const clean = filterOutDeletedStaff(data);
+        const therapists = clean.filter((s) => s.role === 'teacher').map((t) => t.name);
         setTherapistOptions(therapists);
         setTherapistFilter((prev) => (prev === 'All' || therapists.includes(prev) ? prev : 'All'));
       })
       .catch(() => setTherapistOptions([]));
   }, []);
 
+  useEffect(() => {
+    fetchTherapists();
+  }, [fetchTherapists]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(fetchTherapists);
+  }, [fetchTherapists]);
+
   const load = useCallback(async () => {
     try {
-      const { data } = await getEnrollmentStudents({
-        search,
-        program: programFilter,
-        therapist: therapistFilter,
-        status: statusFilter,
-        diagnosis: diagnosisFilter,
-        age: ageFilter,
-      });
+      const queryParams: Record<string, string> = {};
+      if (search) queryParams.search = search;
+      if (programFilter !== 'All') queryParams.program = programFilter;
+      if (therapistFilter !== 'All') queryParams.therapist = therapistFilter;
+      if (diagnosisFilter !== 'All') queryParams.diagnosis = diagnosisFilter;
+      if (ageFilter !== 'All') queryParams.age = ageFilter;
+
+      const { data } = await getEnrollmentStudents(queryParams);
       if (Array.isArray(data)) {
         registerStudentPhotos(data);
       }
@@ -85,16 +100,20 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         program: row.programType,
         therapist: row.therapist || row.therapyGroup,
         diagnosis: '',
-        status: row.status === 'active' ? 'Active' : 'Inactive',
+        status: resolveStudentStatus(row.id, row.fullName, row.status),
         studentId: row.id,
         photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
       })));
     } catch (err) {
       setStudents([]);
     }
-  }, [search, programFilter, therapistFilter, statusFilter, diagnosisFilter, ageFilter]);
+  }, [search, programFilter, therapistFilter, diagnosisFilter, ageFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    return onStudentStatusChanged(load);
+  }, [load]);
 
   const matchesAge = (age: number, range: string) => {
     if (range === 'All') return true;
@@ -133,6 +152,13 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           <Text style={typography.h1}>Student Register</Text>
           <Text style={typography.caption}>MR-16 — register, search and filter enrolled students</Text>
         </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => navigation?.navigate?.('StudentEnrollmentWizard' as never)}
+        >
+          <Feather name="plus" size={14} color={colors.navyText} />
+          <Text style={styles.addBtnText}>Enroll Student</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.filtersRow}>
@@ -160,7 +186,15 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
               <Text style={typography.caption}>{s.studentId} · Age {s.age} · {s.gender}</Text>
               <Text style={typography.caption}>{s.program} · {s.therapist} · {s.diagnosis}</Text>
             </View>
-            <StatusPill status={s.status === 'Active' ? 'approved' : 'revision'} label={s.status} />
+            <TouchableOpacity
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                toggleStudentStatus(s.id, s.name, s.status);
+              }}
+              activeOpacity={0.7}
+            >
+              <StatusPill status={s.status === 'Active' ? 'approved' : 'revision'} label={s.status} />
+            </TouchableOpacity>
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         ))}
@@ -190,6 +224,7 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, flexWrap: 'wrap', gap: spacing.sm },
+  addBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   addBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   filtersRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
   searchInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgApp },

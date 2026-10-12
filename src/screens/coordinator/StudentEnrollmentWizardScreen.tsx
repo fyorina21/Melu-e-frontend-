@@ -10,18 +10,24 @@ import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
 import { getStaffOptions, getStudentOptions, type StaffOption, type StudentOption } from '../../api/optionsApi';
-import { createStudentEnrollment } from '../../api/coordinatorApi';
-import { getFormConfig } from '../../api/institutionalAdminApi';
+import { createStudentEnrollment, updateStudentProfile } from '../../api/coordinatorApi';
+import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhotoHelper';
+import { markStudentActive } from '../../utils/studentStatusHelper';
+import { registerStudentStatuses } from '../../utils/studentLifecycleHelper';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'];
 
-const PROGRAM_TYPES = ['Regular', 'Pulled Out'];
-const THERAPY_GROUPS = ['Basic', 'Functional Living Skill'];
-const GENDERS = ['Female', 'Male', 'Other'];
+const DEFAULT_PROGRAM_TYPES = ['Regular', 'Pulled Out'];
+const DEFAULT_THERAPY_GROUPS = ['Basic', 'Functional Living Skill'];
+const DEFAULT_GENDERS = ['Female', 'Male', 'Other'];
+const PROGRAM_TYPES = DEFAULT_PROGRAM_TYPES;
+const THERAPY_GROUPS = DEFAULT_THERAPY_GROUPS;
+const GENDERS = DEFAULT_GENDERS;
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -219,18 +225,263 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const [therapists, setTherapists] = useState<StaffOption[]>([]);
   const [existingStudents, setExistingStudents] = useState<StudentOption[]>([]);
   const [saving, setSaving] = useState(false);
-  const [customSections, setCustomSections] = useState<string[]>([]);
+  const [customSections, setCustomSections] = useState<string[]>(DEFAULT_ENROLLMENT_FORM.customSections || []);
   const [deletedSections, setDeletedSections] = useState<string[]>([]);
-  const [formFields, setFormFields] = useState<any[]>([]);
+  const [formFields, setFormFields] = useState<any[]>(DEFAULT_ENROLLMENT_FORM.fields || []);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
+
+  const getFieldConfig = useCallback((idOrPattern: string | RegExp) => {
+    if (!formFields || formFields.length === 0) return null;
+    return formFields.find((f: any) => {
+      if (typeof idOrPattern === 'string') {
+        return f.id === idOrPattern || f.label?.toLowerCase().trim() === idOrPattern.toLowerCase().trim();
+      }
+      return idOrPattern.test(f.id) || idOrPattern.test(f.label);
+    });
+  }, [formFields]);
+
+  const isFieldVisible = useCallback((labelOrId: string, defaultVisible = true) => {
+    const f = formFields.find(
+      (item) =>
+        item.id === labelOrId ||
+        item.label?.toLowerCase().trim() === labelOrId.toLowerCase().trim()
+    );
+    if (!f) return defaultVisible;
+    return f.visible !== false;
+  }, [formFields]);
+
+  const photoCfg = getFieldConfig(/photo/i) || getFieldConfig('f_photo');
+  const nameCfg = getFieldConfig(/full.*name|^name$/i) || getFieldConfig('f1');
+  const dobCfg = getFieldConfig(/birth|dob/i) || getFieldConfig('f2');
+  const genderCfg = getFieldConfig(/gender/i) || getFieldConfig('f_gender');
+  const programCfg = getFieldConfig(/program/i) || getFieldConfig('f_program');
+  const therapyCfg = getFieldConfig(/therapy/i) || getFieldConfig('f_therapy');
+  const parentNameCfg = getFieldConfig(/parent.*name|guardian/i) || getFieldConfig('f4');
+  const phoneCfg = getFieldConfig(/phone/i) || getFieldConfig('f5');
+  const emailCfg = getFieldConfig(/email/i) || getFieldConfig('f6');
+  const diagCfg = getFieldConfig(/diagnosis/i) || getFieldConfig('f_diagnosis');
+  const notesCfg = getFieldConfig(/medical.*notes|notes.*allerg/i) || getFieldConfig('f7');
+
+  const genderOpts = (genderCfg?.options && genderCfg.options.length > 0) ? genderCfg.options : DEFAULT_GENDERS;
+  const programOpts = (programCfg?.options && programCfg.options.length > 0) ? programCfg.options : DEFAULT_PROGRAM_TYPES;
+  const therapyOpts = (therapyCfg?.options && therapyCfg.options.length > 0) ? therapyCfg.options : DEFAULT_THERAPY_GROUPS;
+
+  const showPhoto = photoCfg ? photoCfg.visible !== false : true;
+  const showName = nameCfg ? nameCfg.visible !== false : true;
+  const showDob = dobCfg ? dobCfg.visible !== false : true;
+  const showGender = genderCfg ? genderCfg.visible !== false : true;
+  const showProgram = programCfg ? programCfg.visible !== false : true;
+  const showTherapy = therapyCfg ? therapyCfg.visible !== false : true;
+  const showParentName = parentNameCfg ? parentNameCfg.visible !== false : true;
+  const showPhone = phoneCfg ? phoneCfg.visible !== false : true;
+  const showEmail = emailCfg ? emailCfg.visible !== false : true;
+  const showDiag = diagCfg ? diagCfg.visible !== false : true;
+  const showNotes = notesCfg ? notesCfg.visible !== false : true;
+
+  const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const updateProgram = (val: string) => {
+    set('program', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(programCfg?.id ? { [programCfg.id]: val } : {}),
+      ...(programCfg?.label ? { [programCfg.label]: val } : {}),
+      f_program: val,
+      'Program Type': val,
+    }));
+  };
+
+  const updateGender = (val: string) => {
+    set('gender', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(genderCfg?.id ? { [genderCfg.id]: val } : {}),
+      ...(genderCfg?.label ? { [genderCfg.label]: val } : {}),
+      f_gender: val,
+      Gender: val,
+    }));
+  };
+
+  const updateTherapyGroup = (val: string) => {
+    set('therapyGroup', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(therapyCfg?.id ? { [therapyCfg.id]: val } : {}),
+      ...(therapyCfg?.label ? { [therapyCfg.label]: val } : {}),
+      f_therapy: val,
+      'Therapy Group': val,
+    }));
+  };
+
+  const updateName = (val: string) => {
+    set('name', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(nameCfg?.id ? { [nameCfg.id]: val } : {}),
+      ...(nameCfg?.label ? { [nameCfg.label]: val } : {}),
+      f1: val,
+      'Student Full Name': val,
+    }));
+  };
+
+  const updateDob = (val: string) => {
+    set('dob', val);
+    const age = calculateAge(val);
+    if (age !== null && age >= 3 && age <= 19) {
+      if (age <= 12) {
+        updateTherapyGroup('Basic');
+      } else {
+        updateTherapyGroup('Functional Living Skill');
+      }
+    }
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(dobCfg?.id ? { [dobCfg.id]: val } : {}),
+      ...(dobCfg?.label ? { [dobCfg.label]: val } : {}),
+      f2: val,
+      'Date of Birth': val,
+    }));
+  };
+
+  const updateParentName = (val: string) => {
+    set('parentName', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(parentNameCfg?.id ? { [parentNameCfg.id]: val } : {}),
+      ...(parentNameCfg?.label ? { [parentNameCfg.label]: val } : {}),
+      f4: val,
+      'Parent / Guardian Name': val,
+    }));
+  };
+
+  const updateParentPhone = (val: string) => {
+    set('parentPhone', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(phoneCfg?.id ? { [phoneCfg.id]: val } : {}),
+      ...(phoneCfg?.label ? { [phoneCfg.label]: val } : {}),
+      f5: val,
+      Phone: val,
+    }));
+  };
+
+  const updateParentEmail = (val: string) => {
+    set('parentEmail', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(emailCfg?.id ? { [emailCfg.id]: val } : {}),
+      ...(emailCfg?.label ? { [emailCfg.label]: val } : {}),
+      f6: val,
+      Email: val,
+    }));
+  };
+
+  const updateDiagnosis = (val: string) => {
+    set('diagnosis', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(diagCfg?.id ? { [diagCfg.id]: val } : {}),
+      ...(diagCfg?.label ? { [diagCfg.label]: val } : {}),
+      f_diagnosis: val,
+      Diagnosis: val,
+    }));
+  };
+
+  const updateMedicalNotes = (val: string) => {
+    set('medicalNotes', val);
+    setCustomValues((prev) => ({
+      ...prev,
+      ...(notesCfg?.id ? { [notesCfg.id]: val } : {}),
+      ...(notesCfg?.label ? { [notesCfg.label]: val } : {}),
+      f7: val,
+      'Medical Notes': val,
+    }));
+  };
+
+  const resolveFieldValue = (field: any) => {
+    if (!field) return '';
+    const id = String(field.id || '').trim();
+    const label = String(field.label || '').trim();
+    const normLabel = label.toLowerCase();
+    const normId = id.toLowerCase();
+
+    // 1. Direct match in customValues by id or label
+    if (customValues[id] !== undefined && customValues[id] !== null && customValues[id] !== '') {
+      return customValues[id];
+    }
+    if (customValues[label] !== undefined && customValues[label] !== null && customValues[label] !== '') {
+      return customValues[label];
+    }
+
+    // 2. Program Type
+    if (normId === 'f_program' || /program/i.test(normId) || /program/i.test(normLabel)) {
+      return form.program;
+    }
+
+    // 3. Gender
+    if (normId === 'f_gender' || /gender/i.test(normId) || /gender/i.test(normLabel)) {
+      return form.gender;
+    }
+
+    // 4. Therapy Group
+    if (normId === 'f_therapy' || /therapy/i.test(normId) || /therapy/i.test(normLabel)) {
+      return form.therapyGroup;
+    }
+
+    // 5. Student Name
+    if (normId === 'f1' || /student.*name|full.*name|^name$/i.test(normId) || /student.*name|full.*name|^name$/i.test(normLabel)) {
+      return form.name;
+    }
+
+    // 6. Date of Birth
+    if (normId === 'f2' || /birth|dob/i.test(normId) || /birth|dob/i.test(normLabel)) {
+      return form.dob;
+    }
+
+    // 7. Photo
+    if (normId === 'f_photo' || /photo/i.test(normId) || /photo/i.test(normLabel)) {
+      return form.photoUri || form.photoBase64 || '';
+    }
+
+    // 8. Parent Name
+    if (normId === 'f4' || /parent.*name|guardian/i.test(normId) || /parent.*name|guardian/i.test(normLabel)) {
+      return form.parentName;
+    }
+
+    // 9. Parent Phone
+    if (normId === 'f5' || /parent.*phone|^phone$/i.test(normId) || /parent.*phone|^phone$/i.test(normLabel)) {
+      return form.parentPhone;
+    }
+
+    // 10. Parent Email
+    if (normId === 'f6' || /parent.*email|^email$/i.test(normId) || /parent.*email|^email$/i.test(normLabel)) {
+      return form.parentEmail;
+    }
+
+    // 11. Diagnosis
+    if (normId === 'f_diagnosis' || /diagnosis/i.test(normId) || /diagnosis/i.test(normLabel)) {
+      return form.diagnosis;
+    }
+
+    // 12. Medical Notes
+    if (normId === 'f7' || /medical.*notes/i.test(normId) || /medical.*notes/i.test(normLabel)) {
+      return form.medicalNotes;
+    }
+
+    return customValues[id] ?? customValues[label] ?? '';
+  };
 
   const loadFormConfig = useCallback(() => {
     getStaffOptions()
       .then(({ data }) => {
-        const teachers = data.filter((s) => s.role === 'teacher');
+        const clean = filterOutDeletedStaff(data);
+        const teachers = clean.filter((s) => s.role === 'teacher');
         setTherapists(teachers);
         const available = teachers.find((t) => (t.assignedStudents?.length ?? 0) < MAX_CASELOAD);
-        setForm((prev) => ({ ...prev, therapist: prev.therapist || available?.name || '' }));
+        setForm((prev) => ({
+          ...prev,
+          therapist: teachers.some((t) => t.name === prev.therapist) ? prev.therapist : (available?.name || ''),
+        }));
       })
       .catch(() => setTherapists([]));
 
@@ -264,11 +515,44 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   : 'Student Info'),
             }));
             setFormFields(normalizedFields);
+
+            // Synchronize options if available
+            const pField = normalizedFields.find((f: any) => f.id === 'f_program' || /program/i.test(f.label));
+            const gField = normalizedFields.find((f: any) => f.id === 'f_gender' || /gender/i.test(f.label));
+            const tField = normalizedFields.find((f: any) => f.id === 'f_therapy' || /therapy/i.test(f.label));
+
+            setForm((prev) => ({
+              ...prev,
+              program: prev.program || (pField?.options?.[0] ?? DEFAULT_PROGRAM_TYPES[0]),
+              gender: prev.gender || (gField?.options?.[0] ?? DEFAULT_GENDERS[0]),
+              therapyGroup: prev.therapyGroup || (tField?.options?.[0] ?? DEFAULT_THERAPY_GROUPS[0]),
+            }));
+
+            setCustomValues((prev) => {
+              const updated = { ...prev };
+              normalizedFields.forEach((f: any) => {
+                const normId = String(f.id || '').toLowerCase();
+                const normLabel = String(f.label || '').toLowerCase();
+                if (normId === 'f_program' || /program/i.test(normId) || /program/i.test(normLabel)) {
+                  if (!updated[f.id]) updated[f.id] = form.program || pField?.options?.[0] || DEFAULT_PROGRAM_TYPES[0];
+                  if (!updated[f.label]) updated[f.label] = form.program || pField?.options?.[0] || DEFAULT_PROGRAM_TYPES[0];
+                }
+                if (normId === 'f_gender' || /gender/i.test(normId) || /gender/i.test(normLabel)) {
+                  if (!updated[f.id]) updated[f.id] = form.gender || gField?.options?.[0] || DEFAULT_GENDERS[0];
+                  if (!updated[f.label]) updated[f.label] = form.gender || gField?.options?.[0] || DEFAULT_GENDERS[0];
+                }
+                if (normId === 'f_therapy' || /therapy/i.test(normId) || /therapy/i.test(normLabel)) {
+                  if (!updated[f.id]) updated[f.id] = form.therapyGroup || tField?.options?.[0] || DEFAULT_THERAPY_GROUPS[0];
+                  if (!updated[f.label]) updated[f.label] = form.therapyGroup || tField?.options?.[0] || DEFAULT_THERAPY_GROUPS[0];
+                }
+              });
+              return updated;
+            });
           }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [form.gender, form.program, form.therapyGroup]);
 
   useEffect(() => {
     loadFormConfig();
@@ -280,76 +564,126 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     }, [loadFormConfig])
   );
 
-  const isFieldVisible = (label: string, defaultVisible = true) => {
-    const f = formFields.find(
-      (item) => item.label?.toLowerCase().trim() === label.toLowerCase().trim()
-    );
-    if (!f) return defaultVisible;
-    return f.visible !== false;
-  };
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('enrollment')) {
+        loadFormConfig();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, [loadFormConfig]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(loadFormConfig);
+  }, [loadFormConfig]);
 
   const caseloadOf = (name: string) => therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
   const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
   const therapistNames = therapists.map((t) => t.name);
 
   const baseSteps = ['Student Info', 'Parent Info', 'Medical Info'];
-  const activeBaseSteps = baseSteps.filter((s) => !deletedSections.includes(s));
-  const activeCustomSections = customSections.filter((s) => !deletedSections.includes(s));
-  const activeInfoTypes = [...activeBaseSteps, ...activeCustomSections];
-  const steps = [...activeInfoTypes, 'Assign Therapist', 'Review'];
+  const fieldSections = Array.from(
+    new Set(formFields.map((f: any) => f.section).filter(Boolean))
+  ) as string[];
+  const allSections = Array.from(
+    new Set([...baseSteps, ...customSections, ...fieldSections])
+  ).filter((s) => !deletedSections.includes(s));
+  const steps = [...allSections, 'Assign Therapist', 'Review'];
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
-  const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
-
   const next = () => {
-    if (currentStep === 'Student Info') {
-      if (!form.name.trim()) { showToast('Student name is required', 'error'); return; }
-      if (!form.dob.trim()) { showToast('Date of birth is required', 'error'); return; }
-    }
-    if (currentStep === 'Parent Info') {
-      if (!form.parentName.trim()) { showToast('Parent name is required', 'error'); return; }
-      if (!form.parentPhone.trim()) { showToast('Parent phone is required', 'error'); return; }
-      if (!PHONE_RE.test(form.parentPhone.trim())) {
-        showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
-        return;
-      }
-      if (form.parentEmail.trim() && !EMAIL_RE.test(form.parentEmail.trim())) {
-        showToast('Invalid parent email address', 'error');
-        return;
-      }
-    }
+    // 1. Assign Therapist step
     if (currentStep === 'Assign Therapist') {
-      if (!form.therapist) { showToast('Please pick a therapist', 'error'); return; }
+      if (!form.therapist) {
+        showToast('Please pick a therapist', 'error');
+        return;
+      }
       if (isFull(form.therapist)) {
         showToast(`${form.therapist} is at maximum capacity (2 students). Choose another therapist.`, 'error');
         return;
       }
+      if (step < steps.length - 1) setStep(step + 1);
+      return;
     }
 
-    // Check required fields for custom info types or dynamic fields on current step
-    const excludedForCurrentStep =
-      currentStep === 'Student Info'
-        ? ['Full Name', 'Student Full Name', 'Date of Birth', 'Gender', 'Program', 'Program Type']
-        : currentStep === 'Parent Info'
-        ? ['Parent / Guardian Name', 'Parent Name', 'Phone', 'Parent Phone', 'Email', 'Parent Email']
-        : currentStep === 'Medical Info'
-        ? ['Diagnosis', 'Medical Notes']
-        : [];
-
-    const sectionRequiredFields = formFields.filter(
-      (f) =>
-        f.visible !== false &&
-        f.required &&
-        f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim() &&
-        !excludedForCurrentStep.some((ex) => ex.toLowerCase() === f.label.toLowerCase())
-    );
-    const missing = sectionRequiredFields.filter((f) => {
-      const val = customValues[f.id] ?? customValues[f.label];
-      return val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
-    });
-    if (missing.length > 0) {
-      showToast(`Please complete required field: ${missing[0].label}`, 'error');
+    // 2. Review step
+    if (currentStep === 'Review') {
       return;
+    }
+
+    // 3. Dynamic step validation based on formFields configuration
+    const currentStepFields = formFields.filter(
+      (f: any) => f.visible !== false && f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim()
+    );
+
+    for (const f of currentStepFields) {
+      const val = resolveFieldValue(f);
+      const isMissing =
+        val === undefined ||
+        val === null ||
+        (typeof val === 'string' && val.trim() === '') ||
+        (Array.isArray(val) && val.length === 0);
+
+      if (f.required && isMissing) {
+        showToast(`Please complete required field: ${f.label}`, 'error');
+        return;
+      }
+
+      if (val) {
+        const strVal = String(val).trim();
+        const normId = String(f.id || '').toLowerCase();
+        const normLabel = String(f.label || '').toLowerCase();
+
+        if (normId === 'f5' || /phone/i.test(normId) || /phone/i.test(normLabel)) {
+          if (!PHONE_RE.test(strVal)) {
+            showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
+            return;
+          }
+        }
+        if (normId === 'f6' || /email/i.test(normId) || /email/i.test(normLabel)) {
+          if (!EMAIL_RE.test(strVal)) {
+            showToast('Invalid parent email address', 'error');
+            return;
+          }
+        }
+      }
+    }
+
+    // Student Info specific age validations
+    if (currentStep === 'Student Info' && form.dob) {
+      const studentAge = calculateAge(form.dob);
+      if (studentAge === null || studentAge < 3 || studentAge > 19) {
+        showToast(
+          `Student age (${studentAge ?? 'unknown'} yrs) must be between 3 and 19 years old for enrollment`,
+          'error'
+        );
+        return;
+      }
+      const ageWarning = getTherapyGroupAgeWarning(form.therapyGroup, studentAge);
+      if (ageWarning) {
+        showToast(ageWarning, 'error');
+        return;
+      }
+    }
+
+    // Fallback if formFields hasn't loaded
+    if (currentStepFields.length === 0) {
+      if (currentStep === 'Student Info') {
+        if (!form.name.trim()) { showToast('Student name is required', 'error'); return; }
+        if (!form.dob.trim()) { showToast('Date of birth is required', 'error'); return; }
+      }
+      if (currentStep === 'Parent Info') {
+        if (!form.parentName.trim()) { showToast('Parent name is required', 'error'); return; }
+        if (!form.parentPhone.trim()) { showToast('Parent phone is required', 'error'); return; }
+        if (!PHONE_RE.test(form.parentPhone.trim())) {
+          showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
+          return;
+        }
+      }
     }
 
     duplicateConfirmed.current = false;
@@ -425,29 +759,79 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const submitEnrollment = async () => {
     if (saving) return;
     setSaving(true);
+
+    const studentAge = calculateAge(form.dob);
+    if (studentAge === null || studentAge < 3 || studentAge > 19) {
+      showToast(
+        `Student must be between 3 and 19 years old for enrollment (current age: ${studentAge ?? 'unknown'} yrs)`,
+        'error'
+      );
+      setSaving(false);
+      return;
+    }
+    const ageWarning = getTherapyGroupAgeWarning(form.therapyGroup, studentAge);
+    if (ageWarning) {
+      showToast(ageWarning, 'error');
+      setSaving(false);
+      return;
+    }
+
     const [firstName, ...rest] = form.name.trim().split(/\s+/);
     const photoPayload = form.photoBase64 || form.photoUri || '';
     const payload = {
       firstName,
+      first_name: firstName,
       lastName: rest.join(' ') || '-',
+      last_name: rest.join(' ') || '-',
       dateOfBirth: form.dob,
+      date_of_birth: form.dob,
       programType: form.program,
+      program_type: form.program.toLowerCase().includes('pull') ? 'pulled_out' : 'regular',
       therapyGroup: form.therapyGroup,
+      therapy_group: form.therapyGroup.toLowerCase().includes('function') ? 'functional_living' : 'basic',
       gender: form.gender,
-      parentName: form.parentName.trim(),
-      parentPhone: form.parentPhone.trim(),
+      parentName: form.parentName.trim() || 'Guardian',
+      guardian_name: form.parentName.trim() || 'Guardian',
+      parentPhone: form.parentPhone.trim() || '555-0100',
+      guardian_phone: form.parentPhone.trim() || '555-0100',
       parentEmail: form.parentEmail.trim(),
-      diagnosis: form.diagnosis.trim(),
+      guardian_email: form.parentEmail.trim(),
+      diagnosis: form.diagnosis.trim() || 'Autism Spectrum Disorder',
       medicalNotes: form.medicalNotes.trim(),
-      documents: [],
       assignedTherapist: form.therapist,
-      photo: photoPayload,
-      photoBase64: form.photoBase64 || '',
+      status: 'active',
+      enrollment_status: 'active',
+      is_active: true,
+      active: true,
       customFields: customValues,
+      custom_fields: customValues,
     };
     try {
       const res = await createStudentEnrollment(payload);
       const createdData = res?.data;
+      const createdId = createdData?.id || createdData?.studentId;
+
+      // Mark student as Active upon registration/enrollment
+      markStudentActive(createdId, form.name.trim());
+      registerStudentStatuses([{
+        id: createdId,
+        name: form.name.trim(),
+        fullName: form.name.trim(),
+        status: 'active',
+        rawStatus: 'active',
+      }]);
+
+      if (createdId) {
+        try {
+          await updateStudentProfile(createdId, {
+            status: 'active',
+            enrollment_status: 'active',
+            is_active: true,
+            active: true,
+          });
+        } catch {}
+      }
+
       saveStudentPhoto({
         id: createdData?.id,
         name: form.name.trim(),
@@ -457,9 +841,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         photoUri: form.photoUri,
       });
       showToast(`${form.name} enrolled in ${form.program}`, 'success');
-      navigation?.navigate?.('AssessmentDashboard' as never);
-    } catch (err) {
-      // Keep photo saved locally with the student name
+      navigation?.navigate?.('StudentEnrollment' as never);
+    } catch (err: any) {
+      // Keep photo and active status saved locally with the student name
+      markStudentActive(undefined, form.name.trim());
       saveStudentPhoto({
         name: form.name.trim(),
         fullName: form.name.trim(),
@@ -467,7 +852,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         photoBase64: form.photoBase64,
         photoUri: form.photoUri,
       });
-      showToast('Could not save the enrollment. Please try again.', 'error');
+      const errorMsg =
+        (Array.isArray(err?.response?.data?.errors) ? err.response.data.errors.join(', ') : null) ||
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Could not save the enrollment. Please try again.';
+      showToast(errorMsg, 'error');
     } finally {
       setSaving(false);
     }
@@ -487,8 +878,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   // Group custom values by info type section
-  const customSectionEntries: Array<{ title: string; rows: [string, string][] }> = activeCustomSections
-    .map((sec) => {
+  const customSectionEntries: Array<{ title: string; rows: [string, string][] }> = customSections
+    .map((sec: string) => {
       const secFields = formFields.filter(
         (f) => f.section?.toLowerCase().trim() === sec.toLowerCase().trim() && f.visible !== false
       );
@@ -501,7 +892,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       });
       return { title: sec, rows };
     })
-    .filter((entry) => entry.rows.length > 0);
+    .filter((entry: { title: string; rows: [string, string][] }) => entry.rows.length > 0);
 
   const capturedKeys = new Set(
     formFields.map((f) => f.id).concat(formFields.map((f) => f.label))
@@ -513,29 +904,47 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const calculatedAge = calculateAge(form.dob);
 
   const reviewSections: Array<{ title: string; rows: [string, string][] }> = [
-    {
-      title: 'Student',
-      rows: [
-        ['Full Name', form.name || '—'],
-        ['Gender', form.gender || '—'],
-        ['Date of Birth', form.dob ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}` : '—'],
-        ['Program Type', form.program || '—'],
-        ['Therapy Group', form.therapyGroup || '—'],
-        ['Photo', form.photoUri ? 'Photo Attached' : 'None'],
-      ],
-    },
-    {
-      title: 'Parent / Guardian',
-      rows: [
-        ['Name', form.parentName || '—'],
-        ['Phone', form.parentPhone || '—'],
-        ['Email', form.parentEmail || '—'],
-      ],
-    },
-    {
-      title: 'Medical Info',
-      rows: [['Diagnosis', form.diagnosis || 'n/a']],
-    },
+    ...(!deletedSections.includes('Student Info')
+      ? [
+          {
+            title: 'Student Info',
+            rows: [
+              [nameCfg?.label || 'Full Name', form.name || '—'],
+              [genderCfg?.label || 'Gender', form.gender || '—'],
+              [
+                dobCfg?.label || 'Date of Birth',
+                form.dob ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}` : '—',
+              ],
+              [programCfg?.label || 'Program Type', form.program || '—'],
+              [therapyCfg?.label || 'Therapy Group', form.therapyGroup || '—'],
+              [photoCfg?.label || 'Student Photo', form.photoUri || form.photoBase64 ? 'Photo Attached' : 'None'],
+            ].filter(([lbl]) => isFieldVisible(lbl)) as [string, string][],
+          },
+        ]
+      : []),
+    ...(!deletedSections.includes('Parent Info')
+      ? [
+          {
+            title: 'Parent Info',
+            rows: [
+              [parentNameCfg?.label || 'Name', form.parentName || '—'],
+              [phoneCfg?.label || 'Phone', form.parentPhone || '—'],
+              [emailCfg?.label || 'Email', form.parentEmail || '—'],
+            ].filter(([lbl]) => isFieldVisible(lbl)) as [string, string][],
+          },
+        ]
+      : []),
+    ...(!deletedSections.includes('Medical Info')
+      ? [
+          {
+            title: 'Medical Info',
+            rows: [
+              [diagCfg?.label || 'Diagnosis', form.diagnosis || 'n/a'],
+              [notesCfg?.label || 'Medical Notes', form.medicalNotes || 'n/a'],
+            ].filter(([lbl]) => isFieldVisible(lbl)) as [string, string][],
+          },
+        ]
+      : []),
     {
       title: 'Therapist',
       rows: [['Therapist', form.therapist || '—']],
@@ -559,177 +968,283 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             <Text style={styles.cardHeading}>Step {step + 1}: {currentStep}</Text>
           </View>
 
-          {currentStep === 'Student Info' && (
-            <View style={styles.stepBody}>
-              {/* Student Photo Card with Camera & Upload buttons */}
-              {isFieldVisible('Student Photo') && isFieldVisible('Photo') && (
-                <View style={styles.photoUploadCard}>
-                  <Text style={styles.fieldLabel}>Student Photo</Text>
-                  <View style={styles.photoRow}>
-                    <View style={styles.photoAvatarContainer}>
-                      {form.photoUri ? (
-                        <View style={styles.photoWrapper}>
-                          <Image source={{ uri: form.photoUri }} style={styles.photoImage} />
-                          <TouchableOpacity
-                            style={styles.photoRemoveBtn}
-                            onPress={handleRemovePhoto}
-                            accessibilityLabel="Remove photo"
-                          >
-                            <Feather name="x" size={12} color="#FFFFFF" />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View style={styles.photoPlaceholder}>
-                          <Feather name="user" size={32} color="#94A3B8" />
-                        </View>
-                      )}
+          {currentStep === 'Student Info' && (() => {
+            const photoCfg = getFieldConfig(/photo/i) || getFieldConfig('f_photo');
+            const nameCfg = getFieldConfig(/full.*name|name/i) || getFieldConfig('f1');
+            const dobCfg = getFieldConfig(/birth|dob/i) || getFieldConfig('f2');
+            const genderCfg = getFieldConfig(/gender/i) || getFieldConfig('f_gender');
+            const programCfg = getFieldConfig(/program/i) || getFieldConfig('f_program');
+            const therapyCfg = getFieldConfig(/therapy/i) || getFieldConfig('f_therapy');
+
+            const showPhoto = photoCfg ? photoCfg.visible !== false : true;
+            const showName = nameCfg ? nameCfg.visible !== false : true;
+            const showDob = dobCfg ? dobCfg.visible !== false : true;
+            const showGender = genderCfg ? genderCfg.visible !== false : true;
+            const showProgram = programCfg ? programCfg.visible !== false : true;
+            const showTherapy = therapyCfg ? therapyCfg.visible !== false : true;
+
+            const genderOpts = (genderCfg?.options && genderCfg.options.length > 0) ? genderCfg.options : GENDERS;
+            const programOpts = (programCfg?.options && programCfg.options.length > 0) ? programCfg.options : PROGRAM_TYPES;
+            const therapyOpts = (therapyCfg?.options && therapyCfg.options.length > 0) ? therapyCfg.options : THERAPY_GROUPS;
+
+            return (
+              <View style={styles.stepBody}>
+                {/* Student Photo Card with Camera & Upload buttons */}
+                {showPhoto && (
+                  <View style={styles.photoUploadCard}>
+                    <Text style={styles.fieldLabel}>{photoCfg?.label || 'Student Photo'}</Text>
+                    <View style={styles.photoRow}>
+                      <View style={styles.photoAvatarContainer}>
+                        {form.photoUri ? (
+                          <View style={styles.photoWrapper}>
+                            <Image source={{ uri: form.photoUri }} style={styles.photoImage} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveBtn}
+                              onPress={handleRemovePhoto}
+                              accessibilityLabel="Remove photo"
+                            >
+                              <Feather name="x" size={12} color="#FFFFFF" />
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View style={styles.photoPlaceholder}>
+                            <Feather name="user" size={32} color="#94A3B8" />
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.photoButtonContainer}>
+                        <TouchableOpacity style={styles.cameraBtn} onPress={handleTakePhoto}>
+                          <Feather name="camera" size={15} color="#FFFFFF" />
+                          <Text style={styles.cameraBtnText}>Open Camera</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.uploadBtn} onPress={handleChoosePhoto}>
+                          <Feather name="upload" size={15} color={colors.navyText} />
+                          <Text style={styles.uploadBtnText}>Upload Photo</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
+                    <Text style={styles.fieldHint}>
+                      {photoCfg?.helpText || 'Take a live picture with your camera or upload an image file from your device.'}
+                    </Text>
+                  </View>
+                )}
 
-                    <View style={styles.photoButtonContainer}>
-                      <TouchableOpacity style={styles.cameraBtn} onPress={handleTakePhoto}>
-                        <Feather name="camera" size={15} color="#FFFFFF" />
-                        <Text style={styles.cameraBtnText}>Open Camera</Text>
-                      </TouchableOpacity>
+                {showName && (
+                  <Field
+                    required={nameCfg ? Boolean(nameCfg.required) : true}
+                    label={nameCfg?.label || 'Student Full Name'}
+                    value={form.name}
+                    onChangeText={updateName}
+                    placeholder={nameCfg?.placeholder || 'e.g. Aiden Rivera'}
+                  />
+                )}
 
-                      <TouchableOpacity style={styles.uploadBtn} onPress={handleChoosePhoto}>
-                        <Feather name="upload" size={15} color={colors.navyText} />
-                        <Text style={styles.uploadBtnText}>Upload Photo</Text>
-                      </TouchableOpacity>
+                {showDob && (
+                  <View style={styles.field}>
+                    <View style={styles.fieldLabelRow}>
+                      <Text style={styles.fieldLabel}>
+                        {dobCfg?.label || 'Date of Birth'}
+                        {(dobCfg ? dobCfg.required !== false : true) && <Text style={styles.requiredStar}> *</Text>}
+                      </Text>
+                      {form.dob && calculateAge(form.dob) !== null ? (
+                        <View style={styles.ageBadge}>
+                          <Feather name="calendar" size={12} color="#0284C7" />
+                          <Text style={styles.ageBadgeText}>
+                            Calculated Age: {calculateAge(form.dob)} {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.dobWrap}>
+                      <DobPicker
+                        value={form.dob || ''}
+                        maximumDate={new Date()}
+                        onChange={updateDob}
+                      />
                     </View>
                   </View>
-                  <Text style={styles.fieldHint}>
-                    Take a live picture with your camera or upload an image file from your device.
-                  </Text>
-                </View>
-              )}
+                )}
 
-              {isFieldVisible('Student Full Name') && isFieldVisible('Full Name') && (
-                <Field label="Student Full Name" value={form.name} onChangeText={(t) => set('name', t)} placeholder="e.g. Aiden Rivera" />
-              )}
+                {showGender && (
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>
+                      {genderCfg?.label || 'Gender'}
+                      {Boolean(genderCfg?.required) && <Text style={styles.requiredStar}> *</Text>}
+                    </Text>
+                    <Chips options={genderOpts} value={form.gender} onChange={updateGender} />
+                  </View>
+                )}
 
-              {isFieldVisible('Date of Birth') && (
-                <View style={styles.field}>
-                  <View style={styles.fieldLabelRow}>
-                    <Text style={styles.fieldLabel}>Date of Birth</Text>
-                    {form.dob && calculateAge(form.dob) !== null ? (
-                      <View style={styles.ageBadge}>
-                        <Feather name="calendar" size={12} color="#0284C7" />
-                        <Text style={styles.ageBadgeText}>
-                          Calculated Age: {calculateAge(form.dob)} {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                {showProgram && (
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>
+                      {programCfg?.label || 'Program Type'}
+                      {Boolean(programCfg?.required) && <Text style={styles.requiredStar}> *</Text>}
+                    </Text>
+                    <Chips options={programOpts} value={form.program} onChange={updateProgram} />
+                  </View>
+                )}
+
+                {showTherapy && (
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>
+                      {therapyCfg?.label || 'Therapy Group'}
+                      {Boolean(therapyCfg?.required) && <Text style={styles.requiredStar}> *</Text>}
+                    </Text>
+                    <Chips options={therapyOpts} value={form.therapyGroup} onChange={updateTherapyGroup} />
+                    {form.dob && getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
+                      <View style={styles.ageWarningBox}>
+                        <Feather name="info" size={13} color="#D97706" />
+                        <Text style={styles.ageWarningText}>
+                          {getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob))}
                         </Text>
                       </View>
                     ) : null}
                   </View>
-                  <View style={styles.dobWrap}>
-                    <DobPicker
-                      value={form.dob || ''}
-                      maximumDate={new Date()}
-                      onChange={(iso) => set('dob', iso)}
-                    />
-                  </View>
-                </View>
-              )}
+                )}
 
-              {isFieldVisible('Gender') && (
-                <View style={styles.field}><Text style={styles.fieldLabel}>Gender</Text><Chips options={GENDERS} value={form.gender} onChange={(v) => set('gender', v)} /></View>
-              )}
+                <DynamicFormFields
+                  formName="Enrollment Wizard"
+                  section="Student Info"
+                  initialFields={formFields.length ? formFields : undefined}
+                  values={customValues}
+                  onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+                  excludeStandardLabels={[
+                    'Full Name',
+                    'Student Full Name',
+                    'Student Photo',
+                    'Photo',
+                    'Date of Birth',
+                    'Age',
+                    'Gender',
+                    'Program',
+                    'Program Type',
+                    'Therapy Group',
+                    ...(photoCfg?.label ? [photoCfg.label] : []),
+                    ...(nameCfg?.label ? [nameCfg.label] : []),
+                    ...(dobCfg?.label ? [dobCfg.label] : []),
+                    ...(genderCfg?.label ? [genderCfg.label] : []),
+                    ...(programCfg?.label ? [programCfg.label] : []),
+                    ...(therapyCfg?.label ? [therapyCfg.label] : []),
+                  ]}
+                />
+              </View>
+            );
+          })()}
 
-              {isFieldVisible('Program Type') && isFieldVisible('Program') && (
-                <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Program Type</Text>
-                  <Chips options={PROGRAM_TYPES} value={form.program} onChange={(v) => set('program', v)} />
-                </View>
-              )}
+          {currentStep === 'Parent Info' && (() => {
+            const parentNameCfg = getFieldConfig(/parent.*name|guardian/i) || getFieldConfig('f4');
+            const phoneCfg = getFieldConfig(/phone/i) || getFieldConfig('f5');
+            const emailCfg = getFieldConfig(/email/i) || getFieldConfig('f6');
 
-              {isFieldVisible('Therapy Group') && (
-                <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Therapy Group</Text>
-                  <Chips options={THERAPY_GROUPS} value={form.therapyGroup} onChange={(v) => set('therapyGroup', v)} />
-                  {form.dob && getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
-                    <View style={styles.ageWarningBox}>
-                      <Feather name="info" size={13} color="#D97706" />
-                      <Text style={styles.ageWarningText}>
-                        {getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob))}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              )}
+            const showParentName = parentNameCfg ? parentNameCfg.visible !== false : true;
+            const showPhone = phoneCfg ? phoneCfg.visible !== false : true;
+            const showEmail = emailCfg ? emailCfg.visible !== false : true;
 
-              <DynamicFormFields
-                formName="Enrollment Wizard"
-                section="Student Info"
-                initialFields={formFields.length ? formFields : undefined}
-                values={customValues}
-                onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                excludeStandardLabels={[
-                  'Full Name',
-                  'Student Full Name',
-                  'Student Photo',
-                  'Photo',
-                  'Date of Birth',
-                  'Age',
-                  'Gender',
-                  'Program',
-                  'Program Type',
-                  'Therapy Group',
-                ]}
-              />
-            </View>
-          )}
+            return (
+              <View style={styles.stepBody}>
+                {showParentName && (
+                  <Field
+                    required={parentNameCfg ? Boolean(parentNameCfg.required) : true}
+                    label={parentNameCfg?.label || 'Parent / Guardian Name'}
+                    value={form.parentName}
+                    onChangeText={updateParentName}
+                    placeholder={parentNameCfg?.placeholder || 'e.g. Maria Rivera'}
+                  />
+                )}
+                {showPhone && (
+                  <Field
+                    required={phoneCfg ? Boolean(phoneCfg.required) : true}
+                    label={phoneCfg?.label || 'Phone'}
+                    value={form.parentPhone}
+                    onChangeText={updateParentPhone}
+                    keyboardType="phone-pad"
+                    maxWidth
+                    placeholder={phoneCfg?.placeholder || '(555) 000-0000'}
+                  />
+                )}
+                {showEmail && (
+                  <Field
+                    required={emailCfg ? Boolean(emailCfg.required) : false}
+                    label={emailCfg?.label || 'Email'}
+                    value={form.parentEmail}
+                    onChangeText={updateParentEmail}
+                    keyboardType="email-address"
+                    maxWidth
+                    placeholder={emailCfg?.placeholder || 'guardian@example.com'}
+                    hint={emailCfg?.helpText || (emailCfg?.required ? undefined : 'Optional')}
+                  />
+                )}
 
-          {currentStep === 'Parent Info' && (
-            <View style={styles.stepBody}>
-              {isFieldVisible('Parent / Guardian Name') && isFieldVisible('Parent Name') && (
-                <Field required label="Parent / Guardian Name" value={form.parentName} onChangeText={(t) => set('parentName', t)} placeholder="e.g. Maria Rivera" />
-              )}
-              {isFieldVisible('Phone') && isFieldVisible('Parent Phone') && (
-                <Field required label="Phone" value={form.parentPhone} onChangeText={(t) => set('parentPhone', t)} keyboardType="phone-pad" maxWidth placeholder="(555) 000-0000" />
-              )}
-              {isFieldVisible('Email') && isFieldVisible('Parent Email') && (
-                <Field label="Email" value={form.parentEmail} onChangeText={(t) => set('parentEmail', t)} keyboardType="email-address" maxWidth placeholder="guardian@example.com" hint="Optional" />
-              )}
+                <DynamicFormFields
+                  formName="Enrollment Wizard"
+                  section="Parent Info"
+                  initialFields={formFields.length ? formFields : undefined}
+                  values={customValues}
+                  onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+                  excludeStandardLabels={[
+                    'Parent / Guardian Name',
+                    'Parent Name',
+                    'Phone',
+                    'Parent Phone',
+                    'Email',
+                    'Parent Email',
+                    ...(parentNameCfg?.label ? [parentNameCfg.label] : []),
+                    ...(phoneCfg?.label ? [phoneCfg.label] : []),
+                    ...(emailCfg?.label ? [emailCfg.label] : []),
+                  ]}
+                />
+              </View>
+            );
+          })()}
 
-              <DynamicFormFields
-                formName="Enrollment Wizard"
-                section="Parent Info"
-                initialFields={formFields.length ? formFields : undefined}
-                values={customValues}
-                onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                excludeStandardLabels={[
-                  'Parent / Guardian Name',
-                  'Parent Name',
-                  'Phone',
-                  'Parent Phone',
-                  'Email',
-                  'Parent Email',
-                ]}
-              />
-            </View>
-          )}
+          {currentStep === 'Medical Info' && (() => {
+            const diagCfg = getFieldConfig(/diagnosis/i) || getFieldConfig('f_diagnosis');
+            const notesCfg = getFieldConfig(/medical.*notes|notes.*allerg/i) || getFieldConfig('f7');
 
-          {currentStep === 'Medical Info' && (
-            <View style={styles.stepBody}>
-              {isFieldVisible('Diagnosis') && (
-                <Field label="Diagnosis" value={form.diagnosis} onChangeText={(t) => set('diagnosis', t)} placeholder="e.g. Autism Spectrum Disorder" />
-              )}
-              {isFieldVisible('Medical Notes') && (
-                <Field label="Medical Notes" value={form.medicalNotes} onChangeText={(t) => set('medicalNotes', t)} multiline placeholder="Enter any relevant medical notes..." />
-              )}
+            const showDiag = diagCfg ? diagCfg.visible !== false : true;
+            const showNotes = notesCfg ? notesCfg.visible !== false : true;
 
-              <DynamicFormFields
-                formName="Enrollment Wizard"
-                section="Medical Info"
-                initialFields={formFields.length ? formFields : undefined}
-                values={customValues}
-                onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                excludeStandardLabels={[
-                  'Diagnosis',
-                  'Medical Notes',
-                ]}
-              />
-            </View>
-          )}
+            return (
+              <View style={styles.stepBody}>
+                {showDiag && (
+                  <Field
+                    required={diagCfg ? Boolean(diagCfg.required) : false}
+                    label={diagCfg?.label || 'Diagnosis'}
+                    value={form.diagnosis}
+                    onChangeText={updateDiagnosis}
+                    placeholder={diagCfg?.placeholder || 'e.g. Autism Spectrum Disorder'}
+                  />
+                )}
+                {showNotes && (
+                  <Field
+                    required={notesCfg ? Boolean(notesCfg.required) : false}
+                    label={notesCfg?.label || 'Medical Notes'}
+                    value={form.medicalNotes}
+                    onChangeText={updateMedicalNotes}
+                    multiline
+                    placeholder={notesCfg?.placeholder || 'Enter any relevant medical notes...'}
+                  />
+                )}
+
+                <DynamicFormFields
+                  formName="Enrollment Wizard"
+                  section="Medical Info"
+                  initialFields={formFields.length ? formFields : undefined}
+                  values={customValues}
+                  onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+                  excludeStandardLabels={[
+                    'Diagnosis',
+                    'Medical Notes',
+                    ...(diagCfg?.label ? [diagCfg.label] : []),
+                    ...(notesCfg?.label ? [notesCfg.label] : []),
+                  ]}
+                />
+              </View>
+            );
+          })()}
 
           {/* Custom Info Types dynamically configured in Form Builder */}
           {!['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'].includes(currentStep) && (

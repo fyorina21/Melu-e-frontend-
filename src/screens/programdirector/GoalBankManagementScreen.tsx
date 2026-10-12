@@ -20,21 +20,17 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getGoalBank, createGoal, updateGoal } from '../../api/programDirectorApi';
+import { getStoredGoalDomains, saveGoalItem, getStoredGoalBank } from '../../stores/goalBankStore';
 import type { ProgramDirectorStackParamList } from '../../types';
 
-const DOMAINS = [
-  'All',
-  'Cognitive',
-  'Receptive Language',
-  'Expressive Language',
-  'Social Skills',
-  'Motor Skills',
+const DEFAULT_DOMAINS = [
+  'Communication',
+  'Motor',
+  'Social',
+  'Self-Help',
+  'Cognition',
   'Adaptive',
-  'Play Skills',
-  'Academic',
 ];
-
-const DOMAIN_OPTIONS = DOMAINS.slice(1);
 
 type GoalStatus = 'active' | 'inactive';
 
@@ -59,7 +55,7 @@ interface FormData {
 
 const EMPTY_FORM: FormData = {
   name: '',
-  domain: DOMAIN_OPTIONS[0],
+  domain: DEFAULT_DOMAINS[0],
   description: '',
   masteryCriteria: '80% accuracy across 3 consecutive sessions',
   suggestedAgeRange: '4–8 years',
@@ -67,22 +63,37 @@ const EMPTY_FORM: FormData = {
 };
 
 /* ── Add / Edit Goal modal ── */
-function GoalFormModal({ visible, initial, onClose, onSave }: {
+function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
   visible: boolean;
   initial: FormData | null;
+  domains?: string[];
   onClose: () => void;
   onSave: (payload: FormData) => void;
 }) {
+  const domainList = domains.length > 0 ? domains : DEFAULT_DOMAINS;
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [domainPickerOpen, setDomainPickerOpen] = useState(false);
 
   useEffect(() => {
-    setForm(initial ? { ...initial } : { ...EMPTY_FORM });
-  }, [initial, visible]);
+    if (initial) {
+      setForm({ ...initial });
+    } else {
+      setForm({
+        ...EMPTY_FORM,
+        domain: domainList[0] || 'Communication',
+      });
+    }
+  }, [initial, visible, domains]);
 
-  const valid = form.name.trim().length > 0 && form.description.trim().length > 0;
+  const valid = form.name.trim().length > 0;
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  const handlePressSave = () => {
+    if (!valid) return;
+    const finalDesc = form.description.trim() || `Target goal for ${form.name.trim()}`;
+    onSave({ ...form, description: finalDesc });
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -127,7 +138,7 @@ function GoalFormModal({ visible, initial, onClose, onSave }: {
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>
-                Description <Text style={{ color: '#EF4444' }}>*</Text>
+                Description <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: 'normal' }}>(Optional)</Text>
               </Text>
               <TextInput
                 style={[styles.textInput, styles.textArea]}
@@ -187,7 +198,7 @@ function GoalFormModal({ visible, initial, onClose, onSave }: {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.saveBtn, !valid && styles.saveBtnDisabled]}
-              onPress={() => onSave({ ...form })}
+              onPress={handlePressSave}
               disabled={!valid}
             >
               <Text style={styles.saveBtnText}>{initial ? 'Save Changes' : 'Create Goal'}</Text>
@@ -197,6 +208,7 @@ function GoalFormModal({ visible, initial, onClose, onSave }: {
 
         <DomainPicker
           visible={domainPickerOpen}
+          options={domainList}
           selected={form.domain}
           onSelect={(d) => set('domain', d)}
           onClose={() => setDomainPickerOpen(false)}
@@ -207,8 +219,9 @@ function GoalFormModal({ visible, initial, onClose, onSave }: {
 }
 
 /* ── Domain picker (in-sheet overlay, avoids nested Modals) ── */
-function DomainPicker({ visible, selected, onSelect, onClose }: {
+function DomainPicker({ visible, options, selected, onSelect, onClose }: {
   visible: boolean;
+  options: string[];
   selected: string;
   onSelect: (domain: string) => void;
   onClose: () => void;
@@ -225,7 +238,7 @@ function DomainPicker({ visible, selected, onSelect, onClose }: {
           </TouchableOpacity>
         </View>
         <ScrollView style={{ maxHeight: 350 }}>
-          {DOMAIN_OPTIONS.map((d) => (
+          {options.map((d) => (
             <TouchableOpacity
               key={d}
               style={[styles.optionRow, selected === d && styles.optionRowActive]}
@@ -310,6 +323,10 @@ export default function GoalBankManagementScreen({
   navigation,
 }: NativeStackScreenProps<ProgramDirectorStackParamList, 'GoalBankManagement'>) {
   const [goals, setGoals] = useState<ExtendedGoal[] | null>(null);
+  const [availableDomains, setAvailableDomains] = useState<string[]>(() => {
+    const stored = getStoredGoalDomains();
+    return stored.length > 0 ? stored.map((d) => d.name) : DEFAULT_DOMAINS;
+  });
   const [search, setSearch] = useState('');
   const [domainFilter, setDomainFilter] = useState('All');
   const [formTarget, setFormTarget] = useState<ExtendedGoal | null | undefined>(undefined); // undefined = closed, null = new, object = editing
@@ -320,7 +337,7 @@ export default function GoalBankManagementScreen({
       const { data: res } = await getGoalBank({});
       const rows = Array.isArray(res) ? res : [];
       setGoals(
-        rows.map((g) => ({
+        rows.map((g: any) => ({
           id: g.id,
           name: g.name,
           domain: g.domain,
@@ -331,11 +348,48 @@ export default function GoalBankManagementScreen({
         })),
       );
     } catch {
-      setGoals([]);
+      const fallback = getStoredGoalBank();
+      setGoals(
+        fallback.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          domain: g.domain,
+          description: g.description,
+          masteryCriteria: g.masteryCriteria ?? '',
+          usageCount: typeof g.usageCount === 'number' ? g.usageCount : 0,
+          status: g.active === false || g.status === 'inactive' ? 'inactive' : 'active',
+        })),
+      );
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+
+    const handleBankChange = () => {
+      load();
+    };
+
+    const handleDomainsChange = () => {
+      const stored = getStoredGoalDomains();
+      setAvailableDomains(stored.length > 0 ? stored.map((d) => d.name) : DEFAULT_DOMAINS);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_goal_bank_changed', handleBankChange);
+      window.addEventListener('melue_goal_domains_changed', handleDomainsChange);
+      return () => {
+        window.removeEventListener('melue_goal_bank_changed', handleBankChange);
+        window.removeEventListener('melue_goal_domains_changed', handleDomainsChange);
+      };
+    }
+  }, []);
+
+  const domainFilterOptions = useMemo(() => {
+    const allFromGoals = goals ? Array.from(new Set(goals.map((g) => g.domain).filter(Boolean))) : [];
+    const combined = Array.from(new Set([...availableDomains, ...allFromGoals]));
+    return ['All', ...(combined.length > 0 ? combined : DEFAULT_DOMAINS)];
+  }, [availableDomains, goals]);
 
   const filtered = useMemo(() => {
     if (!goals) return [];
@@ -351,22 +405,56 @@ export default function GoalBankManagementScreen({
   }, [goals, search, domainFilter]);
 
   const handleSave = async (payload: FormData) => {
+    const finalDescription = payload.description.trim() || `Target goal for ${payload.name.trim()}`;
     const apiPayload = {
       name: payload.name.trim(),
-      domain: payload.domain,
-      description: payload.description.trim(),
-      masteryCriteria: payload.masteryCriteria.trim(),
+      domain: payload.domain || availableDomains[0] || 'Communication',
+      description: finalDescription,
+      masteryCriteria: payload.masteryCriteria.trim() || '80% accuracy across 3 consecutive sessions',
       status: payload.status,
+      active: payload.status === 'active',
+      goalType: 'standard' as const,
     };
+
+    // Close modal immediately for snappy UI
+    setFormTarget(undefined);
+
+    // Save directly to localStorage & dispatch melue_goal_bank_changed
+    const saved = saveGoalItem(formTarget ? { ...apiPayload, id: formTarget.id } : apiPayload);
+
+    // Optimistically update goals state
+    setGoals((prev) => {
+      const currentList = prev || [];
+      const targetId = formTarget ? formTarget.id : saved.id;
+      const idx = currentList.findIndex((g) => g.id === targetId);
+      const extItem: ExtendedGoal = {
+        id: saved.id,
+        name: saved.name,
+        domain: saved.domain,
+        description: saved.description,
+        masteryCriteria: saved.masteryCriteria,
+        usageCount: saved.usageCount || 0,
+        status: saved.status || 'active',
+      };
+      if (idx >= 0) {
+        const next = [...currentList];
+        next[idx] = extItem;
+        return next;
+      }
+      return [extItem, ...currentList];
+    });
+
     try {
       if (formTarget) {
         await updateGoal(formTarget.id, apiPayload);
       } else {
         await createGoal(apiPayload);
       }
-      await load();
-    } catch (err) {}
-    setFormTarget(undefined);
+    } catch (err) {
+      console.warn('API sync warning:', err);
+    }
+
+    await load();
   };
 
   if (!goals) return <ScreenLoader />;
@@ -415,7 +503,7 @@ export default function GoalBankManagementScreen({
 
           <View style={styles.filterRow}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {DOMAINS.map((d) => (
+              {domainFilterOptions.map((d) => (
                 <TouchableOpacity
                   key={d}
                   style={[styles.filterChip, domainFilter === d && styles.filterChipActive]}
@@ -502,6 +590,7 @@ export default function GoalBankManagementScreen({
           suggestedAgeRange: '',
           status: formTarget.status,
         }}
+        domains={availableDomains}
         onClose={() => setFormTarget(undefined)}
         onSave={handleSave}
       />

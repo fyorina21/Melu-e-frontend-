@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { setStoredSessionStudents, getStoredSessionStudents } from '../../stores/trialsStore';
 import { isStudentEligibleForSession } from '../../utils/studentLifecycleHelper';
+import {
+  findLoggedInTeacher,
+  resolveTeacherAssignedStudentIds,
+  resolveEligibleTeacherStudents,
+} from '../../utils/teacherScheduleHelper';
 
 describe('Teacher Session Differentiation', () => {
   beforeEach(() => {
@@ -61,4 +66,48 @@ describe('Teacher Session Differentiation', () => {
     expect(assignedStudentIds).not.toContain('stu-3');
     expect(assignedStudentIds.length).toBeLessThanOrEqual(2);
   });
+
+  it('matches the logged-in teacher and isolates assigned students with zero leakage', () => {
+    const teachers = [
+      { id: 't-abeba', name: 'Abeba Tadesse', email: 'abeba@melue.org' },
+      { id: 't-dawit', name: 'Dawit Bekele', email: 'dawit@melue.org' },
+    ];
+
+    const blocks = [
+      { id: 'b1', teacherId: 't-abeba', teacherName: 'Abeba Tadesse', stationName: 'Station 1', studentIds: ['stu-1', 'stu-2'] },
+      { id: 'b2', teacherId: 't-dawit', teacherName: 'Dawit Bekele', stationName: 'Station 2', studentIds: [] },
+    ];
+
+    const studentOpts = [
+      { id: 'stu-1', name: 'Yonas Girma', status: 'in_session' },
+      { id: 'stu-2', name: 'Meron Haile', status: 'in_session' },
+      { id: 'stu-3', name: 'Unassigned Student', status: 'in_session' },
+    ];
+
+    // Case 1: Abeba is logged in
+    const authAbeba = { userName: 'Abeba Tadesse', email: 'abeba@melue.org' };
+    const matchedAbeba = findLoggedInTeacher(authAbeba, teachers);
+    expect(matchedAbeba?.id).toBe('t-abeba');
+
+    const abebaResult = resolveTeacherAssignedStudentIds(matchedAbeba, blocks);
+    expect(abebaResult.assignedStudentIds).toEqual(['stu-1', 'stu-2']);
+
+    const abebaEligible = resolveEligibleTeacherStudents(abebaResult.assignedStudentIds, studentOpts);
+    expect(abebaEligible).toHaveLength(2);
+    expect(abebaEligible[0].name).toBe('Yonas Girma');
+    expect(abebaEligible[1].name).toBe('Meron Haile');
+
+    // Case 2: Dawit is logged in (has no assigned students)
+    const authDawit = { userName: 'Dawit Bekele', email: 'dawit@melue.org' };
+    const matchedDawit = findLoggedInTeacher(authDawit, teachers);
+    expect(matchedDawit?.id).toBe('t-dawit');
+
+    const dawitResult = resolveTeacherAssignedStudentIds(matchedDawit, blocks);
+    expect(dawitResult.assignedStudentIds).toEqual([]);
+
+    const dawitEligible = resolveEligibleTeacherStudents(dawitResult.assignedStudentIds, studentOpts);
+    expect(dawitEligible).toEqual([]);
+    // Dawit NEVER sees Abeba's students stu-1 or stu-2 or unassigned stu-3!
+  });
 });
+

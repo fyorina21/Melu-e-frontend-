@@ -29,7 +29,15 @@ import {
   approveMastery,
   rejectMastery,
 } from '../../api/directorApi';
+import { onMasteryChecksChanged } from '../../stores/goalMasteryStore';
 import type { DirectorStackParamList, ProgramDirectorStackParamList } from '../../types';
+
+const OUTCOME_LABELS: Record<string, string> = {
+  novel_person: 'Independent with Novel Person',
+  novel_environment: 'Independent in Novel Environment',
+  both: 'Independent (Both Person & Environment)',
+  failed: 'Failed - Required Prompt',
+};
 
 interface MasteryListItem {
   checkId: string;
@@ -241,19 +249,19 @@ export default function GoalMasteryApprovalScreen({
   const load = useCallback(async () => {
     try {
       const { data } = await getPendingMasteryApprovals({ search });
-      const rows = (Array.isArray(data) ? data : []) as RawMasteryCheck[];
+      const rows = (Array.isArray(data) ? data : []) as any[];
       setList(
         rows
           .filter((m) => m.status === 'pending')
           .map((m) => ({
             checkId: m.id,
-            goalId: m.studentGoalId,
-            studentName: m.requestedByName ? `Student ${m.requestedByName.split(' ')[0]}` : 'Student Leo',
-            goalName: m.studentGoalId.includes('-') ? m.studentGoalId.replace(/-/g, ' ') : m.studentGoalId,
-            teacherA: m.requestedByName ?? 'Sarah Miller',
-            teacherB: 'Alex Tan',
-            teacherC: 'Emma Watson',
-            dateSubmitted: formatDate(m.requestedAt),
+            goalId: m.goalId || m.studentGoalId || m.id,
+            studentName: m.studentName || (m.requestedByName ? `Student ${m.requestedByName.split(' ')[0]}` : 'Student'),
+            goalName: m.goalName || (m.studentGoalId ? m.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
+            teacherA: m.primaryTeacher?.name || m.requestedByName || 'Lead Teacher',
+            teacherB: m.teacherB?.name || 'Teacher B',
+            teacherC: m.teacherC?.name || 'Teacher C',
+            dateSubmitted: formatDate(m.dateSubmitted || m.requestedAt),
           }))
       );
     } catch {
@@ -265,18 +273,39 @@ export default function GoalMasteryApprovalScreen({
     load();
   }, [load]);
 
+  useEffect(() => {
+    return onMasteryChecksChanged(load);
+  }, [load]);
+
   const handleViewDetail = async (checkId: string) => {
     try {
       const { data } = await getMasteryApprovalDetail(checkId);
-      const row = (data ?? {}) as Partial<RawMasteryCheck>;
+      const row = (data ?? {}) as any;
+      const tBOutcome = row.teacherB?.outcome;
+      const tCOutcome = row.teacherC?.outcome;
       setDetail({
         checkId,
-        goalId: row.studentGoalId ?? checkId,
-        studentName: row.requestedByName ? `Student ${row.requestedByName.split(' ')[0]}` : 'Student Leo',
-        goalName: (row.studentGoalId ?? checkId).replace(/-/g, ' '),
-        teacherA: { summary: `Achieved 3 consecutive unprompted sessions (100% independence) under primary instruction.` },
-        teacherB: { outcome: 'Mastered (Unprompted)', promptUsed: null, notes: 'Observed in Station 2 during peer play. Prompt not required.' },
-        teacherC: { outcome: 'Mastered (Unprompted)', promptUsed: null, notes: 'Generalized successfully in cafeteria setting.' },
+        goalId: row.goalId || row.studentGoalId || checkId,
+        studentName: row.studentName || (row.requestedByName ? `Student ${row.requestedByName.split(' ')[0]}` : 'Student'),
+        goalName: row.goalName || (row.studentGoalId ? row.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
+        teacherA: {
+          summary:
+            row.primaryTeacher?.summary ||
+            row.primaryTeacher?.notes ||
+            (row.primaryTeacher?.independenceRate
+              ? `Achieved ${row.primaryTeacher.independenceRate} independence under primary instruction (${row.primaryTeacher.criteriaMet || 'Criteria Met'}).`
+              : 'Achieved 3 consecutive unprompted sessions (100% independence) under primary instruction.'),
+        },
+        teacherB: {
+          outcome: tBOutcome ? (OUTCOME_LABELS[tBOutcome] || tBOutcome) : 'Verified Independent',
+          promptUsed: row.teacherB?.promptUsed || null,
+          notes: row.teacherB?.notes || '',
+        },
+        teacherC: {
+          outcome: tCOutcome ? (OUTCOME_LABELS[tCOutcome] || tCOutcome) : 'Verified Independent',
+          promptUsed: row.teacherC?.promptUsed || null,
+          notes: row.teacherC?.notes || '',
+        },
       });
     } catch {
       setDetail(null);
@@ -294,7 +323,10 @@ export default function GoalMasteryApprovalScreen({
             await approveMastery(checkId, { notes });
             setDetail(null);
             await load();
-          } catch {}
+            Alert.alert('Mastery Approved', 'Goal marked as fully mastered and approved.');
+          } catch {
+            Alert.alert('Error', 'Failed to approve goal mastery.');
+          }
         },
       },
     ]);
@@ -305,8 +337,10 @@ export default function GoalMasteryApprovalScreen({
       await rejectMastery(checkId, { reason, notes });
       setDetail(null);
       await load();
-    } catch {}
-    Alert.alert('Sent Back', 'Mastery request was returned to Teacher A with feedback.');
+      Alert.alert('Sent Back', 'Mastery request was returned to Teacher with feedback.');
+    } catch {
+      Alert.alert('Error', 'Failed to reject mastery request.');
+    }
   };
 
   const handleExport = () => {

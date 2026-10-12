@@ -65,6 +65,20 @@ export function getPromptLevels(): PromptLevelConfigItem[] {
 }
 
 export function getTrialConfig() {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.consecutive === 'number') {
+          configConsecutive = parsed.consecutive;
+        }
+        if (typeof parsed?.streamCount === 'number') {
+          configStreamCount = parsed.streamCount;
+        }
+      }
+    } catch {}
+  }
   return { consecutive: configConsecutive, streamCount: configStreamCount };
 }
 
@@ -75,6 +89,15 @@ export function setPromptLevels(next: PromptLevelConfigItem[], consecutive: numb
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ promptLevels: config, consecutive, streamCount }));
+    } catch {}
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('melue_prompt_levels_changed', {
+          detail: { promptLevels: config, consecutive, streamCount },
+        })
+      );
     } catch {}
   }
 }

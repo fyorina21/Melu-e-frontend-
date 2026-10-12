@@ -6,6 +6,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { getWorkloadDashboard, getWorkloadTrend } from '../../api/coordinatorApi';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { CoordinatorStackParamList } from '../../types';
 
 interface WorkloadRow {
@@ -32,21 +33,38 @@ export default function WorkloadDashboardScreen({ navigation }: Props) {
   const [trend, setTrend] = useState<TrendPoint[]>([]);
 
   const load = useCallback(async () => {
+    let rowsData: WorkloadRow[] = [];
     try {
       const { data } = await getWorkloadDashboard();
-      setRows(data);
+      rowsData = filterOutDeletedStaff(Array.isArray(data) ? data : []);
+      setRows(rowsData);
     } catch (err) {
       setRows([]);
     }
     try {
       const { data } = await getWorkloadTrend();
-      setTrend(data);
+      const trendData = filterOutDeletedStaff(Array.isArray(data) ? data : []);
+      if (trendData.length > 0) {
+        setTrend(trendData);
+      } else if (rowsData.length > 0) {
+        setTrend(rowsData.map((r) => ({ label: r.teacherName, sessions: r.weeklySessions })));
+      } else {
+        setTrend([]);
+      }
     } catch (err) {
-      setTrend([]);
+      if (rowsData.length > 0) {
+        setTrend(rowsData.map((r) => ({ label: r.teacherName, sessions: r.weeklySessions })));
+      } else {
+        setTrend([]);
+      }
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(load);
+  }, [load]);
 
   const totalWeekly = rows.reduce((sum, r) => sum + r.weeklySessions, 0);
   const maxTrend = Math.max(...trend.map((t) => t.sessions), 1);

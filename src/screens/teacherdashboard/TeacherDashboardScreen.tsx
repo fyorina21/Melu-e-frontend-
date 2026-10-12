@@ -13,8 +13,12 @@ import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherDashboard, getAssessmentDashboard } from '../../api/teacherExtrasApi';
 import { getSessionRoster } from '../../api/sessionApi';
+import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
+import { getDirectorSchedule } from '../../api/directorApi';
 import { setStoredSessionStudents } from '../../stores/trialsStore';
-import { isStudentEligibleForSession, isStudentAssessment100PercentCompleted, isStudentInSession } from '../../utils/studentLifecycleHelper';
+import { isStudentEligibleForSession, isStudentAssessment100PercentCompleted, isStudentInSession, registerStudentStatuses } from '../../utils/studentLifecycleHelper';
+import { findLoggedInTeacher, resolveTeacherAssignedStudentIds, resolveEligibleTeacherStudents } from '../../utils/teacherScheduleHelper';
+import { filterOutDeletedStaff, isStaffDeleted, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { SessionStackParamList, FeatherIconName } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'TeacherDashboard'>;
@@ -131,32 +135,62 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [dashRes, assessRes] = await Promise.allSettled([
+      const [dashRes, assessRes, staffRes, studentOptsRes] = await Promise.allSettled([
         getTeacherDashboard(),
         getAssessmentDashboard(),
+        getStaffOptions(),
+        getStudentOptions(),
       ]);
 
       const res = dashRes.status === 'fulfilled' ? dashRes.value?.data : null;
       const assessData = assessRes.status === 'fulfilled' ? assessRes.value?.data : null;
+      const staffList = filterOutDeletedStaff(staffRes.status === 'fulfilled' ? (staffRes.value?.data || []) : []);
+      const studentOpts = studentOptsRes.status === 'fulfilled' ? (studentOptsRes.value?.data || []) : [];
+
+      if (studentOpts.length > 0) {
+        registerStudentStatuses(studentOpts);
+      }
 
       if (!res && !assessData) {
         setLoadError(true);
         return;
       }
 
-      const scheduleData = res?.todaySchedule || {
-        stationName: 'Station 1 — Basic Skills',
-        roomName: 'Room 1A',
-        sessionBlock: 'Morning Block A · Daily Living',
-        startTime: '08:00 AM',
-        endTime: '09:30 AM',
-        startsIn: 'Starts in 15m',
-        students: [],
-      };
-
-      if (!scheduleData.students) {
-        scheduleData.students = [];
+      // 1. Identify logged-in teacher from auth session
+      const teacherRows = filterOutDeletedStaff(staffList.filter((s: any) => s.role === 'teacher'));
+      const targetTeacher = findLoggedInTeacher(session, teacherRows);
+      if (targetTeacher && isStaffDeleted(targetTeacher)) {
+        // Logged in teacher was deleted
       }
+
+      // 2. Fetch director schedule for this specific teacher
+      let schedBlocks: any[] = [];
+      if (targetTeacher?.id) {
+        try {
+          const schedRes = await getDirectorSchedule({ teacherId: targetTeacher.id });
+          schedBlocks = Array.isArray(schedRes?.data) ? schedRes.data : [];
+        } catch {}
+      }
+
+      // 3. Resolve assigned student IDs strictly belonging to this teacher
+      const { assignedStudentIds, activeBlock } = resolveTeacherAssignedStudentIds(targetTeacher, schedBlocks);
+
+      // 4. Resolve eligible student objects (strictly 100% completed assessments, capped at 2)
+      const teacherEligibleStudents = resolveEligibleTeacherStudents(
+        assignedStudentIds,
+        studentOpts,
+        res?.todaySchedule?.students || []
+      );
+
+      const scheduleData: TodaySchedule = {
+        stationName: activeBlock?.stationName || res?.todaySchedule?.stationName || 'Station 1 — Basic Skills',
+        roomName: activeBlock?.roomName || res?.todaySchedule?.roomName || 'Room 1A',
+        sessionBlock: activeBlock?.sessionBlock || res?.todaySchedule?.sessionBlock || 'Morning Block A · Daily Living',
+        startTime: activeBlock?.startTime || res?.todaySchedule?.startTime || '08:00 AM',
+        endTime: activeBlock?.endTime || res?.todaySchedule?.endTime || '09:30 AM',
+        startsIn: res?.todaySchedule?.startsIn || 'Starts in 15m',
+        students: teacherEligibleStudents,
+      };
 
       // Collect assessment tasks directly from Assessment Page data to ensure 100% sync
       const assessmentStudents = assessData?.students || [];
@@ -185,14 +219,23 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
         pendingMasteryChecks: res?.pendingMasteryChecks || [],
         notifications: res?.notifications || [],
       });
-      setStoredSessionStudents('active', scheduleData.students);
+
+      if (targetTeacher?.id) {
+        setStoredSessionStudents('active', teacherEligibleStudents, targetTeacher.id);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('melue_session_selected_teacher_id', targetTeacher.id);
+        }
+      } else {
+        setStoredSessionStudents('active', teacherEligibleStudents);
+      }
       setLoadError(false);
     } catch (err) {
       setLoadError(true);
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => onDeletedStaffChanged(load), [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -219,9 +262,13 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       );
       return;
     }
-    setStoredSessionStudents('active', eligibleSessionStudents);
+    const teacherId = typeof localStorage !== 'undefined'
+      ? localStorage.getItem('melue_session_selected_teacher_id') || undefined
+      : undefined;
+    setStoredSessionStudents('active', eligibleSessionStudents, teacherId);
     navigation?.navigate?.('SessionDataCollection', {
       sessionId: 'active',
+      teacherId,
       students: eligibleSessionStudents,
     });
   };

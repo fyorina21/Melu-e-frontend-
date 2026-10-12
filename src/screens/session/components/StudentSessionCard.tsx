@@ -1,5 +1,5 @@
 // screens/session/components/StudentSessionCard.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
@@ -91,8 +91,33 @@ export default function StudentSessionCard({
   const trials = uniqueTrials;
 
   const orderMap = getPromptLevelOrder();
-  const { consecutive } = getTrialConfig();
-  const displayedTrials = [...trials.slice(-5)];
+  const [configConsecutive, setConfigConsecutive] = useState(() => {
+    const cfg = getTrialConfig();
+    return typeof cfg.consecutive === 'number' && cfg.consecutive > 0 ? cfg.consecutive : 5;
+  });
+
+  useEffect(() => {
+    const updateConfig = () => {
+      const cfg = getTrialConfig();
+      if (typeof cfg.consecutive === 'number' && cfg.consecutive > 0) {
+        setConfigConsecutive(cfg.consecutive);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_prompt_levels_changed', updateConfig);
+      window.addEventListener('storage', updateConfig);
+      window.addEventListener('focus', updateConfig);
+      return () => {
+        window.removeEventListener('melue_prompt_levels_changed', updateConfig);
+        window.removeEventListener('storage', updateConfig);
+        window.removeEventListener('focus', updateConfig);
+      };
+    }
+  }, []);
+
+  const maxTrials = typeof configConsecutive === 'number' && configConsecutive > 0 ? configConsecutive : 5;
+  const displayedTrials = [...trials.slice(-maxTrials)];
   const trialCount = displayedTrials.length;
 
   const handlePromptBarPress = () => {

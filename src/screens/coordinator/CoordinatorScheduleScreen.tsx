@@ -29,6 +29,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
 import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import { colors, radius, spacing } from '../../theme/colors';
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CoordinatorSchedule'>;
@@ -148,7 +149,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
           }),
         );
       });
-      setTeachers(nextTeachers);
+      const safeTeachers = filterOutDeletedStaff(nextTeachers);
+      setTeachers(safeTeachers);
+      setTeacherFilter((prev) => (prev === 'all' || safeTeachers.some((t) => t.id === prev) ? prev : 'all'));
       setScheduleData(nextSchedule);
     } catch (err) {
       setTeachers([]);
@@ -158,6 +161,10 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(load);
   }, [load]);
 
   const filteredTeachers =

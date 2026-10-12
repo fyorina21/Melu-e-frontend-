@@ -5,6 +5,8 @@ import {
   isStudentAssessment100PercentCompleted,
   isStoredAssessmentCompleted,
   registerStudentStatuses,
+  getStudentSkillsProgress,
+  getStudentBehaviorProgress,
 } from '../utils/studentLifecycleHelper';
 
 // SCR-TEA-001: Teacher Dashboard
@@ -43,9 +45,8 @@ export const getAssessmentDashboard = async () => {
 
         if (!inSession && !completed && !existingIds.has(sid) && isInAssessmentStatus) {
           existingIds.add(sid);
-          const storedSkills = getStoredAssessment('skills', sid);
-          const skillsProg = storedSkills?.progress ?? (isStoredAssessmentCompleted(sid) ? 100 : 45);
-          const skillsStat = skillsProg >= 100 ? 'Completed' : skillsProg > 0 ? 'In Progress' : 'Not Started';
+          const skillsInfo = getStudentSkillsProgress(sid, 0, 'Not Started');
+          const behaviorInfo = getStudentBehaviorProgress(sid, 0, 'Not Started');
 
           backendStudents.push({
             id: sid,
@@ -55,15 +56,25 @@ export const getAssessmentDashboard = async () => {
             program: s.program || 'ABA Early Intervention',
             therapist: 'Lead Teacher',
             lastAssessment: 'In Progress',
-            score: skillsProg,
-            ablls: { status: skillsStat, progress: skillsProg },
-            behavior: { status: 'Not Started', progress: 0 },
+            score: Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2)),
+            ablls: { status: skillsInfo.status, progress: skillsInfo.progress },
+            behavior: { status: behaviorInfo.status, progress: behaviorInfo.progress },
             phase: '6-week',
           });
         }
       });
     }
   } catch {}
+
+  // Update all students with their saved skill and behavior assessment progress
+  backendStudents.forEach((s) => {
+    const sid = String(s.id);
+    const skillsInfo = getStudentSkillsProgress(sid, s.ablls?.progress ?? 0, s.ablls?.status ?? 'Not Started');
+    const behaviorInfo = getStudentBehaviorProgress(sid, s.behavior?.progress ?? 0, s.behavior?.status ?? 'Not Started');
+    s.ablls = { status: skillsInfo.status, progress: skillsInfo.progress };
+    s.behavior = { status: behaviorInfo.status, progress: behaviorInfo.progress };
+    s.score = Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2));
+  });
 
   // Filter out any student in session or 100% completed
   const activeStudents = backendStudents.filter(
@@ -75,9 +86,9 @@ export const getAssessmentDashboard = async () => {
       periodLabel,
       stats: {
         total: activeStudents.length,
-        completed: 0,
-        inProgress: activeStudents.filter((s) => s.ablls?.status === 'In Progress' || (s.ablls?.progress && s.ablls?.progress > 0)).length,
-        notStarted: activeStudents.filter((s) => s.ablls?.status === 'Not Started' && (!s.ablls?.progress || s.ablls?.progress === 0)).length,
+        completed: activeStudents.filter((s) => s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed').length,
+        inProgress: activeStudents.filter((s) => (s.ablls?.status === 'In Progress' || s.behavior?.status === 'In Progress') && !(s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed')).length,
+        notStarted: activeStudents.filter((s) => s.ablls?.status === 'Not Started' && s.behavior?.status === 'Not Started').length,
       },
       students: activeStudents,
     },
@@ -121,13 +132,14 @@ function setStoredAssessment(type: string, studentId: string, data: any): void {
 
 // MR-22: Skills Assessment (ABLLS)
 export const getSkillsAssessment = async (studentId: string) => {
-  const stored = getStoredAssessment('skills', studentId);
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const stored = getStoredAssessment('skills', studentId) || (alias ? getStoredAssessment('skills', alias) : null);
   if (stored) {
     return { data: stored };
   }
   if (typeof localStorage !== 'undefined') {
     try {
-      const legacyRaw = localStorage.getItem(`skills_assessment_${studentId}`);
+      const legacyRaw = localStorage.getItem(`skills_assessment_${studentId}`) || (alias ? localStorage.getItem(`skills_assessment_${alias}`) : null);
       if (legacyRaw) {
         const parsed = JSON.parse(legacyRaw);
         return { data: parsed };
@@ -147,7 +159,8 @@ export const getSkillsAssessment = async (studentId: string) => {
 };
 
 export const saveSkillsAssessment = async (studentId: string, payload: Record<string, unknown>) => {
-  const current = getStoredAssessment('skills', studentId) || {};
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const current = getStoredAssessment('skills', studentId) || (alias ? getStoredAssessment('skills', alias) : null) || {};
   const updated = {
     ...current,
     ...payload,
@@ -156,6 +169,9 @@ export const saveSkillsAssessment = async (studentId: string, payload: Record<st
     updatedAt: new Date().toISOString(),
   };
   setStoredAssessment('skills', studentId, updated);
+  if (alias) {
+    setStoredAssessment('skills', alias, updated);
+  }
   return { data: updated };
 };
 
@@ -180,16 +196,43 @@ export const getBehaviorAssessment = async (studentId: string) => {
 };
 
 export const saveBehaviorAssessment = async (studentId: string, payload: Record<string, unknown>) => {
-  setStoredAssessment('behavior', studentId, payload);
-  try {
-    return await client.post(`/teacher/students/${studentId}/assessments/behavior`, payload);
-  } catch {
-    return { data: payload };
+  const sid = String(studentId);
+  const massCount =
+    payload.massAnswers && typeof payload.massAnswers === 'object'
+      ? Object.keys(payload.massAnswers as object).filter((k) => (payload.massAnswers as any)[k]).length
+      : 0;
+  const fastCount =
+    payload.fastAnswers && typeof payload.fastAnswers === 'object'
+      ? Object.keys(payload.fastAnswers as object).filter((k) => (payload.fastAnswers as any)[k] !== undefined).length
+      : 0;
+  const answered = massCount + fastCount;
+  const computedProgress =
+    payload.status === 'submitted'
+      ? 100
+      : payload.progress !== undefined
+      ? Number(payload.progress)
+      : Math.min(100, Math.round((answered / 20) * 100));
+
+  const enriched = {
+    ...payload,
+    progress: computedProgress,
+    status: payload.status || (computedProgress >= 100 ? 'completed' : computedProgress > 0 ? 'in_progress' : 'draft'),
+    updatedAt: new Date().toISOString(),
+  };
+
+  setStoredAssessment('behavior', sid, enriched);
+  const alias = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : null;
+  if (alias) {
+    setStoredAssessment('behavior', alias, enriched);
   }
+
+  client.post(`/teacher/students/${studentId}/assessments/behavior`, enriched).catch(() => {});
+  return { data: enriched };
 };
 
 export const getPreferenceAssessment = async (studentId: string) => {
-  const stored = getStoredAssessment('preference', studentId);
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const stored = getStoredAssessment('preference', studentId) || (alias ? getStoredAssessment('preference', alias) : null);
   if (stored) {
     return { data: stored };
   }
@@ -198,14 +241,15 @@ export const getPreferenceAssessment = async (studentId: string) => {
       id: `pref-${studentId}`,
       studentId,
       items: [],
-      sessionTab: 'Tangibles',
+      sessionTab: 'Sensory Time',
       status: 'draft',
     },
   };
 };
 
 export const savePreferenceAssessment = async (studentId: string, payload: Record<string, unknown>) => {
-  const current = getStoredAssessment('preference', studentId) || {};
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const current = getStoredAssessment('preference', studentId) || (alias ? getStoredAssessment('preference', alias) : null) || {};
   const updated = {
     ...current,
     ...payload,
@@ -214,11 +258,15 @@ export const savePreferenceAssessment = async (studentId: string, payload: Recor
     updatedAt: new Date().toISOString(),
   };
   setStoredAssessment('preference', studentId, updated);
+  if (alias) {
+    setStoredAssessment('preference', alias, updated);
+  }
   return { data: updated };
 };
 
 export const getSensoryAssessment = async (studentId: string) => {
-  const stored = getStoredAssessment('sensory', studentId);
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const stored = getStoredAssessment('sensory', studentId) || (alias ? getStoredAssessment('sensory', alias) : null);
   if (stored) {
     return { data: stored };
   }
@@ -234,7 +282,8 @@ export const getSensoryAssessment = async (studentId: string) => {
 };
 
 export const saveSensoryAssessment = async (studentId: string, payload: Record<string, unknown>) => {
-  const current = getStoredAssessment('sensory', studentId) || {};
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const current = getStoredAssessment('sensory', studentId) || (alias ? getStoredAssessment('sensory', alias) : null) || {};
   const updated = {
     ...current,
     ...payload,
@@ -243,11 +292,15 @@ export const saveSensoryAssessment = async (studentId: string, payload: Record<s
     updatedAt: new Date().toISOString(),
   };
   setStoredAssessment('sensory', studentId, updated);
+  if (alias) {
+    setStoredAssessment('sensory', alias, updated);
+  }
   return { data: updated };
 };
 
 export const getSocialSkillsAssessment = async (studentId: string) => {
-  const stored = getStoredAssessment('social_skills', studentId);
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const stored = getStoredAssessment('social_skills', studentId) || (alias ? getStoredAssessment('social_skills', alias) : null);
   if (stored) {
     return { data: stored };
   }
@@ -264,7 +317,8 @@ export const getSocialSkillsAssessment = async (studentId: string) => {
 };
 
 export const saveSocialSkillsAssessment = async (studentId: string, payload: Record<string, unknown>) => {
-  const current = getStoredAssessment('social_skills', studentId) || {};
+  const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+  const current = getStoredAssessment('social_skills', studentId) || (alias ? getStoredAssessment('social_skills', alias) : null) || {};
   const updated = {
     ...current,
     ...payload,
@@ -273,6 +327,9 @@ export const saveSocialSkillsAssessment = async (studentId: string, payload: Rec
     updatedAt: new Date().toISOString(),
   };
   setStoredAssessment('social_skills', studentId, updated);
+  if (alias) {
+    setStoredAssessment('social_skills', alias, updated);
+  }
   return { data: updated };
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ActivityIndicator,
   View,
@@ -14,6 +14,7 @@ import {
   Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { resolveStudentPhotoUri } from '../../utils/studentPhotoHelper';
@@ -50,7 +51,10 @@ const FAST_ITEMS = [
 ];
 
 export default function AssessmentSummaryReport({ route, navigation }: any) {
-  const [selectedStudent, setSelectedStudent] = useState(route?.params?.studentId || '');
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const initialStudentId = route?.params?.studentId || urlSid || localSid || '';
+  const [selectedStudent, setSelectedStudent] = useState(initialStudentId);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +63,24 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
   const [prefTab, setPrefTab] = useState('Sensory Time');
 
   const [reloadCount, setReloadCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      setReloadCount((c) => c + 1);
+    }, [])
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleRefresh = () => setReloadCount((c) => c + 1);
+      window.addEventListener('focus', handleRefresh);
+      window.addEventListener('storage', handleRefresh);
+      return () => {
+        window.removeEventListener('focus', handleRefresh);
+        window.removeEventListener('storage', handleRefresh);
+      };
+    }
+  }, []);
 
   useEffect(() => {
     if (route?.params?.studentId && route.params.studentId !== selectedStudent) {
@@ -319,63 +341,135 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
         </View>
         <View style={styles.cardBody}>
           <Text style={[styles.cardHeaderText, { marginBottom: 12, color: '#0F172A' }]}>ABLLS-R Skill Tracking Grid</Text>
-          <AbllsGridView scores={abllsScores || {}} />
+          <AbllsGridView scores={(() => {
+            let sc = abllsScores || {};
+            if (Object.keys(sc).length === 0 && typeof localStorage !== 'undefined' && selectedStudent) {
+              try {
+                const alias = selectedStudent === 'stu-1' ? 'student-a' : selectedStudent === 'student-a' ? 'stu-1' : null;
+                const raw =
+                  localStorage.getItem(`melue_skills_assessment_${selectedStudent}`) ||
+                  (alias ? localStorage.getItem(`melue_skills_assessment_${alias}`) : null) ||
+                  localStorage.getItem(`skills_assessment_${selectedStudent}`) ||
+                  (alias ? localStorage.getItem(`skills_assessment_${alias}`) : null);
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  if (parsed?.scores) sc = parsed.scores;
+                }
+              } catch {}
+            }
+            return sc;
+          })()} />
         </View>
       </View>
 
       {/* Behavior */}
-      <View style={styles.card}>
-        <View style={styles.cardHeaderBlue}>
-          <Text style={styles.cardHeaderText}>Behavior Assessment</Text>
-        </View>
-        <View style={styles.cardBody}>
-          <SectionTitle title="Motivation Assessment Scale (MASS) - Q&A" />
-          {MASS_ITEMS.map(item => (
-            <View key={item.id} style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 4 }}>
-                {item.id}. {item.text}
-              </Text>
-              <Text style={{ fontSize: 13, color: '#475569' }}>
-                Answer: <Text style={{ fontWeight: '500', color: behavior?.massAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior?.massAnswers?.[item.id] || 'Not answered'}</Text>
-              </Text>
+      {(() => {
+        let activeBehavior = behavior;
+        if (
+          (!activeBehavior?.massAnswers || Object.keys(activeBehavior.massAnswers).length === 0) &&
+          typeof localStorage !== 'undefined' &&
+          selectedStudent
+        ) {
+          try {
+            const alias = selectedStudent === 'stu-1' ? 'student-a' : selectedStudent === 'student-a' ? 'stu-1' : null;
+            const raw =
+              localStorage.getItem(`melue_behavior_assessment_${selectedStudent}`) ||
+              (alias ? localStorage.getItem(`melue_behavior_assessment_${alias}`) : null);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed) {
+                const rawRecs = Array.isArray(parsed.records) ? parsed.records : Array.isArray(parsed.incidents) ? parsed.incidents : [];
+                const antecedentCounts: Record<string, number> = {};
+                rawRecs.forEach((r: any) => {
+                  const ante = (r.trigger || r.antecedent || r.description || '').trim();
+                  if (ante) antecedentCounts[ante] = (antecedentCounts[ante] || 0) + 1;
+                });
+                const computedAntecedents = Object.entries(antecedentCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([antecedent, count]) => ({ antecedent, count }));
+
+                activeBehavior = {
+                  ...activeBehavior,
+                  massAnswers: { ...(activeBehavior?.massAnswers || {}), ...(parsed.massAnswers || {}) },
+                  fastAnswers: { ...(activeBehavior?.fastAnswers || {}), ...(parsed.fastAnswers || {}) },
+                  abc: {
+                    totalIncidents: rawRecs.length || activeBehavior?.abc?.totalIncidents || 0,
+                    topAntecedents: computedAntecedents.length > 0 ? computedAntecedents : (activeBehavior?.abc?.topAntecedents || []),
+                  },
+                };
+              }
+            }
+          } catch {}
+        }
+
+        return (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderBlue}>
+              <Text style={styles.cardHeaderText}>Behavior Assessment</Text>
             </View>
-          ))}
-
-          <View style={styles.divider} />
-
-          <SectionTitle title="Functional Analysis Screening Tool (FAST) - Q&A" />
-          {FAST_ITEMS.map(item => (
-            <View key={item.id} style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 4 }}>
-                {item.id}. {item.text}
-              </Text>
-              <Text style={{ fontSize: 13, color: '#475569' }}>
-                Answer: <Text style={{ fontWeight: '500', color: behavior?.fastAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{behavior?.fastAnswers?.[item.id] || 'Not answered'}</Text>
-              </Text>
-            </View>
-          ))}
-
-          <View style={styles.divider} />
-
-          <SectionTitle title="ABC Incident Log Summary" />
-          <Text style={styles.subNote}>Total incidents: <Text style={styles.subNoteBold}>{behavior?.abc?.totalIncidents ?? 0}</Text></Text>
-          {(behavior?.abc?.topAntecedents || []).length > 0 ? (
-            <>
-              <TableHeader cols={['Top Antecedents', 'Count']} />
-              {behavior.abc.topAntecedents.map((item: any, idx: number) => (
-                <TableRow key={item.antecedent ? `ante-${item.antecedent}` : `ante-idx-${idx}`} values={[
-                  <Text key="a" style={styles.tableCell}>{item.antecedent || item.name}</Text>,
-                  <Text key="c" style={[styles.tableCell, styles.tableRight]}>{item.count}</Text>
-                ]} />
+            <View style={styles.cardBody}>
+              <SectionTitle title="Motivation Assessment Scale (MASS) - Q&A" />
+              {MASS_ITEMS.map((item) => (
+                <View key={item.id} style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 4 }}>
+                    {item.id}. {item.text}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#475569' }}>
+                    Answer: <Text style={{ fontWeight: '500', color: activeBehavior?.massAnswers?.[item.id] ? '#0284C7' : '#94A3B8' }}>{activeBehavior?.massAnswers?.[item.id] || 'Not answered'}</Text>
+                  </Text>
+                </View>
               ))}
-            </>
-          ) : (
-            <Text style={{ fontSize: 13, color: colors.mutedText, fontStyle: 'italic', marginVertical: 8 }}>
-              No behavior incidents logged for this student.
-            </Text>
-          )}
-        </View>
-      </View>
+
+              <View style={styles.divider} />
+
+              <SectionTitle title="Functional Analysis Screening Tool (FAST) - Q&A" />
+              {FAST_ITEMS.map((item) => {
+                const rawVal = activeBehavior?.fastAnswers?.[item.id];
+                const isAnswered = rawVal !== undefined && rawVal !== null && rawVal !== '';
+                const answerText =
+                  rawVal === true || rawVal === 'Yes' || rawVal === 'true'
+                    ? 'Yes'
+                    : rawVal === false || rawVal === 'No' || rawVal === 'false'
+                    ? 'No'
+                    : isAnswered
+                    ? String(rawVal)
+                    : 'Not answered';
+
+                return (
+                  <View key={item.id} style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 4 }}>
+                      {item.id}. {item.text}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#475569' }}>
+                      Answer: <Text style={{ fontWeight: '500', color: isAnswered ? '#0284C7' : '#94A3B8' }}>{answerText}</Text>
+                    </Text>
+                  </View>
+                );
+              })}
+
+              <View style={styles.divider} />
+
+              <SectionTitle title="ABC Incident Log Summary" />
+              <Text style={styles.subNote}>Total incidents: <Text style={styles.subNoteBold}>{activeBehavior?.abc?.totalIncidents ?? 0}</Text></Text>
+              {(activeBehavior?.abc?.topAntecedents || []).length > 0 ? (
+                <>
+                  <TableHeader cols={['Top Antecedents', 'Count']} />
+                  {activeBehavior.abc.topAntecedents.map((item: any, idx: number) => (
+                    <TableRow key={item.antecedent ? `ante-${item.antecedent}` : `ante-idx-${idx}`} values={[
+                      <Text key="a" style={styles.tableCell}>{item.antecedent || item.name}</Text>,
+                      <Text key="c" style={[styles.tableCell, styles.tableRight]}>{item.count}</Text>
+                    ]} />
+                  ))}
+                </>
+              ) : (
+                <Text style={{ fontSize: 13, color: colors.mutedText, fontStyle: 'italic', marginVertical: 8 }}>
+                  No behavior incidents logged for this student.
+                </Text>
+              )}
+            </View>
+          </View>
+        );
+      })()}
 
       {/* Preference */}
       <View style={styles.card}>
@@ -394,7 +488,24 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
             ))}
           </View>
           {(() => {
-            const allItems = preference?.items || [];
+            let allItems = preference?.items || [];
+            if (allItems.length === 0 && typeof localStorage !== 'undefined' && selectedStudent) {
+              try {
+                const alias = selectedStudent === 'stu-1' ? 'student-a' : selectedStudent === 'student-a' ? 'stu-1' : null;
+                const raw =
+                  localStorage.getItem(`melue_preference_assessment_${selectedStudent}`) ||
+                  (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  if (Array.isArray(parsed?.allObservations) && parsed.allObservations.length > 0) {
+                    allItems = parsed.allObservations;
+                  } else if (Array.isArray(parsed?.ranked_observations) && parsed.ranked_observations.length > 0) {
+                    allItems = parsed.ranked_observations;
+                  }
+                }
+              } catch {}
+            }
+
             const filteredItems = allItems.filter((item: any) => {
               if (!item.context) return true;
               const cleanCtx = item.context.toLowerCase().replace(/_/g, ' ');
@@ -433,43 +544,79 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
       </View>
 
       {/* Sensory */}
-      {sensory && sensory.activities && sensory.activities.length > 0 && (
-      <View style={styles.card}>
-        <View style={styles.cardHeaderBlue}>
-          <Text style={styles.cardHeaderText}>Sensory Assessment</Text>
-        </View>
-        <View style={styles.cardBody}>
-          <TableHeader cols={['Activity', 'Engagement', 'Reaction', 'Notes']} alignEnd={false} />
-           {sensory.activities.map((item: any, idx: number) => (
-            <TableRow key={idx} values={[
-              <Text key="n" style={styles.tableCell}>{item.name}</Text>,
-              <Text key="e" style={styles.tableCell}>{item.engagementLevel || 'N/A'}</Text>,
-              <Text key="r" style={styles.tableCell}>{item.responseReaction || 'N/A'}</Text>,
-              <Text key="m" style={styles.tableCell}>{item.remark || 'N/A'}</Text>
-            ]} />
-          ))}
-        </View>
-      </View>
-      )}
+      {(() => {
+        let activities = sensory?.activities || [];
+        if (activities.length === 0 && typeof localStorage !== 'undefined' && selectedStudent) {
+          try {
+            const alias = selectedStudent === 'stu-1' ? 'student-a' : selectedStudent === 'student-a' ? 'stu-1' : null;
+            const raw =
+              localStorage.getItem(`melue_sensory_assessment_${selectedStudent}`) ||
+              (alias ? localStorage.getItem(`melue_sensory_assessment_${alias}`) : null);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed?.activities)) activities = parsed.activities;
+            }
+          } catch {}
+        }
+        if (!activities || activities.length === 0) return null;
+        return (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderBlue}>
+              <Text style={styles.cardHeaderText}>Sensory Assessment</Text>
+            </View>
+            <View style={styles.cardBody}>
+              <TableHeader cols={['Activity', 'Engagement', 'Reaction', 'Notes']} alignEnd={false} />
+              {activities.map((item: any, idx: number) => (
+                <TableRow key={idx} values={[
+                  <Text key="n" style={styles.tableCell}>{item.name}</Text>,
+                  <Text key="e" style={styles.tableCell}>{item.engagementLevel || 'N/A'}</Text>,
+                  <Text key="r" style={styles.tableCell}>{item.responseReaction || 'N/A'}</Text>,
+                  <Text key="m" style={styles.tableCell}>{item.remark || 'N/A'}</Text>
+                ]} />
+              ))}
+            </View>
+          </View>
+        );
+      })()}
 
       {/* Social Skills */}
-      {socialSkills && socialSkills.scores && Object.keys(socialSkills.scores).length > 0 && (
-      <View style={styles.card}>
-        <View style={styles.cardHeaderBlue}>
-          <Text style={styles.cardHeaderText}>Social Skills Questionnaire</Text>
-        </View>
-        <View style={styles.cardBody}>
-           <Text style={styles.subNote}>Completed: <Text style={styles.subNoteBold}>{socialSkills.percent}%</Text></Text>
-           <TableHeader cols={['Question ID', 'Score']} alignEnd={false} />
-           {Object.keys(socialSkills.scores).map((key: string) => (
-             <TableRow key={key} values={[
-               <Text key="k" style={styles.tableCell}>{key}</Text>,
-               <Text key="v" style={styles.tableCell}>{socialSkills.scores[key]}</Text>
-             ]} />
-           ))}
-        </View>
-      </View>
-      )}
+      {(() => {
+        let scores = socialSkills?.scores || {};
+        let percent = socialSkills?.percent ?? 0;
+        if (Object.keys(scores).length === 0 && typeof localStorage !== 'undefined' && selectedStudent) {
+          try {
+            const alias = selectedStudent === 'stu-1' ? 'student-a' : selectedStudent === 'student-a' ? 'stu-1' : null;
+            const raw =
+              localStorage.getItem(`melue_social_skills_assessment_${selectedStudent}`) ||
+              (alias ? localStorage.getItem(`melue_social_skills_assessment_${alias}`) : null);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.scores) {
+                scores = parsed.scores;
+                percent = parsed.percent ?? 0;
+              }
+            }
+          } catch {}
+        }
+        if (Object.keys(scores).length === 0) return null;
+        return (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderBlue}>
+              <Text style={styles.cardHeaderText}>Social Skills Questionnaire</Text>
+            </View>
+            <View style={styles.cardBody}>
+              <Text style={styles.subNote}>Completed: <Text style={styles.subNoteBold}>{percent}%</Text></Text>
+              <TableHeader cols={['Question ID', 'Score']} alignEnd={false} />
+              {Object.keys(scores).map((key: string) => (
+                <TableRow key={key} values={[
+                  <Text key="k" style={styles.tableCell}>{key}</Text>,
+                  <Text key="v" style={styles.tableCell}>{scores[key]}</Text>
+                ]} />
+              ))}
+            </View>
+          </View>
+        );
+      })()}
 
       
 
