@@ -20,6 +20,32 @@ import AssessmentSummaryReportScreen from '../screens/programdirector/Assessment
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import ChildProgressScreen from '../screens/parent/ChildProgressScreen';
+import { withModuleGuard } from '../auth/withModuleGuard';
+
+const GuardedLiveSessionMonitoring = withModuleGuard(LiveSessionMonitoringScreen, 'sessions');
+const GuardedSessionSummaryReview = withModuleGuard(SessionSummaryReviewScreen, 'sessions');
+const GuardedCoordinatorStudentProgress = withModuleGuard(
+  CoordinatorStudentProgressScreen,
+  'reports',
+);
+const GuardedCoordinatorSchedule = withModuleGuard(CoordinatorScheduleScreen, 'staff');
+const GuardedCoordinatorParentCommunication = withModuleGuard(
+  CoordinatorParentCommunicationScreen,
+  'parent_portal',
+);
+const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
+const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
+const GuardedWorkloadDashboard = withModuleGuard(WorkloadDashboardScreen, 'staff');
+const GuardedRoomResourceScheduling = withModuleGuard(RoomResourceSchedulingScreen, 'staff');
+const GuardedIupGeneration = withModuleGuard(IupGenerationScreen, 'iups');
+const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
+const GuardedAssessmentDashboard = withModuleGuard(AssessmentDashboardScreen, 'assessments');
+const GuardedSessionDataCollection = withModuleGuard(SessionDataCollectionScreen, 'sessions');
+const GuardedAssessmentSummaryReport = withModuleGuard(
+  AssessmentSummaryReportScreen,
+  'assessments',
+);
+const GuardedChildProgress = withModuleGuard(ChildProgressScreen, 'parent_portal');
 
 const Stack = createNativeStackNavigator<CoordinatorStackParamList>();
 
@@ -28,37 +54,37 @@ export default function CoordinatorStack() {
     <ErrorBoundary screenName="Coordinator Navigator">
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="CoordinatorDashboard" component={CoordinatorDashboardScreen} />
-        <Stack.Screen name="LiveSessionMonitoring" component={LiveSessionMonitoringScreen} />
-        <Stack.Screen name="SessionSummaryReview" component={SessionSummaryReviewScreen} />
+        <Stack.Screen name="LiveSessionMonitoring" component={GuardedLiveSessionMonitoring} />
+        <Stack.Screen name="SessionSummaryReview" component={GuardedSessionSummaryReview} />
         <Stack.Screen
           name="CoordinatorStudentProgress"
-          component={CoordinatorStudentProgressScreen}
+          component={GuardedCoordinatorStudentProgress}
         />
-        <Stack.Screen name="CoordinatorSchedule" component={CoordinatorScheduleScreen} />
+        <Stack.Screen name="CoordinatorSchedule" component={GuardedCoordinatorSchedule} />
         <Stack.Screen
           name="CoordinatorParentCommunication"
-          component={CoordinatorParentCommunicationScreen}
+          component={GuardedCoordinatorParentCommunication}
         />
-        <Stack.Screen name="StudentEnrollment" component={StudentEnrollmentScreen} />
-        <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
-        <Stack.Screen name="WorkloadDashboard" component={WorkloadDashboardScreen} />
-        <Stack.Screen name="RoomResourceScheduling" component={RoomResourceSchedulingScreen} />
-        <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
+        <Stack.Screen name="StudentEnrollment" component={GuardedStudentEnrollment} />
+        <Stack.Screen name="StudentProfile" component={GuardedStudentProfile} />
+        <Stack.Screen name="WorkloadDashboard" component={GuardedWorkloadDashboard} />
+        <Stack.Screen name="RoomResourceScheduling" component={GuardedRoomResourceScheduling} />
+        <Stack.Screen name="IupGeneration" component={GuardedIupGeneration} />
         <Stack.Screen name="Notifications" component={CoordinatorNotificationsScreen} />
         <Stack.Screen
           name="StudentEnrollmentWizard"
-          component={StudentEnrollmentWizardScreen as never}
+          component={GuardedStudentEnrollmentWizard as never}
         />
-        <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
+        <Stack.Screen name="AssessmentDashboard" component={GuardedAssessmentDashboard as never} />
         <Stack.Screen
           name="SessionDataCollection"
-          component={SessionDataCollectionScreen as never}
+          component={GuardedSessionDataCollection as never}
         />
         <Stack.Screen
           name="AssessmentSummaryReport"
-          component={AssessmentSummaryReportScreen as never}
+          component={GuardedAssessmentSummaryReport as never}
         />
-        <Stack.Screen name="ChildProgress" component={ChildProgressScreen as never} />
+        <Stack.Screen name="ChildProgress" component={GuardedChildProgress as never} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

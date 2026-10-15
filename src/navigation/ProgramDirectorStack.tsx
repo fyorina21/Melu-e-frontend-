@@ -16,6 +16,23 @@ import AssessmentSummaryReportScreen from '../screens/programdirector/Assessment
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { withModuleGuard } from '../auth/withModuleGuard';
+
+const GuardedAssessmentReview = withModuleGuard(AssessmentReviewScreen, 'assessments');
+const GuardedIupGeneration = withModuleGuard(IupGenerationScreen, 'iups');
+const GuardedIupLibrary = withModuleGuard(IupLibraryScreen, 'iups');
+const GuardedStudentCaseload = withModuleGuard(StudentCaseloadScreen, 'students');
+const GuardedGoalBankManagement = withModuleGuard(GoalBankManagementScreen, 'iups');
+const GuardedGoalMasteryApproval = withModuleGuard(GoalMasteryApprovalScreen, 'iups');
+const GuardedPdParentCommunication = withModuleGuard(ParentCommunicationScreen, 'parent_portal');
+const GuardedGraphChartView = withModuleGuard(GraphChartViewScreen, 'reports');
+const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
+const GuardedAssessmentSummaryReport = withModuleGuard(
+  AssessmentSummaryReportScreen,
+  'assessments',
+);
+const GuardedAssessmentDashboard = withModuleGuard(AssessmentDashboardScreen, 'assessments');
+const GuardedSessionDataCollection = withModuleGuard(SessionDataCollectionScreen, 'sessions');
 
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 
@@ -24,23 +41,23 @@ export default function ProgramDirectorStack() {
     <ErrorBoundary screenName="Program Director Navigator">
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="ProgramDirectorDashboard" component={ProgramDirectorDashboardScreen} />
-        <Stack.Screen name="AssessmentReview" component={AssessmentReviewScreen} />
-        <Stack.Screen name="IupGeneration" component={IupGenerationScreen} />
-        <Stack.Screen name="IupLibrary" component={IupLibraryScreen} />
-        <Stack.Screen name="StudentCaseload" component={StudentCaseloadScreen} />
-        <Stack.Screen name="GoalBankManagement" component={GoalBankManagementScreen} />
-        <Stack.Screen name="GoalMasteryApproval" component={GoalMasteryApprovalScreen} />
-        <Stack.Screen name="PdParentCommunication" component={ParentCommunicationScreen} />
-        <Stack.Screen name="GraphChartView" component={GraphChartViewScreen} />
-        <Stack.Screen name="StudentEnrollmentWizard" component={StudentEnrollmentWizardScreen} />
+        <Stack.Screen name="AssessmentReview" component={GuardedAssessmentReview} />
+        <Stack.Screen name="IupGeneration" component={GuardedIupGeneration} />
+        <Stack.Screen name="IupLibrary" component={GuardedIupLibrary} />
+        <Stack.Screen name="StudentCaseload" component={GuardedStudentCaseload} />
+        <Stack.Screen name="GoalBankManagement" component={GuardedGoalBankManagement} />
+        <Stack.Screen name="GoalMasteryApproval" component={GuardedGoalMasteryApproval} />
+        <Stack.Screen name="PdParentCommunication" component={GuardedPdParentCommunication} />
+        <Stack.Screen name="GraphChartView" component={GuardedGraphChartView} />
+        <Stack.Screen name="StudentEnrollmentWizard" component={GuardedStudentEnrollmentWizard} />
         <Stack.Screen
           name="AssessmentSummaryReport"
-          component={AssessmentSummaryReportScreen as never}
+          component={GuardedAssessmentSummaryReport as never}
         />
-        <Stack.Screen name="AssessmentDashboard" component={AssessmentDashboardScreen as never} />
+        <Stack.Screen name="AssessmentDashboard" component={GuardedAssessmentDashboard as never} />
         <Stack.Screen
           name="SessionDataCollection"
-          component={SessionDataCollectionScreen as never}
+          component={GuardedSessionDataCollection as never}
         />
       </Stack.Navigator>
     </ErrorBoundary>

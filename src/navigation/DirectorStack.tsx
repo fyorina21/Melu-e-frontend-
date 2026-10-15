@@ -12,6 +12,21 @@ import ReportBuilderScreen from '../screens/director/ReportBuilderScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { withModuleGuard } from '../auth/withModuleGuard';
+
+const GuardedDirectorScheduling = withModuleGuard(DirectorSchedulingScreen, 'staff');
+const GuardedGoalMasteryApproval = withModuleGuard(GoalMasteryApprovalScreen, 'iups');
+const GuardedDirectorParentCommunication = withModuleGuard(
+  DirectorParentCommunicationScreen,
+  'parent_portal',
+);
+const GuardedReportsOversight = withModuleGuard(ReportsOversightScreen, 'reports');
+const GuardedDirectorStudentProgress = withModuleGuard(DirectorStudentProgressScreen, 'reports');
+const GuardedReportBuilder = withModuleGuard(ReportBuilderScreen, 'reports');
+const GuardedAssessmentSummaryReport = withModuleGuard(
+  AssessmentSummaryReportScreen,
+  'assessments',
+);
 
 const Stack = createNativeStackNavigator<DirectorStackParamList>();
 
@@ -21,24 +36,24 @@ export default function DirectorStack() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="DirectorDashboard" component={DirectorDashboardScreen} />
 
-        <Stack.Screen name="DirectorScheduling" component={DirectorSchedulingScreen} />
+        <Stack.Screen name="DirectorScheduling" component={GuardedDirectorScheduling} />
 
-        <Stack.Screen name="GoalMasteryApproval" component={GoalMasteryApprovalScreen} />
+        <Stack.Screen name="GoalMasteryApproval" component={GuardedGoalMasteryApproval} />
 
         <Stack.Screen
           name="DirectorParentCommunication"
-          component={DirectorParentCommunicationScreen}
+          component={GuardedDirectorParentCommunication}
         />
 
-        <Stack.Screen name="ReportsOversight" component={ReportsOversightScreen} />
+        <Stack.Screen name="ReportsOversight" component={GuardedReportsOversight} />
 
-        <Stack.Screen name="DirectorStudentProgress" component={DirectorStudentProgressScreen} />
+        <Stack.Screen name="DirectorStudentProgress" component={GuardedDirectorStudentProgress} />
 
-        <Stack.Screen name="ReportBuilder" component={ReportBuilderScreen} />
+        <Stack.Screen name="ReportBuilder" component={GuardedReportBuilder} />
 
         <Stack.Screen
           name="AssessmentSummaryReport"
-          component={AssessmentSummaryReportScreen as never}
+          component={GuardedAssessmentSummaryReport as never}
         />
       </Stack.Navigator>
     </ErrorBoundary>

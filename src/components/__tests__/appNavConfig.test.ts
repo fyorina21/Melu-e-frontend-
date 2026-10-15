@@ -155,3 +155,46 @@ describe('appNavConfig grouped navigation for Therapy Coordinator', () => {
     }
   });
 });
+
+describe('getTabsForSession dynamic module filtering', () => {
+  it('returns default tabs when session is null or has no modules', async () => {
+    const { getTabsForSession } = await import('../appNavConfig');
+    expect(getTabsForSession(null, ['Dashboard', 'Session'])).toEqual(['Dashboard', 'Session']);
+
+    const sessionWithoutModules: AuthSession = {
+      userName: 'Test User',
+      role: 'teacher',
+    };
+    expect(getTabsForSession(sessionWithoutModules, ['Dashboard', 'Session'])).toEqual([
+      'Dashboard',
+      'Session',
+    ]);
+  });
+
+  it('filters tabs based on modules for core roles without bypass', async () => {
+    const { getTabsForSession } = await import('../appNavConfig');
+    const teacherSessionWithOnlySessions: AuthSession = {
+      userName: 'Teacher Amy',
+      role: 'teacher',
+      modules: ['sessions'],
+    };
+
+    const tabs = getTabsForSession(teacherSessionWithOnlySessions, [
+      'Dashboard',
+      'Session',
+      'Assessments',
+      'Daily Notes',
+      'ABC Log',
+      'Parents',
+    ]);
+
+    // Should include Dashboard (preserved) and tabs for 'sessions' ('Session', 'Daily Notes')
+    expect(tabs).toContain('Dashboard');
+    expect(tabs).toContain('Session');
+    expect(tabs).toContain('Daily Notes');
+    // Should NOT contain ungranted modules
+    expect(tabs).not.toContain('Assessments');
+    expect(tabs).not.toContain('ABC Log');
+    expect(tabs).not.toContain('Parents');
+  });
+});

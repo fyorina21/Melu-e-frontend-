@@ -16,6 +16,7 @@ import ScreenLoader from '../components/ScreenLoader';
 import { SidebarNavContext } from './SidebarNavContext';
 import { storage } from '../utils/storage';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { SCREEN_TO_MODULE, UNGUARDED_SCREENS, hasModuleAccess } from '../auth/permissions';
 
 // Lazy-loaded role stacks for optimal bundle splitting and fast initial page loads
 const SessionStack = lazy(() => import('./SessionStack'));
@@ -132,6 +133,19 @@ export default function RootNavigator() {
       return;
     }
 
+    // Module-gate the deep link target
+    const requiredModule = SCREEN_TO_MODULE[target];
+    if (
+      requiredModule &&
+      !UNGUARDED_SCREENS.has(target) &&
+      session?.modules &&
+      session.modules.length > 0 &&
+      !hasModuleAccess(session.modules, requiredModule)
+    ) {
+      window.history.replaceState(null, '', '/');
+      return;
+    }
+
     const nav = navRef.current;
     try {
       const searchParams = new URLSearchParams(window.location.search);
@@ -153,6 +167,19 @@ export default function RootNavigator() {
     const handlePopState = () => {
       const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
       if (target && navRef.current) {
+        // Module-gate the target screen on popstate
+        const requiredModule = SCREEN_TO_MODULE[target];
+        if (
+          requiredModule &&
+          !UNGUARDED_SCREENS.has(target) &&
+          session?.modules &&
+          session.modules.length > 0 &&
+          !hasModuleAccess(session.modules, requiredModule)
+        ) {
+          window.history.replaceState(null, '', '/');
+          return;
+        }
+
         try {
           const searchParams = new URLSearchParams(window.location.search);
           const sid =

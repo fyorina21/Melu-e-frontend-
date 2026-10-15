@@ -30,30 +30,16 @@ export const MODULE_TO_TABS: Record<string, string[]> = {
 };
 
 /**
- * Returns dynamic tabs for the current session.
- * Core roles always retain their full canonical tab suite.
- * For custom configured roles, only configured modules are enabled while preserving Dashboard.
+ * Returns dynamic tabs for the current session based on configured modules.
+ * When session.modules is provided, tabs are filtered to only granted modules
+ * (preserving Dashboard). When modules are undefined/empty (legacy or unmigrated),
+ * it safely falls back to defaultRoleTabs.
  */
 export function getTabsForSession(
   session: AuthSession | null | undefined,
   defaultRoleTabs: string[],
 ): string[] {
   if (!session) return defaultRoleTabs;
-
-  const CORE_ROLES = new Set([
-    'teacher',
-    'coordinator',
-    'director',
-    'program_director',
-    'institutional_admin',
-    'system_admin',
-    'parent',
-    'therapist',
-  ]);
-
-  if (session.role && CORE_ROLES.has(session.role)) {
-    return defaultRoleTabs;
-  }
 
   if (session.modules && Array.isArray(session.modules) && session.modules.length > 0) {
     const dynamicTabs: string[] = [];
