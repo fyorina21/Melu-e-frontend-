@@ -8,8 +8,9 @@ import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAbcLog, exportAbcLog, deleteAbcIncident } from '../../api/teacherExtrasApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import { openPrintWindow } from '../../utils/webExport';
-import { useAuth, ROLES } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../auth/usePermission';
 import type { SessionStackParamList } from '../../types';
 
 import {
@@ -51,7 +52,7 @@ export default function AbcLogScreen({ navigation }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
-  const isSysadmin = session?.role === ROLES.SYSTEM_ADMIN;
+  const canDelete = usePermission('behavior_incidents', 'delete');
   const currentStudent = studentOptions.find((s) => s.id === studentId);
 
   useEffect(() => {
@@ -135,6 +136,10 @@ export default function AbcLogScreen({ navigation }: Props) {
 
   const handleDeleteIncident = useCallback(async () => {
     if (!selectedIncident) return;
+    if (!canDelete) {
+      showToast('You do not have permission to delete incidents.', 'error');
+      return;
+    }
     try {
       await deleteAbcIncident(selectedIncident.id);
       showToast('Incident deleted');
@@ -144,7 +149,7 @@ export default function AbcLogScreen({ navigation }: Props) {
     setSelectedIncident(null);
     setDeleteConfirm(false);
     load();
-  }, [selectedIncident, showToast, load]);
+  }, [selectedIncident, canDelete, showToast, load]);
 
   const handleExport = useCallback(
     async (type: 'csv' | 'pdf') => {
@@ -287,7 +292,7 @@ export default function AbcLogScreen({ navigation }: Props) {
       {/* Incident Detail Modal */}
       <AbcIncidentDetailModal
         incident={selectedIncident}
-        isSysadmin={isSysadmin}
+        canDelete={canDelete}
         deleteConfirm={deleteConfirm}
         onSetDeleteConfirm={setDeleteConfirm}
         onDeleteIncident={handleDeleteIncident}

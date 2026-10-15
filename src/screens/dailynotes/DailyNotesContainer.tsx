@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../auth/usePermission';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { downloadTextFile } from '../../utils/webExport';
 import { storage } from '../../utils/storage';
@@ -137,6 +138,7 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
   const { data: dashboardData } = useTeacherDashboardQuery();
   const { data: rawBehaviorData, refetch: refetchBehavior } = useBehaviorAssessmentQuery(studentId);
   const resubmitMutation = useResubmitNoteMutation();
+  const canEditSession = usePermission('sessions', 'edit');
 
   const records: NoteRecord[] = dailyNotesData?.records ?? [];
   const stats: DailyNotesStats = dailyNotesData?.stats ?? {
@@ -260,6 +262,10 @@ export default function DailyNotesContainer({ navigation, route }: Props) {
   };
 
   const handleResubmit = async (id: string) => {
+    if (!canEditSession) {
+      showToast('You do not have permission to resubmit session notes.', 'error');
+      return;
+    }
     try {
       await resubmitMutation.mutateAsync({ sessionId: id, notes: '' });
       showToast('Session resubmitted for coordinator review', 'success');

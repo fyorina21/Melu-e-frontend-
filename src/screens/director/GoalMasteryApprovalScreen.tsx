@@ -16,6 +16,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import { useAuth, ROLES } from '../../context/AuthContext';
+import { usePermission } from '../../auth/usePermission';
 import { confirmAction, notify } from '../../utils/dialogs';
 import {
   getPendingMasteryApprovals,
@@ -49,6 +50,7 @@ export default function GoalMasteryApprovalScreen({
   const isTablet = width >= 768;
 
   const { session } = useAuth();
+  const canApprove = usePermission('iups', 'approve');
   const isProgramDirector = session?.role === ROLES.PROGRAM_DIRECTOR;
   const [list, setList] = useState<MasteryListItem[]>([]);
   const [search, setSearch] = useState('');
@@ -112,6 +114,10 @@ export default function GoalMasteryApprovalScreen({
   };
 
   const handleApprove = (checkId: string, notes: string) => {
+    if (!canApprove) {
+      notify('Permission Denied', 'You do not have permission to approve goal mastery.');
+      return;
+    }
     confirmAction({
       title: 'Approve Goal Mastery',
       message: 'Confirm approval and mark this goal as fully mastered?',
@@ -129,6 +135,10 @@ export default function GoalMasteryApprovalScreen({
   };
 
   const handleReject = async (checkId: string, reason: string, notes: string) => {
+    if (!canApprove) {
+      notify('Permission Denied', 'You do not have permission to reject goal mastery requests.');
+      return;
+    }
     try {
       await rejectMastery(checkId, { reason, notes });
       setDetail(null);

@@ -14,6 +14,8 @@ import { Feather } from '@expo/vector-icons';
 import { getFormConfig } from '../../../api/institutionalAdminApi';
 import DynamicFormFields, { type DynamicFormField } from '../../../components/DynamicFormFields';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
+import { usePermission } from '../../../auth/usePermission';
 import AccessibleModal from '../../../components/AccessibleModal';
 
 export interface IncidentPayload {
@@ -126,6 +128,8 @@ export default function BehaviorIncidentModal({
   onSave,
 }: BehaviorIncidentModalProps) {
   const { session: authSession } = useAuth();
+  const { showToast } = useToast();
+  const canCreateIncident = usePermission('behavior_incidents', 'create');
   const defaultTeacher = recordedBy || authSession?.userName || 'Rosa Delgado';
 
   const [date, setDate] = useState(getCurrentDate());
@@ -197,6 +201,10 @@ export default function BehaviorIncidentModal({
   };
 
   const handleSave = () => {
+    if (!canCreateIncident) {
+      showToast('You do not have permission to record behavior incidents.', 'error');
+      return;
+    }
     const findFieldValue = (keys: string[]) => {
       for (const k of keys) {
         if (

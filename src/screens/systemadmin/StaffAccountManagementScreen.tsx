@@ -25,6 +25,7 @@ import {
   getRoles,
 } from '../../api/SystemAdminApi';
 import { useToast } from '../../context/ToastContext';
+import { useResourcePermissions } from '../../auth/usePermission';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../../types';
 import {
@@ -48,6 +49,7 @@ export default function StaffAccountManagementScreen({
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const { showToast } = useToast();
+  const staffPerms = useResourcePermissions('staff');
 
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
   const [availableRoles, setAvailableRoles] = useState<string[]>([...ROLE_OPTIONS]);
@@ -108,6 +110,14 @@ export default function StaffAccountManagementScreen({
   }, []);
 
   const handleSave = async (payload: StaffPayload) => {
+    if (payload.id && !staffPerms.canEdit) {
+      showToast('You do not have permission to edit staff accounts.', 'error');
+      return;
+    }
+    if (!payload.id && !staffPerms.canCreate) {
+      showToast('You do not have permission to create staff accounts.', 'error');
+      return;
+    }
     try {
       if (payload.id) {
         await updateStaffAccount(payload.id, payload);
@@ -133,6 +143,10 @@ export default function StaffAccountManagementScreen({
   };
 
   const handleToggleActive = async (s: StaffMember) => {
+    if (!staffPerms.canEdit) {
+      showToast('You do not have permission to modify staff accounts.', 'error');
+      return;
+    }
     const next = !s.active;
     // Optimistic UI update
     setStaff((prev) =>
@@ -148,6 +162,10 @@ export default function StaffAccountManagementScreen({
   };
 
   const handleDelete = (s: StaffMember) => {
+    if (!staffPerms.canDelete) {
+      showToast('You do not have permission to delete staff accounts.', 'error');
+      return;
+    }
     Alert.alert(
       'Delete staff account?',
       `${s.name} (${s.email}) will be permanently removed. This cannot be undone.`,
@@ -171,6 +189,10 @@ export default function StaffAccountManagementScreen({
   };
 
   const handleBulkAction = (action: string) => {
+    if (!staffPerms.canEdit) {
+      showToast('You do not have permission to modify staff accounts.', 'error');
+      return;
+    }
     Alert.alert(`${action} ${selectedIds.length} accounts?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -200,15 +222,17 @@ export default function StaffAccountManagementScreen({
       <View style={[styles.mainContainer, isTablet && styles.tabletContainer]}>
         <View style={styles.header}>
           <Text style={typography.h1}>Staff Account Management</Text>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => setFormTarget(null)}
-            accessibilityRole="button"
-            accessibilityLabel="Add staff member"
-          >
-            <Feather name="plus" size={14} color={colors.navyText} />
-            <Text style={styles.addBtnText}>Add Staff</Text>
-          </TouchableOpacity>
+          {staffPerms.canCreate && (
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => setFormTarget(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Add staff member"
+            >
+              <Feather name="plus" size={14} color={colors.navyText} />
+              <Text style={styles.addBtnText}>Add Staff</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <StaffFilterBar

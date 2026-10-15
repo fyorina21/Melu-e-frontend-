@@ -18,6 +18,7 @@ import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../auth/usePermission';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import {
   StudentSessionCard,
@@ -59,6 +60,8 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   const sessionId = route.params?.sessionId ?? 'active';
   const { session: authSession } = useAuth();
   const { showToast } = useToast();
+  const canCreateTrial = usePermission('sessions', 'create');
+  const canEditSession = usePermission('sessions', 'edit');
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -336,6 +339,10 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     level: string,
     stepId?: string,
   ) => {
+    if (!canCreateTrial) {
+      showToast('You do not have permission to record trials.', 'error');
+      return;
+    }
     const trialId = `trial-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const timeStr = new Date().toLocaleTimeString([], {
       hour: '2-digit',
@@ -454,6 +461,10 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   };
 
   const handleUndoTrial = async (studentId: string, goalId: string | undefined) => {
+    if (!canEditSession) {
+      showToast('You do not have permission to modify trial records.', 'error');
+      return;
+    }
     const student = session?.students.find((s) => s.id === studentId);
     if (!student) return;
 
