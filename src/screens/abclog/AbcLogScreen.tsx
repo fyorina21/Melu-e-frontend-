@@ -18,35 +18,25 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAbcLog, exportAbcLog, deleteAbcIncident } from '../../api/teacherExtrasApi';
 import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
-import { openPrintWindow } from '../../utils/webExport';
+import { openPrintWindow, downloadTextFile } from '../../utils/webExport';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { getStoredAbcIncidents, removeStoredAbcIncident } from '../../stores/trialsStore';
 import type { SessionStackParamList } from '../../types';
+import {
+  type AbcIncident,
+  type AbcStats,
+  formatLocalDate,
+  extractDateStr,
+  getDefaultDateRange,
+  filterAbcIncidents,
+  mergeAndDeduplicateIncidents,
+  computeAbcStats,
+  generateAbcCsv,
+  generateAbcPrintHtml,
+} from './abcLogHelpers';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AbcLog'>;
-
-interface AbcStats {
-  totalIncidents: number;
-  mostCommonBehavior: string;
-  mostCommonAntecedent: string;
-  thisWeek: number;
-}
-
-interface AbcIncident {
-  id: string;
-  date?: string;
-  time?: string;
-  location?: string;
-  behavior?: string;
-  frequency?: string;
-  intensity?: string;
-  category?: string;
-  antecedent?: string;
-  consequence?: string;
-  notes?: string;
-  teacher?: string;
-}
 
 const PAGE_SIZE = 10;
 
@@ -62,15 +52,6 @@ const TABLE_COLUMNS: Array<{ key: keyof AbcIncident; label: string; width: numbe
   { key: 'consequence', label: 'Consequence', width: 180 },
   { key: 'teacher', label: 'Teacher', width: 130 },
 ];
-
-const isoDate = (d: Date) => d.toISOString().split('T')[0];
-
-function getDefaultDateRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 30);
-  return { from: isoDate(from), to: isoDate(to) };
-}
 
 const intensityStyle = (intensity?: string) => {
   switch (intensity) {
@@ -164,89 +145,17 @@ export default function AbcLogScreen({ navigation }: Props) {
       // Merge with stored ABC incidents from trialsStore
       const storedIncidents: AbcIncident[] = getStoredAbcIncidents(studentId, currentStudent?.name);
 
-      // Filter stored incidents by date, behavior, and category
-      const filteredStored = storedIncidents.filter((inc) => {
-        if (from && inc.date && inc.date < from) return false;
-        if (to && inc.date && inc.date > to) return false;
-        if (behaviorFilter && behaviorFilter !== 'All' && inc.behavior !== behaviorFilter) return false;
-        if (categoryFilter && categoryFilter !== 'All' && inc.category !== categoryFilter) return false;
-        return true;
-      });
+      // Consistent filter applied to BOTH local and API records
+      const filterParams = { from, to, behaviorFilter, categoryFilter };
+      const filteredStored = filterAbcIncidents(storedIncidents, filterParams);
+      const filteredApi = filterAbcIncidents(apiRows, filterParams);
 
-      // Combine and deduplicate
-      const seenIds = new Set<string>();
-      const combined: AbcIncident[] = [];
-      [...filteredStored, ...apiRows].forEach((item) => {
-        const idKey = item.id || `${item.date}-${item.time}-${item.behavior}`;
-        if (!seenIds.has(idKey)) {
-          seenIds.add(idKey);
-          combined.push(item);
-        }
-      });
-
-      // Sort by date/time descending (newest first)
-      combined.sort((a, b) => {
-        const dtA = `${a.date || ''} ${a.time || ''}`;
-        const dtB = `${b.date || ''} ${b.time || ''}`;
-        return dtB.localeCompare(dtA);
-      });
-
+      // Combine and safely deduplicate by ID and content signature
+      const combined = mergeAndDeduplicateIncidents(filteredStored, filteredApi);
       setIncidents(combined);
 
-      // Compute or merge stats
-      if (combined.length > 0) {
-        const behaviorCounts: Record<string, number> = {};
-        const antecedentCounts: Record<string, number> = {};
-        let thisWeekCount = 0;
-        const now = new Date();
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(now.getDate() - 7);
-        const oneWeekAgoStr = isoDate(oneWeekAgo);
-
-        combined.forEach((inc) => {
-          if (inc.behavior) {
-            behaviorCounts[inc.behavior] = (behaviorCounts[inc.behavior] || 0) + 1;
-          }
-          if (inc.antecedent) {
-            antecedentCounts[inc.antecedent] = (antecedentCounts[inc.antecedent] || 0) + 1;
-          }
-          if (inc.date && inc.date >= oneWeekAgoStr) {
-            thisWeekCount++;
-          }
-        });
-
-        let topBehavior = 'N/A';
-        let maxB = 0;
-        Object.entries(behaviorCounts).forEach(([k, v]) => {
-          if (v > maxB) {
-            maxB = v;
-            topBehavior = k;
-          }
-        });
-
-        let topAntecedent = 'N/A';
-        let maxA = 0;
-        Object.entries(antecedentCounts).forEach(([k, v]) => {
-          if (v > maxA) {
-            maxA = v;
-            topAntecedent = k;
-          }
-        });
-
-        setStats({
-          totalIncidents: combined.length,
-          mostCommonBehavior: topBehavior,
-          mostCommonAntecedent: topAntecedent,
-          thisWeek: thisWeekCount,
-        });
-      } else {
-        setStats(apiStats || {
-          totalIncidents: 0,
-          mostCommonBehavior: 'N/A',
-          mostCommonAntecedent: 'N/A',
-          thisWeek: 0,
-        });
-      }
+      // Compute stats on the merged, filtered dataset
+      setStats(computeAbcStats(combined));
     } catch (err) {
       setIncidents([]);
       setStats(null);
@@ -254,6 +163,11 @@ export default function AbcLogScreen({ navigation }: Props) {
       setLoading(false);
     }
   }, [studentId, currentStudent?.name, from, to, behaviorFilter, categoryFilter]);
+
+  // Reset pagination when any filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [studentId, from, to, behaviorFilter, categoryFilter]);
 
   useEffect(() => {
     load();
@@ -266,12 +180,12 @@ export default function AbcLogScreen({ navigation }: Props) {
       .then(({ data: res }) => {
         const rows: AbcIncident[] = res?.incidents ?? res?.rows ?? [];
         const allRows = [...stored, ...rows];
-        setBehaviorOptions(['All', ...Array.from(new Set(allRows.map((r) => r.behavior).filter(Boolean) as string[])).sort()]);
-        setCategoryOptions(['All', ...Array.from(new Set(allRows.map((r) => r.category).filter(Boolean) as string[])).sort()]);
+        setBehaviorOptions(['All', ...Array.from(new Set(allRows.map((r) => r.behavior?.trim()).filter(Boolean) as string[])).sort()]);
+        setCategoryOptions(['All', ...Array.from(new Set(allRows.map((r) => r.category?.trim()).filter(Boolean) as string[])).sort()]);
       })
       .catch(() => {
-        setBehaviorOptions(['All', ...Array.from(new Set(stored.map((r) => r.behavior).filter(Boolean) as string[])).sort()]);
-        setCategoryOptions(['All', ...Array.from(new Set(stored.map((r) => r.category).filter(Boolean) as string[])).sort()]);
+        setBehaviorOptions(['All', ...Array.from(new Set(stored.map((r) => r.behavior?.trim()).filter(Boolean) as string[])).sort()]);
+        setCategoryOptions(['All', ...Array.from(new Set(stored.map((r) => r.category?.trim()).filter(Boolean) as string[])).sort()]);
       });
   }, [studentId, currentStudent?.name]);
 
@@ -296,60 +210,73 @@ export default function AbcLogScreen({ navigation }: Props) {
   }, [load, refreshFilterOptions]);
 
   const totalPages = Math.max(1, Math.ceil(incidents.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
+  const safePage = Math.min(Math.max(1, page), totalPages);
   const paginated = incidents.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const handleDeleteIncident = async () => {
     if (!selectedIncident) return;
     try {
       await deleteAbcIncident(selectedIncident.id);
-    } catch (err) {
-      // Offline fallback
+      removeStoredAbcIncident(selectedIncident.id);
+      showToast('Incident deleted successfully', 'success');
+      setSelectedIncident(null);
+      setDeleteConfirm(false);
+      setIncidents((prev) => prev.filter((item) => String(item.id) !== String(selectedIncident.id)));
+      await load();
+      refreshFilterOptions();
+    } catch (err: any) {
+      const is404 = err?.status === 404 || err?.response?.status === 404;
+      if (is404) {
+        removeStoredAbcIncident(selectedIncident.id);
+        showToast('Incident deleted successfully', 'success');
+        setSelectedIncident(null);
+        setDeleteConfirm(false);
+        setIncidents((prev) => prev.filter((item) => String(item.id) !== String(selectedIncident.id)));
+        await load();
+        refreshFilterOptions();
+        return;
+      }
+      showToast('Failed to delete incident. Please check connection and try again.', 'error');
+      setDeleteConfirm(false);
     }
-    removeStoredAbcIncident(selectedIncident.id);
-    showToast('Incident deleted');
-    setSelectedIncident(null);
-    setDeleteConfirm(false);
-    load();
-    refreshFilterOptions();
   };
 
   const handleExport = async (type: string) => {
     setExportMenuOpen(false);
     try {
-      await exportAbcLog({ studentId, from, to });
+      await exportAbcLog({
+        studentId,
+        from,
+        to,
+        behavior: behaviorFilter !== 'All' ? behaviorFilter : undefined,
+        category: categoryFilter !== 'All' ? categoryFilter : undefined,
+      });
     } catch (err) {}
-    const header = TABLE_COLUMNS.map((c) => c.label).join(',');
-    const lines = incidents.map((r) =>
-      TABLE_COLUMNS.map((c) => `"${String(r[c.key] ?? '').replace(/"/g, '""')}"`).join(',')
-    );
-    const content = [
-      `Melu'e Foundation — ABC Data Sheet`,
-      `Student: ${currentStudent?.name ?? ''}`,
-      `Range: ${from} to ${to}`,
-      `Filters: Behavior ${behaviorFilter} · Category ${categoryFilter}`,
-      '',
-      `TOTAL INCIDENTS: ${stats?.totalIncidents ?? 0}`,
-      `MOST COMMON BEHAVIOR: ${stats?.mostCommonBehavior ?? 'N/A'}`,
-      `MOST COMMON ANTECEDENT: ${stats?.mostCommonAntecedent ?? 'N/A'}`,
-      `THIS WEEK: ${stats?.thisWeek ?? 0}`,
-      '',
-      header,
-      ...lines,
-    ].join('\n');
 
-    const title = type === 'pdf' ? 'ABC Data Sheet Export (PDF)' : 'ABC Data Sheet Export (CSV)';
-    const formattedHtml = `
-      <html>
-        <head><title>${title}</title>
-        <style>
-          body { font-family: monospace; white-space: pre-wrap; padding: 20px; font-size: 14px; line-height: 1.5; color: #1e293b; }
-        </style></head>
-        <body>${content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</body>
-      </html>
-    `;
-    openPrintWindow(formattedHtml, title);
-    showToast(`${type.toUpperCase()} export opened`);
+    const studentName = currentStudent?.name || 'Student';
+    const studentSlug = studentName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+    if (type === 'csv') {
+      const csvContent = generateAbcCsv(incidents, TABLE_COLUMNS);
+      const filename = `abc_data_sheet_${studentSlug}_${from || 'all'}_to_${to || 'all'}.csv`;
+      downloadTextFile(filename, csvContent);
+      showToast('CSV export downloaded', 'success');
+    } else {
+      const title = `ABC Data Sheet Export (PDF) — ${studentName}`;
+      const reportHtml = generateAbcPrintHtml({
+        incidents,
+        studentName,
+        studentAge: currentStudent?.age,
+        from,
+        to,
+        behaviorFilter,
+        categoryFilter,
+        stats,
+        columns: TABLE_COLUMNS,
+      });
+      openPrintWindow(reportHtml, title, { formId: 'SCR-003A', revisionNumber: 'Rev: August 2025' });
+      showToast('PDF print preview opened', 'success');
+    }
   };
 
   if (loading && incidents.length === 0 && !stats) return <ScreenLoader />;
@@ -579,7 +506,7 @@ export default function AbcLogScreen({ navigation }: Props) {
               )}
               {paginated.map((inc, idx) => (
                 <TouchableOpacity
-                  key={inc.id}
+                  key={inc.id || `inc-row-${idx}`}
                   style={[styles.tableRow, idx % 2 === 0 ? styles.rowEven : styles.rowOdd]}
                   onPress={() => {
                     setSelectedIncident(inc);

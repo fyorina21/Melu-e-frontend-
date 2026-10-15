@@ -54,39 +54,162 @@ export function recordTrialInStore(
   goalId: string,
   trial: Trial
 ): void {
+  if (!sessionId || !studentId || !goalId || !trial) return;
   const all = readAllStored();
   const key = `${sessionId}:${studentId}`;
   const current = all[key] || [];
-  all[key] = [...current, trial];
+
+  const existingIndex = current.findIndex((t) => t.id && trial.id && t.id === trial.id);
+  if (existingIndex >= 0) {
+    current[existingIndex] = { ...current[existingIndex], ...trial, studentGoalId: goalId };
+    all[key] = current;
+  } else {
+    const isDup = current.some(
+      (t) =>
+        t.timestamp &&
+        trial.timestamp &&
+        t.timestamp === trial.timestamp &&
+        t.promptLevel === trial.promptLevel &&
+        t.studentGoalId === goalId
+    );
+    if (!isDup) {
+      all[key] = [...current, { ...trial, studentGoalId: goalId }];
+    }
+  }
   writeAllStored(all);
+}
+
+export function updateTrialIdInStore(
+  sessionId: string,
+  studentId: string,
+  oldTrialId: string,
+  newTrialId: string
+): void {
+  if (!sessionId || !studentId || !oldTrialId || !newTrialId) return;
+  const all = readAllStored();
+  const key = `${sessionId}:${studentId}`;
+  const current = all[key] || [];
+  let updated = false;
+  for (let i = 0; i < current.length; i++) {
+    if (current[i].id === oldTrialId) {
+      current[i].id = newTrialId;
+      updated = true;
+      break;
+    }
+  }
+  if (updated) {
+    all[key] = current;
+    writeAllStored(all);
+  }
 }
 
 export function undoTrialInStore(
   sessionId: string,
   studentId: string,
-  goalId?: string
+  goalId?: string,
+  trialId?: string
 ): Trial | null {
+  if (!sessionId || !studentId) return null;
   const all = readAllStored();
   const key = `${sessionId}:${studentId}`;
   const current = all[key] || [];
   if (current.length === 0) return null;
 
   let popped: Trial | null = null;
-  if (!goalId) {
-    popped = current.pop() || null;
-    all[key] = current;
-  } else {
+  // Match exact trialId first if provided
+  if (trialId) {
     for (let i = current.length - 1; i >= 0; i--) {
-      if (!current[i].studentGoalId || current[i].studentGoalId === goalId) {
+      if (current[i].id === trialId && (!goalId || current[i].studentGoalId === goalId)) {
         popped = current.splice(i, 1)[0];
         break;
       }
     }
-    all[key] = current;
+  } else if (goalId) {
+    // Otherwise strictly match goalId
+    for (let i = current.length - 1; i >= 0; i--) {
+      if (current[i].studentGoalId === goalId) {
+        popped = current.splice(i, 1)[0];
+        break;
+      }
+    }
+  } else {
+    // Only pop if neither trialId nor goalId was provided
+    popped = current.pop() || null;
   }
 
-  writeAllStored(all);
+  if (popped) {
+    all[key] = current;
+    writeAllStored(all);
+  }
   return popped;
+}
+
+const OFFLINE_SYNC_QUEUE_KEY = 'melue_session_offline_sync_queue';
+
+export interface OfflineSyncItem {
+  id: string;
+  type: 'logTrial' | 'undoTrial' | 'recordIncident' | 'log_trial' | 'undo_trial' | 'behavior_incident';
+  sessionId: string;
+  studentId?: string;
+  goalId?: string;
+  trialId?: string;
+  payload?: any;
+  createdAt: number;
+  retryCount: number;
+}
+
+export function getOfflineSyncQueue(): OfflineSyncItem[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(OFFLINE_SYNC_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function enqueueOfflineSync(
+  item: Omit<OfflineSyncItem, 'id' | 'createdAt' | 'retryCount'>
+): OfflineSyncItem {
+  const newItem: OfflineSyncItem = {
+    ...item,
+    id: `sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: Date.now(),
+    retryCount: 0,
+  };
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const queue = getOfflineSyncQueue();
+      queue.push(newItem);
+      localStorage.setItem(OFFLINE_SYNC_QUEUE_KEY, JSON.stringify(queue));
+    } catch {}
+  }
+  return newItem;
+}
+
+export function removeOfflineSyncItem(id: string): void {
+  if (typeof localStorage === 'undefined' || !id) return;
+  try {
+    const queue = getOfflineSyncQueue().filter((item) => item.id !== id);
+    localStorage.setItem(OFFLINE_SYNC_QUEUE_KEY, JSON.stringify(queue));
+  } catch {}
+}
+
+export function incrementOfflineSyncRetry(id: string): void {
+  if (typeof localStorage === 'undefined' || !id) return;
+  try {
+    const queue = getOfflineSyncQueue().map((item) =>
+      item.id === id ? { ...item, retryCount: item.retryCount + 1 } : item
+    );
+    localStorage.setItem(OFFLINE_SYNC_QUEUE_KEY, JSON.stringify(queue));
+  } catch {}
+}
+
+export function clearOfflineSyncQueue(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(OFFLINE_SYNC_QUEUE_KEY);
+  } catch {}
 }
 
 export function clearStoredTrials(sessionId?: string): void {
@@ -109,23 +232,51 @@ export function clearStoredTrials(sessionId?: string): void {
 const INCIDENTS_STORAGE_KEY = 'melue_session_incidents_cache';
 
 export function getStoredIncidents(sessionId: string): SessionIncident[] {
-  if (typeof localStorage === 'undefined') return [];
+  if (typeof localStorage === 'undefined' || !sessionId) return [];
   try {
     const raw = localStorage.getItem(INCIDENTS_STORAGE_KEY);
     if (!raw) return [];
     const all = JSON.parse(raw) || {};
-    return all[sessionId] || [];
+    const list = all[sessionId] || [];
+    const seen = new Set<string>();
+    const result: SessionIncident[] = [];
+    for (const item of list) {
+      const idKey = (item as any).id || `${(item as any).date}-${(item as any).time}-${(item as any).behavior}-${(item as any).studentId}`;
+      if (!seen.has(idKey)) {
+        seen.add(idKey);
+        result.push(item);
+      }
+    }
+    return result;
   } catch {
     return [];
   }
 }
 
 export function recordIncidentInStore(sessionId: string, incident: SessionIncident): void {
+  if (!sessionId || !incident) return;
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem(INCIDENTS_STORAGE_KEY);
       const all = raw ? JSON.parse(raw) : {};
-      all[sessionId] = [...(all[sessionId] || []), incident];
+      const current = all[sessionId] || [];
+      const incidentId = (incident as any).id;
+
+      const existingIndex = current.findIndex(
+        (i: any) =>
+          (i.id && incidentId && i.id === incidentId) ||
+          (i.date === (incident as any).date &&
+            i.time === (incident as any).time &&
+            i.studentId === (incident as any).studentId &&
+            i.behavior === (incident as any).behavior)
+      );
+
+      if (existingIndex >= 0) {
+        current[existingIndex] = { ...current[existingIndex], ...incident };
+        all[sessionId] = current;
+      } else {
+        all[sessionId] = [...current, incident];
+      }
       localStorage.setItem(INCIDENTS_STORAGE_KEY, JSON.stringify(all));
     } catch (err) {
       console.warn('Failed to store incident in localStorage', err);
@@ -133,6 +284,33 @@ export function recordIncidentInStore(sessionId: string, incident: SessionIncide
   }
   // Automatically also save into ABC incidents store for http://localhost:8081/AbcLog
   recordAbcIncidentInStore(incident);
+}
+
+export function removeStoredSessionIncident(sessionId: string, incidentIdOrIndex: string | number): void {
+  if (typeof localStorage === 'undefined' || !sessionId) return;
+  try {
+    const raw = localStorage.getItem(INCIDENTS_STORAGE_KEY);
+    if (!raw) return;
+    const all = JSON.parse(raw) || {};
+    const list: any[] = all[sessionId] || [];
+    let removedId: string | null = null;
+
+    if (typeof incidentIdOrIndex === 'number') {
+      if (incidentIdOrIndex >= 0 && incidentIdOrIndex < list.length) {
+        removedId = list[incidentIdOrIndex]?.id || null;
+        list.splice(incidentIdOrIndex, 1);
+      }
+    } else {
+      removedId = String(incidentIdOrIndex);
+      all[sessionId] = list.filter((i: any) => String(i.id) !== removedId);
+    }
+    all[sessionId] = list;
+    localStorage.setItem(INCIDENTS_STORAGE_KEY, JSON.stringify(all));
+
+    if (removedId) {
+      removeStoredAbcIncident(removedId);
+    }
+  } catch {}
 }
 
 const ABC_STORAGE_KEY = 'melue_abc_incidents_cache';

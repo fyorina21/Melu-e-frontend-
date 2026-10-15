@@ -397,6 +397,13 @@ export function isStudentInSession(student: any): boolean {
  */
 export function isStudentEligibleForSession(student: any): boolean {
   if (!student) return false;
+  const sid = String(student.id || '');
+
+  // If student was explicitly assigned to a session (e.g. by Director Scheduling) or marked completed
+  if (Boolean(student.sessionAssigned) || (sid && isStoredAssessmentCompleted(sid))) {
+    return true;
+  }
+
   const status = String(student.rawStatus || student.status || '').toLowerCase().trim();
   const stage = String(student.currentStage || student.stage || '').toLowerCase().trim();
   const assessStatus = String(student.assessmentStatus || '').toLowerCase().trim();

@@ -17,7 +17,12 @@ import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { getDirectorSchedule } from '../../api/directorApi';
 import { setStoredSessionStudents } from '../../stores/trialsStore';
 import { isStudentEligibleForSession, isStudentAssessment100PercentCompleted, isStudentInSession, registerStudentStatuses } from '../../utils/studentLifecycleHelper';
-import { findLoggedInTeacher, resolveTeacherAssignedStudentIds, resolveEligibleTeacherStudents } from '../../utils/teacherScheduleHelper';
+import {
+  findLoggedInTeacher,
+  resolveTeacherAssignedStudentIds,
+  resolveEligibleTeacherStudents,
+  onScheduleAssignmentsChanged,
+} from '../../utils/teacherScheduleHelper';
 import { filterOutDeletedStaff, isStaffDeleted, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { SessionStackParamList, FeatherIconName } from '../../types';
 
@@ -236,6 +241,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => onDeletedStaffChanged(load), [load]);
+  useEffect(() => onScheduleAssignmentsChanged(load), [load]);
 
   useFocusEffect(
     useCallback(() => {

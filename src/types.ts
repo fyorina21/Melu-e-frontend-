@@ -127,13 +127,24 @@ export interface IncidentPayload {
 }
 
 export interface SessionIncident {
+  id?: string;
+  studentId?: string;
+  studentGoalId?: string;
   time: string;
   behavior: string;
   studentName: string;
   date?: string;
+  location?: string;
+  intensity?: string;
+  duration?: string;
+  category?: string;
   antecedent?: string;
   consequence?: string;
   additionalNotes?: string;
+  notes?: string;
+  teacher?: string;
+  customFields?: Record<string, any>;
+  [key: string]: any;
 }
 
 export interface SessionSummaryStudent {

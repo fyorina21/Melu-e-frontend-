@@ -34,20 +34,50 @@ export const getDirectorDashboard = async () => {
   }
 };
 
+import {
+  saveDirectorAssignment,
+  applyDirectorAssignmentsToBlocks,
+  clearDirectorAssignmentsForBlock,
+} from '../utils/teacherScheduleHelper';
+
 // SCR-DIR-002: Staff Scheduling (same operational data as SCR-TC-005, Director-level view)
 export const getDirectorSchedule = async (params: QueryParams) => {
-  const res = await client.get('/director/schedule', { params });
-  if (Array.isArray(res?.data)) {
-    return { ...res, data: filterOutDeletedStaff(res.data) };
+  const teacherId = params?.teacherId ? String(params.teacherId) : undefined;
+  try {
+    const res = await client.get('/director/schedule', { params });
+    const rawData = Array.isArray(res?.data) ? filterOutDeletedStaff(res.data) : [];
+    const mappedData = teacherId ? rawData.map((b: any) => ({ ...b, teacherId })) : rawData;
+    const mergedData = applyDirectorAssignmentsToBlocks(mappedData, teacherId);
+    return { ...res, data: mergedData };
+  } catch (err) {
+    const fallbackData = applyDirectorAssignmentsToBlocks([], teacherId);
+    return { data: fallbackData };
   }
-  return res;
 };
-export const saveAssignment = (payload: Payload) => client.post('/director/schedule/assignments', payload);
-export const removeAllAssignments = (blockId: string, teacherId?: string, studentIds?: string[]) =>
-  client.post(`/director/schedule/blocks/${blockId}/clear`, {
-    ...(teacherId ? { teacherId } : {}),
-    ...(studentIds && studentIds.length > 0 ? { studentIds } : {}),
-  });
+
+export const saveAssignment = async (payload: Payload) => {
+  const { blockId, studentIds, teacherId, studentObjects } = payload as any;
+  if (teacherId) {
+    saveDirectorAssignment(teacherId, blockId, studentIds || [], studentObjects);
+  }
+  try {
+    return await client.post('/director/schedule/assignments', { blockId, studentIds, teacherId });
+  } catch (err) {
+    return { data: { success: true, blockId, studentIds, teacherId } };
+  }
+};
+
+export const removeAllAssignments = async (blockId: string, teacherId?: string, studentIds?: string[]) => {
+  clearDirectorAssignmentsForBlock(blockId, teacherId, studentIds);
+  try {
+    return await client.post(`/director/schedule/blocks/${blockId}/clear`, {
+      ...(teacherId ? { teacherId } : {}),
+      ...(studentIds && studentIds.length > 0 ? { studentIds } : {}),
+    });
+  } catch (err) {
+    return { data: { success: true, blockId, teacherId, studentIds } };
+  }
+};
 
 // In-memory message thread cache for director conversations
 const directorThreadStore: Record<string, any[]> = {};

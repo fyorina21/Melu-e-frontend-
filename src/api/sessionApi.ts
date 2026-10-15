@@ -66,11 +66,16 @@ export const getSessionRoster = (sessionId: string) =>
   // returns students + their goals for this session
   client.get(`/sessions/${sessionId}/roster`);
 
-export const logTrial = (sessionId: string, studentId: string, goalId: string, payload: Payload) =>
-  // payload: { promptLevel: 'FP' | 'PP' | 'G' | 'INDEPENDENT', timestamp }
-  client.post(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials`, payload);
+export const logTrial = async (sessionId: string, studentId: string, goalId: string, payload: Payload) => {
+  if (!sessionId) throw new Error('Trial logging requires a valid sessionId');
+  if (!studentId) throw new Error('Trial logging requires a valid studentId');
+  if (!goalId) throw new Error('Trial logging requires a valid goalId');
+  return client.post(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials`, payload);
+};
 
 export const undoLastTrial = async (sessionId: string, studentId: string, goalId: string) => {
+  if (!sessionId) throw new Error('Undo trial requires a valid sessionId');
+  if (!studentId) throw new Error('Undo trial requires a valid studentId');
   try {
     return await client.delete(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials/last`);
   } catch (err) {
@@ -80,15 +85,22 @@ export const undoLastTrial = async (sessionId: string, studentId: string, goalId
   }
 };
 
-export const recordBehaviorIncident = (sessionId: string, payload: Payload) =>
-  client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, payload);
+export const recordBehaviorIncident = async (sessionId: string, payload: Payload) => {
+  if (!sessionId) throw new Error('Recording incident requires a valid sessionId');
+  const studentId = payload?.student_id || payload?.studentId;
+  if (!studentId) throw new Error('Recording incident requires a valid studentId');
+  return client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, payload);
+};
 
-export const recordIncident = (sessionId: string, studentId: string, payload: Payload) =>
-  client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, {
+export const recordIncident = async (sessionId: string, studentId: string, payload: Payload) => {
+  if (!sessionId) throw new Error('Recording incident requires a valid sessionId');
+  if (!studentId) throw new Error('Recording incident requires a valid studentId');
+  return client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, {
     student_id: studentId,
     studentId,
     ...payload,
   });
+};
 
 export const requestMasteryCheck = (sessionId: string, studentId: string, goalId: string) =>
   client.post(`/student_goals/${goalId}/mastery_checks`, { sessionId, studentId });

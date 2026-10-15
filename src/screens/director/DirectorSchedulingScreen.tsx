@@ -26,6 +26,7 @@ import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../..
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { registerStudentStatuses, isStudentInSession } from '../../utils/studentLifecycleHelper';
 import { isStaffDeleted, onDeletedStaffChanged, filterOutDeletedStaff } from '../../utils/deletedStaffHelper';
+import { saveDirectorAssignment } from '../../utils/teacherScheduleHelper';
 import type { DirectorStackParamList } from '../../types';
 
 interface Option {
@@ -290,7 +291,8 @@ export default function DirectorSchedulingScreen({
   }, [teachers, searchTeacher]);
 
   const inSessionStudents = useMemo(() => {
-    return students.filter(isStudentInSession);
+    const list = students.filter(isStudentInSession);
+    return list.length > 0 ? list : students;
   }, [students]);
 
   const inSessionStudentIdSet = useMemo(() => {
@@ -308,7 +310,41 @@ export default function DirectorSchedulingScreen({
         } catch {}
       }
 
-      await saveAssignment({ blockId, studentIds: sanitizedStudentIds, teacherId });
+      // Map full student objects from students list for complete session display
+      const studentMap = new Map((students || []).map((s) => [String(s.id), s]));
+      const assignedStudentObjects = sanitizedStudentIds.map((sid) => {
+        const found = studentMap.get(String(sid));
+        return (
+          found || {
+            id: sid,
+            name: `Student ${sid.slice(0, 4)}`,
+            initial: 'ST',
+            status: 'in_session',
+            sessionAssigned: true,
+          }
+        );
+      });
+
+      // Save directly to helper store
+      if (teacherId) {
+        saveDirectorAssignment(teacherId, blockId, sanitizedStudentIds, assignedStudentObjects);
+      }
+
+      // Optimistic local blocks update so the UI updates without delay
+      setBlocks((prev) =>
+        prev
+          ? prev.map((b) =>
+              b.id === blockId ? { ...b, studentIds: sanitizedStudentIds } : b
+            )
+          : prev
+      );
+
+      await saveAssignment({
+        blockId,
+        studentIds: sanitizedStudentIds,
+        teacherId,
+        studentObjects: assignedStudentObjects,
+      });
       await load();
       setEditorTarget(null);
     } catch (err: any) {

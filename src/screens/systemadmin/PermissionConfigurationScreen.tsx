@@ -31,662 +31,47 @@ import { useAuth } from '../../context/AuthContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList, Role } from '../../types';
 
-// ============================================================================
-// CANONICAL APPLICATION PAGES FROM ALL ROLES
-// ============================================================================
+// Re-export pure helpers, types, and constants for backward compatibility
+export {
+  ACTIONS,
+  type ActionType,
+  type PermissionMatrix,
+  type AppPageModule,
+  type PermissionRole,
+  type AuditEntry,
+  ALL_PAGE_MODULES,
+  getDefaultMatrixForRole,
+} from './permissionConfigHelpers';
 
-export interface AppPageModule {
-  id: string;
-  name: string;
-  role: string;
-  roleKey: Role;
-  category: string;
-  route: string;
-  backendResource: string;
-  description: string;
-}
+import {
+  ACTIONS,
+  type ActionType,
+  type PermissionMatrix,
+  type AppPageModule,
+  type PermissionRole,
+  type AuditEntry,
+  type CatalogPermission,
+  ALL_PAGE_MODULES,
+  getDefaultMatrixForRole,
+  mapBackendPermissionsToMatrix,
+  applyPermissionDependencies,
+  checkHighRiskPermission,
+  filterPageModules,
+  groupPagesByCategory,
+  buildSavePayload,
+  blankActions,
+} from './permissionConfigHelpers';
 
-export const ALL_PAGE_MODULES: AppPageModule[] = [
-  // --- DIRECTOR ---
-  {
-    id: 'director_dashboard',
-    name: 'Director Overview Dashboard',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Executive Oversight',
-    route: 'DirectorDashboard',
-    backendResource: 'reports',
-    description: 'Executive clinical KPIs, facility approvals, scheduling & message escalations',
-  },
-  {
-    id: 'director_scheduling',
-    name: 'Staff Scheduling & Capacity',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Operations & Scheduling',
-    route: 'DirectorScheduling',
-    backendResource: 'staff',
-    description: 'Facility capacity limits, therapist schedules, and student blocks',
-  },
-  {
-    id: 'director_goal_mastery',
-    name: 'Goal Mastery Approval',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Clinical Verification',
-    route: 'GoalMasteryApproval',
-    backendResource: 'iups',
-    description: 'Multi-therapist goal mastery verification and executive approval sign-off',
-  },
-  {
-    id: 'director_parent_comm',
-    name: 'Parent Communication Hub',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Family & Messages',
-    route: 'DirectorParentCommunication',
-    backendResource: 'parent_portal',
-    description: 'Executive parent messaging hub and escalated family incident resolution',
-  },
-  {
-    id: 'director_reports_oversight',
-    name: 'Reports & Executive Oversight',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Executive Oversight',
-    route: 'ReportsOversight',
-    backendResource: 'reports',
-    description: 'Clinical reports oversight, bi-annual reviews, and session record exports',
-  },
-  {
-    id: 'director_student_progress',
-    name: 'Student Progress Monitoring',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Clinical Supervision',
-    route: 'DirectorStudentProgress',
-    backendResource: 'students',
-    description: 'Clinical oversight of goals, sessions, assessments & behavior trends',
-  },
-  {
-    id: 'director_report_builder',
-    name: 'Custom Report Builder',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Executive Oversight',
-    route: 'ReportBuilder',
-    backendResource: 'reports',
-    description: 'Custom report generation, multi-metric filtering, and PDF generation',
-  },
-
-  // --- PROGRAM DIRECTOR ---
-  {
-    id: 'pd_dashboard',
-    name: 'Program Director Dashboard',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Executive Oversight',
-    route: 'ProgramDirectorDashboard',
-    backendResource: 'reports',
-    description: 'Program operations metrics, student intake pipelines, and milestones',
-  },
-  {
-    id: 'pd_enrollment_wizard',
-    name: 'Student Enrollment Wizard',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Intake & Registration',
-    route: 'StudentEnrollmentWizard',
-    backendResource: 'students',
-    description: 'Multi-step student onboarding questionnaire and clinical profile wizard',
-  },
-  {
-    id: 'pd_iup_generation',
-    name: 'IUP Creation & Goal Assignment',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Goal Management',
-    route: 'IupGeneration',
-    backendResource: 'iups',
-    description: 'Generate individualized IUPs, assign baseline criteria and SMART goals',
-  },
-  {
-    id: 'pd_assessment_summary',
-    name: 'Assessment Summary Report',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Assessments',
-    route: 'AssessmentSummaryReport',
-    backendResource: 'assessments',
-    description: 'Comprehensive 6-week assessment report review and export generation',
-  },
-  {
-    id: 'pd_goal_mastery',
-    name: 'Goal Mastery Approval',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Clinical Verification',
-    route: 'GoalMasteryApproval',
-    backendResource: 'iups',
-    description: 'Multi-therapist clinical verification and sign-off on goal completion',
-  },
-  {
-    id: 'pd_assessment_review',
-    name: 'Assessment Review & Sign-Off',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Assessments',
-    route: 'AssessmentReview',
-    backendResource: 'assessments',
-    description: 'Review and verify teacher assessment submissions and preferences',
-  },
-  {
-    id: 'pd_iup_library',
-    name: 'IUP Library Management',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Goal Management',
-    route: 'IupLibrary',
-    backendResource: 'iups',
-    description: 'Curriculum repository, standardized goal banks, and template library',
-  },
-  {
-    id: 'pd_student_caseload',
-    name: 'Student Caseload Management',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Operations & Scheduling',
-    route: 'StudentCaseload',
-    backendResource: 'students',
-    description: 'Caseload allocation, therapist capacity, and tier readiness queue',
-  },
-  {
-    id: 'pd_clinical_quality',
-    name: 'Clinical Quality & Goal Bank',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Clinical Supervision',
-    route: 'GoalBankManagement',
-    backendResource: 'iups',
-    description: 'Clinical quality monitoring, program integrity, and goal bank catalog',
-  },
-  {
-    id: 'pd_parent_comm',
-    name: 'Program Director Parent Chat',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Family & Messages',
-    route: 'PdParentCommunication',
-    backendResource: 'parent_portal',
-    description: 'Clinical director communication channel for parent updates and notes',
-  },
-  {
-    id: 'pd_progress_charts',
-    name: 'Clinical Reports & Progress Charts',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Executive Oversight',
-    route: 'GraphChartView',
-    backendResource: 'reports',
-    description: 'Longitudinal skill acquisition curves, trials distribution, and progress charts',
-  },
-
-  // --- COORDINATOR ---
-  {
-    id: 'coord_dashboard',
-    name: 'Coordinator Overview Dashboard',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'CoordinatorDashboard',
-    backendResource: 'reports',
-    description: 'Therapy center overview, live room status, and pending approvals queue',
-  },
-  {
-    id: 'coord_student_profile',
-    name: 'Student Profile & Clinical Chart',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Clinical Supervision',
-    route: 'StudentProfile',
-    backendResource: 'students',
-    description: 'Detailed student clinical profile, medical records, and behavior history',
-  },
-  {
-    id: 'coord_live_sessions',
-    name: 'Live Session Monitoring',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Therapy & Daily Clinical',
-    route: 'LiveSessionMonitoring',
-    backendResource: 'sessions',
-    description: 'Real-time observation of active therapy rooms and therapist trial logs',
-  },
-  {
-    id: 'coord_session_summary',
-    name: 'Session Summary Review',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Therapy & Daily Clinical',
-    route: 'SessionSummaryReview',
-    backendResource: 'sessions',
-    description: 'Review, approve, or request revision on therapist daily session notes',
-  },
-  {
-    id: 'coord_student_progress',
-    name: 'Coordinator Student Progress',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Clinical Supervision',
-    route: 'CoordinatorStudentProgress',
-    backendResource: 'students',
-    description: 'Clinical goal tracking, trend charts, and incident pattern analysis',
-  },
-  {
-    id: 'coord_schedule',
-    name: 'Operational Schedule & Appointments',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'CoordinatorSchedule',
-    backendResource: 'staff',
-    description: 'Session scheduling, station rotations, and therapist coverage grid',
-  },
-  {
-    id: 'coord_parent_comm',
-    name: 'Coordinator Parent Messages',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Family & Messages',
-    route: 'CoordinatorParentCommunication',
-    backendResource: 'parent_portal',
-    description: 'Parent communication hub, escalated threads, and family observations',
-  },
-  {
-    id: 'coord_student_registration',
-    name: 'Student Intake & Registration',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Intake & Registration',
-    route: 'StudentEnrollment',
-    backendResource: 'students',
-    description: 'Student registration records, baseline evaluation intake, and documents',
-  },
-  {
-    id: 'coord_staff_workload',
-    name: 'Staff Workload & Therapist Linking',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'WorkloadDashboard',
-    backendResource: 'staff',
-    description: 'Therapist case assignments, student pairing, and workload distribution',
-  },
-  {
-    id: 'coord_room_scheduling',
-    name: 'Room Resource Scheduling',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'RoomResourceScheduling',
-    backendResource: 'staff',
-    description: 'Facility therapy rooms, sensory stations, and space availability',
-  },
-  {
-    id: 'coord_iup_generation',
-    name: 'IUP Creation & Objectives',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Goal Management',
-    route: 'IupGeneration',
-    backendResource: 'iups',
-    description: 'Assist in drafting individualized education plans and target assignments',
-  },
-
-  // --- TEACHER / THERAPIST ---
-  {
-    id: 'teacher_dashboard',
-    name: 'Teacher Dashboard',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'TeacherDashboard',
-    backendResource: 'sessions',
-    description: 'Daily therapist view: assigned students, scheduled sessions, and tasks',
-  },
-  {
-    id: 'teacher_session_collection',
-    name: 'Session Data Collection',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'SessionDataCollection',
-    backendResource: 'sessions',
-    description: 'Active therapy interface: prompt hierarchy, trial recording, timers, tokens',
-  },
-  {
-    id: 'teacher_assessments',
-    name: 'Assessment Dashboard',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Assessments',
-    route: 'AssessmentDashboard',
-    backendResource: 'assessments',
-    description: 'Conduct baseline assessments: ABLLS-R, FAST, MASS, and preference tests',
-  },
-  {
-    id: 'teacher_daily_notes',
-    name: 'Daily Session Notes',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'DailyNotes',
-    backendResource: 'sessions',
-    description: 'Draft qualitative clinical notes, incident logs, and submit for review',
-  },
-  {
-    id: 'teacher_abc_log',
-    name: 'ABC Behavior Incident Log',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'AbcLog',
-    backendResource: 'behavior_incidents',
-    description: 'Antecedent, Behavior, Consequence event tracking and behavior logs',
-  },
-  {
-    id: 'teacher_parent_comm',
-    name: 'Parent Communication Thread',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Family & Messages',
-    route: 'ParentCommunication',
-    backendResource: 'parent_portal',
-    description: 'Direct messaging thread with parents, share approved summaries',
-  },
-  {
-    id: 'teacher_notifications',
-    name: 'Clinical Notifications',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Family & Messages',
-    route: 'Notifications',
-    backendResource: 'sessions',
-    description: 'System alert list, supervisor feedback alerts, and session updates',
-  },
-
-  // --- INSTITUTIONAL ADMIN ---
-  {
-    id: 'ia_goal_domains',
-    name: 'Goal Domain Definitions',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'GoalDomainDefinitions',
-    backendResource: 'iups',
-    description: 'Configure institutional developmental domains and skill taxonomies',
-  },
-  {
-    id: 'ia_schedule_capacity',
-    name: 'Schedule & Capacity Configuration',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'ScheduleCapacityConfig',
-    backendResource: 'staff',
-    description: 'Configure facility working hours, room capacities, and student-staff ratios',
-  },
-  {
-    id: 'ia_abc_dropdowns',
-    name: 'ABC Dropdown Lists',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'AbcDropdownLists',
-    backendResource: 'behavior_incidents',
-    description: 'Standardize antecedent, behavior, and consequence choices facility-wide',
-  },
-  {
-    id: 'ia_trial_logging',
-    name: 'Trial Logging Format Config',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'TrialLoggingFormat',
-    backendResource: 'sessions',
-    description: 'Configure prompt level hierarchies, scoring options, and data collection formats',
-  },
-  {
-    id: 'ia_form_builder',
-    name: 'Assessment & Form Builder',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'FormBuilder',
-    backendResource: 'admin',
-    description: 'Interactive form designer, assessment question editors, and form sections',
-  },
-  {
-    id: 'ia_task_analysis',
-    name: 'Task Analysis Templates',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'TaskAnalysisTemplates',
-    backendResource: 'iups',
-    description: 'Curate forward and backward chaining task analysis templates and step lists',
-  },
-
-  // --- SYSTEM ADMIN ---
-  {
-    id: 'sys_staff_accounts',
-    name: 'Staff Account Management',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'StaffAccountManagement',
-    backendResource: 'staff',
-    description: 'Staff account provisioning, passwords, credential verification, and status',
-  },
-  {
-    id: 'sys_role_management',
-    name: 'Role Management',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'RoleManagement',
-    backendResource: 'admin',
-    description: 'Create and configure custom system roles, descriptions, and user assignments',
-  },
-  {
-    id: 'sys_permissions',
-    name: 'Permission Configuration (RBAC)',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'PermissionConfiguration',
-    backendResource: 'admin',
-    description: 'Role-based access control matrix, page action permissions, and audit log',
-  },
-  {
-    id: 'sys_audit_log',
-    name: 'System Audit Log',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'AuditLog',
-    backendResource: 'reports',
-    description: 'Security and administrative audit trail with IP address and timestamp records',
-  },
-
-  // --- PARENT ---
-  {
-    id: 'parent_dashboard',
-    name: 'Parent Family Dashboard',
-    role: 'Parent',
-    roleKey: 'parent',
-    category: 'Parent Portal',
-    route: 'ParentDashboard',
-    backendResource: 'parent_portal',
-    description: 'Guardian portal overview, therapy attendance, and weekly skill milestones',
-  },
-  {
-    id: 'parent_child_progress',
-    name: 'Child Progress Tracker',
-    role: 'Parent',
-    roleKey: 'parent',
-    category: 'Parent Portal',
-    route: 'ChildProgress',
-    backendResource: 'parent_portal',
-    description: 'Visual goal progress charts, mastered skills, and family-friendly updates',
-  },
-  {
-    id: 'parent_home_observations',
-    name: 'Home Observation Log',
-    role: 'Parent',
-    roleKey: 'parent',
-    category: 'Parent Portal',
-    route: 'HomeObservationLog',
-    backendResource: 'parent_portal',
-    description: 'Log behaviors and skills observed at home with therapist feedback',
-  },
-  {
-    id: 'parent_messages',
-    name: 'Parent Messaging Hub',
-    role: 'Parent',
-    roleKey: 'parent',
-    category: 'Parent Portal',
-    route: 'ParentCommunication',
-    backendResource: 'parent_portal',
-    description: 'Direct communication thread with child therapist and clinical team',
-  },
+const ROLE_FILTER_OPTIONS = [
+  'All',
+  'Director',
+  'Program Director',
+  'Therapy Coordinator',
+  'Teacher / Therapist',
+  'Institutional Admin',
+  'System Admin',
+  'Parent',
 ];
-
-export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE'] as const;
-export type ActionType = typeof ACTIONS[number];
-
-export type PermissionMatrix = Record<string, Record<ActionType, boolean>>;
-
-export interface PermissionRole {
-  id: string;
-  name: string;
-  description?: string;
-  user_count?: number;
-  is_system_critical?: boolean;
-}
-
-export interface AuditEntry {
-  id?: string;
-  date: string;
-  user: string;
-  resource: string;
-  action: string;
-  roleName: string;
-}
-
-const STORAGE_KEY_PREFIX = 'melue_page_perms_v3_';
-
-function getStoredMatrix(roleId: string): PermissionMatrix | null {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const item = localStorage.getItem(`${STORAGE_KEY_PREFIX}${roleId}`);
-      if (item) return JSON.parse(item);
-    }
-  } catch {}
-  return null;
-}
-
-function setStoredMatrix(roleId: string, mat: PermissionMatrix) {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}${roleId}`, JSON.stringify(mat));
-    }
-  } catch {}
-}
-
-const blankActions = (): Record<ActionType, boolean> => ({
-  VIEW: false,
-  CREATE: false,
-  EDIT: false,
-  DELETE: false,
-  APPROVE: false,
-});
-
-/**
- * Returns role-appropriate default permissions for a role when unconfigured.
- */
-function getDefaultMatrixForRole(roleName: string): PermissionMatrix {
-  const norm = roleName.toLowerCase();
-  const mat: PermissionMatrix = {};
-
-  ALL_PAGE_MODULES.forEach((page) => {
-    mat[page.id] = blankActions();
-
-    if (norm.includes('system admin') || norm.includes('super admin')) {
-      // Full access everywhere
-      mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    } else if (norm.includes('institutional admin')) {
-      if (page.roleKey === 'institutional_admin') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-      } else if (page.roleKey === 'system_admin') {
-        mat[page.id] = { VIEW: true, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-      } else {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
-      }
-    } else if (norm.includes('director') && !norm.includes('program')) {
-      if (page.roleKey === 'director') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-      } else if (page.roleKey === 'parent') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
-      } else if (page.roleKey === 'system_admin') {
-        mat[page.id] = { VIEW: false, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-      } else {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
-      }
-    } else if (norm.includes('program director')) {
-      if (page.roleKey === 'program_director') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-      } else if (page.roleKey === 'director') {
-        mat[page.id] = { VIEW: true, CREATE: false, EDIT: false, DELETE: false, APPROVE: true };
-      } else if (page.roleKey === 'coordinator' || page.roleKey === 'teacher') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
-      } else if (page.roleKey === 'system_admin' || page.roleKey === 'institutional_admin') {
-        mat[page.id] = { VIEW: false, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-      } else {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: false };
-      }
-    } else if (norm.includes('coordinator')) {
-      if (page.roleKey === 'coordinator') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-      } else if (page.roleKey === 'teacher') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
-      } else if (page.roleKey === 'director' || page.roleKey === 'program_director') {
-        mat[page.id] = { VIEW: true, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-      } else if (page.roleKey === 'parent') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: false };
-      }
-    } else if (norm.includes('teacher') || norm.includes('therapist')) {
-      if (page.roleKey === 'teacher') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
-      } else if (page.id === 'coord_student_profile' || page.id === 'director_student_progress') {
-        mat[page.id] = { VIEW: true, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-      }
-    } else if (norm.includes('parent')) {
-      if (page.roleKey === 'parent') {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: false };
-      }
-    } else {
-      // Custom / generic role
-      if (page.category.includes('Therapy') || page.category.includes('Supervision')) {
-        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: false };
-      } else {
-        mat[page.id] = { VIEW: true, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
-      }
-    }
-  });
-
-  return mat;
-}
 
 const ROLE_BADGE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   director: { bg: '#FAF5FF', text: '#7E22CE', border: '#E9D5FF' },
@@ -708,6 +93,7 @@ export default function PermissionConfigurationScreen({
   const [selectedRoleId, setSelectedRoleId] = useState<string>('');
   const [matrix, setMatrix] = useState<PermissionMatrix>({});
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
+  const [catalogPermissions, setCatalogPermissions] = useState<CatalogPermission[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -715,12 +101,18 @@ export default function PermissionConfigurationScreen({
   // Filter & Search Controls
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
+  const [groupedView, setGroupedView] = useState(true);
 
-  // Modals & Menus
+  // Modals & Confirmation dialogs
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
-  const [catalogPermissions, setCatalogPermissions] = useState<any[]>([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [highRiskPrompt, setHighRiskPrompt] = useState<{
+    page: AppPageModule;
+    action: ActionType;
+    reason: string;
+  } | null>(null);
 
   // Load available roles & catalog
   const loadRoles = useCallback(async () => {
@@ -749,97 +141,103 @@ export default function PermissionConfigurationScreen({
     loadRoles();
   }, [loadRoles]);
 
-  // Load matrix for selected role
+  // Load matrix for selected role with strict backend authority
+  const loadRolePermissions = useCallback(async (roleId: string, roleName: string) => {
+    if (!roleId) return;
+
+    try {
+      const { data } = await getPermissionMatrix(roleId);
+      const backendPerms = data?.permissions;
+      // Strict backend authority: derive matrix from server response
+      const serverMatrix = mapBackendPermissionsToMatrix(backendPerms, roleName);
+      setMatrix(serverMatrix);
+      setDirty(false);
+    } catch (err) {
+      // If server request fails, load safe least-privilege defaults
+      setMatrix(getDefaultMatrixForRole(roleName));
+      setDirty(false);
+      showToast('Could not reach permissions server. Displaying role defaults.', 'info');
+    }
+
+    // Load audit trail
+    try {
+      const { data } = await getPermissionAuditTrail(roleId);
+      if (Array.isArray(data)) {
+        const formatted: AuditEntry[] = data.map((a: any) => ({
+          id: String(a.id || Math.random()),
+          date: a.created_at ? new Date(a.created_at).toLocaleString() : a.date || 'Recent',
+          user: a.changed_by || a.metadata?.updated_by || a.user || 'System Admin',
+          resource: a.resource_type || a.resource || 'Role Permissions',
+          action: (a.action || 'Updated permissions').replace(/_/g, ' '),
+          roleName: a.metadata?.role_name || a.roleName || roleName,
+          changeData: a.change_data,
+        }));
+        setAuditTrail(formatted);
+      }
+    } catch {
+      setAuditTrail([]);
+    }
+  }, [showToast]);
+
   useEffect(() => {
     if (!selectedRoleId) return;
-
     const currentRole = roles.find((r) => r.id === selectedRoleId);
     const roleName = currentRole?.name || selectedRoleId;
-
-    // 1. Check local storage first
-    const stored = getStoredMatrix(selectedRoleId);
-
-    // 2. Fetch from backend
-    getPermissionMatrix(selectedRoleId)
-      .then(({ data }) => {
-        const backendPerms = data?.permissions;
-        const initial = stored || getDefaultMatrixForRole(roleName);
-
-        // If backend returned mapped permissions, overlay them on corresponding pages
-        if (Array.isArray(backendPerms) && backendPerms.length > 0) {
-          const merged = { ...initial };
-          backendPerms.forEach((p: any) => {
-            if (!p.resource || !p.action) return;
-            const actUpper = p.action.toUpperCase() as ActionType;
-            if (!ACTIONS.includes(actUpper)) return;
-
-            ALL_PAGE_MODULES.forEach((page) => {
-              if (page.backendResource === p.resource) {
-                merged[page.id] = merged[page.id] || blankActions();
-                merged[page.id][actUpper] = true;
-              }
-            });
-          });
-          setMatrix(merged);
-        } else {
-          setMatrix(initial);
-        }
-        setDirty(false);
-      })
-      .catch(() => {
-        setMatrix(stored || getDefaultMatrixForRole(roleName));
-        setDirty(false);
-      });
-
-    // 3. Load audit trail
-    getPermissionAuditTrail(selectedRoleId)
-      .then(({ data }) => {
-        if (Array.isArray(data)) {
-          const formatted: AuditEntry[] = data.map((a: any) => ({
-            id: String(a.id || Math.random()),
-            date: a.created_at ? new Date(a.created_at).toLocaleString() : a.date || 'Recent',
-            user: a.changed_by || a.metadata?.updated_by || a.user || 'System Admin',
-            resource: a.resource_type || a.resource || 'Role Permissions',
-            action: (a.action || 'Updated permissions').replace(/_/g, ' '),
-            roleName: a.metadata?.role_name || a.roleName || roleName,
-          }));
-          setAuditTrail(formatted);
-        }
-      })
-      .catch(() => setAuditTrail([]));
-  }, [selectedRoleId, roles]);
+    loadRolePermissions(selectedRoleId, roleName);
+  }, [selectedRoleId, roles, loadRolePermissions]);
 
   const selectedRole = useMemo(
     () => roles.find((r) => r.id === selectedRoleId) || { id: selectedRoleId, name: selectedRoleId },
     [roles, selectedRoleId]
   );
 
-  // Page list across all roles
-  const filteredPages = ALL_PAGE_MODULES;
+  // Filtered pages based on search query and role filter
+  const filteredPages = useMemo(() => {
+    return filterPageModules(ALL_PAGE_MODULES, searchQuery, roleFilter);
+  }, [searchQuery, roleFilter]);
 
-  // Checkbox interactions
-  const toggleCell = (pageId: string, action: ActionType) => {
-    setMatrix((prev) => ({
-      ...prev,
-      [pageId]: {
-        ...(prev[pageId] ?? blankActions()),
-        [action]: !prev[pageId]?.[action],
-      },
-    }));
+  // Grouped pages by category
+  const categorizedPages = useMemo(() => {
+    return groupPagesByCategory(filteredPages);
+  }, [filteredPages]);
+
+  // Cell toggle with dependency enforcement and high-risk detection
+  const performToggleCell = (pageId: string, action: ActionType) => {
+    setMatrix((prev) => {
+      const current = prev[pageId] ?? blankActions();
+      const nextVal = !current[action];
+      const updated = applyPermissionDependencies(current, action, nextVal);
+      return { ...prev, [pageId]: updated };
+    });
     setDirty(true);
+  };
+
+  const handleCellPress = (page: AppPageModule, action: ActionType) => {
+    const current = matrix[page.id] ?? blankActions();
+    const willEnable = !current[action];
+
+    if (willEnable) {
+      const hr = checkHighRiskPermission(page, action, selectedRole.name);
+      if (hr.isHighRisk) {
+        setHighRiskPrompt({
+          page,
+          action,
+          reason: hr.reason || 'This permission grants elevated capabilities.',
+        });
+        return;
+      }
+    }
+
+    performToggleCell(page.id, action);
   };
 
   const toggleRow = (pageId: string) => {
     setMatrix((prev) => {
       const currentVal = prev[pageId] ?? blankActions();
       const allChecked = ACTIONS.every((a) => currentVal[a]);
-      const nextState: Record<ActionType, boolean> = {
-        VIEW: !allChecked,
-        CREATE: !allChecked,
-        EDIT: !allChecked,
-        DELETE: !allChecked,
-        APPROVE: !allChecked,
-      };
+      const nextState: Record<ActionType, boolean> = allChecked
+        ? blankActions()
+        : { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
       return { ...prev, [pageId]: nextState };
     });
     setDirty(true);
@@ -850,10 +248,8 @@ export default function PermissionConfigurationScreen({
       const allChecked = filteredPages.every((page) => prev[page.id]?.[action]);
       const updated = { ...prev };
       filteredPages.forEach((page) => {
-        updated[page.id] = {
-          ...(updated[page.id] ?? blankActions()),
-          [action]: !allChecked,
-        };
+        const cur = updated[page.id] ?? blankActions();
+        updated[page.id] = applyPermissionDependencies(cur, action, !allChecked);
       });
       return updated;
     });
@@ -867,20 +263,16 @@ export default function PermissionConfigurationScreen({
       );
       const updated = { ...prev };
       filteredPages.forEach((p) => {
-        updated[p.id] = {
-          VIEW: !allChecked,
-          CREATE: !allChecked,
-          EDIT: !allChecked,
-          DELETE: !allChecked,
-          APPROVE: !allChecked,
-        };
+        updated[p.id] = allChecked
+          ? blankActions()
+          : { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
       });
       return updated;
     });
     setDirty(true);
   };
 
-  // Presets
+  // Quick Action Presets
   const handleFullAccess = () => {
     const full: PermissionMatrix = { ...matrix };
     filteredPages.forEach((p) => {
@@ -903,7 +295,7 @@ export default function PermissionConfigurationScreen({
     const recommended = getDefaultMatrixForRole(selectedRole.name);
     setMatrix(recommended);
     setDirty(true);
-    showToast(`Loaded standard recommended permissions for ${selectedRole.name}`, 'info');
+    showToast(`Loaded least-privilege defaults for ${selectedRole.name}`, 'info');
   };
 
   const handleClearAll = () => {
@@ -915,115 +307,92 @@ export default function PermissionConfigurationScreen({
     setDirty(true);
   };
 
+  // Copy authoritative permissions from source role
   const handleCopyFromRole = async (sourceRoleId: string) => {
     const sourceRole = roles.find((r) => r.id === sourceRoleId);
+    if (!sourceRole) return;
+
     try {
-      // 1. Try local storage of source role
-      const stored = getStoredMatrix(sourceRoleId);
-      if (stored) {
-        setMatrix(stored);
-      } else {
-        // 2. Fetch from backend
-        const { data } = await getPermissionMatrix(sourceRoleId);
-        const sourceName = sourceRole?.name || sourceRoleId;
-        const fallback = getDefaultMatrixForRole(sourceName);
-        if (Array.isArray(data?.permissions) && data.permissions.length > 0) {
-          const merged = { ...fallback };
-          data.permissions.forEach((p: any) => {
-            const actUpper = p.action?.toUpperCase() as ActionType;
-            if (ACTIONS.includes(actUpper)) {
-              ALL_PAGE_MODULES.forEach((page) => {
-                if (page.backendResource === p.resource) {
-                  merged[page.id] = merged[page.id] || blankActions();
-                  merged[page.id][actUpper] = true;
-                }
-              });
-            }
-          });
-          setMatrix(merged);
-        } else {
-          setMatrix(fallback);
-        }
-      }
+      const { data } = await getPermissionMatrix(sourceRoleId);
+      const sourcePerms = data?.permissions;
+      // Copy exact authoritative permissions from server
+      const mapped = mapBackendPermissionsToMatrix(sourcePerms, sourceRole.name);
+      setMatrix(mapped);
       setDirty(true);
       setCopyModalOpen(false);
-      showToast(`Copied permissions from "${sourceRole?.name || 'role'}" into "${selectedRole.name}"`, 'success');
+      showToast(
+        `Copied authoritative permissions from "${sourceRole.name}". Review and save to confirm.`,
+        'success'
+      );
     } catch {
       setCopyModalOpen(false);
-      showToast('Failed to copy role permissions', 'error');
+      showToast('Failed to fetch source role permissions from server.', 'error');
     }
   };
 
-  const handleResetDefault = async () => {
+  // Reset to Defaults with backend confirmation
+  const handleResetDefault = () => {
     Alert.alert(
-      'Reset Permissions?',
-      `Are you sure you want to reset all permissions for ${selectedRole.name} to the system defaults?`,
+      'Reset Permissions to System Defaults?',
+      `Are you sure you want to reset all permissions for ${selectedRole.name}? This will enforce least-privilege system defaults on the server.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reset to Default',
           style: 'destructive',
           onPress: async () => {
-            const defaults = getDefaultMatrixForRole(selectedRole.name);
-            setMatrix(defaults);
-            setStoredMatrix(selectedRoleId, defaults);
             try {
-              await resetDefaultPermissions(selectedRoleId);
+              const res = await resetDefaultPermissions(selectedRoleId);
+              const serverPerms = res?.data?.permissions;
+              const defaults = mapBackendPermissionsToMatrix(serverPerms, selectedRole.name);
+              setMatrix(defaults);
+              setDirty(false);
+
+              // Record confirmed audit entry
+              const resetAudit: AuditEntry = {
+                id: String(Date.now()),
+                date: new Date().toLocaleString(),
+                user: session?.userName || 'System Admin',
+                resource: 'Role Permissions',
+                action: 'Reset to system defaults',
+                roleName: selectedRole.name,
+              };
+              setAuditTrail((prev) => [resetAudit, ...prev]);
+              showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
             } catch {
-              // Local fallback is already applied
+              showToast(
+                'Failed to reset permissions on server. No changes were applied.',
+                'error'
+              );
             }
-            setDirty(false);
-            showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
           },
         },
       ]
     );
   };
 
-  // Save Configuration Handler
-  const handleSave = async () => {
+  // Save Configuration Handler with backend authority & error handling
+  const executeSave = async () => {
     if (!selectedRoleId) return;
     setSaving(true);
+    setShowReviewModal(false);
 
     try {
-      // 1. Persist to storage
-      setStoredMatrix(selectedRoleId, matrix);
+      const payload = buildSavePayload(matrix, catalogPermissions, selectedRole.name);
 
-      // 2. Build backend matrix payload
-      const backendMatrix: Record<string, Record<string, boolean>> = {};
-      const permissionIds: string[] = [];
-
-      ALL_PAGE_MODULES.forEach((page) => {
-        const perms = matrix[page.id];
-        if (!perms) return;
-        const res = page.backendResource;
-        backendMatrix[res] = backendMatrix[res] || { view: false, create: false, edit: false, delete: false, approve: false };
-        if (perms.VIEW) backendMatrix[res].view = true;
-        if (perms.CREATE) backendMatrix[res].create = true;
-        if (perms.EDIT) backendMatrix[res].edit = true;
-        if (perms.DELETE) backendMatrix[res].delete = true;
-        if (perms.APPROVE) backendMatrix[res].approve = true;
-
-        // Map catalog permission IDs if present
-        if (catalogPermissions.length > 0) {
-          ACTIONS.forEach((act) => {
-            if (perms[act]) {
-              const catalogMatch = catalogPermissions.find(
-                (cp) => cp.resource === res && cp.action.toLowerCase() === act.toLowerCase()
-              );
-              if (catalogMatch?.id) permissionIds.push(catalogMatch.id);
-            }
-          });
-        }
+      const res = await savePermissionMatrix(selectedRoleId, {
+        matrix: payload.matrix,
+        permission_ids: payload.permission_ids,
       });
 
-      // 3. Post to backend
-      await savePermissionMatrix(selectedRoleId, {
-        matrix: backendMatrix,
-        permission_ids: Array.from(new Set(permissionIds)),
-      });
+      // Update state with confirmed server response
+      const confirmedPerms = res?.data?.permissions;
+      if (Array.isArray(confirmedPerms)) {
+        const confirmedMatrix = mapBackendPermissionsToMatrix(confirmedPerms, selectedRole.name);
+        setMatrix(confirmedMatrix);
+      }
 
-      // 4. Update audit trail in local state
+      // Record confirmed audit entry
       const newAudit: AuditEntry = {
         id: String(Date.now()),
         date: new Date().toLocaleString(),
@@ -1031,53 +400,32 @@ export default function PermissionConfigurationScreen({
         resource: 'Role Permissions',
         action: 'Updated page permissions',
         roleName: selectedRole.name,
+        changeData: { activePermissions: payload.activeCount },
       };
       setAuditTrail((prev) => [newAudit, ...prev]);
 
       setDirty(false);
       showToast(`Permissions for "${selectedRole.name}" successfully saved!`, 'success');
-    } catch (err: any) {
-      // Even if network call fails, local state and localStorage are preserved
-      setDirty(false);
-      showToast(`Permissions for "${selectedRole.name}" saved locally.`, 'success');
+    } catch {
+      // Preserve unsaved changes, keep dirty = true, allow retries
+      showToast(
+        'Failed to save permissions to server. Your unsaved changes are preserved—please retry.',
+        'error'
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  // Dynamic Permission Summary statements
-  const { summaryList, activeCount, totalPossible } = useMemo(() => {
-    const statements: string[] = [];
-    let count = 0;
-    const total = ALL_PAGE_MODULES.length * ACTIONS.length;
-
-    ALL_PAGE_MODULES.forEach((page) => {
-      const perms = matrix[page.id];
-      if (!perms) return;
-
-      const activeActs: string[] = [];
-      if (perms.VIEW) { activeActs.push('view'); count++; }
-      if (perms.CREATE) { activeActs.push('create'); count++; }
-      if (perms.EDIT) { activeActs.push('edit'); count++; }
-      if (perms.DELETE) { activeActs.push('delete'); count++; }
-      if (perms.APPROVE) { activeActs.push('approve'); count++; }
-
-      if (activeActs.length > 0) {
-        let actionStr = '';
-        if (activeActs.length === 1) {
-          actionStr = activeActs[0];
-        } else if (activeActs.length === 2) {
-          actionStr = `${activeActs[0]} and ${activeActs[1]}`;
-        } else {
-          const last = activeActs.pop();
-          actionStr = `${activeActs.join(', ')}, and ${last}`;
-        }
-        statements.push(`Can ${actionStr} [${page.role}] ${page.name}`);
-      }
-    });
-
-    return { summaryList: statements, activeCount: count, totalPossible: total };
-  }, [matrix]);
+  // Permission summary statistics
+  const { activeCount, totalPossible, highRiskCount } = useMemo(() => {
+    const payload = buildSavePayload(matrix, catalogPermissions, selectedRole.name);
+    return {
+      activeCount: payload.activeCount,
+      totalPossible: ALL_PAGE_MODULES.length * ACTIONS.length,
+      highRiskCount: payload.highRiskCount,
+    };
+  }, [matrix, catalogPermissions, selectedRole.name]);
 
   if (loading) return <ScreenLoader />;
 
@@ -1168,6 +516,10 @@ export default function PermissionConfigurationScreen({
           <View style={styles.presetsBox}>
             <Text style={styles.fieldLabel}>QUICK PERMISSION ACTIONS</Text>
             <View style={styles.presetsRow}>
+              <TouchableOpacity style={styles.presetBtn} onPress={handleRoleRecommended}>
+                <Feather name="shield" size={13} color="#0284C7" />
+                <Text style={styles.presetBtnText}>Defaults</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.presetBtn} onPress={handleFullAccess}>
                 <Feather name="check-circle" size={13} color="#059669" />
                 <Text style={styles.presetBtnText}>Full Access</Text>
@@ -1192,123 +544,124 @@ export default function PermissionConfigurationScreen({
           </View>
         </View>
 
-        {/* Matrix Grid Table */}
-        <View style={styles.tableCard}>
-          {/* Header */}
-          <View style={styles.tableHeaderRow}>
-            <View style={{ flex: 3.5, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.columnHeader}>APPLICATION PAGE MODULE ({filteredPages.length})</Text>
-            </View>
-
-            {ACTIONS.map((act) => (
-              <TouchableOpacity
-                key={act}
-                style={[styles.columnHeaderCell, { flex: 1 }]}
-                onPress={() => toggleColumn(act)}
-                accessibilityLabel={`Toggle all ${act}`}
-              >
-                <Text style={styles.columnHeader}>{act}</Text>
-                <Feather name="check-square" size={12} color="#0284C7" />
+        {/* Filter & Search Toolbar */}
+        <View style={styles.filterToolbar}>
+          <View style={styles.searchBox}>
+            <Feather name="search" size={16} color="#64748B" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search application pages by name, route, or category..."
+              placeholderTextColor="#94A3B8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              clearButtonMode="while-editing"
+            />
+            {Boolean(searchQuery) && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Feather name="x" size={16} color="#94A3B8" />
               </TouchableOpacity>
-            ))}
-
-            <TouchableOpacity
-              style={[styles.columnHeaderCell, { flex: 0.9 }]}
-              onPress={toggleAllVisible}
-              accessibilityLabel="Toggle all actions"
-            >
-              <Text style={styles.columnHeader}>ALL</Text>
-              <Feather name="toggle-left" size={13} color="#0284C7" />
-            </TouchableOpacity>
+            )}
           </View>
 
-          {/* Rows */}
-          {filteredPages.length === 0 ? (
-            <View style={styles.emptyResultsBox}>
-              <Feather name="search" size={28} color="#94A3B8" />
-              <Text style={styles.emptyResultsText}>No application pages match the current filter.</Text>
-            </View>
-          ) : (
-            filteredPages.map((page, idx) => {
-              const rowAllChecked = ACTIONS.every((a) => matrix[page.id]?.[a]);
-              const badgeStyle = ROLE_BADGE_COLORS[page.roleKey] || {
-                bg: '#F1F5F9',
-                text: '#475569',
-                border: '#CBD5E1',
-              };
-
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.roleFilterStrip}
+          >
+            {ROLE_FILTER_OPTIONS.map((opt) => {
+              const active = roleFilter === opt;
               return (
-                <View
-                  key={page.id}
-                  style={[
-                    styles.tableRow,
-                    idx % 2 === 1 && styles.tableRowAlt,
-                    rowAllChecked && styles.tableRowAllActive,
-                  ]}
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.roleFilterTab, active && styles.roleFilterTabActive]}
+                  onPress={() => setRoleFilter(opt)}
                 >
-                  {/* Page Module Info */}
-                  <View style={{ flex: 3.5, paddingRight: spacing.sm }}>
-                    <View style={styles.pageTitleRow}>
-                      <Text style={styles.pageNameText}>{page.name}</Text>
-                      <View
-                        style={[
-                          styles.roleBadgePill,
-                          {
-                            backgroundColor: badgeStyle.bg,
-                            borderColor: badgeStyle.border,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.roleBadgePillText, { color: badgeStyle.text }]}>
-                          {page.role}
-                        </Text>
+                  <Text style={[styles.roleFilterTabText, active && styles.roleFilterTabTextActive]}>
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.filterMetaRow}>
+            <Text style={styles.filterCountText}>
+              Showing {filteredPages.length} of {ALL_PAGE_MODULES.length} application pages
+            </Text>
+            <TouchableOpacity
+              style={styles.groupToggleBtn}
+              onPress={() => setGroupedView((v) => !v)}
+            >
+              <Feather name={groupedView ? 'list' : 'layers'} size={13} color="#0284C7" />
+              <Text style={styles.groupToggleText}>
+                {groupedView ? 'Grouped by Category' : 'Flat List'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Matrix Grid Table */}
+        <View style={styles.tableCard}>
+          <ScrollView horizontal showsHorizontalScrollIndicator>
+            <View style={{ minWidth: 880 }}>
+              {/* Header */}
+              <View style={styles.tableHeaderRow}>
+                <View style={{ width: 380, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.columnHeader}>APPLICATION PAGE MODULE ({filteredPages.length})</Text>
+                </View>
+
+                {ACTIONS.map((act) => (
+                  <TouchableOpacity
+                    key={act}
+                    style={styles.columnHeaderCell}
+                    onPress={() => toggleColumn(act)}
+                    accessibilityLabel={`Toggle all ${act}`}
+                  >
+                    <Text style={styles.columnHeader}>{act}</Text>
+                    <Feather name="check-square" size={12} color="#0284C7" />
+                  </TouchableOpacity>
+                ))}
+
+                <TouchableOpacity
+                  style={[styles.columnHeaderCell, { width: 60 }]}
+                  onPress={toggleAllVisible}
+                  accessibilityLabel="Toggle all actions"
+                >
+                  <Text style={styles.columnHeader}>ALL</Text>
+                  <Feather name="toggle-left" size={13} color="#0284C7" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Rows */}
+              {filteredPages.length === 0 ? (
+                <View style={styles.emptyResultsBox}>
+                  <Feather name="search" size={28} color="#94A3B8" />
+                  <Text style={styles.emptyResultsText}>No application pages match the current filter.</Text>
+                </View>
+              ) : groupedView ? (
+                Object.entries(categorizedPages).map(([categoryName, pages]) => (
+                  <View key={categoryName}>
+                    {/* Category Section Banner */}
+                    <View style={styles.categoryHeaderRow}>
+                      <Feather name="folder" size={14} color="#0369A1" />
+                      <Text style={styles.categoryHeaderText}>{categoryName}</Text>
+                      <View style={styles.categoryBadgePill}>
+                        <Text style={styles.categoryBadgePillText}>{pages.length} pages</Text>
                       </View>
                     </View>
-                    <Text style={styles.pageDescText} numberOfLines={1}>
-                      {page.description}
-                    </Text>
-                    <Text style={styles.pageRouteMeta}>
-                      Route: <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }}>{page.route}</Text> · {page.category}
-                    </Text>
+
+                    {pages.map((page, idx) =>
+                      renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow)
+                    )}
                   </View>
-
-                  {/* Actions Checkboxes */}
-                  {ACTIONS.map((act) => {
-                    const checked = !!matrix[page.id]?.[act];
-                    return (
-                      <TouchableOpacity
-                        key={act}
-                        style={styles.cellBtn}
-                        onPress={() => toggleCell(page.id, act)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                          {checked && <Feather name="check" size={13} color={colors.white} />}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  {/* Row ALL Checkbox */}
-                  <TouchableOpacity
-                    style={styles.cellBtn}
-                    onPress={() => toggleRow(page.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        styles.checkboxRowAll,
-                        rowAllChecked && styles.checkboxRowAllChecked,
-                      ]}
-                    >
-                      {rowAllChecked && <Feather name="check" size={13} color={colors.navyText} />}
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              );
-            })
-          )}
+                ))
+              ) : (
+                filteredPages.map((page, idx) =>
+                  renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow)
+                )
+              )}
+            </View>
+          </ScrollView>
         </View>
 
         {/* Permission Summary Card */}
@@ -1322,23 +675,20 @@ export default function PermissionConfigurationScreen({
                 {activeCount} of {totalPossible} total available permissions granted
               </Text>
             </View>
-            <View style={styles.statCapsule}>
-              <Text style={styles.statCapsuleText}>{activeCount} Active</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {highRiskCount > 0 && (
+                <View style={[styles.statCapsule, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+                  <Feather name="alert-triangle" size={12} color="#DC2626" />
+                  <Text style={[styles.statCapsuleText, { color: '#DC2626' }]}>
+                    {highRiskCount} Elevated
+                  </Text>
+                </View>
+              )}
+              <View style={styles.statCapsule}>
+                <Text style={styles.statCapsuleText}>{activeCount} Active</Text>
+              </View>
             </View>
           </View>
-
-          <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled showsVerticalScrollIndicator>
-            {summaryList.length === 0 ? (
-              <Text style={styles.summaryTextEmpty}>No active permissions configured for this role.</Text>
-            ) : (
-              summaryList.map((statement, idx) => (
-                <View key={idx} style={styles.summaryRow}>
-                  <Feather name="check-circle" size={13} color="#10B981" />
-                  <Text style={styles.summaryText}>{statement}</Text>
-                </View>
-              ))
-            )}
-          </ScrollView>
         </View>
 
         {/* Bottom Actions Bar */}
@@ -1346,11 +696,11 @@ export default function PermissionConfigurationScreen({
           <TouchableOpacity
             style={[styles.saveConfigBtn, (!dirty || saving) && styles.saveConfigBtnDisabled]}
             disabled={!dirty || saving}
-            onPress={handleSave}
+            onPress={() => setShowReviewModal(true)}
           >
             <Feather name={saving ? 'loader' : 'save'} size={17} color={colors.navyText} />
             <Text style={styles.saveConfigBtnText}>
-              {saving ? 'Saving...' : dirty ? 'Save Configuration' : 'Configuration Saved'}
+              {saving ? 'Saving...' : dirty ? 'Review & Save Configuration' : 'Configuration Saved'}
             </Text>
           </TouchableOpacity>
 
@@ -1364,6 +714,112 @@ export default function PermissionConfigurationScreen({
         </View>
       </ScrollView>
 
+      {/* High-Risk Permission Confirmation Modal */}
+      <Modal visible={Boolean(highRiskPrompt)} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 480 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View style={styles.highRiskIconBox}>
+                <Feather name="alert-triangle" size={20} color="#DC2626" />
+              </View>
+              <Text style={typography.h2}>High-Risk Permission</Text>
+            </View>
+            <Text style={styles.highRiskPromptText}>
+              {highRiskPrompt?.reason}
+            </Text>
+            <Text style={[styles.highRiskPromptText, { marginTop: 8, fontWeight: '600' }]}>
+              Page: {highRiskPrompt?.page.name} ({highRiskPrompt?.page.route})
+              {'\n'}Action: {highRiskPrompt?.action}
+              {'\n'}Role: {selectedRole.name}
+            </Text>
+            <View style={styles.highRiskActionsRow}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setHighRiskPrompt(null)}
+              >
+                <Text style={styles.cancelModalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmHighRiskBtn}
+                onPress={() => {
+                  if (highRiskPrompt) {
+                    performToggleCell(highRiskPrompt.page.id, highRiskPrompt.action);
+                    setHighRiskPrompt(null);
+                  }
+                }}
+              >
+                <Text style={styles.confirmHighRiskBtnText}>Acknowledge & Enable</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Review Summary Before Saving Modal */}
+      <Modal visible={showReviewModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 540 }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Feather name="check-circle" size={20} color="#0284C7" />
+                <Text style={typography.h2}>Review Changes Before Saving</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowReviewModal(false)}>
+                <Feather name="x" size={18} color={colors.navyText} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={typography.caption}>
+              Confirm permission updates for <Text style={{ fontWeight: '700' }}>{selectedRole.name}</Text>:
+            </Text>
+
+            <View style={styles.reviewStatsRow}>
+              <View style={styles.reviewStatCard}>
+                <Text style={styles.reviewStatLabel}>TOTAL ACTIVE</Text>
+                <Text style={styles.reviewStatValue}>{activeCount}</Text>
+              </View>
+              <View style={styles.reviewStatCard}>
+                <Text style={styles.reviewStatLabel}>TARGET ROLE</Text>
+                <Text style={[styles.reviewStatValue, { fontSize: 13 }]}>{selectedRole.name}</Text>
+              </View>
+              <View style={styles.reviewStatCard}>
+                <Text style={styles.reviewStatLabel}>STATUS</Text>
+                <Text style={[styles.reviewStatValue, { color: '#059669', fontSize: 13 }]}>Ready</Text>
+              </View>
+            </View>
+
+            {highRiskCount > 0 && (
+              <View style={styles.highRiskBanner}>
+                <Feather name="alert-triangle" size={16} color="#DC2626" />
+                <Text style={styles.highRiskBannerText}>
+                  Notice: {highRiskCount} elevated or high-risk permission assignments detected.
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.reviewModalActions}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setShowReviewModal(false)}
+                disabled={saving}
+              >
+                <Text style={styles.cancelModalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmSaveBtn}
+                onPress={executeSave}
+                disabled={saving}
+              >
+                <Feather name={saving ? 'loader' : 'check'} size={16} color={colors.navyText} />
+                <Text style={styles.confirmSaveBtnText}>
+                  {saving ? 'Saving to Server...' : 'Confirm & Save to Backend'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Copy From Role Modal */}
       <Modal visible={copyModalOpen} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -1375,7 +831,7 @@ export default function PermissionConfigurationScreen({
               </TouchableOpacity>
             </View>
             <Text style={typography.caption}>
-              Select a source role. Its configured page permissions will be copied into{' '}
+              Select a source role. Its server-verified permissions will be loaded into{' '}
               <Text style={{ fontWeight: '700' }}>{selectedRole.name}</Text>:
             </Text>
             <ScrollView style={{ maxHeight: 260 }}>
@@ -1410,7 +866,7 @@ export default function PermissionConfigurationScreen({
       {/* Audit Trail Modal */}
       <Modal visible={showAuditModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxWidth: 520 }]}>
+          <View style={[styles.modalContent, { maxWidth: 540 }]}>
             <View style={styles.modalHeaderRow}>
               <Text style={typography.h2}>Role Permission Audit Trail</Text>
               <TouchableOpacity onPress={() => setShowAuditModal(false)}>
@@ -1449,6 +905,101 @@ export default function PermissionConfigurationScreen({
         </View>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function renderTableRow(
+  page: AppPageModule,
+  idx: number,
+  matrix: PermissionMatrix,
+  roleName: string,
+  onCellPress: (page: AppPageModule, action: ActionType) => void,
+  onRowToggle: (pageId: string) => void
+) {
+  const rowAllChecked = ACTIONS.every((a) => matrix[page.id]?.[a]);
+  const badgeStyle = ROLE_BADGE_COLORS[page.roleKey] || {
+    bg: '#F1F5F9',
+    text: '#475569',
+    border: '#CBD5E1',
+  };
+
+  return (
+    <View
+      key={page.id}
+      style={[
+        styles.tableRow,
+        idx % 2 === 1 && styles.tableRowAlt,
+        rowAllChecked && styles.tableRowAllActive,
+      ]}
+    >
+      {/* Page Module Info */}
+      <View style={{ width: 380, paddingRight: spacing.sm }}>
+        <View style={styles.pageTitleRow}>
+          <Text style={styles.pageNameText}>{page.name}</Text>
+          <View
+            style={[
+              styles.roleBadgePill,
+              {
+                backgroundColor: badgeStyle.bg,
+                borderColor: badgeStyle.border,
+              },
+            ]}
+          >
+            <Text style={[styles.roleBadgePillText, { color: badgeStyle.text }]}>
+              {page.role}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.pageDescText} numberOfLines={1}>
+          {page.description}
+        </Text>
+        <Text style={styles.pageRouteMeta}>
+          Route: <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }}>{page.route}</Text> · {page.category}
+        </Text>
+      </View>
+
+      {/* Actions Checkboxes */}
+      {ACTIONS.map((act) => {
+        const checked = !!matrix[page.id]?.[act];
+        const isHR = checkHighRiskPermission(page, act, roleName).isHighRisk;
+
+        return (
+          <TouchableOpacity
+            key={act}
+            style={styles.cellBtn}
+            onPress={() => onCellPress(page, act)}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                checked && styles.checkboxChecked,
+                isHR && checked && styles.checkboxHighRisk,
+              ]}
+            >
+              {checked && <Feather name="check" size={13} color={colors.white} />}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+
+      {/* Row ALL Checkbox */}
+      <TouchableOpacity
+        style={[styles.cellBtn, { width: 60 }]}
+        onPress={() => onRowToggle(page.id)}
+        activeOpacity={0.7}
+      >
+        <View
+          style={[
+            styles.checkbox,
+            styles.checkboxRowAll,
+            rowAllChecked && styles.checkboxRowAllChecked,
+          ]}
+        >
+          {rowAllChecked && <Feather name="check" size={13} color={colors.navyText} />}
+        </View>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -1694,6 +1245,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.mutedText,
   },
+  groupToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
+    backgroundColor: '#F0F9FF',
+  },
+  groupToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
   unsavedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1734,11 +1299,41 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   columnHeaderCell: {
+    width: 90,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
     paddingVertical: 2,
+  },
+  categoryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    backgroundColor: '#F0F9FF',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  categoryHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369A1',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  categoryBadgePill: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  categoryBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0284C7',
   },
   tableRow: {
     flexDirection: 'row',
@@ -1749,7 +1344,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   tableRowAlt: {
-    backgroundColor: '#FAFBFD',
+    backgroundColor: '#FAFAFA',
   },
   tableRowAllActive: {
     backgroundColor: '#F0FDF4',
@@ -1767,7 +1362,7 @@ const styles = StyleSheet.create({
     color: colors.navyText,
   },
   roleBadgePill: {
-    paddingHorizontal: 7,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: radius.pill,
     borderWidth: 1,
@@ -1779,25 +1374,25 @@ const styles = StyleSheet.create({
   pageDescText: {
     fontSize: 11,
     color: colors.mutedText,
+    marginBottom: 2,
   },
   pageRouteMeta: {
     fontSize: 10,
     color: '#94A3B8',
-    marginTop: 2,
   },
   cellBtn: {
-    flex: 1,
+    width: 90,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 5,
-    backgroundColor: '#FFFFFF',
+    width: 20,
+    height: 20,
+    borderRadius: radius.sm,
     borderWidth: 1.5,
-    borderColor: '#94A3B8',
+    borderColor: '#CBD5E1',
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1805,15 +1400,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#0284C7',
     borderColor: '#0284C7',
   },
+  checkboxHighRisk: {
+    backgroundColor: '#DC2626',
+    borderColor: '#B91C1C',
+  },
   checkboxRowAll: {
-    backgroundColor: '#F1F5F9',
-    borderColor: '#CBD5E1',
+    borderRadius: radius.pill,
   },
   checkboxRowAllChecked: {
     backgroundColor: colors.primaryYellow,
     borderColor: colors.primaryYellowDark,
   },
-
   emptyResultsBox: {
     padding: spacing.xl,
     alignItems: 'center',
@@ -1831,110 +1428,101 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.sm,
+    padding: spacing.md,
   },
   summaryHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 4,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   summaryTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.navyText,
     letterSpacing: 0.5,
   },
   summarySub: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.mutedText,
     marginTop: 2,
   },
   statCapsule: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  statCapsuleText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#047857',
-  },
-  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 3,
+    gap: 5,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
   },
-  summaryText: {
+  statCapsuleText: {
     fontSize: 12,
-    color: '#334155',
-    fontWeight: '500',
-  },
-  summaryTextEmpty: {
-    fontSize: 12,
-    color: colors.mutedText,
-    fontStyle: 'italic',
-    paddingVertical: spacing.sm,
+    fontWeight: '700',
+    color: '#059669',
   },
 
   /* Bottom Actions */
   bottomActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
   saveConfigBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: colors.primaryYellow,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 12,
     borderRadius: radius.md,
-    ...makeShadow(2, 6, 0.1, '0, 0, 0', 3),
+    borderWidth: 1,
+    borderColor: colors.primaryYellowDark,
+    ...makeShadow(1, 4, 0.1, '0, 0, 0', 3),
   },
   saveConfigBtnDisabled: {
     opacity: 0.6,
   },
   saveConfigBtnText: {
+    fontSize: 14,
     fontWeight: '700',
     color: colors.navyText,
-    fontSize: 14,
   },
   auditTrailLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: spacing.xs,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.sm,
   },
   auditTrailLinkText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#0284C7',
-    textDecorationLine: 'underline',
   },
 
   /* Modals */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.md,
+    padding: spacing.lg,
   },
   modalContent: {
-    backgroundColor: colors.bgCard,
     width: '100%',
-    maxWidth: 440,
+    maxWidth: 460,
+    backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
     padding: spacing.lg,
     gap: spacing.md,
-    ...makeShadow(8, 20, 0.2, '0, 0, 0', 10),
+    ...makeShadow(4, 16, 0.25, '0, 0, 0', 12),
   },
   modalHeaderRow: {
     flexDirection: 'row',
@@ -1943,32 +1531,35 @@ const styles = StyleSheet.create({
   },
   copyRoleOption: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    marginBottom: spacing.xs,
-    backgroundColor: colors.bgApp,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   closeModalBtn: {
-    alignSelf: 'flex-end',
-    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: colors.bgApp,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.xs,
   },
   closeModalBtnText: {
-    color: colors.mutedText,
-    fontWeight: '700',
     fontSize: 13,
+    fontWeight: '600',
+    color: colors.navyText,
   },
-
   auditEntryRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#F1F5F9',
   },
   auditEntryDot: {
     width: 8,
@@ -1979,12 +1570,126 @@ const styles = StyleSheet.create({
   },
   auditEntryTitle: {
     fontSize: 12,
-    fontWeight: '600',
     color: colors.navyText,
   },
   auditEntryMeta: {
     fontSize: 11,
     color: colors.mutedText,
     marginTop: 2,
+  },
+  summaryTextEmpty: {
+    fontSize: 12,
+    color: colors.mutedText,
+    fontStyle: 'italic',
+    paddingVertical: 8,
+  },
+
+  /* High-Risk Prompt */
+  highRiskIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  highRiskPromptText: {
+    fontSize: 13,
+    color: colors.navyText,
+    lineHeight: 18,
+  },
+  highRiskActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: spacing.sm,
+  },
+  cancelModalBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgApp,
+  },
+  cancelModalBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+  confirmHighRiskBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: '#DC2626',
+  },
+  confirmHighRiskBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.white,
+  },
+
+  /* Review Summary Modal */
+  reviewStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  reviewStatCard: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 10,
+    alignItems: 'center',
+  },
+  reviewStatLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+  },
+  reviewStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+    marginTop: 2,
+  },
+  highRiskBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  highRiskBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#991B1B',
+    fontWeight: '600',
+  },
+  reviewModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: spacing.sm,
+  },
+  confirmSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryYellow,
+    borderWidth: 1,
+    borderColor: colors.primaryYellowDark,
+  },
+  confirmSaveBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.navyText,
   },
 });
