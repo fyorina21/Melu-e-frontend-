@@ -281,10 +281,6 @@ export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamL
   Capacity: 'ScheduleCapacityConfig',
   Goal: 'GoalDomainDefinitions',
   Task: 'TaskAnalysisTemplates',
-  Programs: 'ClinicalCategoriesConfig',
-  'Clinic Info': 'ClinicInfoConfig',
-  'Working Hours': 'WorkingHoursConfig',
-  Schools: 'SchoolSettingsConfig',
 };
 
 export const PD_ROUTE_BY_TAB: Record<string, keyof ProgramDirectorStackParamList> = {

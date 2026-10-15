@@ -10,8 +10,6 @@ import SessionDataCollectionScreen from '../screens/session/SessionDataCollectio
 import DailyNotesScreen from '../screens/dailynotes/DailyNotesScreen';
 import SessionNoteEditorScreen from '../screens/dailynotes/SessionNoteEditorScreen';
 import GoalProgressScreen from '../screens/goalprogress/GoalProgressScreen';
-// import SchedulingCalendarScreen from '../screens/scheduling/SchedulingCalendarScreen';
-// import AttendanceScreen from '../screens/attendance/AttendanceScreen';
 import GoalMasteryCheckScreen from '../screens/goalmastery/GoalMasteryCheckScreen';
 import { SessionSummaryScreen } from '../screens/sessionsummary/SessionSummaryScreen';
 import AbllsNeedAnalysisMapScreen from '../screens/assessments/AbllsNeedAnalysisMapScreen';
@@ -83,8 +81,6 @@ export default function SessionStack() {
         <Stack.Screen name="DailyNotes" component={GuardedDailyNotes} />
         <Stack.Screen name="SessionNoteEditor" component={GuardedSessionNoteEditor} />
         <Stack.Screen name="GoalProgress" component={GuardedGoalProgress} />
-        {/* <Stack.Screen name="SchedulingCalendar" component={SchedulingCalendarScreen} /> */}
-        {/* <Stack.Screen name="Attendance" component={AttendanceScreen} /> */}
         <Stack.Screen name="GoalMasteryCheck" component={GuardedGoalMasteryCheck} />
         <Stack.Screen name="SessionSummary" component={GuardedSessionSummary} />
         <Stack.Screen name="SocialSkillsAssessment" component={GuardedSocialSkillsAssessment} />
