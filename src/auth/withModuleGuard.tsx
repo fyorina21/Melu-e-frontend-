@@ -35,6 +35,12 @@ export function withModuleGuard<P extends object>(
       return <WrappedComponent {...props} />;
     }
 
+    // System Administrator is the root superadmin responsible for configuring roles
+    // and permissions; they must always retain access to the admin module and screens
+    if (session.role === 'system_admin' && moduleId === 'admin') {
+      return <WrappedComponent {...props} />;
+    }
+
     if (!hasModuleAccess(session.modules, moduleId)) {
       return <AccessDeniedScreen screenName={displayName} moduleName={displayName} />;
     }

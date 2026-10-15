@@ -109,6 +109,13 @@ describe('permissions utility', () => {
       expect(hasModuleAccess(modules, 'students')).toBe(true);
       expect(hasModuleAccess(modules, 'admin')).toBe(false);
     });
+
+    it('resolves backend resource aliases to canonical module IDs', () => {
+      // Backend delivers raw database resources like 'roles', 'staff_members', etc.
+      expect(hasModuleAccess(['roles'], 'admin')).toBe(true);
+      expect(hasModuleAccess(['staff_members'], 'staff')).toBe(true);
+      expect(hasModuleAccess(['trials'], 'sessions')).toBe(true);
+    });
   });
 
   describe('Screen definitions', () => {

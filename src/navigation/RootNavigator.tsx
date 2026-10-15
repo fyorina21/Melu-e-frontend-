@@ -135,8 +135,10 @@ export default function RootNavigator() {
 
     // Module-gate the deep link target
     const requiredModule = SCREEN_TO_MODULE[target];
+    const isSystemAdminExempt = session?.role === 'system_admin' && requiredModule === 'admin';
     if (
       requiredModule &&
+      !isSystemAdminExempt &&
       !UNGUARDED_SCREENS.has(target) &&
       session?.modules &&
       session.modules.length > 0 &&
@@ -169,8 +171,10 @@ export default function RootNavigator() {
       if (target && navRef.current) {
         // Module-gate the target screen on popstate
         const requiredModule = SCREEN_TO_MODULE[target];
+        const isSystemAdminExempt = session?.role === 'system_admin' && requiredModule === 'admin';
         if (
           requiredModule &&
+          !isSystemAdminExempt &&
           !UNGUARDED_SCREENS.has(target) &&
           session?.modules &&
           session.modules.length > 0 &&

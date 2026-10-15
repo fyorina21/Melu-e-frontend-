@@ -70,7 +70,12 @@ export function hasPermission(
 /** Check if ANY action is granted for a module (i.e., the module is accessible). */
 export function hasModuleAccess(modules: string[] | undefined, moduleId: ModuleId): boolean {
   if (!modules || modules.length === 0) return false;
-  return modules.some((m) => m.toLowerCase() === moduleId.toLowerCase());
+  return modules.some((m) => {
+    if (typeof m !== 'string') return false;
+    const raw = m.trim().toLowerCase();
+    const canonical = (RESOURCE_ALIAS_MAP[raw] ?? raw).toLowerCase();
+    return canonical === moduleId.toLowerCase() || raw === moduleId.toLowerCase();
+  });
 }
 
 /**
