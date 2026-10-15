@@ -19,6 +19,7 @@ import {
 } from '../api/token';
 import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
+import { parsePermissions } from '../auth/permissions';
 
 export const ROLES = {
   TEACHER: 'teacher',
@@ -129,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: user.email,
               modules: user.modules,
               permissions: user.permissions,
+              permissionMap: parsePermissions(user.permissions),
             });
           } catch (meErr) {
             // Attempt token refresh before discarding session
@@ -144,6 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   roles,
                   userName: user.name,
                   email: user.email,
+                  modules: user.modules,
+                  permissions: user.permissions,
+                  permissionMap: parsePermissions(user.permissions),
                 });
               } catch {
                 await clearAuthTokens();
@@ -192,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: user.email,
         modules: user.modules,
         permissions: user.permissions,
+        permissionMap: parsePermissions(user.permissions),
       });
       showToast(`Welcome back, ${user.name}!`, 'success');
       return true;

@@ -35,6 +35,22 @@ export interface DemoAccount {
   userName: string;
 }
 
+export type ActionKey = 'view' | 'create' | 'edit' | 'delete' | 'approve';
+
+/** resource → Set of granted actions */
+export type PermissionMap = Record<string, Set<ActionKey>>;
+
+export type ModuleId =
+  | 'students'
+  | 'assessments'
+  | 'iups'
+  | 'sessions'
+  | 'behavior_incidents'
+  | 'staff'
+  | 'reports'
+  | 'parent_portal'
+  | 'admin';
+
 export interface AuthSession {
   /** The role the shell is currently rendering as. */
   role: Role;
@@ -43,5 +59,8 @@ export interface AuthSession {
   userName: string;
   email?: string;
   modules?: string[];
+  /** Raw permission strings from backend, e.g. ["sessions:view", "assessments:create"] */
   permissions?: string[];
+  /** Parsed permission map, built from `permissions` on login/restore. */
+  permissionMap?: PermissionMap;
 }
