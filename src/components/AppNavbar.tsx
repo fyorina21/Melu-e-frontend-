@@ -62,7 +62,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const role = (session?.role ?? 'teacher') as Role;
-  const sidebarRole = role === 'institutional_admin';
+  const sidebarRole = role === 'institutional_admin' || role === 'system_admin';
 
   // Automatically fetch unread count from backend if not provided as a prop
   React.useEffect(() => {

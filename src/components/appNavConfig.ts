@@ -17,6 +17,8 @@ import type {
   CoordinatorStackParamList,
 } from '../types';
 
+import { RESOURCE_ALIAS_MAP } from '../screens/systemadmin/permissions/permissionTypes';
+
 export const MODULE_TO_TABS: Record<string, string[]> = {
   iups: ['IUP Creation & Goal Assignment'],
   assessments: ['Assessments'],
@@ -42,22 +44,21 @@ export function getTabsForSession(
   if (!session) return defaultRoleTabs;
 
   if (session.modules && Array.isArray(session.modules) && session.modules.length > 0) {
-    const dynamicTabs: string[] = [];
-
-    if (defaultRoleTabs.includes('Dashboard')) {
-      dynamicTabs.push('Dashboard');
-    }
-
-    for (const mod of session.modules) {
-      const tabs = MODULE_TO_TABS[mod.toLowerCase()];
-      if (tabs) {
-        for (const t of tabs) {
-          if (!dynamicTabs.includes(t)) {
-            dynamicTabs.push(t);
-          }
-        }
+    const grantedModules = new Set<string>();
+    for (const rawMod of session.modules) {
+      if (typeof rawMod === 'string') {
+        const canonical = (RESOURCE_ALIAS_MAP[rawMod.toLowerCase()] ?? rawMod).toLowerCase();
+        grantedModules.add(canonical);
       }
     }
+
+    const dynamicTabs = defaultRoleTabs.filter((tab) => {
+      if (tab === 'Dashboard') return true;
+      const entry = Object.entries(MODULE_TO_TABS).find(([_, tabs]) => tabs.includes(tab));
+      if (!entry) return true;
+      const [moduleId] = entry;
+      return grantedModules.has(moduleId);
+    });
 
     if (dynamicTabs.length > 0) {
       return dynamicTabs;
