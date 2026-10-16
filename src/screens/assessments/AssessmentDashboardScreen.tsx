@@ -4,6 +4,7 @@ import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
@@ -11,6 +12,13 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
+import {
+  isStudentInSession,
+  isStudentAssessment100PercentCompleted,
+  markStudentAssessmentCompleted,
+  getStudentSkillsProgress,
+  getStudentBehaviorProgress,
+} from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AssessmentDashboard'>;
@@ -90,16 +98,36 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  useEffect(() => {
+    const handleSync = () => { load(); };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleSync);
+      window.addEventListener('focus', handleSync);
+      window.addEventListener('melue_assessment_updated' as any, handleSync);
+      return () => {
+        window.removeEventListener('storage', handleSync);
+        window.removeEventListener('focus', handleSync);
+        window.removeEventListener('melue_assessment_updated' as any, handleSync);
+      };
+    }
+  }, [load]);
+
   const isTeacher = session?.role === 'teacher';
   const currentTherapistName = session?.userName || (session as any)?.user?.name;
 
-  // Filter students to strictly show only students who are in assessment and exclude active therapy students
+  // Filter students to strictly show only students who are in assessment and exclude active therapy/in-session students
   const filteredStudents = (data?.students ?? []).filter((s: any) => {
-    // Students in active therapy / in session must NOT appear on the assessment dashboard
-    if (s.status === 'active' || s.status === 'active_therapy' || s.status === 'in_session') {
+    // Mutual exclusivity: Students in active therapy / in session or completed must NOT appear on the assessment dashboard
+    if (isStudentInSession(s) || isStudentAssessment100PercentCompleted(s)) {
       return false;
     }
-    return s.phase === '6-week' || !s.phase;
+    return true;
   });
 
   if (loadError) return <ScreenError onRetry={load} />;
@@ -137,21 +165,39 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
           <View style={styles.statCard}>
             <Feather name="check-circle" size={16} color="#22C55E" />
             <Text style={styles.statValue}>
-              {filteredStudents.filter((s) => s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed').length}
+              {
+                filteredStudents.filter((s) => {
+                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  return sk.status === 'Completed' && bh.status === 'Completed';
+                }).length
+              }
             </Text>
             <Text style={typography.caption}>Completed</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="clock" size={16} color={colors.statusInProgressText} />
             <Text style={styles.statValue}>
-              {filteredStudents.filter((s) => (s.ablls?.status === 'In Progress' || s.behavior?.status === 'In Progress')).length}
+              {
+                filteredStudents.filter((s) => {
+                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  return (sk.status === 'In Progress' || bh.status === 'In Progress') && !(sk.status === 'Completed' && bh.status === 'Completed');
+                }).length
+              }
             </Text>
             <Text style={typography.caption}>In Progress</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="alert-circle" size={16} color={colors.mutedText} />
             <Text style={styles.statValue}>
-              {filteredStudents.filter((s) => s.ablls?.status === 'Not Started' && s.behavior?.status === 'Not Started').length}
+              {
+                filteredStudents.filter((s) => {
+                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  return sk.status === 'Not Started' && bh.status === 'Not Started';
+                }).length
+              }
             </Text>
             <Text style={typography.caption}>Not Started</Text>
           </View>
@@ -160,10 +206,14 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <Text style={typography.h3}>Student Assessments</Text>
         <View style={styles.studentsGrid}>
           {filteredStudents.map((s) => {
-            const skillsProg = Number(s.ablls?.progress || 0);
-            const skillsStat = s.ablls?.status || (skillsProg >= 100 ? 'Completed' : skillsProg > 0 ? 'In Progress' : 'Not Started');
-            const behaviorProg = Number(s.behavior?.progress || 0);
-            const behaviorStat = s.behavior?.status || (behaviorProg >= 100 ? 'Completed' : behaviorProg > 0 ? 'In Progress' : 'Not Started');
+            const skillsData = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
+            const behaviorData = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+
+            const skillsProg = skillsData.progress;
+            const skillsStat = skillsData.status;
+
+            const behaviorProg = behaviorData.progress;
+            const behaviorStat = behaviorData.status;
             
             const isCompleted =
               s.score === 100 ||
@@ -204,7 +254,10 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                 {isCompleted && (
                   <TouchableOpacity
                     style={[styles.launchBtn, { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 }]}
-                    onPress={() => (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id })}
+                    onPress={() => {
+                      markStudentAssessmentCompleted(s.id);
+                      (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
+                    }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <Feather name="check-circle" size={15} color="#FFFFFF" />

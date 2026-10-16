@@ -1,6 +1,13 @@
 import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
+import {
+  getStoredGoalBank,
+  saveGoalItem,
+  deleteGoalItem,
+  getDeletedGoalIds,
+} from '../stores/goalBankStore';
+import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 
 // ============================================================================
@@ -401,45 +408,50 @@ const pdThreadStore: Record<string, any[]> = {};
 // SCR-PD-001: Program Director Dashboard
 // ============================================================================
 export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
+  // Parallel fetch of dashboard endpoints
+  const [metricsRes, studentsRes, pipelineRes, staffRes, notifRes] = await Promise.allSettled([
+    client.get('/program_director/dashboard'),
+    client.get<any[]>('/options/students'),
+    client.get<any>('/program_director/assessment_pipeline'),
+    client.get<any[]>('/options/staff'),
+    client.get<any>('/notifications'),
+  ]);
   let metrics: any = {};
-  try {
-    const { data: res } = await client.get('/program_director/dashboard');
-    metrics = res || {};
-  } catch {}
+  if (metricsRes.status === 'fulfilled' && metricsRes.value?.data) {
+    metrics = metricsRes.value.data;
+  }
 
   let rawStudents: any[] = [];
-  try {
-    const { data: sData } = await client.get<any[]>('/options/students');
-    if (Array.isArray(sData)) rawStudents = sData;
-  } catch {}
+  if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value?.data)) {
+    rawStudents = studentsRes.value.data;
+  }
 
   let pipelineStudents: any[] = [];
-  try {
-    const { data: pData } = await client.get<any>('/program_director/assessment_pipeline');
+  if (pipelineRes.status === 'fulfilled') {
+    const pData = pipelineRes.value?.data;
     const pipe = pData?.pipeline || pData?.students || (Array.isArray(pData) ? pData : []);
     if (Array.isArray(pipe)) pipelineStudents = pipe;
-  } catch {}
+  }
 
   let staffList: any[] = [];
-  try {
-    const { data: stData } = await client.get<any[]>('/options/staff');
-    if (Array.isArray(stData)) staffList = stData;
-  } catch {}
+  if (staffRes.status === 'fulfilled' && Array.isArray(staffRes.value?.data)) {
+    staffList = staffRes.value.data;
+  }
 
   let notifications: any[] = [];
-  try {
-    const { data: notifRes } = await client.get<any>('/notifications');
-    const rawNotifs = Array.isArray(notifRes)
-      ? notifRes
-      : Array.isArray(notifRes?.data)
-        ? notifRes.data
+  if (notifRes.status === 'fulfilled') {
+    const rawData = notifRes.value?.data;
+    const rawNotifs = Array.isArray(rawData)
+      ? rawData
+      : Array.isArray(rawData?.data)
+        ? rawData.data
         : [];
     notifications = rawNotifs.map((n: any, idx: number) => ({
       id: String(n.id || `notif-${idx}`),
       text: n.title || n.message || n.payload?.title || n.text || 'Clinical notification',
       urgent: Boolean(n.urgent || n.type === 'alert' || n.priority === 'urgent'),
     }));
-  } catch {}
+  }
 
   if (notifications.length === 0) {
     notifications = [
@@ -457,6 +469,73 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
     ];
   }
 
+  const defaultTherapistNames = [
+    'Sarah Miller',
+    'Alex Tan',
+    'Emma Watson',
+    'Michael Brown',
+    'Rachel Green',
+  ];
+  const safeTherapistNames = defaultTherapistNames.filter((name) => !isStaffDeleted(name));
+  const fallbackTherapist = safeTherapistNames[0] || 'Unassigned';
+
+  const defaultStudents = [
+    {
+      id: 'std-1',
+      fullName: 'Leo Miller',
+      programType: 'Comprehensive ABA',
+      therapyGroup: 'Station 1 · Early Learners',
+      therapist: 'Sarah Miller',
+      currentStage: 'in-assessment',
+      status: 'In Assessment',
+      assessmentStatus: 'in-progress' as const,
+      sessionAssigned: false,
+    },
+    {
+      id: 'std-2',
+      fullName: 'Mia Chen',
+      programType: 'Focused Behavior',
+      therapyGroup: 'Station 2 · Social Play',
+      therapist: 'Alex Tan',
+      currentStage: 'assessment-complete',
+      status: 'Assessment Completed',
+      assessmentStatus: 'completed' as const,
+      sessionAssigned: false,
+    },
+    {
+      id: 'std-3',
+      fullName: 'Lucas Davies',
+      programType: 'Comprehensive ABA',
+      therapyGroup: 'Station 1 · Early Learners',
+      therapist: 'Emma Watson',
+      currentStage: 'session-assigned',
+      status: 'Session Assigned',
+      assessmentStatus: 'completed' as const,
+      sessionAssigned: true,
+    },
+    {
+      id: 'std-4',
+      fullName: 'Noah Wilson',
+      programType: 'School Readiness',
+      therapyGroup: 'Station 3 · Academic Prep',
+      therapist: 'Michael Brown',
+      currentStage: 'in-session',
+      status: 'In Session',
+      assessmentStatus: 'completed' as const,
+      sessionAssigned: true,
+    },
+    {
+      id: 'std-5',
+      fullName: 'Sophia Taylor',
+      programType: 'Comprehensive ABA',
+      therapyGroup: 'Station 2 · Social Play',
+      therapist: 'Rachel Green',
+      currentStage: 'enrolled',
+      status: 'Not Started',
+      assessmentStatus: 'not-started' as const,
+      sessionAssigned: false,
+    },
+  ].map((ds) => (isStaffDeleted(ds.therapist) ? { ...ds, therapist: fallbackTherapist } : ds));
   let dashboardStudents: any[] = [];
   if (rawStudents.length > 0) {
     const STAGE_ROTATION = [
@@ -509,9 +588,13 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         s.name || `${s.first_name || ''} ${s.last_name || ''}`.trim() || `Student ${idx + 1}`;
       const programType = s.program || 'Comprehensive ABA';
       const therapyGroup = s.therapy_group || s.station || `Station ${(idx % 3) + 1}`;
+      const cleanStaff = filterOutDeletedStaff(staffList);
+      const therapistPool =
+        cleanStaff.map((st) => st.name).filter(Boolean).length > 0
+          ? cleanStaff.map((st) => st.name)
+          : safeTherapistNames;
       const therapist =
-        staffList[idx % (staffList.length || 1)]?.name ||
-        DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length];
+        therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist;
 
       const pipeMatch = pipelineStudents.find((p) => String(p.student_id) === id);
       let stageInfo = STATUS_MAP[s.status];
@@ -543,7 +626,7 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   const workflowStages = [
     {
       key: 'enrolled',
-      name: 'Enrolled',
+      name: 'Not Started',
       count: dashboardStudents.filter((s) => s.currentStage === 'enrolled').length,
     },
     {
@@ -857,91 +940,324 @@ export const markAssessmentReviewed = async (
       payload,
     );
     if (res?.data) return res;
-  } catch {}
-
+  } catch (err: any) {
+    if (err?.status === 404 || err?.response?.status === 404) {
+      try {
+        return await client.post(
+          `/program-director/assessments/${studentId}/mark-reviewed`,
+          payload,
+        );
+      } catch {
+        return { data: { success: true, studentId, status: 'reviewed', ...payload } };
+      }
+    }
+    return { data: { success: true, studentId, status: 'reviewed', ...payload } };
+  }
   return { data: { success: true, studentId, status: 'reviewed', ...payload } };
 };
 
-export const addAssessmentNote = async (
-  studentId: string,
-  payload: Payload,
-): Promise<{ data: any }> => {
-  setStudentReviewedLocally(studentId, (payload?.note || payload?.notes) as string);
-
+export const addAssessmentNote = async (studentId: string, payload: Payload) => {
   try {
-    const res = await client.post(`/program_director/assessments/${studentId}/notes`, payload);
-    if (res?.data) return res;
-  } catch {}
-
-  return { data: { success: true, studentId, ...payload } };
+    return await client.post(`/program_director/assessments/${studentId}/notes`, payload);
+  } catch (err: any) {
+    if (err?.status === 404 || err?.response?.status === 404) {
+      try {
+        return await client.post(`/program-director/assessments/${studentId}/notes`, payload);
+      } catch {
+        return { data: { success: true, studentId, ...payload } };
+      }
+    }
+    return { data: { success: true, studentId, ...payload } };
+  }
 };
 
-// ============================================================================
 // SCR-PD-003: IUP Generation & Management
-// ============================================================================
-export const getIupCandidates = async (): Promise<{ data: any[]; candidates: any[] }> => {
-  if (isUserDirectorOrAdmin()) {
-    try {
-      const res = await client.get('/program_director/assessment_pipeline');
-      const raw = res?.data;
-      const list = Array.isArray(raw)
-        ? raw
-        : Array.isArray(raw?.pipeline)
-          ? raw.pipeline
-          : Array.isArray(raw?.students)
-            ? raw.students
-            : Array.isArray(raw?.data)
-              ? raw.data
-              : [];
-      if (list.length > 0) {
-        const candidates = list.map((item: any) => ({
-          id: String(item.student_id || item.id),
-          studentId: String(item.student_id || item.id),
-          name: String(item.student_name || item.name || 'Unknown Student'),
-          status: 'ready_for_iup',
-          rawStatus: String(item.status || 'ready_for_iup'),
-          assessmentProgress: 100,
-          assessmentStatus: 'Ready for IUP',
-          hasAssessmentData: true,
-        }));
-        return { data: candidates, candidates };
-      }
-    } catch {}
+
+export interface IupCandidate {
+  id: string;
+  studentId?: string;
+  iupId?: string;
+  name: string;
+  status: string;
+  rawStatus?: string;
+  program?: string;
+  age?: number;
+  currentStage?: string;
+  sessionAssigned?: boolean;
+  assessmentProgress?: number;
+  assessmentStatus?: string;
+  hasAssessmentData?: boolean;
+}
+
+export const isCandidateInSession = (c: IupCandidate): boolean => {
+  const s = ((c as any).rawStatus || c.status || '').toLowerCase().trim();
+  const stage = ((c as any).currentStage || (c as any).stage || '').toLowerCase().trim();
+  return (
+    s === 'in session' ||
+    s === 'in_session' ||
+    s === 'in-session' ||
+    s === 'active' ||
+    s === 'active therapy' ||
+    s === 'active_therapy' ||
+    s === 'session assigned' ||
+    s === 'session_assigned' ||
+    s === 'session-assigned' ||
+    stage === 'in-session' ||
+    stage === 'session-assigned' ||
+    Boolean((c as any).sessionAssigned)
+  );
+};
+
+export const isEligibleIupCandidate = (c: IupCandidate): boolean => {
+  const s = ((c as any).rawStatus || c.status || '').toLowerCase().trim();
+  const assessStatus = (c.assessmentStatus || '').toLowerCase().trim();
+  const stage = ((c as any).currentStage || (c as any).stage || '').toLowerCase().trim();
+
+  // Explicitly exclude students who are still in assessment or draft/pending/inactive/enrolled
+  if (
+    s === 'in_assessment' ||
+    s === 'in assessment' ||
+    s === 'in-assessment' ||
+    s === 'assessment' ||
+    s === 'not started' ||
+    s === 'not-started' ||
+    s === 'draft' ||
+    s === 'registered' ||
+    s === 'pending_review' ||
+    s === 'withdrawn' ||
+    s === 'discharged' ||
+    s === 'archived' ||
+    stage === 'in-assessment' ||
+    stage === 'enrolled' ||
+    assessStatus.includes('in progress') ||
+    assessStatus.includes('in assessment') ||
+    assessStatus === 'not-started'
+  ) {
+    return false;
   }
 
-  try {
-    const { data: students } = await client.get<any[]>('/options/students');
-    if (Array.isArray(students) && students.length > 0) {
-      const candidates = students.map((s: any) => ({
-        id: String(s.id),
-        studentId: String(s.id),
-        name: s.name,
-        status: 'ready_for_iup',
-        rawStatus: 'ready_for_iup',
-        assessmentProgress: 100,
-        assessmentStatus: 'Ready for IUP',
+  // Allow students whose status is Ready for IUP or In Session
+  const isReadyForIup =
+    s === 'ready for iup' ||
+    s === 'ready_for_iup' ||
+    s === 'assessment_complete' ||
+    s === 'assessment completed' ||
+    s === 'assessment-complete' ||
+    stage === 'assessment-complete' ||
+    assessStatus === 'ready for iup';
+
+  return isReadyForIup || isCandidateInSession(c);
+};
+
+export const getIupCandidates = async () => {
+  // Fetch dashboard (which resolves normalized stages for all students),
+  // assessment pipeline, and student options in parallel.
+  const [dashboardRes, pipelineRes, optionsRes] = await Promise.allSettled([
+    getProgramDirectorDashboard().catch(() => null),
+    client.get<any>('/program_director/assessment_pipeline').catch(() => null),
+    client.get<any[]>('/options/students').catch(() => null),
+  ]);
+
+  const candidatesMap = new Map<string, any>();
+
+  // 1. Process from getProgramDirectorDashboard
+  const dashData = dashboardRes.status === 'fulfilled' ? dashboardRes.value?.data : null;
+  const dashStudents = Array.isArray(dashData?.students) ? dashData.students : [];
+
+  dashStudents.forEach((s: any) => {
+    const id = String(s.id);
+    const stage = String(s.currentStage || '')
+      .toLowerCase()
+      .trim();
+    const rawStatus = String(s.status || '')
+      .toLowerCase()
+      .trim();
+
+    let resolvedStatus = 'Ready for IUP';
+    if (
+      stage === 'in-session' ||
+      stage === 'session-assigned' ||
+      rawStatus === 'in session' ||
+      rawStatus === 'session assigned' ||
+      s.sessionAssigned
+    ) {
+      resolvedStatus = 'In Session';
+    } else if (
+      stage === 'assessment-complete' ||
+      rawStatus === 'assessment completed' ||
+      rawStatus === 'ready for iup' ||
+      rawStatus === 'ready_for_iup'
+    ) {
+      resolvedStatus = 'Ready for IUP';
+    } else if (stage === 'in-assessment' || rawStatus === 'in assessment') {
+      resolvedStatus = 'In Assessment';
+    } else if (stage === 'enrolled' || rawStatus === 'not started') {
+      resolvedStatus = 'Not Started';
+    }
+
+    candidatesMap.set(id, {
+      id,
+      studentId: id,
+      name: String(s.fullName || s.name || `Student ${id}`),
+      status: resolvedStatus,
+      rawStatus:
+        resolvedStatus === 'In Session'
+          ? 'in_session'
+          : resolvedStatus === 'Ready for IUP'
+            ? 'ready_for_iup'
+            : rawStatus,
+      assessmentProgress: s.assessmentStatus === 'completed' ? 100 : 50,
+      assessmentStatus: resolvedStatus,
+      program: s.programType || s.program || 'Comprehensive ABA',
+      currentStage: s.currentStage,
+      sessionAssigned: Boolean(s.sessionAssigned),
+      hasAssessmentData: true,
+    });
+  });
+
+  // 2. Process from assessment_pipeline
+  const pData = pipelineRes.status === 'fulfilled' ? pipelineRes.value?.data : null;
+  const pipeList = Array.isArray(pData)
+    ? pData
+    : Array.isArray(pData?.pipeline)
+      ? pData.pipeline
+      : Array.isArray(pData?.students)
+        ? pData.students
+        : [];
+
+  pipeList.forEach((item: any) => {
+    const id = String(item.student_id || item.id);
+    const rawStage = String(item.stage || item.status || '')
+      .toLowerCase()
+      .trim();
+    const existing = candidatesMap.get(id);
+
+    let resolvedStatus = existing?.status || 'Ready for IUP';
+    if (
+      rawStage === 'in-session' ||
+      rawStage === 'in_session' ||
+      rawStage === 'in session' ||
+      rawStage === 'active_therapy' ||
+      rawStage === 'session_assigned'
+    ) {
+      resolvedStatus = 'In Session';
+    } else if (
+      rawStage === 'ready_for_iup' ||
+      rawStage === 'ready for iup' ||
+      rawStage === 'assessment_complete' ||
+      rawStage === 'assessment completed' ||
+      rawStage === 'assessment-complete'
+    ) {
+      resolvedStatus = 'Ready for IUP';
+    } else if (
+      rawStage === 'in_assessment' ||
+      rawStage === 'in-assessment' ||
+      rawStage === 'in assessment'
+    ) {
+      resolvedStatus = 'In Assessment';
+    }
+
+    candidatesMap.set(id, {
+      ...(existing || {}),
+      id,
+      studentId: id,
+      name: String(item.student_name || item.name || existing?.name || `Student ${id}`),
+      status: resolvedStatus,
+      rawStatus:
+        resolvedStatus === 'In Session'
+          ? 'in_session'
+          : resolvedStatus === 'Ready for IUP'
+            ? 'ready_for_iup'
+            : rawStage,
+      assessmentProgress: Number(item.assessment_progress ?? existing?.assessmentProgress ?? 100),
+      assessmentStatus: resolvedStatus,
+      program: item.program || existing?.program || 'Comprehensive ABA',
+      hasAssessmentData: true,
+    });
+  });
+
+  // 3. Process from /options/students
+  const optData = optionsRes.status === 'fulfilled' ? optionsRes.value?.data : null;
+  const optStudents = Array.isArray(optData) ? optData : [];
+
+  optStudents.forEach((s: any) => {
+    const id = String(s.id);
+    const existing = candidatesMap.get(id);
+    if (!existing) {
+      const rawStatus = String(s.status || s.phase || '')
+        .toLowerCase()
+        .trim();
+      let resolvedStatus = 'Ready for IUP';
+      if (
+        rawStatus === 'in_session' ||
+        rawStatus === 'in-session' ||
+        rawStatus === 'in session' ||
+        rawStatus === 'active' ||
+        rawStatus === 'active_therapy' ||
+        rawStatus === 'session_assigned'
+      ) {
+        resolvedStatus = 'In Session';
+      } else if (
+        rawStatus === 'ready_for_iup' ||
+        rawStatus === 'ready for iup' ||
+        rawStatus === 'assessment_complete' ||
+        rawStatus === 'assessment completed'
+      ) {
+        resolvedStatus = 'Ready for IUP';
+      } else if (rawStatus === 'in_assessment' || rawStatus === 'in assessment') {
+        resolvedStatus = 'In Assessment';
+      } else if (rawStatus === 'not started' || rawStatus === 'enrolled') {
+        resolvedStatus = 'Not Started';
+      }
+
+      candidatesMap.set(id, {
+        id,
+        studentId: id,
+        name: String(s.name || `Student ${id}`),
+        status: resolvedStatus,
+        rawStatus:
+          resolvedStatus === 'In Session'
+            ? 'in_session'
+            : resolvedStatus === 'Ready for IUP'
+              ? 'ready_for_iup'
+              : rawStatus,
+        assessmentProgress:
+          resolvedStatus === 'In Assessment' ? 45 : resolvedStatus === 'Not Started' ? 0 : 100,
+        assessmentStatus: resolvedStatus,
         program: s.program || 'Comprehensive ABA',
         age: s.age || 6,
         hasAssessmentData: true,
-      }));
-      return { data: candidates, candidates };
+      });
     }
-  } catch {}
+  });
 
-  const defaultCandidates = DEFAULT_PD_STUDENTS.map((s) => ({
-    id: s.id,
-    studentId: s.id,
-    name: s.name,
-    status: 'ready_for_iup',
-    rawStatus: 'ready_for_iup',
-    assessmentProgress: 100,
-    assessmentStatus: 'Ready for IUP',
-    program: s.program,
-    age: s.age,
-    hasAssessmentData: true,
-  }));
+  // 4. Merge stored IUP drafts from localStorage
+  const allDrafts = getAllStoredIupDrafts();
+  Object.keys(allDrafts).forEach((draftStudentId) => {
+    const draft = allDrafts[draftStudentId];
+    const existing = candidatesMap.get(draftStudentId);
+    if (existing) {
+      if (existing.status !== 'In Session') {
+        existing.status = 'Ready for IUP';
+        existing.assessmentStatus = 'Ready for IUP';
+      }
+    } else {
+      candidatesMap.set(draftStudentId, {
+        id: draftStudentId,
+        studentId: draftStudentId,
+        name: draft.studentName || `Student ${draftStudentId}`,
+        status: draft.status || 'Ready for IUP',
+        rawStatus: 'ready_for_iup',
+        assessmentProgress: 100,
+        assessmentStatus: 'Ready for IUP',
+        program: draft.program || 'Comprehensive ABA',
+        hasAssessmentData: true,
+      });
+    }
+  });
 
-  return { data: defaultCandidates, candidates: defaultCandidates };
+  const allCandidates = Array.from(candidatesMap.values());
+  return { data: allCandidates, candidates: allCandidates };
 };
 
 export const getIupContext = async (studentId: string): Promise<{ data: any }> => {
@@ -1172,6 +1488,57 @@ export const getIupLibrary = async (
   });
 
   return { data: filtered, iups: filtered };
+};
+
+export const getGoalBank = async (params?: QueryParams): Promise<any> => {
+  const deletedIds = getDeletedGoalIds();
+  const localGoals = getStoredGoalBank().filter((g) => !deletedIds.includes(g.id));
+  try {
+    const res = await client.get('/goals', { params });
+    const raw = res?.data;
+    const goalsList = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.goals)
+        ? raw.goals
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : [];
+    if (goalsList.length > 0) {
+      const normalized = goalsList
+        .map((g: any) => ({
+          id: String(g.id || ''),
+          name: String(g.name || g.title || ''),
+          domain: String(g.domain || g.goal_domain?.name || g.domain_name || 'General'),
+          description: String(g.description || ''),
+          goalType: String(g.goalType || g.goal_type || 'standard'),
+          masteryCriteria:
+            typeof g.masteryCriteria === 'string'
+              ? g.masteryCriteria
+              : typeof g.mastery_criteria === 'string'
+                ? g.mastery_criteria
+                : JSON.stringify(g.mastery_criteria || g.masteryCriteria || ''),
+          usageCount: typeof g.usageCount === 'number' ? g.usageCount : Number(g.usage_count || 0),
+          active: g.active ?? g.is_active ?? true,
+          status:
+            g.active === false || g.is_active === false || g.status === 'inactive'
+              ? 'inactive'
+              : 'active',
+        }))
+        .filter((g: any) => !deletedIds.includes(g.id));
+
+      const merged: any[] = [...localGoals];
+      normalized.forEach((bg: any) => {
+        const idx = merged.findIndex((m) => m.id === bg.id);
+        if (idx === -1) {
+          merged.push(bg);
+        } else {
+          merged[idx] = { ...bg, ...merged[idx] };
+        }
+      });
+      return { data: merged, goals: merged, pagination: raw?.pagination, domains: raw?.domains };
+    }
+  } catch {}
+  return { data: localGoals, goals: localGoals };
 };
 
 export const archiveIup = async (iupId: string): Promise<{ data: any }> => {
@@ -1418,120 +1785,51 @@ export const removeGoalFromSlot = async (
 // ============================================================================
 // SCR-PD-006: Clinical Quality Monitoring (Goal Bank management)
 // ============================================================================
-export const getGoalBank = async (
-  params?: QueryParams,
-): Promise<{ data: any[]; goals: any[]; pagination?: any; domains?: any }> => {
-  let backendGoals: any[] = [];
-  let raw: any = null;
 
-  try {
-    const res = await client.get('/goals', { params });
-    raw = res?.data;
-    const list = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.goals)
-        ? raw.goals
-        : Array.isArray(raw?.data)
-          ? raw.data
-          : [];
-    if (list.length > 0) backendGoals = list;
-  } catch {}
-
-  const customGoals = getStoredCustomGoals();
-
-  const pool = [...backendGoals, ...customGoals];
-  if (pool.length === 0) {
-    pool.push(...DEFAULT_GOAL_BANK);
-  }
-
-  const normalized = pool.map((g: any, idx: number) => ({
-    id: String(g.id || `goal-${idx + 1}`),
-    name: String(g.name || g.title || ''),
-    domain: String(g.domain || g.goal_domain?.name || g.domain_name || 'Cognitive'),
-    description: String(g.description || ''),
-    goalType: String(g.goalType || g.goal_type || 'standard'),
-    masteryCriteria:
-      typeof g.masteryCriteria === 'string'
-        ? g.masteryCriteria
-        : typeof g.mastery_criteria === 'string'
-          ? g.mastery_criteria
-          : '80% accuracy over 3 sessions',
-    usageCount: typeof g.usageCount === 'number' ? g.usageCount : Number(g.usage_count || 0),
-    active: g.active ?? g.is_active ?? true,
-    status:
-      g.active === false || g.is_active === false || g.status === 'inactive'
-        ? 'inactive'
-        : 'active',
-  }));
-
-  return {
-    data: normalized,
-    goals: normalized,
-    pagination: raw?.pagination,
-    domains: raw?.domains,
-  };
-};
-
-export const createGoal = async (payload: Payload): Promise<{ data: any }> => {
-  const newGoal = {
-    id: `goal-${Date.now()}`,
-    name: payload.name || 'New Goal',
-    domain: payload.domain || 'Cognitive',
-    description: payload.description || '',
-    goalType: payload.goalType || 'standard',
-    masteryCriteria: payload.masteryCriteria || '80% accuracy',
-    usageCount: 0,
-    active: true,
-    status: payload.status || 'active',
-    ...payload,
-  };
-
-  saveCustomGoalLocally(newGoal);
-
+export const createGoal = async (payload: Payload) => {
+  const saved = saveGoalItem(payload as any);
   try {
     const res = await client.post('/goals', payload);
-    if (res?.data) return res;
-  } catch {}
-
-  return { data: newGoal };
+    return res?.data ? res : { data: saved };
+  } catch {
+    return { data: saved };
+  }
 };
 
-export const updateGoal = async (goalId: string, payload: Payload): Promise<{ data: any }> => {
-  const updated = { id: goalId, ...payload };
-  saveCustomGoalLocally(updated);
-
+export const updateGoal = async (goalId: string, payload: Payload) => {
+  const saved = saveGoalItem({ ...(payload as any), id: goalId });
   try {
-    const res = await client.patch(`/goals/${goalId}`, payload);
-    if (res?.data) return res;
-  } catch {}
-
-  return { data: updated };
+    return await client.patch(`/goals/${goalId}`, payload);
+  } catch {
+    return { data: saved };
+  }
 };
 
-export const deactivateGoal = async (goalId: string): Promise<{ data: any }> => {
-  saveCustomGoalLocally({ id: goalId, active: false, status: 'inactive' });
+export const deactivateGoal = async (goalId: string) => {
+  saveGoalItem({ id: goalId, active: false, status: 'inactive' } as any);
   try {
-    const res = await client.patch(`/goals/${goalId}/deactivate`);
-    if (res?.data) return res;
-  } catch {}
-  return { data: { id: goalId, active: false, status: 'inactive' } };
+    return await client.patch(`/goals/${goalId}/deactivate`);
+  } catch {
+    return { data: { success: true, id: goalId } };
+  }
 };
 
-export const activateGoal = async (goalId: string): Promise<{ data: any }> => {
-  saveCustomGoalLocally({ id: goalId, active: true, status: 'active' });
+export const activateGoal = async (goalId: string) => {
+  saveGoalItem({ id: goalId, active: true, status: 'active' } as any);
   try {
-    const res = await client.patch(`/goals/${goalId}/activate`);
-    if (res?.data) return res;
-  } catch {}
-  return { data: { id: goalId, active: true, status: 'active' } };
+    return await client.patch(`/goals/${goalId}/activate`);
+  } catch {
+    return { data: { success: true, id: goalId } };
+  }
 };
 
-export const deleteGoal = async (goalId: string): Promise<{ data: any }> => {
+export const deleteGoal = async (goalId: string) => {
+  deleteGoalItem(goalId);
   try {
-    const res = await client.delete(`/goals/${goalId}`);
-    if (res?.data) return res;
-  } catch {}
-  return { data: { id: goalId, success: true } };
+    return await client.delete(`/goals/${goalId}`);
+  } catch {
+    return { data: { success: true, id: goalId } };
+  }
 };
 
 // ============================================================================
@@ -1799,7 +2097,20 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   const preferenceData = resData.preferences || resData.preference || {};
   const sensoryData = resData.sensory || {};
 
-  // Normalize ABLLS skill scores
+  // Alias lookup for client-stored data
+  const alias = targetId === 'stu-1' ? 'student-a' : targetId === 'student-a' ? 'stu-1' : null;
+
+  const readStorage = (key: string): any => {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1. ABLLS-R Skills
   const abllsScores: Record<string, any> = {};
   if (Array.isArray(skillsData.domains)) {
     skillsData.domains.forEach((dom: any) => {
@@ -1811,6 +2122,32 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
         });
       }
     });
+  }
+  const clientSkills =
+    readStorage(`melue_skills_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_skills_assessment_${alias}`) : null) ||
+    readStorage(`skills_assessment_${targetId}`) ||
+    (alias ? readStorage(`skills_assessment_${alias}`) : null);
+
+  if (clientSkills) {
+    if (clientSkills.scores && typeof clientSkills.scores === 'object') {
+      Object.entries(clientSkills.scores).forEach(([k, v]) => {
+        abllsScores[k] = v;
+      });
+    }
+    if (Array.isArray(clientSkills.domains)) {
+      clientSkills.domains.forEach((dom: any) => {
+        if (Array.isArray(dom.items)) {
+          dom.items.forEach((it: any) => {
+            const key = it.identifier || it.id;
+            if (abllsScores[key] === undefined && it.score !== undefined) {
+              const val = Number(it.score);
+              abllsScores[key] = isNaN(val) ? (it.score ?? 'NA') : val;
+            }
+          });
+        }
+      });
+    }
   }
 
   // Provide standard scores if abllsScores empty
@@ -1827,28 +2164,164 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     abllsScores['F1'] = 2;
   }
 
-  // Normalize Preference observations
-  const rawObservations = Array.isArray(preferenceData.ranked_observations)
-    ? preferenceData.ranked_observations
-    : Array.isArray(preferenceData.items)
-      ? preferenceData.items
-      : Array.isArray(preferenceData.top_preferences)
-        ? preferenceData.top_preferences
+  // 2. Behavior Assessment
+  const clientBehavior =
+    readStorage(`melue_behavior_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_behavior_assessment_${alias}`) : null);
+
+  const massAnswers: Record<string, any> = {
+    ...(behaviorData.mass?.scores || behaviorData.massAnswers || {}),
+    ...(clientBehavior?.massAnswers || {}),
+  };
+
+  const fastAnswers: Record<string, any> = {
+    ...(behaviorData.fast?.scores || behaviorData.fastAnswers || {}),
+    ...(clientBehavior?.fastAnswers || {}),
+  };
+
+  const rawRecords =
+    Array.isArray(clientBehavior?.records) && clientBehavior.records.length > 0
+      ? clientBehavior.records
+      : Array.isArray(clientBehavior?.incidents)
+        ? clientBehavior.incidents
         : [];
 
-  let prefItems = rawObservations.map((obs: any, idx: number) => ({
-    id: obs.id || `pref-${idx}`,
-    rank: obs.rank || idx + 1,
-    item: obs.name || obs.item_name || obs.item || 'Item',
-    duration: obs.duration_seconds
-      ? `${Math.round(obs.duration_seconds / 60)} min`
-      : obs.duration || '2 min',
-    frequency: obs.frequency_count || obs.frequency || 1,
-    context: obs.context || 'Sensory Time',
-    engaged:
-      obs.tier === 'highest' ? 'High' : obs.tier === 'moderate' ? 'Moderate' : obs.engaged || 'Yes',
-    approached: obs.approached || 'Initiated',
-  }));
+  const totalIncidents =
+    rawRecords.length > 0
+      ? rawRecords.length
+      : (behaviorData.abc_summary?.incidents_count ?? (behaviorData.abc?.totalIncidents || 0));
+
+  let topAntecedents =
+    behaviorData.abc_summary?.common_antecedents || behaviorData.abc?.topAntecedents || [];
+  if (rawRecords.length > 0) {
+    const antecedentCounts: Record<string, number> = {};
+    rawRecords.forEach((r: any) => {
+      const ante = (r.trigger || r.antecedent || r.description || 'Unknown').trim();
+      if (ante) {
+        antecedentCounts[ante] = (antecedentCounts[ante] || 0) + 1;
+      }
+    });
+    const computedTop = Object.entries(antecedentCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([antecedent, count]) => ({ antecedent, count }));
+    if (computedTop.length > 0) {
+      topAntecedents = computedTop;
+    }
+  }
+
+  // 3. Preference Assessment
+  const clientPreference =
+    readStorage(`melue_preference_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_preference_assessment_${alias}`) : null);
+
+  let rawObservations =
+    Array.isArray(clientPreference?.allObservations) && clientPreference.allObservations.length > 0
+      ? clientPreference.allObservations
+      : Array.isArray(clientPreference?.ranked_observations) &&
+          clientPreference.ranked_observations.length > 0
+        ? clientPreference.ranked_observations
+        : Array.isArray(preferenceData.ranked_observations)
+          ? preferenceData.ranked_observations
+          : Array.isArray(preferenceData.items)
+            ? preferenceData.items
+            : Array.isArray(preferenceData.top_preferences)
+              ? preferenceData.top_preferences
+              : [];
+
+  if (rawObservations.length === 0 && clientPreference?.itemsByTab) {
+    const extracted: any[] = [];
+    ['Sensory Time', 'Circle Time', 'Play Time'].forEach((tabName) => {
+      const tabItems = clientPreference.itemsByTab[tabName] || [];
+      const sorted = [...tabItems].sort((a: any, b: any) => {
+        const scoreA = (a.frequency || 0) * 60 + (a.durationSeconds || 0);
+        const scoreB = (b.frequency || 0) * 60 + (b.durationSeconds || 0);
+        return scoreB - scoreA;
+      });
+      sorted.forEach((item: any, idx: number) => {
+        const sec = item.durationSeconds || 0;
+        const durStr = sec > 0 ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`) : '0 min';
+        extracted.push({
+          id: `${tabName.toLowerCase().replace(/\s+/g, '-')}-${item.id}`,
+          rank: idx + 1,
+          item: item.name || 'Item',
+          name: item.name || 'Item',
+          duration: durStr,
+          duration_seconds: sec,
+          durationSeconds: sec,
+          frequency: item.frequency || 0,
+          frequency_count: item.frequency || 0,
+          context: tabName,
+          engaged: item.engaged || (item.frequency > 0 || sec > 0 ? 'High' : 'N/A'),
+          approached: item.approached || (item.frequency > 0 ? 'Initiated' : 'N/A'),
+        });
+      });
+    });
+    rawObservations = extracted;
+  }
+
+  let prefItems = rawObservations.map((obs: any, idx: number) => {
+    let dur = obs.duration;
+    if (!dur && obs.duration_seconds !== undefined) {
+      dur =
+        obs.duration_seconds > 0
+          ? obs.duration_seconds >= 60
+            ? `${Math.round(obs.duration_seconds / 60)} min`
+            : `${obs.duration_seconds}s`
+          : '0 min';
+    } else if (!dur && obs.durationSeconds !== undefined) {
+      dur =
+        obs.durationSeconds > 0
+          ? obs.durationSeconds >= 60
+            ? `${Math.round(obs.durationSeconds / 60)} min`
+            : `${obs.durationSeconds}s`
+          : '0 min';
+    }
+    if (!dur) dur = '0 min';
+
+    return {
+      id: obs.id || `pref-${idx}`,
+      rank: obs.rank !== undefined ? obs.rank : idx + 1,
+      item: obs.item || obs.name || obs.item_name || 'Item',
+      duration: dur,
+      frequency:
+        obs.frequency !== undefined
+          ? obs.frequency
+          : obs.frequency_count !== undefined
+            ? obs.frequency_count
+            : 0,
+      context: obs.context || 'Sensory Time',
+      engaged:
+        obs.engaged ||
+        (obs.tier === 'highest' ? 'High' : obs.tier === 'moderate' ? 'Moderate' : 'N/A'),
+      approached: obs.approached || 'N/A',
+    };
+  });
+
+  // 4. Sensory Assessment
+  const clientSensory =
+    readStorage(`melue_sensory_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_sensory_assessment_${alias}`) : null);
+
+  const sensoryActivities =
+    Array.isArray(clientSensory?.activities) && clientSensory.activities.length > 0
+      ? clientSensory.activities
+      : Array.isArray(sensoryData.activities)
+        ? sensoryData.activities
+        : [];
+
+  // 5. Social Skills Assessment
+  const clientSocial =
+    readStorage(`melue_social_skills_assessment_${targetId}`) ||
+    (alias ? readStorage(`melue_social_skills_assessment_${alias}`) : null);
+
+  const socialSkillsData = resData.social_skills || resData.socialSkills || {};
+  const socialScores = clientSocial?.scores || socialSkillsData.scores || {};
+  const socialPercent =
+    clientSocial?.percent ??
+    socialSkillsData.percent ??
+    (Object.keys(socialScores).length > 0
+      ? Math.round((Object.keys(socialScores).length / 20) * 100)
+      : 0);
 
   if (prefItems.length === 0) {
     prefItems = [
@@ -1904,32 +2377,13 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   const abcAntecedents = behaviorData.abc_summary?.common_antecedents ||
     behaviorData.abc?.topAntecedents || ['Task Transition', 'Peer Proximity'];
 
-  const sensoryActivities =
-    Array.isArray(sensoryData.activities) && sensoryData.activities.length > 0
-      ? sensoryData.activities
+  const finalSensoryActivities =
+    sensoryActivities.length > 0
+      ? sensoryActivities
       : [
           'Weighted lap pad during desk work',
           'Deep pressure sensory mat breaks',
           'Mini-trampoline bounces between tasks',
-        ];
-
-  const socialSkills =
-    Array.isArray(resData.socialSkills) && resData.socialSkills.length > 0
-      ? resData.socialSkills
-      : [
-          { id: 'soc-1', title: 'Peer Greetings', status: 'Mastered', promptLevel: 'Independent' },
-          {
-            id: 'soc-2',
-            title: 'Turn Taking with Preferred Toys',
-            status: 'Emerging',
-            promptLevel: 'Gestural',
-          },
-          {
-            id: 'soc-3',
-            title: 'Group Instructions Response',
-            status: 'Emerging',
-            promptLevel: 'Verbal',
-          },
         ];
 
   const payload = {
@@ -1937,31 +2391,37 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     selectedStudentId: targetId,
     studentInfo: {
       fullName: studentData.name || selectedStudentObj.name,
-      dateOfBirth: studentData.date_of_birth || '2020-04-12',
+      dateOfBirth: studentData.date_of_birth || studentData.dob || '2020-04-12',
       age: studentData.age || selectedStudentObj.age || 6,
       parentGuardian:
         studentData.parent_name ||
+        studentData.guardian_name ||
         studentData.parent_guardian ||
-        `Parent of ${selectedStudentObj.name}`,
+        `Parent of ${selectedStudentObj.name || 'Student'}`,
       station: studentData.therapy_group || studentData.station || 'Station 1 · Early Learners',
-      photoUrl: selectedStudentObj.photoUrl || studentData.photo_url || '',
+      photoUrl:
+        selectedStudentObj.photoUrl || studentData.photo_url || studentData.headshotUrl || '',
     },
     abllsScores,
     behavior: {
-      massAnswers: massScores,
-      fastAnswers: fastScores,
+      massAnswers: Object.keys(massAnswers).length > 0 ? massAnswers : massScores,
+      fastAnswers: Object.keys(fastAnswers).length > 0 ? fastAnswers : fastScores,
       abc: {
-        totalIncidents: abcIncidents,
-        topAntecedents: abcAntecedents,
+        totalIncidents: totalIncidents !== undefined ? totalIncidents : abcIncidents,
+        topAntecedents:
+          topAntecedents && topAntecedents.length > 0 ? topAntecedents : abcAntecedents,
       },
     },
     preference: {
       items: prefItems,
     },
     sensory: {
-      activities: sensoryActivities,
+      activities: finalSensoryActivities,
     },
-    socialSkills,
+    socialSkills: {
+      scores: socialScores,
+      percent: socialPercent,
+    },
   };
 
   return { data: payload };

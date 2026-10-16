@@ -6,6 +6,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -26,6 +27,13 @@ import {
 } from '../../api/SystemAdminApi';
 import { useToast } from '../../context/ToastContext';
 import { useResourcePermissions } from '../../auth/usePermission';
+import {
+  recordDeletedStaff,
+  removeDeletedStaffKey,
+  filterOutDeletedStaff,
+  isStaffDeleted,
+  onDeletedStaffChanged,
+} from '../../utils/deletedStaffHelper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../../types';
 import {
@@ -90,7 +98,8 @@ export default function StaffAccountManagementScreen({
   const load = useCallback(async () => {
     try {
       const { data } = await getStaffAccounts({ search, role: roleFilter, status: statusFilter });
-      setStaff(data);
+      const nonDeleted = filterOutDeletedStaff(Array.isArray(data) ? data : []);
+      setStaff(nonDeleted);
     } catch {
       setStaff([]);
     }
@@ -100,6 +109,13 @@ export default function StaffAccountManagementScreen({
     loadRoles();
     load();
   }, [loadRoles, load]);
+
+  useEffect(() => {
+    const unsubscribe = onDeletedStaffChanged(() => {
+      setStaff((prev) => (prev ? filterOutDeletedStaff(prev) : prev));
+    });
+    return unsubscribe;
+  }, []);
 
   const filtered = useMemo(
     () => filterStaff(staff, search, roleFilter, statusFilter),
@@ -125,6 +141,12 @@ export default function StaffAccountManagementScreen({
         await updateStaffAccount(payload.id, payload);
         showToast('Staff account updated successfully', 'success');
       } else {
+        if (payload.email) {
+          removeDeletedStaffKey(payload.email);
+        }
+        if (payload.name) {
+          removeDeletedStaffKey(payload.name);
+        }
         await createStaffAccount(payload);
         showToast('Staff account created successfully', 'success');
       }
@@ -174,26 +196,37 @@ export default function StaffAccountManagementScreen({
       showToast('You do not have permission to delete staff accounts.', 'error');
       return;
     }
-    Alert.alert(
-      'Delete staff account?',
-      `${s.name} (${s.email}) will be permanently removed. This cannot be undone.`,
-      [
+    const message = `${s.name} (${s.email}) will be permanently removed. This cannot be undone.`;
+    const runDelete = async () => {
+      recordDeletedStaff(s);
+      setStaff((prev) =>
+        prev ? prev.filter((item) => item.id !== s.id && !isStaffDeleted(item)) : [],
+      );
+      showToast('Staff account deleted successfully', 'success');
+      try {
+        await Promise.allSettled([
+          deleteStaffAccount(s.id),
+          bulkStaffAction([s.id], 'delete'),
+          toggleStaffActive(s.id, false),
+        ]);
+      } catch {}
+      await load();
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(`Delete staff account?\n\n${message}`)) {
+        runDelete();
+      }
+    } else {
+      Alert.alert('Delete staff account?', message, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteStaffAccount(s.id);
-              showToast('Staff account deleted successfully', 'success');
-            } catch {
-              showToast('Failed to delete staff account', 'error');
-            }
-            load();
-          },
+          onPress: runDelete,
         },
-      ],
-    );
+      ]);
+    }
   };
 
   const handleBulkAction = (action: string) => {
@@ -201,22 +234,47 @@ export default function StaffAccountManagementScreen({
       showToast('You do not have permission to modify staff accounts.', 'error');
       return;
     }
-    Alert.alert(`${action} ${selectedIds.length} accounts?`, undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm',
-        onPress: async () => {
-          try {
-            await bulkStaffAction(selectedIds, action);
-            showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
-          } catch {
-            showToast(`Bulk ${action.toLowerCase()} failed`, 'error');
-          }
-          setSelectedIds([]);
-          load();
+    const runBulk = async () => {
+      try {
+        if (action.toLowerCase().includes('del')) {
+          selectedIds.forEach((id) => {
+            const item = staff?.find((m) => m.id === id);
+            if (item) {
+              recordDeletedStaff(item);
+            } else {
+              recordDeletedStaff({ id });
+            }
+          });
+          setStaff((prev) =>
+            prev ? prev.filter((m) => !selectedIds.includes(m.id) && !isStaffDeleted(m)) : [],
+          );
+        }
+        await bulkStaffAction(selectedIds, action);
+        showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
+        setSelectedIds([]);
+        await load();
+      } catch (err: any) {
+        const errorMsg =
+          err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          `Bulk ${action.toLowerCase()} failed`;
+        showToast(errorMsg, 'error');
+      }
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(`${action} ${selectedIds.length} accounts?`)) {
+        runBulk();
+      }
+    } else {
+      Alert.alert(`${action} ${selectedIds.length} accounts?`, undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: runBulk,
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   if (staff === null) return <ScreenLoader />;

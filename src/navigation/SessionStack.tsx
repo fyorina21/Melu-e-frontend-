@@ -24,6 +24,7 @@ import SocialSkillsAssessmentScreen from '../screens/assessments/SocialSkillsAss
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import IupGenerationScreen from '../screens/programdirector/IupGenerationScreen';
 import ChildProgressScreen from '../screens/parent/ChildProgressScreen';
+import GoalMasteryApprovalScreen from '../screens/director/GoalMasteryApprovalScreen';
 // MR-39 Appointment & Session Management is now built as
 // AppointmentFormModal, reached from the Scheduling Calendar (MR-38) -
 // it doesn't need its own stack route since it's a modal, not a screen.
@@ -57,6 +58,7 @@ const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
 const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
 const GuardedIupGeneration = withModuleGuard(IupGenerationScreen, 'iups');
 const GuardedChildProgress = withModuleGuard(ChildProgressScreen, 'parent_portal');
+const GuardedGoalMasteryApproval = withModuleGuard(GoalMasteryApprovalScreen, 'iups');
 
 const Stack = createNativeStackNavigator<SessionStackParamList>();
 
@@ -98,6 +100,7 @@ export default function SessionStack() {
         />
         <Stack.Screen name="IupGeneration" component={GuardedIupGeneration as never} />
         <Stack.Screen name="ChildProgress" component={GuardedChildProgress as never} />
+        <Stack.Screen name="GoalMasteryApproval" component={GuardedGoalMasteryApproval as never} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

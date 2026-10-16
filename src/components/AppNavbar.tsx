@@ -62,7 +62,6 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const role = (session?.role ?? 'teacher') as Role;
-  const sidebarRole = role === 'institutional_admin' || role === 'system_admin';
 
   // Automatically fetch unread count from backend if not provided as a prop
   React.useEffect(() => {
@@ -314,7 +313,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   return (
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
-        {isCompact && !sidebarRole && (
+        {isCompact && (
           <TouchableOpacity
             onPress={() => setDrawerOpen(true)}
             style={styles.hamburgerBtn}
@@ -331,7 +330,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
 
-      {!isCompact && !sidebarRole && (
+      {!isCompact && (
         <ScrollView
           ref={tabsScrollRef}
           horizontal
@@ -346,7 +345,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
       )}
 
       <View style={styles.rightBlock}>
-        {notificationRoute && (
+        {Boolean(notificationRoute) && (
           <TouchableOpacity
             onPress={openNotifications}
             style={styles.iconBtn}

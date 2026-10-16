@@ -1,54 +1,116 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   StyleSheet,
   SafeAreaView,
+  Modal,
   Alert,
-  useWindowDimensions,
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import {
-  savePreferenceAssessment,
-  getPreferenceAssessment,
-  getTeacherStudentProfile,
-} from '../../api/teacherExtrasApi';
+import { savePreferenceAssessment, getPreferenceAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import { getFormConfig } from '../../api/institutionalAdminApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
-import { radius, spacing } from '../../theme/colors';
 
-import { type StimulusItem, INITIAL_ITEMS, formatMMSS } from './preference/types';
-import {
-  PreferenceAssessmentHeader,
-  type SessionTab,
-} from './preference/components/PreferenceAssessmentHeader';
-import { StimulusItemCard } from './preference/components/StimulusItemCard';
-import { AddCustomItemModal } from './preference/components/AddCustomItemModal';
+interface StimulusItem {
+  id: string;
+  name: string;
+  category: string;
+  timerSeconds: number;
+  isRunning: boolean;
+  frequency: number;
+  durationSeconds: number;
+  notes: string;
+  engaged?: 'Engaged' | 'Did Not Engage';
+  approached?: 'Approached' | 'Did Not Approach';
+}
+
+const CATEGORIES = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement'];
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+  Visual: { bg: '#F3E8FF', text: '#9333EA' },
+  Auditory: { bg: '#DCFCE7', text: '#16A34A' },
+  Tactile: { bg: '#FFEDD5', text: '#EA580C' },
+  Toys: { bg: '#FCE7F3', text: '#DB2777' },
+  Movement: { bg: '#DBEAFE', text: '#2563EB' },
+};
+
+const DEFAULT_ITEMS: StimulusItem[] = [
+  { id: '1', name: 'Light-up toys', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
+  { id: '2', name: 'Bubbles', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
+  { id: '3', name: 'Mirror', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
+  { id: '4', name: 'Kaleidoscope', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
+];
+
+type TabType = 'Sensory Time' | 'Circle Time' | 'Play Time';
+const TABS: TabType[] = ['Sensory Time', 'Circle Time', 'Play Time'];
+
+const createDefaultTabItems = (baseItems: StimulusItem[]): Record<TabType, StimulusItem[]> => ({
+  'Sensory Time': baseItems.map((i) => ({ ...i })),
+  'Circle Time': baseItems.map((i) => ({ ...i })),
+  'Play Time': baseItems.map((i) => ({ ...i })),
+});
+
+const mergeTabItems = (baseItems: StimulusItem[], savedItems?: StimulusItem[]): StimulusItem[] => {
+  if (!savedItems || !Array.isArray(savedItems) || savedItems.length === 0) {
+    return baseItems.map((i) => ({ ...i, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' }));
+  }
+  const savedMap = new Map(savedItems.map((it: any) => [String(it.id), it]));
+  const merged = baseItems.map((ci) => {
+    const saved =
+      savedMap.get(ci.id) ||
+      savedItems.find(
+        (it: any) => String(it.name).toLowerCase().trim() === String(ci.name).toLowerCase().trim()
+      );
+    return saved
+      ? {
+          ...ci,
+          ...saved,
+          name: ci.name,
+          category: saved.category || ci.category,
+          isRunning: false,
+        }
+      : { ...ci, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' };
+  });
+
+  const baseIds = new Set(baseItems.map((ci) => String(ci.id)));
+  const baseNames = new Set(baseItems.map((ci) => String(ci.name).toLowerCase().trim()));
+  const customSavedItems = savedItems
+    .filter(
+      (it: any) =>
+        !baseIds.has(String(it.id)) &&
+        !baseNames.has(String(it.name).toLowerCase().trim())
+    )
+    .map((it: any) => ({ ...it, isRunning: false }));
+
+  return [...merged, ...customSavedItems];
+};
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'PreferenceAssessment'>;
 
-interface StudentProfile {
-  fullName?: string;
-  age?: number | string;
-  [key: string]: unknown;
-}
-
 export default function PreferenceAssessmentScreen({ navigation, route }: Props) {
-  const { studentId } = route.params;
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
+  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
   const { showToast } = useToast();
-  const { width } = useWindowDimensions();
-  const isTablet = width >= 768;
+  const [activeTab, setActiveTab] = useState<TabType>('Sensory Time');
+  const [itemsByTab, setItemsByTab] = useState<Record<TabType, StimulusItem[]>>(() =>
+    createDefaultTabItems(DEFAULT_ITEMS)
+  );
+  const [profile, setProfile] = useState<any>(null);
 
-  const [activeTab, setActiveTab] = useState<SessionTab>('Sensory Time');
-  const [items, setItems] = useState<StimulusItem[]>(INITIAL_ITEMS);
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const currentItems = itemsByTab[activeTab] || [];
 
   // Modal State
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -57,79 +119,240 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
+    if (typeof localStorage !== 'undefined' && studentId) {
       try {
-        const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
-        if (isMounted && profileRes?.data) setProfile(profileRes.data);
-        const res = await getPreferenceAssessment(studentId);
-        const savedData = res?.data?.data || res?.data;
-        if (isMounted && savedData?.items && savedData.items.length > 0) {
-          setItems(savedData.items);
-        }
-        if (isMounted && savedData?.sessionTab) {
-          setActiveTab(savedData.sessionTab as SessionTab);
-        }
-      } catch {
-        // Handled silently
-      }
-    };
-    loadData();
-    return () => {
-      isMounted = false;
-    };
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
+    }
   }, [studentId]);
 
-  // Interval re-render isolation: only ticks if at least one item is running
+  const loadData = useCallback(async () => {
+    try {
+      const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
+      if (profileRes?.data) setProfile(profileRes.data);
+
+      // Fetch form config from FormBuilder
+      let configItems: StimulusItem[] = DEFAULT_ITEMS;
+      try {
+        const { data: cfg } = await getFormConfig('Preference Assessment');
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          const visible = cfg.fields.filter((f: any) => f.visible !== false);
+          if (visible.length > 0) {
+            configItems = visible.map((f: any, idx: number) => ({
+              id: String(f.id || `P${idx + 1}`),
+              name: String(f.label || f.name || 'Item'),
+              category: String(f.section || 'Visual'),
+              timerSeconds: 0,
+              isRunning: false,
+              frequency: 0,
+              durationSeconds: 0,
+              notes: '',
+            }));
+          }
+        }
+      } catch {}
+
+      const res = await getPreferenceAssessment(studentId).catch(() => null);
+      const savedData = res?.data?.data || res?.data;
+
+      let storedItemsByTab = savedData?.itemsByTab;
+      let storedItems = savedData?.items;
+      let storedSessionTab = savedData?.sessionTab;
+
+      if (!storedItemsByTab && (!storedItems || storedItems.length === 0) && typeof localStorage !== 'undefined') {
+        try {
+          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          const raw =
+            localStorage.getItem(`melue_preference_assessment_${studentId}`) ||
+            (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.itemsByTab) {
+              storedItemsByTab = parsed.itemsByTab;
+            }
+            if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
+              storedItems = parsed.items;
+            }
+            if (parsed?.sessionTab) {
+              storedSessionTab = parsed.sessionTab;
+            }
+          }
+        } catch {}
+      }
+
+      const newItemsByTab: Record<TabType, StimulusItem[]> = {
+        'Sensory Time': mergeTabItems(
+          configItems,
+          storedItemsByTab?.['Sensory Time'] || (storedSessionTab === 'Sensory Time' ? storedItems : undefined)
+        ),
+        'Circle Time': mergeTabItems(
+          configItems,
+          storedItemsByTab?.['Circle Time'] || (storedSessionTab === 'Circle Time' ? storedItems : undefined)
+        ),
+        'Play Time': mergeTabItems(
+          configItems,
+          storedItemsByTab?.['Play Time'] || (storedSessionTab === 'Play Time' ? storedItems : undefined)
+        ),
+      };
+
+      setItemsByTab(newItemsByTab);
+
+      if (
+        storedSessionTab &&
+        TABS.includes(storedSessionTab as TabType)
+      ) {
+        setActiveTab(storedSessionTab as TabType);
+      }
+    } catch (err) {}
+  }, [studentId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleWindowFocus = () => {
+        loadData();
+      };
+      window.addEventListener('focus', handleWindowFocus);
+      return () => window.removeEventListener('focus', handleWindowFocus);
+    }
+  }, [loadData]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('preference')) {
+        const cfg = e.detail?.config;
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          const visible = cfg.fields.filter((f: any) => f.visible !== false);
+          const newConfigItems: StimulusItem[] = visible.map((f: any, idx: number) => ({
+            id: String(f.id || `P${idx + 1}`),
+            name: String(f.label || f.name || 'Item'),
+            category: String(f.section || 'Visual'),
+            timerSeconds: 0,
+            isRunning: false,
+            frequency: 0,
+            durationSeconds: 0,
+            notes: '',
+          }));
+
+          setItemsByTab((prev) => {
+            const updated = { ...prev };
+            for (const tab of TABS) {
+              updated[tab] = mergeTabItems(newConfigItems, prev[tab]);
+            }
+            return updated;
+          });
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
-      setItems((prevItems) => {
-        if (!prevItems.some((item) => item.isRunning)) {
-          return prevItems;
+      setItemsByTab((prev) => {
+        let hasRunning = false;
+        for (const tab of TABS) {
+          if (prev[tab]?.some((i) => i.isRunning)) {
+            hasRunning = true;
+            break;
+          }
         }
-        return prevItems.map((item) =>
-          item.isRunning
-            ? {
-                ...item,
-                timerSeconds: item.timerSeconds + 1,
-                durationSeconds: item.durationSeconds + 1,
-              }
-            : item,
-        );
+        if (!hasRunning) return prev;
+
+        const next = { ...prev };
+        for (const tab of TABS) {
+          if (next[tab]?.some((i) => i.isRunning)) {
+            next[tab] = next[tab].map((item) =>
+              item.isRunning
+                ? {
+                    ...item,
+                    timerSeconds: item.timerSeconds + 1,
+                    durationSeconds: item.durationSeconds + 1,
+                  }
+                : item
+            );
+          }
+        }
+        return next;
       });
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const toggleTimer = useCallback((id: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, isRunning: !i.isRunning } : i)));
-  }, []);
+  const formatMMSS = (totalSec: number) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
-  const resetTimer = useCallback((id: string) => {
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i)),
-    );
-  }, []);
+  const toggleTimer = (id: string) => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, isRunning: !i.isRunning } : i
+      ),
+    }));
+  };
 
-  const updateFrequency = useCallback((id: string, delta: number) => {
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i)),
-    );
-  }, []);
+  const resetTimer = (id: string) => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i
+      ),
+    }));
+  };
 
-  const updateNotes = useCallback((id: string, notes: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i)));
-  }, []);
+  const updateFrequency = (id: string, delta: number) => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i
+      ),
+    }));
+  };
 
-  const updateEngaged = useCallback((id: string, val: 'Engaged' | 'Did Not Engage') => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, engaged: val } : i)));
-  }, []);
+  const updateNotes = (id: string, notes: string) => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, notes } : i
+      ),
+    }));
+  };
 
-  const updateApproached = useCallback((id: string, val: 'Approached' | 'Did Not Approach') => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, approached: val } : i)));
-  }, []);
+  const updateEngaged = (id: string, val: 'Engaged' | 'Did Not Engage') => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, engaged: val } : i
+      ),
+    }));
+  };
 
-  const handleExport = useCallback(() => {
+  const updateApproached = (id: string, val: 'Approached' | 'Did Not Approach') => {
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: (prev[activeTab] || []).map((i) =>
+        i.id === id ? { ...i, approached: val } : i
+      ),
+    }));
+  };
+
+  const handleExport = () => {
     const title = 'Preference Assessment Report';
     const formattedHtml = `
       <html>
@@ -139,7 +362,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
             body { font-family: sans-serif; padding: 30px; color: #1e293b; line-height: 1.6; }
             h1 { font-size: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; }
             .meta { margin-bottom: 30px; font-size: 14px; color: #64748b; }
-            .section-title { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #0284c7; padding-left: 10px; }
+            .section-title { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #facc15; padding-left: 10px; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 13px; }
             th { background-color: #f8fafc; font-weight: bold; }
@@ -148,12 +371,12 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
         <body>
           <h1>Preference Assessment Report</h1>
           <div class="meta">
-            <strong>Student:</strong> ${profile?.fullName || studentId} &middot; 
+            <strong>Student ID:</strong> ${studentId} &middot; 
             <strong>Assessment Window:</strong> ${activeTab} &middot; 
             <strong>Date:</strong> ${new Date().toLocaleDateString()}
           </div>
 
-          <div class="section-title">Tested Stimulus Items</div>
+          <div class="section-title">Tested Stimulus Items (${activeTab})</div>
           <table>
             <thead>
               <tr>
@@ -161,43 +384,35 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
                 <th>Category</th>
                 <th>Frequency of Choice</th>
                 <th>Total Interaction Duration</th>
-                <th>Engagement</th>
-                <th>Approach</th>
                 <th>Observations / Notes</th>
               </tr>
             </thead>
             <tbody>
-              ${items
-                .map(
-                  (i) => `
+              ${currentItems.map((i) => `
                 <tr>
                   <td><strong>${i.name}</strong></td>
                   <td>${i.category}</td>
                   <td>${i.frequency} times</td>
                   <td>${formatMMSS(i.durationSeconds)}</td>
-                  <td>${i.engaged || '—'}</td>
-                  <td>${i.approached || '—'}</td>
                   <td>${i.notes || '—'}</td>
                 </tr>
-              `,
-                )
-                .join('')}
+              `).join('')}
             </tbody>
           </table>
         </body>
       </html>
     `;
     openPrintWindow(formattedHtml, title);
-  }, [profile?.fullName, studentId, activeTab, items]);
+  };
 
-  const handleOpenModal = useCallback(() => {
+  const handleOpenModal = () => {
     setNewItemName('');
     setNewItemCategory('Visual');
     setIsDropdownOpen(false);
     setIsModalVisible(true);
-  }, []);
+  };
 
-  const handleConfirmAddItem = useCallback(() => {
+  const handleConfirmAddItem = () => {
     if (!newItemName.trim()) {
       Alert.alert('Required', 'Please enter an item name.');
       return;
@@ -214,205 +429,508 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       notes: '',
     };
 
-    setItems((prev) => [...prev, newItem]);
+    setItemsByTab((prev) => ({
+      ...prev,
+      [activeTab]: [...(prev[activeTab] || []), newItem],
+    }));
     setIsModalVisible(false);
-  }, [newItemName, newItemCategory]);
+  };
 
-  const handleSave = useCallback(
-    async (status: 'draft' | 'submitted') => {
-      try {
-        await savePreferenceAssessment(studentId, { items, sessionTab: activeTab, status });
-        showToast(
-          status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved',
-          'success',
-        );
-        if (status === 'submitted') {
-          navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
-        }
-      } catch {
-        showToast('Failed to save assessment data', 'error');
+  const handleSave = async (status: 'draft' | 'submitted') => {
+    try {
+      const allObservations: any[] = [];
+      for (const tab of TABS) {
+        const tabList = itemsByTab[tab] || [];
+        const sorted = [...tabList].sort((a, b) => {
+          const scoreA = (a.frequency * 60) + a.durationSeconds;
+          const scoreB = (b.frequency * 60) + b.durationSeconds;
+          return scoreB - scoreA;
+        });
+
+        sorted.forEach((item, idx) => {
+          const sec = item.durationSeconds;
+          const durStr = sec > 0
+            ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`)
+            : '0 min';
+
+          allObservations.push({
+            id: `${tab.toLowerCase().replace(/\s+/g, '-')}-${item.id}`,
+            itemId: item.id,
+            rank: idx + 1,
+            item: item.name,
+            name: item.name,
+            duration: durStr,
+            duration_seconds: sec,
+            durationSeconds: sec,
+            frequency: item.frequency,
+            frequency_count: item.frequency,
+            context: tab,
+            engaged: item.engaged || (item.frequency > 0 || sec > 0 ? 'High' : 'N/A'),
+            approached: item.approached || (item.frequency > 0 ? 'Initiated' : 'N/A'),
+            notes: item.notes,
+            category: item.category,
+          });
+        });
       }
-    },
-    [studentId, items, activeTab, showToast, navigation],
-  );
 
-  const containerStyle = useMemo(
-    () => [styles.innerContainer, isTablet && styles.tabletContainer],
-    [isTablet],
-  );
+      const payload = {
+        studentId,
+        sessionTab: activeTab,
+        status,
+        items: itemsByTab[activeTab] || [],
+        itemsByTab,
+        allObservations,
+        ranked_observations: allObservations,
+        preferences: {
+          items: allObservations,
+          ranked_observations: allObservations,
+        },
+      };
+
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const enriched = { ...payload, updatedAt: new Date().toISOString() };
+          localStorage.setItem(`melue_preference_assessment_${studentId}`, JSON.stringify(enriched));
+          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          if (alias) {
+            localStorage.setItem(`melue_preference_assessment_${alias}`, JSON.stringify(enriched));
+          }
+        } catch {}
+      }
+
+      await savePreferenceAssessment(studentId, payload);
+      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        await savePreferenceAssessment(aliasSid, payload);
+      }
+
+      showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
+      // Saved successfully without navigating away
+    } catch {
+      showToast('Failed to save assessment data', 'error');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Assessments"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-      />
+      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
-      <View style={containerStyle}>
-        <PreferenceAssessmentHeader
-          onBack={() => navigation?.goBack?.()}
-          studentName={profile?.fullName || 'Student'}
-          studentAge={profile?.age || '?'}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-        />
+      <View style={styles.backRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+          <Feather name="arrow-left" size={16} color="#334155" />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          {items.map((item) => (
-            <StimulusItemCard
-              key={item.id}
-              item={item}
-              onToggleTimer={toggleTimer}
-              onResetTimer={resetTimer}
-              onUpdateFrequency={updateFrequency}
-              onUpdateEngaged={updateEngaged}
-              onUpdateApproached={updateApproached}
-              onUpdateNotes={updateNotes}
-            />
-          ))}
-
-          <TouchableOpacity
-            style={styles.addCustomBtn}
-            onPress={handleOpenModal}
-            accessibilityRole="button"
-            accessibilityLabel="Add custom stimulus item"
-          >
-            <Feather name="plus" size={16} color="#0284C7" />
-            <Text style={styles.addCustomText}>Add Custom Item</Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        {/* Persistent bottom action bar */}
-        <View style={styles.footerRow}>
-          <TouchableOpacity
-            style={styles.draftBtn}
-            onPress={() => handleSave('draft')}
-            accessibilityRole="button"
-            accessibilityLabel="Save draft"
-          >
-            <Text style={styles.draftBtnText}>Save Draft</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.submitBtn}
-            onPress={() => handleSave('submitted')}
-            accessibilityRole="button"
-            accessibilityLabel="Submit assessment"
-          >
-            <Text style={styles.submitBtnText}>Submit Assessment</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.printBtn}
-            onPress={handleExport}
-            accessibilityRole="button"
-            accessibilityLabel="Print or export report"
-          >
-            <Feather name="printer" size={15} color="#475569" style={styles.exportIcon} />
-            <Text style={styles.printBtnText}>Export Report</Text>
-          </TouchableOpacity>
+      <View style={styles.topHeader}>
+        <View>
+          <Text style={styles.headerTitle}>Preference Assessment</Text>
+          <Text style={styles.headerSubtitle}>ABA Therapy Management</Text>
+        </View>
+        <View style={styles.studentBadge}>
+          <Text style={styles.studentName}>{profile?.fullName || 'Student'}</Text>
+          <Text style={styles.studentAge}>Age {profile?.age || '?'}</Text>
         </View>
       </View>
 
-      <AddCustomItemModal
-        visible={isModalVisible}
-        name={newItemName}
-        category={newItemCategory}
-        isDropdownOpen={isDropdownOpen}
-        onNameChange={setNewItemName}
-        onCategoryChange={setNewItemCategory}
-        onToggleDropdown={() => setIsDropdownOpen((prev) => !prev)}
-        onConfirm={handleConfirmAddItem}
-        onClose={() => setIsModalVisible(false)}
-      />
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.sessionTabRow}>
+          {(['Sensory Time', 'Circle Time', 'Play Time'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.sessionTabBtn, activeTab === tab && styles.sessionTabBtnActive]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={[styles.sessionTabText, activeTab === tab && styles.sessionTabTextActive]}>
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {currentItems.map((item) => {
+          const categoryStyle = CATEGORY_COLORS[item.category] || { bg: '#F1F5F9', text: '#475569' };
+          return (
+            <View key={item.id} style={styles.itemCard}>
+              <View style={styles.itemInfoCol}>
+                <Text style={styles.itemName}>{item.name}</Text>
+                <View style={[styles.categoryPill, { backgroundColor: categoryStyle.bg }]}>
+                  <Text style={[styles.categoryText, { color: categoryStyle.text }]}>{item.category}</Text>
+                </View>
+              </View>
+
+              <View style={styles.metricCol}>
+                <Text style={styles.metricLabel}>TIMER</Text>
+                <Text style={styles.timerVal}>{formatMMSS(item.timerSeconds)}</Text>
+                <View style={styles.btnGroup}>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, styles.startBtn, item.isRunning && styles.pauseBtn]}
+                    onPress={() => toggleTimer(item.id)}
+                  >
+                    <Text style={styles.startBtnText}>{item.isRunning ? 'Pause' : 'Start'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.smallBtn, styles.resetBtn]} onPress={() => resetTimer(item.id)}>
+                    <Text style={styles.resetBtnText}>Reset</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.metricCol}>
+                <Text style={styles.metricLabel}>FREQUENCY</Text>
+                <Text style={styles.freqVal}>{item.frequency}</Text>
+                <View style={styles.btnGroup}>
+                  <TouchableOpacity style={[styles.stepBtn, styles.stepBtnMinus]} onPress={() => updateFrequency(item.id, -1)}>
+                    <Text style={styles.stepBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.stepBtn, styles.stepBtnPlus]} onPress={() => updateFrequency(item.id, 1)}>
+                    <Text style={styles.stepBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.metricColCompact}>
+                <Text style={styles.metricLabel}>DURATION</Text>
+                <Text style={styles.displayVal}>{formatMMSS(item.durationSeconds)}</Text>
+              </View>
+
+              <View style={styles.metricColCompact}>
+                <Text style={styles.metricLabel}>COUNT</Text>
+                <Text style={styles.displayVal}>{item.frequency}</Text>
+              </View>
+
+              <View style={radioStyles.col}>
+                <Text style={styles.metricLabel}>ENGAGEMENT</Text>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Engaged')}>
+                  <View style={[radioStyles.radioCircle, item.engaged === 'Engaged' && radioStyles.radioCircleSelected]}>
+                    {item.engaged === 'Engaged' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Engaged</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Did Not Engage')}>
+                  <View style={[radioStyles.radioCircle, item.engaged === 'Did Not Engage' && radioStyles.radioCircleSelected]}>
+                    {item.engaged === 'Did Not Engage' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Did Not Engage</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={radioStyles.col}>
+                <Text style={styles.metricLabel}>APPROACH</Text>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Approached')}>
+                  <View style={[radioStyles.radioCircle, item.approached === 'Approached' && radioStyles.radioCircleSelected]}>
+                    {item.approached === 'Approached' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Approached</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Did Not Approach')}>
+                  <View style={[radioStyles.radioCircle, item.approached === 'Did Not Approach' && radioStyles.radioCircleSelected]}>
+                    {item.approached === 'Did Not Approach' && <View style={radioStyles.radioDot} />}
+                  </View>
+                  <Text style={radioStyles.radioText}>Did Not Approach</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.notesCol}>
+                <Text style={styles.metricLabel}>NOTES</Text>
+                <TextInput
+                  style={styles.notesInput}
+                  placeholder="Optional notes..."
+                  placeholderTextColor="#94A3B8"
+                  value={item.notes}
+                  onChangeText={(txt) => updateNotes(item.id, txt)}
+                />
+              </View>
+            </View>
+          );
+        })}
+
+        <TouchableOpacity style={styles.addCustomBtn} onPress={handleOpenModal}>
+          <Feather name="plus" size={16} color="#64748B" />
+          <Text style={styles.addCustomText}>Add Custom Item</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Footer action bar — outside ScrollView so always tappable */}
+      <View style={styles.footerRow}>
+        <TouchableOpacity style={styles.draftBtn} onPress={() => handleSave('draft')}>
+          <Text style={styles.draftBtnText}>Save Draft</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.submitBtn} onPress={() => handleSave('submitted')}>
+          <Text style={styles.submitBtnText}>Submit Assessment</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.printBtn} onPress={handleExport}>
+          <Text style={styles.printBtnText}>Print / Export</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Modal Popup */}
+      <Modal visible={isModalVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsDropdownOpen(false)}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Custom Item</Text>
+
+            {/* Input: Item Name */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Item Name</Text>
+              <TextInput
+                style={styles.textInputActive}
+                placeholder="Enter item name..."
+                placeholderTextColor="#94A3B8"
+                value={newItemName}
+                onChangeText={setNewItemName}
+              />
+            </View>
+
+            {/* Dropdown: Category */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Category</Text>
+              <TouchableOpacity
+                style={[styles.dropdownTrigger, isDropdownOpen && styles.dropdownTriggerActive]}
+                onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+              >
+                <Text style={styles.dropdownValue}>{newItemCategory}</Text>
+                <Feather name="chevron-down" size={16} color="#0F172A" />
+              </TouchableOpacity>
+
+              {/* Options Overlay */}
+              {isDropdownOpen && (
+                <View style={styles.dropdownMenu}>
+                  {CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.dropdownItem,
+                        cat === newItemCategory && styles.dropdownItemActive,
+                      ]}
+                      onPress={() => {
+                        setNewItemCategory(cat);
+                        setIsDropdownOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          cat === newItemCategory && styles.dropdownItemTextActive,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Buttons Row */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setIsModalVisible(false)}
+              >
+                <Text style={styles.cancelModalText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.addModalBtn}
+                onPress={handleConfirmAddItem}
+              >
+                <Text style={styles.addModalText}>Add Item</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 8 },
+  backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
+  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
+  headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
+  studentBadge: { backgroundColor: '#FEF9C3', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, alignItems: 'center' },
+  studentName: { fontSize: 13, fontWeight: '700', color: '#854D0E' },
+  studentAge: { fontSize: 11, color: '#A16207' },
+  content: { padding: 24, gap: 12 },
+  sessionTabRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
+  sessionTabBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' },
+  sessionTabBtnActive: { backgroundColor: '#38BDF8', borderColor: '#38BDF8' },
+  sessionTabText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  sessionTabTextActive: { color: '#FFFFFF' },
+  itemCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16 },
+  itemInfoCol: { width: 140, gap: 6 },
+  itemName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  categoryPill: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
+  categoryText: { fontSize: 11, fontWeight: '700' },
+  metricCol: { alignItems: 'center', gap: 4, width: 90 },
+  metricColCompact: { alignItems: 'center', gap: 4, width: 60 },
+  metricLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
+  timerVal: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  freqVal: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  displayVal: { fontSize: 13, fontWeight: '600', color: '#334155', marginTop: 4 },
+  btnGroup: { flexDirection: 'row', gap: 4 },
+  smallBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  startBtn: { backgroundColor: '#38BDF8' },
+  pauseBtn: { backgroundColor: '#F59E0B' },
+  startBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  resetBtn: { backgroundColor: '#F1F5F9' },
+  resetBtnText: { color: '#475569', fontSize: 11, fontWeight: '600' },
+  stepBtn: { width: 24, height: 24, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  stepBtnMinus: { backgroundColor: '#F1F5F9' },
+  stepBtnPlus: { backgroundColor: '#FACC15' },
+  stepBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  notesCol: { flex: 1, minWidth: 200, gap: 4 },
+  notesInput: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, fontSize: 13, color: '#0F172A', backgroundColor: '#FFFFFF' },
+  addCustomBtn: { borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
+  addCustomText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  footerRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  draftBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  draftBtnText: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  submitBtn: { backgroundColor: '#FACC15', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
+  submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  printBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#38BDF8', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  printBtnText: { fontSize: 14, fontWeight: '600', color: '#0284C7' },
+
+  // Modal Styles
+  modalOverlay: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  innerContainer: {
-    flex: 1,
-    width: '100%',
-  },
-  tabletContainer: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-  },
-  content: {
-    padding: spacing.md,
-    gap: spacing.md,
-    paddingBottom: spacing.xxl,
-  },
-  addCustomBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#BAE6FD',
-    backgroundColor: '#F0F9FF',
-    borderRadius: radius.md,
+    alignItems: 'center',
+    padding: 20,
   },
-  addCustomText: {
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    gap: 16,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 10px 20px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.1,
+          shadowRadius: 20,
+          elevation: 5,
+        }),
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  fieldGroup: {
+    gap: 6,
+    position: 'relative',
+    zIndex: 1,
+  },
+  fieldLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0284C7',
+    color: '#0F172A',
   },
-  footerRow: {
+  textInputActive: {
+    borderWidth: 2,
+    borderColor: '#38BDF8',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  dropdownTriggerActive: {
+    borderWidth: 2,
+    borderColor: '#38BDF8',
+  },
+  dropdownValue: {
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 70,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 10,
+          elevation: 6,
+        }),
+    zIndex: 999,
+  },
+  dropdownItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  dropdownItemActive: {
+    backgroundColor: '#93C5FD',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: '#334155',
+  },
+  dropdownItemTextActive: {
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  modalActions: {
     flexDirection: 'row',
     gap: 12,
-    padding: spacing.md,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    marginTop: 8,
   },
-  draftBtn: {
+  cancelModalBtn: {
     flex: 1,
-    paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  draftBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  submitBtn: {
-    flex: 1.5,
+    borderRadius: 12,
     paddingVertical: 12,
-    backgroundColor: '#0284C7',
-    borderRadius: radius.sm,
     alignItems: 'center',
   },
-  submitBtnText: {
-    fontSize: 13,
+  cancelModalText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#334155',
   },
-  printBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
+  addModalBtn: {
+    flex: 1,
+    backgroundColor: '#FACC15',
+    borderRadius: 12,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: radius.sm,
-    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
   },
-  exportIcon: {
-    marginRight: 6,
-  },
-  printBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
+  addModalText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
   },
 });
+const radioStyles = StyleSheet.create({ col: { gap: 6, minWidth: 120 }, radioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }, radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#94A3B8', alignItems: 'center', justifyContent: 'center' }, radioCircleSelected: { borderColor: '#0284C7' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284C7' }, radioText: { fontSize: 13, color: '#334155' } });

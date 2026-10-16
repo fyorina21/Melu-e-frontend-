@@ -25,6 +25,7 @@ import {
   getWeekData,
   type ScheduleAppointment as Appointment,
 } from '../../stores/scheduleStore';
+import { onDeletedStaffChanged, filterOutDeletedStaff } from '../../utils/deletedStaffHelper';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
@@ -72,11 +73,21 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
   const [staffOpts, setStaffOpts] = useState<StaffOption[]>([]);
   const [roomOpts, setRoomOpts] = useState<RoomOption[]>([]);
 
-  useEffect(() => {
+  const fetchOptions = useCallback(() => {
     Promise.all([getStudentOptions(), getStaffOptions(), getRoomOptions()])
-      .then(([s, st, r]) => { setStudentOpts(s.data); setStaffOpts(st.data); setRoomOpts(r.data); })
+      .then(([s, st, r]) => {
+        setStudentOpts(s.data);
+        const filteredStaff = filterOutDeletedStaff(st.data);
+        setStaffOpts(filteredStaff);
+        setRoomOpts(r.data);
+        setTherapistFilter((prev) => (prev === 'all' || filteredStaff.some((stItem) => stItem.id === prev) ? prev : 'all'));
+      })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchOptions();
+  }, [fetchOptions]);
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +103,13 @@ export default function SchedulingCalendarScreen({ navigation }: Props) {
   }, [load]);
 
   useEffect(() => subscribe(load), [load]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(() => {
+      fetchOptions();
+      load();
+    });
+  }, [fetchOptions, load]);
 
   const dayAppointments = (weekData?.[selectedDayIndex] || []).filter(
     (a) => therapistFilter === 'all' || a.therapistId === therapistFilter

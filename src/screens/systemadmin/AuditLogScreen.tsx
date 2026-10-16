@@ -315,10 +315,10 @@ export default function AuditLogScreen({ navigation }: Props) {
                   {e.user} <Text style={{ fontWeight: '400' }}>{e.action}</Text> {e.resource}
                 </Text>
 
-                {(e.oldValue || e.newValue) && (
+                {Boolean(e.oldValue || e.newValue) && (
                   <View style={styles.changeBlock}>
-                    {e.oldValue && <Text style={styles.oldValue}>Old: {e.oldValue}</Text>}
-                    {e.newValue && <Text style={styles.newValue}>New: {e.newValue}</Text>}
+                    {Boolean(e.oldValue) && <Text style={styles.oldValue}>Old: {e.oldValue}</Text>}
+                    {Boolean(e.newValue) && <Text style={styles.newValue}>New: {e.newValue}</Text>}
                   </View>
                 )}
               </View>

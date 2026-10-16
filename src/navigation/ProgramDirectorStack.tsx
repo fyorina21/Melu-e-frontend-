@@ -10,10 +10,12 @@ import GoalBankManagementScreen from '../screens/programdirector/GoalBankManagem
 import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScreen';
 import GraphChartViewScreen from '../screens/programdirector/GraphChartViewScreen';
 import GoalMasteryApprovalScreen from '../screens/director/GoalMasteryApprovalScreen';
+import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
+import GoalDomainDefinitionsScreen from '../screens/institutionaladmin/GoalDomainDefinitionsScreen';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { withModuleGuard } from '../auth/withModuleGuard';
@@ -33,6 +35,8 @@ const GuardedAssessmentSummaryReport = withModuleGuard(
 );
 const GuardedAssessmentDashboard = withModuleGuard(AssessmentDashboardScreen, 'assessments');
 const GuardedSessionDataCollection = withModuleGuard(SessionDataCollectionScreen, 'sessions');
+const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
+const GuardedGoalDomainDefinitions = withModuleGuard(GoalDomainDefinitionsScreen, 'admin');
 
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 
@@ -49,6 +53,7 @@ export default function ProgramDirectorStack() {
         <Stack.Screen name="GoalMasteryApproval" component={GuardedGoalMasteryApproval} />
         <Stack.Screen name="PdParentCommunication" component={GuardedPdParentCommunication} />
         <Stack.Screen name="GraphChartView" component={GuardedGraphChartView} />
+        <Stack.Screen name="StudentEnrollment" component={GuardedStudentEnrollment as never} />
         <Stack.Screen name="StudentEnrollmentWizard" component={GuardedStudentEnrollmentWizard} />
         <Stack.Screen
           name="AssessmentSummaryReport"
@@ -58,6 +63,10 @@ export default function ProgramDirectorStack() {
         <Stack.Screen
           name="SessionDataCollection"
           component={GuardedSessionDataCollection as never}
+        />
+        <Stack.Screen
+          name="GoalDomainDefinitions"
+          component={GuardedGoalDomainDefinitions as never}
         />
       </Stack.Navigator>
     </ErrorBoundary>

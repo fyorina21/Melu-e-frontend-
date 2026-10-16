@@ -10,14 +10,14 @@ export type SessionStackParamList = {
   PreferenceAssessment: { studentId: string };
   SensoryAssessment: { studentId: string };
   AbcLog: undefined;
-  SessionDataCollection: { sessionId?: string } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
   DailyNotes: { studentId?: string };
   SessionNoteEditor: { sessionId: string; mode: 'view' | 'edit' };
   GoalProgress: { studentId: string; goalId: string };
   SchedulingCalendar: undefined;
   Attendance: { sessionId?: string } | undefined;
   GoalMasteryCheck: { studentId: string; goalId: string };
-  SessionSummary: { sessionId: string; localIncidents?: IncidentPayload[] };
+  SessionSummary: { sessionId: string; localIncidents?: IncidentPayload[]; students?: any[] };
   SocialSkillsAssessment: { studentId: string };
   TeacherParentCommunication: undefined;
   ParentCommunication: undefined;
@@ -25,6 +25,7 @@ export type SessionStackParamList = {
   StudentProfile: { studentId: string };
   StudentEnrollmentWizard: undefined;
   IupGeneration: { studentId?: string } | undefined;
+  GoalMasteryApproval?: undefined;
   ChildProgress?: undefined;
 };
 
@@ -44,7 +45,7 @@ export type CoordinatorStackParamList = {
   Notifications: undefined;
   StudentEnrollmentWizard: undefined;
   AssessmentDashboard: undefined;
-  SessionDataCollection: { sessionId?: string } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
   ChildProgress?: undefined;
 };
 
@@ -69,10 +70,12 @@ export type ProgramDirectorStackParamList = {
   GoalMasteryApproval: undefined;
   PdParentCommunication: undefined;
   GraphChartView: { studentId?: string; goalIds?: string[] } | undefined;
+  StudentEnrollment?: undefined;
   StudentEnrollmentWizard: undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
   AssessmentDashboard: undefined;
-  SessionDataCollection: { sessionId?: string } | undefined;
+  SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
+  GoalDomainDefinitions?: undefined;
 };
 
 export type InstitutionalAdminStackParamList = {

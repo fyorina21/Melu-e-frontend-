@@ -17,6 +17,11 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { usePermission } from '../../../auth/usePermission';
 import AccessibleModal from '../../../components/AccessibleModal';
+import {
+  getActiveAbcDropdownOptions,
+  BASE_INCIDENT_FIELDS,
+  applyAbcDropdownOptions,
+} from '../../../stores/abcListsStore';
 
 export interface IncidentPayload {
   date: string;
@@ -50,72 +55,10 @@ const getCurrentDate = () => new Date().toISOString().split('T')[0];
 const getCurrentTime = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = [
-  {
-    id: 'b_loc',
-    type: 'Text',
-    label: 'Location',
-    required: true,
-    visible: true,
-    placeholder: 'Enter location...',
-  },
-  {
-    id: 'b_beh',
-    type: 'TextArea',
-    label: 'Behavior',
-    required: true,
-    visible: true,
-    placeholder: 'Describe the behavior observed...',
-  },
-  {
-    id: 'b_freq',
-    type: 'Text',
-    label: 'Frequency',
-    required: true,
-    visible: true,
-    placeholder: 'Enter frequency...',
-  },
-  {
-    id: 'b_int',
-    type: 'Text',
-    label: 'Intensity',
-    required: true,
-    visible: true,
-    placeholder: 'Enter intensity...',
-  },
-  {
-    id: 'b_cat',
-    type: 'Text',
-    label: 'Category',
-    required: true,
-    visible: true,
-    placeholder: 'Enter category...',
-  },
-  {
-    id: 'b_ant',
-    type: 'Text',
-    label: 'Antecedent',
-    required: true,
-    visible: true,
-    placeholder: 'Enter antecedent...',
-  },
-  {
-    id: 'b_con',
-    type: 'Text',
-    label: 'Consequence',
-    required: true,
-    visible: true,
-    placeholder: 'Enter consequence...',
-  },
-  {
-    id: 'b_notes',
-    type: 'TextArea',
-    label: 'Note',
-    required: false,
-    visible: true,
-    placeholder: 'Enter any additional notes or relevant information...',
-  },
-];
+export { BASE_INCIDENT_FIELDS, applyAbcDropdownOptions };
+export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = applyAbcDropdownOptions(
+  BASE_INCIDENT_FIELDS,
+) as DynamicFormField[];
 
 export default function BehaviorIncidentModal({
   visible,
@@ -136,7 +79,9 @@ export default function BehaviorIncidentModal({
   const [time, setTime] = useState(getCurrentTime());
   const [teacher, setTeacher] = useState(defaultTeacher);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
-  const [fields, setFields] = useState<DynamicFormField[]>(DEFAULT_INCIDENT_FIELDS);
+  const [fields, setFields] = useState<DynamicFormField[]>(() =>
+    applyAbcDropdownOptions(BASE_INCIDENT_FIELDS),
+  );
   const [isValid, setIsValid] = useState(false);
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
 
@@ -150,15 +95,15 @@ export default function BehaviorIncidentModal({
             !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()),
         );
         if (nonStandard.length === 0) {
-          setFields(DEFAULT_INCIDENT_FIELDS);
+          setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
         } else {
-          setFields(loaded);
+          setFields(applyAbcDropdownOptions(loaded));
         }
       } else {
-        setFields(DEFAULT_INCIDENT_FIELDS);
+        setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
       }
     } catch {
-      setFields(DEFAULT_INCIDENT_FIELDS);
+      setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
     }
   }, []);
 
@@ -172,6 +117,26 @@ export default function BehaviorIncidentModal({
       setFormValues({});
       setShowDiscardConfirmation(false);
     }
+
+    const handleSync = () => {
+      if (visible) loadConfig();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleSync);
+      window.addEventListener('melue_form_config_changed', handleSync as EventListener);
+      window.addEventListener('melue_abc_lists_changed', handleSync as EventListener);
+      window.addEventListener('focus', handleSync);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleSync);
+        window.removeEventListener('melue_form_config_changed', handleSync as EventListener);
+        window.removeEventListener('melue_abc_lists_changed', handleSync as EventListener);
+        window.removeEventListener('focus', handleSync);
+      }
+    };
   }, [visible, recordedBy, authSession?.userName, loadConfig]);
 
   const isFormDirty = Object.values(formValues).some(
@@ -220,10 +185,26 @@ export default function BehaviorIncidentModal({
 
     const location = findFieldValue(['Location', 'location', 'b_loc', 'b1']);
     const category = findFieldValue(['Category', 'category', 'b_cat', 'b2']);
-    const behavior = findFieldValue(['Behavior', 'Observed Behavior', 'behavior', 'b_beh', 'b3']);
-    const frequency = findFieldValue(['Frequency', 'frequency', 'b_freq', 'b4']);
+    const behavior = findFieldValue([
+      'Behavior Type',
+      'Behavior',
+      'Observed Behavior',
+      'behavior',
+      'b_beh',
+      'b3',
+    ]);
+    const frequency = findFieldValue([
+      'Duration (mins)',
+      'Duration',
+      'Frequency',
+      'frequency',
+      'b_freq',
+      'b_dur',
+      'b4',
+    ]);
     const intensity = findFieldValue(['Intensity', 'intensity', 'b_int', 'b5']);
     const antecedent = findFieldValue([
+      'Antecedent / Trigger',
       'Antecedent',
       'antecedent',
       'b_ant',
@@ -232,6 +213,7 @@ export default function BehaviorIncidentModal({
       'Trigger / Antecedent',
     ]);
     const consequence = findFieldValue([
+      'Consequence / Action Taken',
       'Consequence',
       'consequence',
       'b_con',
@@ -239,6 +221,7 @@ export default function BehaviorIncidentModal({
       'Action Taken',
     ]);
     const note = findFieldValue([
+      'Notes & Observations',
       'Note',
       'note',
       'Additional Notes',
@@ -293,12 +276,11 @@ export default function BehaviorIncidentModal({
   };
 
   return (
-    <AccessibleModal
+    <Modal
       animationType="fade"
       transparent={true}
       visible={visible}
       onRequestClose={handleCloseAttempt}
-      accessibilityLabel={`Record Behavior Incident for ${studentName || 'Student'}`}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -308,18 +290,14 @@ export default function BehaviorIncidentModal({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text accessibilityRole="header" style={styles.headerTitle}>
-                Record Behavior Incident
-              </Text>
-              <Text accessibilityRole="text" style={styles.headerSubtitle}>
+              <Text style={styles.headerTitle}>Record Behavior Incident</Text>
+              <Text style={styles.headerSubtitle}>
                 {studentName} • {goalName}
               </Text>
             </View>
             <TouchableOpacity
               onPress={handleCloseAttempt}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Close Incident Form"
             >
               <Feather name="x" size={20} color="#0F172A" />
             </TouchableOpacity>
@@ -382,12 +360,7 @@ export default function BehaviorIncidentModal({
 
           {/* Footer Buttons */}
           <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={handleCloseAttempt}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel Recording"
-            >
+            <TouchableOpacity style={styles.cancelBtn} onPress={handleCloseAttempt}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
 
@@ -396,9 +369,6 @@ export default function BehaviorIncidentModal({
               disabled={!isValid}
               onPress={handleSave}
               activeOpacity={isValid ? 0.8 : 1}
-              accessibilityRole="button"
-              accessibilityLabel="Save Incident"
-              accessibilityState={{ disabled: !isValid }}
             >
               <Text style={[styles.saveBtnText, isValid && styles.saveBtnTextActive]}>
                 Save Incident
@@ -408,29 +378,20 @@ export default function BehaviorIncidentModal({
 
           {/* Discard Confirmation Alert Dialog */}
           {showDiscardConfirmation && (
-            <View style={styles.confirmationOverlay} accessibilityRole="alert">
+            <View style={styles.confirmationOverlay}>
               <View style={styles.confirmCard}>
-                <Text accessibilityRole="header" style={styles.confirmTitle}>
-                  Discard Changes?
-                </Text>
-                <Text accessibilityRole="text" style={styles.confirmMessage}>
+                <Text style={styles.confirmTitle}>Discard Changes?</Text>
+                <Text style={styles.confirmMessage}>
                   You have unsaved changes. Are you sure you want to close?
                 </Text>
                 <View style={styles.confirmActionRow}>
                   <TouchableOpacity
                     style={styles.keepEditingBtn}
                     onPress={() => setShowDiscardConfirmation(false)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Keep Editing Incident"
                   >
                     <Text style={styles.keepEditingBtnText}>Keep Editing</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.discardBtn}
-                    onPress={handleConfirmDiscard}
-                    accessibilityRole="button"
-                    accessibilityLabel="Discard Incident Changes"
-                  >
+                  <TouchableOpacity style={styles.discardBtn} onPress={handleConfirmDiscard}>
                     <Text style={styles.discardBtnText}>Discard</Text>
                   </TouchableOpacity>
                 </View>
@@ -439,7 +400,7 @@ export default function BehaviorIncidentModal({
           )}
         </View>
       </KeyboardAvoidingView>
-    </AccessibleModal>
+    </Modal>
   );
 }
 

@@ -11,8 +11,8 @@ export const FORMS = [
   'Sensory Assessment',
 ];
 
-export const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File'];
-export type FieldType = 'Text' | 'Number' | 'Date' | 'Dropdown' | 'Radio' | 'File' | string;
+export const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File'] as const;
+export type FieldType = (typeof FIELD_TYPES)[number];
 
 export const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
 
@@ -29,6 +29,12 @@ export const ABLLS_SECTIONS = [
   'General',
 ];
 
+export const SOCIAL_SKILLS_SECTIONS = [
+  'Social Interaction',
+  'Communication',
+  'Play & Leisure',
+  'General',
+];
 export const BEHAVIORAL_SECTIONS = ['MASS', 'FAST', 'ABC Tracking', 'General'];
 export const PREFERENCE_SECTIONS = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement', 'General'];
 export const SENSORY_SECTIONS = [
@@ -37,18 +43,34 @@ export const SENSORY_SECTIONS = [
   'Proprioception & Vestibular',
   'General',
 ];
+export const BEHAVIOR_INCIDENT_SECTIONS = ['Incident Details', 'ABC Tracking', 'General'];
 
 export const getSectionsForForm = (formName: string): string[] => {
   if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
   if (formName === 'ABLLS Assessment Form') return ABLLS_SECTIONS;
+  if (formName === 'Social Skills Questionnaire') return SOCIAL_SKILLS_SECTIONS;
   if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment')
     return BEHAVIORAL_SECTIONS;
   if (formName === 'Preference Assessment') return PREFERENCE_SECTIONS;
   if (formName === 'Sensory Assessment') return SENSORY_SECTIONS;
+  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident'))
+    return BEHAVIOR_INCIDENT_SECTIONS;
   return [];
 };
 
 export const ASSESSMENT_DIRECT_ROUTES: Record<string, { url: string; route: string }> = {
+  'Enrollment Wizard': {
+    url: 'http://localhost:8081/StudentEnrollmentWizard',
+    route: 'StudentEnrollmentWizard',
+  },
+  'ABLLS Assessment Form': {
+    url: 'http://localhost:8081/SkillsAssessment',
+    route: 'SkillsAssessment',
+  },
+  'Social Skills Questionnaire': {
+    url: 'http://localhost:8081/SocialSkillsAssessment',
+    route: 'SocialSkillsAssessment',
+  },
   'Behavioral Assessment': {
     url: 'http://localhost:8081/BehaviorAssessment',
     route: 'BehaviorAssessment',
@@ -58,7 +80,7 @@ export const ASSESSMENT_DIRECT_ROUTES: Record<string, { url: string; route: stri
     route: 'PreferenceAssessment',
   },
   'Sensory Assessment': {
-    url: 'http://localhost:8081/SensoryAssessment?',
+    url: 'http://localhost:8081/SensoryAssessment',
     route: 'SensoryAssessment',
   },
   'Behavior Incident Form': {
@@ -116,8 +138,72 @@ export const SENSORY_PRESETS = [
   },
 ];
 
+export const BEHAVIOR_INCIDENT_PRESETS = [
+  {
+    label: 'Location Presets',
+    short: 'Locations',
+    options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
+  },
+  {
+    label: 'Behavior Types',
+    short: 'Behaviors',
+    options: [
+      'Aggression',
+      'Self-injury',
+      'Tantrum',
+      'Elopement',
+      'Non-compliance',
+      'Property destruction',
+      'Repetitive behaviors',
+    ],
+  },
+  { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
+  {
+    label: 'Antecedents',
+    short: 'Antecedents',
+    options: [
+      'Demand / Task',
+      'Transition',
+      'Denied Access',
+      'Attention Diverted',
+      'Sensory Overload',
+      'Loud Noise',
+      'Peer Interaction',
+    ],
+  },
+  {
+    label: 'Consequences',
+    short: 'Consequences',
+    options: [
+      'Redirection',
+      'Verbal Prompt',
+      'Break Given',
+      'Sensory Break',
+      'Physical Prompt',
+      'Planned Ignoring',
+    ],
+  },
+];
+
+export const SOCIAL_SKILLS_PRESETS = [
+  {
+    label: '4-Level Frequency (0-Never, 1-Sometimes, 2-Often, 3-Always)',
+    short: '4-Pt (0-3)',
+    options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+  },
+  { label: 'Yes/No', short: 'Yes/No', options: ['Yes', 'No'] },
+  {
+    label: '3-Level Frequency',
+    short: '3-Lvl',
+    options: ['Rarely', 'Occasionally', 'Consistently'],
+  },
+];
+
 export const getPresetsForForm = (formName: string) => {
   if (formName === 'ABLLS Assessment Form') return SCORE_SCALE_PRESETS;
+  if (formName === 'Social Skills Questionnaire') return SOCIAL_SKILLS_PRESETS;
+  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident'))
+    return BEHAVIOR_INCIDENT_PRESETS;
   return [];
 };
 
@@ -148,11 +234,21 @@ export const inferSectionFromId = (id: string): string | null => {
   if (!id) return null;
   const match = id.match(/^([A-I])\d+$/);
   if (!match) {
+    if (/^q\d+$/i.test(id)) return 'Social Interaction';
     if (id.startsWith('M') && /^\d+$/.test(id.slice(1))) return 'MASS';
     if (id.startsWith('F') && /^\d+$/.test(id.slice(1))) return 'FAST';
-    if (id.startsWith('ABC-')) return 'ABC Tracking';
+    if (id.startsWith('ABC-') || id === 'b_ant' || id === 'b_con') return 'ABC Tracking';
     if (id.startsWith('P') && /^\d+$/.test(id.slice(1))) return 'General';
     if (id.startsWith('SEN-')) return 'Tactile';
+    if (
+      id.startsWith('b_loc') ||
+      id.startsWith('b_beh') ||
+      id.startsWith('b_int') ||
+      id.startsWith('b_dur') ||
+      /^b\d+$/i.test(id)
+    )
+      return 'Incident Details';
+    if (id.startsWith('b_notes')) return 'General';
     return null;
   }
   const letter = match[1];
@@ -268,6 +364,16 @@ export const getNextIdForSection = (
       .filter((n) => !isNaN(n));
     const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
     return `BEH-${nextNum}`;
+  }
+
+  if (form === 'Social Skills Questionnaire') {
+    const existing = prevFields
+      .map((f) => f.id)
+      .filter((id) => /^q(\d+)$/i.test(id))
+      .map((id) => parseInt(id.replace(/^q/i, ''), 10))
+      .filter((n) => !isNaN(n));
+    const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    return `q${nextNum}`;
   }
 
   if (form === 'Preference Assessment') {

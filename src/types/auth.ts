@@ -58,6 +58,7 @@ export interface AuthSession {
   roles?: Role[];
   userName: string;
   email?: string;
+  userId?: string;
   modules?: string[];
   /** Raw permission strings from backend, e.g. ["sessions:view", "assessments:create"] */
   permissions?: string[];

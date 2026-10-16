@@ -16,7 +16,7 @@ const DEFAULT_API_URL = 'http://localhost:3000';
 export const env = {
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL,
   apiVersion: 'v1',
-  apiTimeoutMs: 10_000,
+  apiTimeoutMs: process.env.VITEST ? 2000 : 10_000,
 } as const;
 
 export const apiBaseUrl = `${env.apiUrl}/api/${env.apiVersion}`;
