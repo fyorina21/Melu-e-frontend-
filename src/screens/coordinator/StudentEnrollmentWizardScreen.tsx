@@ -740,7 +740,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const saveProgress = () => {
     try {
       const key = `enrollment-draft-${form.name.trim().toLowerCase() || 'untitled'}`;
-      localStorage.setItem(key, JSON.stringify(form));
+      const safeDraft = {
+        name: form.name,
+        program: form.program,
+        therapyGroup: form.therapyGroup,
+        therapist: form.therapist,
+      };
+      localStorage.setItem(key, JSON.stringify(safeDraft));
       if (form.name.trim() && (form.photoBase64 || form.photoUri)) {
         saveStudentPhoto({
           name: form.name.trim(),
