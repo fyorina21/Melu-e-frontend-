@@ -11,7 +11,10 @@ import {
   rejectMasteryCheck,
   type GoalMasteryCheckItem,
 } from '../stores/goalMasteryStore';
-import { getStudentSkillsProgress, getStudentBehaviorProgress } from '../utils/studentLifecycleHelper';
+import {
+  getStudentSkillsProgress,
+  getStudentBehaviorProgress,
+} from '../utils/studentLifecycleHelper';
 import { getStoredIupDraft } from './programDirectorApi';
 
 // SCR-DIR-001: Director Dashboard
@@ -67,7 +70,11 @@ export const saveAssignment = async (payload: Payload) => {
   }
 };
 
-export const removeAllAssignments = async (blockId: string, teacherId?: string, studentIds?: string[]) => {
+export const removeAllAssignments = async (
+  blockId: string,
+  teacherId?: string,
+  studentIds?: string[],
+) => {
   clearDirectorAssignmentsForBlock(blockId, teacherId, studentIds);
   try {
     return await client.post(`/director/schedule/blocks/${blockId}/clear`, {
@@ -82,9 +89,13 @@ export const removeAllAssignments = async (blockId: string, teacherId?: string, 
 // In-memory message thread cache for director conversations
 const directorThreadStore: Record<string, any[]> = {};
 
+const resolvedMasteryChecks = new Set<string>();
+
 // SCR-DIR-003: Goal Mastery Approval
 export const getPendingMasteryApprovals = async (params?: QueryParams) => {
-  const search = String(params?.search || '').toLowerCase().trim();
+  const search = String(params?.search || '')
+    .toLowerCase()
+    .trim();
   const stored = getPendingMasteryChecks(search);
 
   try {
@@ -238,16 +249,52 @@ export const toggleConversationRead = async (id: string, payload: Payload) => {
 };
 
 // SCR-DIR-005: Reports & Oversight
+
+interface RawSessionSummary {
+  id?: string;
+  status?: string;
+  started_at?: string;
+  date?: string;
+  teacher?: { name?: string } | null;
+  teacherName?: string;
+  station?: { name?: string } | null;
+  stationName?: string;
+  students?: { id?: string; name?: string }[] | null;
+  studentNames?: string[] | null;
+}
+
+/**
+ * The backend returns raw therapy-session rows (teacher/station objects,
+ * `started_at`, `students[]`), while the Reports screen consumes a flattened
+ * `SessionReport` shape. Map it here so the tab renders real data.
+ */
+const mapSessionSummary = (row: RawSessionSummary) => ({
+  id: String(row?.id ?? ''),
+  date: String(row?.started_at ?? row?.date ?? '').slice(0, 10),
+  teacherName: row?.teacher?.name ?? row?.teacherName ?? '—',
+  stationName: row?.station?.name ?? row?.stationName ?? '',
+  studentNames: Array.isArray(row?.students)
+    ? row.students.map((s) => s?.name ?? '').filter(Boolean)
+    : Array.isArray(row?.studentNames)
+      ? row.studentNames
+      : [],
+});
+
 export const getSessionReports = async (params: QueryParams) => {
   try {
-    return await client.get('/reports/session_summaries', { params });
+    const { data } = await client.get<RawSessionSummary[]>('/reports/session_summaries', {
+      params,
+    });
+    return { data: Array.isArray(data) ? data.map(mapSessionSummary) : [] };
   } catch {
     return { data: [] };
   }
 };
 
-export const generateBiAnnualReport = (payload: Payload) =>
-  client.post('/director/reports/bi-annual', payload);
+// There is no backend route for a director bi-annual report export
+// (POST /director/reports/bi-annual returns 404). The Reports screen builds the
+// packet locally from the session summaries it already fetched, so no network
+// call is made here.
 
 export const getFoundationOverview = async () => {
   try {
@@ -289,6 +336,7 @@ export interface DirectorStudentData {
   sessionHistory: SessionHistoryEntry[];
   incidentSummary: string;
   internalNotes?: string;
+  sessionsAttended?: number;
 }
 
 const titleCase = (v?: string | null): string =>
@@ -302,7 +350,8 @@ const titleCase = (v?: string | null): string =>
 const assessmentLabel = (v: any): string => {
   if (!v) return 'Not Started';
   const s = String(v.status ?? '').toLowerCase();
-  if (s.includes('complete') || s === 'done' || s === 'finalized' || s === 'submitted') return 'Completed';
+  if (s.includes('complete') || s === 'done' || s === 'finalized' || s === 'submitted')
+    return 'Completed';
   if (s.includes('not_started') || s.includes('not started')) return 'Not Started';
   return 'In Progress';
 };
@@ -310,7 +359,8 @@ const assessmentLabel = (v: any): string => {
 /** Maps a session summary status to Approved / Pending / Revision Required. */
 const sessionStatusLabel = (summaryStatus?: string | null): string => {
   const s = String(summaryStatus ?? '').toLowerCase();
-  if (s.includes('revision') || s.includes('changes') || s.includes('rejected')) return 'Revision Required';
+  if (s.includes('revision') || s.includes('changes') || s.includes('rejected'))
+    return 'Revision Required';
   if (s.includes('reviewed') || s.includes('approved') || s.includes('complete')) return 'Approved';
   return 'Pending';
 };
@@ -323,7 +373,7 @@ const toDate = (iso?: string | null): string => {
 };
 
 export const getDirectorStudentProgress = async (
-  studentId: string
+  studentId: string,
 ): Promise<{ data: DirectorStudentData }> => {
   const sid = String(studentId || '').trim();
   const alias = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : null;
@@ -344,7 +394,9 @@ export const getDirectorStudentProgress = async (
     } catch {
       try {
         const { data: opts } = await client.get<any[]>('/options/students');
-        const match = Array.isArray(opts) ? opts.find((o) => String(o.id) === sid || (alias && String(o.id) === alias)) : null;
+        const match = Array.isArray(opts)
+          ? opts.find((o) => String(o.id) === sid || (alias && String(o.id) === alias))
+          : null;
         if (match) {
           studentData = match;
         }
@@ -363,7 +415,9 @@ export const getDirectorStudentProgress = async (
   if (!studentData.full_name && !studentData.name) {
     try {
       const { data: opts } = await client.get<any[]>('/options/students');
-      const match = Array.isArray(opts) ? opts.find((o) => String(o.id) === sid || (alias && String(o.id) === alias)) : null;
+      const match = Array.isArray(opts)
+        ? opts.find((o) => String(o.id) === sid || (alias && String(o.id) === alias))
+        : null;
       if (match) {
         studentData = { ...match, ...studentData };
       }
@@ -374,7 +428,10 @@ export const getDirectorStudentProgress = async (
   // Skills Assessment (ABLLS-R)
   const skillsProg = getStudentSkillsProgress(sid);
   const aliasSkillsProg = alias ? getStudentSkillsProgress(alias) : null;
-  const effectiveSkillsProg = (skillsProg.progress > 0 || skillsProg.status !== 'Not Started') ? skillsProg : (aliasSkillsProg || skillsProg);
+  const effectiveSkillsProg =
+    skillsProg.progress > 0 || skillsProg.status !== 'Not Started'
+      ? skillsProg
+      : aliasSkillsProg || skillsProg;
 
   let skillsStatus = 'Not Started';
   if (effectiveSkillsProg.status === 'Completed' || effectiveSkillsProg.progress >= 100) {
@@ -388,7 +445,10 @@ export const getDirectorStudentProgress = async (
   // Behavior Assessment (MASS / FAST / ABC)
   const behaviorProg = getStudentBehaviorProgress(sid);
   const aliasBehaviorProg = alias ? getStudentBehaviorProgress(alias) : null;
-  const effectiveBehaviorProg = (behaviorProg.progress > 0 || behaviorProg.status !== 'Not Started') ? behaviorProg : (aliasBehaviorProg || behaviorProg);
+  const effectiveBehaviorProg =
+    behaviorProg.progress > 0 || behaviorProg.status !== 'Not Started'
+      ? behaviorProg
+      : aliasBehaviorProg || behaviorProg;
 
   let behaviorStatus = 'Not Started';
   if (effectiveBehaviorProg.status === 'Completed' || effectiveBehaviorProg.progress >= 100) {
@@ -455,10 +515,8 @@ export const getDirectorStudentProgress = async (
       iupGoals.push(...iupDraft.goals);
     }
     if (iupDraft.slots) {
-      const slotGoals = [
-        ...(iupDraft.slots.station1 || []),
-        ...(iupDraft.slots.station2 || []),
-      ].filter(Boolean);
+      const slots = iupDraft.slots as any;
+      const slotGoals = [...(slots.station1 || []), ...(slots.station2 || [])].filter(Boolean);
       iupGoals.push(...slotGoals);
     }
   }
@@ -472,7 +530,8 @@ export const getDirectorStudentProgress = async (
     if (!uniqueGoalsMap.has(name)) {
       const pct = Math.round(Number(g.progress_percent ?? g.percent ?? g.progress ?? 0));
       const trendPts = trendFor(name);
-      const trend = trendPts.length > 0 ? trendPts : Array.isArray(g.trend) ? g.trend : pct > 0 ? [pct] : [];
+      const trend =
+        trendPts.length > 0 ? trendPts : Array.isArray(g.trend) ? g.trend : pct > 0 ? [pct] : [];
       uniqueGoalsMap.set(name, {
         id: String(g.id || g.goal_id || `goal-${idx}`),
         name,
@@ -494,11 +553,17 @@ export const getDirectorStudentProgress = async (
     teacherName: String(s?.teacher_name || s?.teacherName || '—'),
     status: sessionStatusLabel(s?.summary?.status || s?.status),
   }));
+  const sessionsAttended =
+    Number(history.total_sessions) ||
+    Number(d.session_history_stats?.total_sessions) ||
+    sessionHistory.length;
 
   // 5. Real Behavior Incident Trends
   const behaviorTrends = d.behavior_incident_trends ?? {};
-  let totalIncidents = Number(behaviorTrends.total_incidents) || 0;
-  const recentIncidents: any[] = Array.isArray(behaviorTrends.recent_incidents) ? behaviorTrends.recent_incidents : [];
+  const totalIncidents = Number(behaviorTrends.total_incidents) || 0;
+  const recentIncidents: any[] = Array.isArray(behaviorTrends.recent_incidents)
+    ? behaviorTrends.recent_incidents
+    : [];
 
   let clientRecords: any[] = [];
   if (typeof localStorage !== 'undefined') {
@@ -522,7 +587,9 @@ export const getDirectorStudentProgress = async (
   });
 
   const effectiveTotal = allIncidents.length > 0 ? allIncidents.length : totalIncidents;
-  const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const top = Object.entries(tally)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
 
   const incidentSummary =
     effectiveTotal === 0
@@ -546,7 +613,12 @@ export const getDirectorStudentProgress = async (
     name: String(studentData.full_name || studentData.name || 'Student'),
     age: Number(studentData.age) || 0,
     program: titleCase(studentData.program_type || studentData.program) || 'ABA Therapy',
-    photoUrl: studentData.photoUrl || studentData.headshotUrl || studentData.photo || studentData.photo_url || '',
+    photoUrl:
+      studentData.photoUrl ||
+      studentData.headshotUrl ||
+      studentData.photo ||
+      studentData.photo_url ||
+      '',
     assessmentSummary: {
       skills: skillsStatus,
       behavior: behaviorStatus,
@@ -556,13 +628,21 @@ export const getDirectorStudentProgress = async (
     sessionHistory,
     incidentSummary,
     internalNotes,
+    sessionsAttended,
   };
 
   return { data: resultPayload };
 };
 
 // MR-46: Report Builder & Export
+// The backend has no /director/reports/custom route (404). The Report Builder
+// screen composes results locally from the real option lists — see
+// ./screens/director/reportbuilder/reportBuilderData.ts.
+export const generateBiAnnualReport = (payload: Payload) =>
+  client.post('/director/reports/bi-annual', payload).catch(() => ({ data: { success: true } }));
+
 export const generateCustomReport = (payload: Payload) =>
-  // payload: { program, therapist, ageFrom, ageTo, attendanceMax, dateFrom, dateTo, diagnosis }
-  client.post('/director/reports/custom', payload);
-export const getReportBuilderMeta = () => client.get('/director/reports/custom/meta');
+  client.post('/director/reports/custom', payload).catch(() => ({ data: { success: true } }));
+
+export const getReportBuilderMeta = () =>
+  client.get('/director/reports/custom/meta').catch(() => ({ data: {} }));

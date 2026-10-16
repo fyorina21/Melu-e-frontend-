@@ -1,12 +1,24 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
-import { getRoomsResources, updateRoomStatus, updateResourceStatus } from '../../api/coordinatorApi';
+import {
+  getRoomsResources,
+  updateRoomStatus,
+  updateResourceStatus,
+} from '../../api/coordinatorApi';
 import type { CoordinatorStackParamList } from '../../types';
 
 type RoomStatus = 'Available' | 'In Session' | 'Maintenance';
@@ -36,7 +48,9 @@ const STATUS_PILL: Record<RoomStatus, 'approved' | 'inProgress' | 'revision'> = 
 export default function RoomResourceSchedulingScreen({ navigation }: Props) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
-  const [maintenance, setMaintenance] = useState<{ id: string; room: string; detail: string; date: string }[]>([]);
+  const [maintenance, setMaintenance] = useState<
+    { id: string; room: string; detail: string; date: string }[]
+  >([]);
 
   const load = useCallback(async () => {
     try {
@@ -51,10 +65,17 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const cycleRoomStatus = async (room: Room) => {
-    const next: RoomStatus = room.status === 'Available' ? 'In Session' : room.status === 'In Session' ? 'Maintenance' : 'Available';
+    const next: RoomStatus =
+      room.status === 'Available'
+        ? 'In Session'
+        : room.status === 'In Session'
+          ? 'Maintenance'
+          : 'Available';
     try {
       await updateRoomStatus(room.id, { status: next });
       await load();
@@ -71,12 +92,17 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Rooms" onTabPress={(t) => t !== 'Rooms' && navigation?.navigate?.(navRouteForTab(t) as never)} />
+      <AppNavbar
+        activeTab="Rooms"
+        onTabPress={(t) => t !== 'Rooms' && navigation?.navigate?.(navRouteForTab(t) as never)}
+      />
 
       <View style={styles.header}>
         <View>
           <Text style={typography.h1}>Rooms & Resources</Text>
-          <Text style={typography.caption}>MR-41 — room availability, resource tracking, and maintenance</Text>
+          <Text style={typography.caption}>
+            MR-41 — room availability, resource tracking, and maintenance
+          </Text>
         </View>
       </View>
 
@@ -85,7 +111,9 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
         <View style={styles.card}>
           {rooms.map((room) => (
             <View key={room.id} style={styles.itemRow}>
-              <View style={styles.itemIcon}><Feather name="home" size={16} color={colors.navyText} /></View>
+              <View style={styles.itemIcon}>
+                <Feather name="home" size={16} color={colors.navyText} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={typography.bodyBold}>{room.name}</Text>
                 <Text style={typography.caption}>Capacity: {room.capacity}</Text>
@@ -102,13 +130,19 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
         <View style={styles.card}>
           {resources.map((resource) => (
             <View key={resource.id} style={styles.itemRow}>
-              <View style={styles.itemIcon}><Feather name="package" size={16} color={colors.navyText} /></View>
+              <View style={styles.itemIcon}>
+                <Feather name="package" size={16} color={colors.navyText} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={typography.bodyBold}>{resource.name}</Text>
-                <Text style={typography.caption}>{resource.inUse} of {resource.total} in use</Text>
+                <Text style={typography.caption}>
+                  {resource.inUse} of {resource.total} in use
+                </Text>
               </View>
               <TouchableOpacity style={styles.cycleBtn} onPress={() => toggleResource(resource)}>
-                <Text style={styles.cycleBtnText}>{resource.inUse >= resource.total ? 'Check In' : 'Check Out'}</Text>
+                <Text style={styles.cycleBtnText}>
+                  {resource.inUse >= resource.total ? 'Check In' : 'Check Out'}
+                </Text>
               </TouchableOpacity>
             </View>
           ))}
@@ -118,16 +152,28 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
           <View style={styles.cardHeaderRow}>
             <Text style={typography.h3}>Maintenance Schedule</Text>
             <TouchableOpacity
-              onPress={() =>
-                Alert.alert('Add maintenance', 'Room and date fields are configurable here once a backend exists.')
-              }
+              onPress={() => {
+                const targetRoom = rooms[0]?.name || 'Sensory Gym';
+                const newEntry = {
+                  id: `m-${Date.now()}`,
+                  room: targetRoom,
+                  detail: 'Scheduled equipment sanitation and safety inspection',
+                  date: 'Next Week',
+                };
+                setMaintenance((prev) => [newEntry, ...prev]);
+                Alert.alert('Maintenance Scheduled', `Added safety inspection for ${targetRoom}.`);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Add maintenance item"
             >
               <Feather name="plus" size={18} color={colors.primaryYellowDark} />
             </TouchableOpacity>
           </View>
           {maintenance.map((m) => (
             <View key={m.id} style={styles.itemRow}>
-              <View style={styles.itemIcon}><Feather name="tool" size={16} color={colors.statusRevisionText} /></View>
+              <View style={styles.itemIcon}>
+                <Feather name="tool" size={16} color={colors.statusRevisionText} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={typography.bodyBold}>{m.room}</Text>
                 <Text style={typography.caption}>{m.detail}</Text>
@@ -142,28 +188,65 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
 }
 
 function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return ({
-    Dashboard: 'CoordinatorDashboard',
-    'Live Sessions': 'LiveSessionMonitoring',
-    Review: 'SessionSummaryReview',
-    Progress: 'CoordinatorStudentProgress',
-    Schedule: 'CoordinatorSchedule',
-    Parents: 'CoordinatorParentCommunication',
-    Enrollment: 'StudentEnrollment',
-    Workload: 'WorkloadDashboard',
-    Rooms: 'RoomResourceScheduling',
-    Notifications: 'Notifications',
-  } as Record<string, keyof CoordinatorStackParamList>)[tab];
+  return (
+    {
+      Dashboard: 'CoordinatorDashboard',
+      'Live Sessions': 'LiveSessionMonitoring',
+      Review: 'SessionSummaryReview',
+      Progress: 'CoordinatorStudentProgress',
+      Schedule: 'CoordinatorSchedule',
+      Parents: 'CoordinatorParentCommunication',
+      Enrollment: 'StudentEnrollment',
+      Workload: 'WorkloadDashboard',
+      Rooms: 'RoomResourceScheduling',
+      Notifications: 'Notifications',
+    } as Record<string, keyof CoordinatorStackParamList>
+  )[tab];
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.xs },
+  header: {
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.xs,
+  },
   content: { padding: spacing.lg, gap: spacing.md },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  itemIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.bgApp, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
-  cycleBtn: { borderWidth: 1, borderColor: colors.primaryYellow, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  itemIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.bgApp,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cycleBtn: {
+    borderWidth: 1,
+    borderColor: colors.primaryYellow,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
   cycleBtnText: { fontSize: 11, fontWeight: '700', color: colors.primaryYellowDark },
 });

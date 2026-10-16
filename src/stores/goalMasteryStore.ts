@@ -35,9 +35,9 @@ export interface GoalMasteryCheckItem {
   approvalNotes?: string;
   primaryTeacher: PrimaryTeacherSubmissionData;
   teacherB: TeacherVerificationData;
-  teacherC: TeacherVerificationData;
-  createdAt: string;
-  updatedAt: string;
+  teacherC?: TeacherVerificationData;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const GOAL_MASTERY_CHECKS_KEY = 'melue_goal_mastery_checks';
@@ -45,7 +45,8 @@ export const GOAL_MASTERY_CHECKS_KEY = 'melue_goal_mastery_checks';
 function getStorage(): Storage | null {
   try {
     if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) return (globalThis as any).localStorage;
+    if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage)
+      return (globalThis as any).localStorage;
     if (typeof localStorage !== 'undefined') return localStorage;
   } catch {}
   return null;
@@ -55,7 +56,10 @@ function dispatchMasteryEvent(name: string, detail?: any) {
   try {
     if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
       window.dispatchEvent(new CustomEvent(name, { detail }));
-    } else if (typeof globalThis !== 'undefined' && typeof (globalThis as any).dispatchEvent === 'function') {
+    } else if (
+      typeof globalThis !== 'undefined' &&
+      typeof (globalThis as any).dispatchEvent === 'function'
+    ) {
       (globalThis as any).dispatchEvent(new CustomEvent(name, { detail }));
     }
   } catch {}
@@ -78,7 +82,7 @@ export function saveMasteryCheck(item: GoalMasteryCheckItem): GoalMasteryCheckIt
   const storage = getStorage();
   const current = getStoredMasteryChecks();
   const index = current.findIndex(
-    (c) => c.id === item.id || (c.studentId === item.studentId && c.goalId === item.goalId)
+    (c) => c.id === item.id || (c.studentId === item.studentId && c.goalId === item.goalId),
   );
 
   const updatedItem: GoalMasteryCheckItem = {
@@ -108,7 +112,10 @@ export function getMasteryCheckById(id: string): GoalMasteryCheckItem | null {
   return list.find((c) => c.id === id) || null;
 }
 
-export function getMasteryCheckByStudentAndGoal(studentId: string, goalId: string): GoalMasteryCheckItem | null {
+export function getMasteryCheckByStudentAndGoal(
+  studentId: string,
+  goalId: string,
+): GoalMasteryCheckItem | null {
   if (!studentId || !goalId) return null;
   const list = getStoredMasteryChecks();
   return list.find((c) => c.studentId === studentId && c.goalId === goalId) || null;
@@ -116,7 +123,9 @@ export function getMasteryCheckByStudentAndGoal(studentId: string, goalId: strin
 
 export function getPendingMasteryChecks(search?: string): GoalMasteryCheckItem[] {
   const list = getStoredMasteryChecks().filter((c) => c.status === 'pending');
-  const term = String(search || '').toLowerCase().trim();
+  const term = String(search || '')
+    .toLowerCase()
+    .trim();
   if (!term) return list;
 
   return list.filter(
@@ -124,7 +133,7 @@ export function getPendingMasteryChecks(search?: string): GoalMasteryCheckItem[]
       c.studentName.toLowerCase().includes(term) ||
       c.goalName.toLowerCase().includes(term) ||
       c.primaryTeacher.name.toLowerCase().includes(term) ||
-      c.id.toLowerCase().includes(term)
+      c.id.toLowerCase().includes(term),
   );
 }
 
@@ -151,7 +160,11 @@ export function approveMasteryCheck(id: string, notes?: string): GoalMasteryChec
   return updatedItem;
 }
 
-export function rejectMasteryCheck(id: string, reason: string, notes?: string): GoalMasteryCheckItem | null {
+export function rejectMasteryCheck(
+  id: string,
+  reason: string,
+  notes?: string,
+): GoalMasteryCheckItem | null {
   const storage = getStorage();
   const current = getStoredMasteryChecks();
   const index = current.findIndex((c) => c.id === id);
@@ -183,7 +196,10 @@ export function onMasteryChecksChanged(listener: () => void): () => void {
       window.removeEventListener('melue_mastery_checks_changed', listener);
       window.removeEventListener('storage', listener);
     };
-  } else if (typeof globalThis !== 'undefined' && typeof (globalThis as any).addEventListener === 'function') {
+  } else if (
+    typeof globalThis !== 'undefined' &&
+    typeof (globalThis as any).addEventListener === 'function'
+  ) {
     (globalThis as any).addEventListener('melue_mastery_checks_changed', listener);
     return () => {
       (globalThis as any).removeEventListener('melue_mastery_checks_changed', listener);

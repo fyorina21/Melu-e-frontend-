@@ -13,7 +13,7 @@
 import type { Role } from '../../types';
 
 export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE'] as const;
-export type ActionType = typeof ACTIONS[number];
+export type ActionType = (typeof ACTIONS)[number];
 
 export type PermissionMatrix = Record<string, Record<ActionType, boolean>>;
 
@@ -621,12 +621,21 @@ export function getDefaultMatrixForRole(roleName: string): PermissionMatrix {
     if (norm.includes('system admin') || norm.includes('super admin')) {
       // Full administrative access
       mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
-    } else if (norm.includes('institutional admin') || norm.includes('institutional administrator')) {
+    } else if (
+      norm.includes('institutional admin') ||
+      norm.includes('institutional administrator')
+    ) {
       if (page.roleKey === 'institutional_admin') {
         mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
       } else if (page.roleKey === 'system_admin') {
         // Institutional admins cannot modify system admin roles, permissions, or system audit log
-        mat[page.id] = { VIEW: page.id === 'sys_audit_log', CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
+        mat[page.id] = {
+          VIEW: page.id === 'sys_audit_log',
+          CREATE: false,
+          EDIT: false,
+          DELETE: false,
+          APPROVE: false,
+        };
       } else {
         // Operational oversight across clinical modules
         mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: false, APPROVE: true };
@@ -689,7 +698,13 @@ export function getDefaultMatrixForRole(roleName: string): PermissionMatrix {
       // STRICT LEAST PRIVILEGE: NO EDIT/DELETE/APPROVE on clinical charts
       if (page.roleKey === 'parent') {
         const canCreate = page.id === 'parent_home_observations' || page.id === 'parent_messages';
-        mat[page.id] = { VIEW: true, CREATE: canCreate, EDIT: false, DELETE: false, APPROVE: false };
+        mat[page.id] = {
+          VIEW: true,
+          CREATE: canCreate,
+          EDIT: false,
+          DELETE: false,
+          APPROVE: false,
+        };
       } else {
         mat[page.id] = { VIEW: false, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
       }
@@ -740,8 +755,9 @@ export function isPageInRoleScope(page: AppPageModule, roleName: string): boolea
  * grant access to unrelated pages of other roles or distinct sub-resources.
  */
 export function mapBackendPermissionsToMatrix(
-  backendPerms: Array<{ id?: string; resource?: string; action?: string }> | null | undefined,
-  roleName: string
+  backendPerms:
+    Array<string | { id?: string; resource?: string; action?: string }> | null | undefined,
+  roleName: string,
 ): PermissionMatrix {
   const normRole = (roleName || '').toLowerCase();
   const mat: PermissionMatrix = {};
@@ -764,8 +780,14 @@ export function mapBackendPermissionsToMatrix(
   // Set of granted resource:action strings from backend
   const granted = new Set<string>();
   backendPerms.forEach((p) => {
-    if (p.resource && p.action) {
-      granted.add(`${p.resource.toLowerCase()}:${p.action.toLowerCase()}`);
+    if (typeof p === 'string') {
+      if (p.includes(':')) {
+        granted.add(p.toLowerCase());
+      }
+    } else if (p && typeof p === 'object') {
+      if (p.resource && p.action) {
+        granted.add(`${p.resource.toLowerCase()}:${p.action.toLowerCase()}`);
+      }
     }
   });
 
@@ -806,7 +828,7 @@ export function mapBackendPermissionsToMatrix(
 export function applyPermissionDependencies(
   currentPerms: Record<ActionType, boolean>,
   action: ActionType,
-  nextVal: boolean
+  nextVal: boolean,
 ): Record<ActionType, boolean> {
   const updated = { ...currentPerms, [action]: nextVal };
 
@@ -835,7 +857,7 @@ export function applyPermissionDependencies(
 export function checkHighRiskPermission(
   page: AppPageModule,
   action: ActionType,
-  roleName: string
+  roleName: string,
 ): { isHighRisk: boolean; reason?: string } {
   const normRole = (roleName || '').toLowerCase();
   const isExecutive =
@@ -874,7 +896,7 @@ export function checkHighRiskPermission(
 export function filterPageModules(
   pages: AppPageModule[],
   query: string,
-  roleFilter: string
+  roleFilter: string,
 ): AppPageModule[] {
   let list = Array.isArray(pages) ? pages : [];
 
@@ -890,7 +912,7 @@ export function filterPageModules(
         p.route.toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        p.role.toLowerCase().includes(q)
+        p.role.toLowerCase().includes(q),
     );
   }
 
@@ -916,7 +938,7 @@ export function groupPagesByCategory(pages: AppPageModule[]): Record<string, App
 export function buildSavePayload(
   matrix: PermissionMatrix,
   catalogPermissions: CatalogPermission[],
-  roleName: string
+  roleName: string,
 ): {
   permission_ids: string[];
   matrix: Record<string, Record<string, boolean>>;
@@ -967,7 +989,7 @@ export function buildSavePayload(
           const match = catalogPermissions.find(
             (cp) =>
               (cp.resource === res || (page.subResource && cp.resource === page.subResource)) &&
-              cp.action.toLowerCase() === actLower
+              cp.action.toLowerCase() === actLower,
           );
           if (match?.id) {
             permissionIdsSet.add(match.id);

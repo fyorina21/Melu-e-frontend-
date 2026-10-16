@@ -26,13 +26,24 @@ import {
   resubmitSessionNote,
 } from '../../api/sessionApi';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
-import { getStoredTrials, getStoredIncidents, getStoredSessionStudents } from '../../stores/trialsStore';
+import {
+  getStoredTrials,
+  getStoredIncidents,
+  getStoredSessionStudents,
+} from '../../stores/trialsStore';
 import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
 import StatusPill from '../../components/StatusPill';
 import { useToast } from '../../context/ToastContext';
 import StudentAvatar from '../../components/StudentAvatar';
-import type { SessionStackParamList, SessionSummary, SessionSummaryStudent, Goal, Trial, IncidentPayload } from '../../types';
+import type {
+  SessionStackParamList,
+  SessionSummary,
+  SessionSummaryStudent,
+  Goal,
+  Trial,
+  IncidentPayload,
+} from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SessionSummary'>;
 
@@ -73,24 +84,15 @@ function TrialLogModal({ visible, goalName, trials, onClose }: TrialLogModalProp
           </View>
           <ScrollView>
             {(trials || []).map((t, i) => {
-              const cfg = getPromptConfig(t.promptLevel);
+              const cfg = getPromptConfig(t.promptLevel || '');
               return (
                 <View key={t.id || i} style={styles.trialLogRow}>
-                  <Text style={typography.body}>{(t as any).date ? `${(t as any).date} ` : ''}{t.timestamp}</Text>
-                  <View
-                    style={[
-                      styles.trialBadge,
-                      { backgroundColor: cfg.bg },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.trialBadgeText,
-                        { color: cfg.text },
-                      ]}
-                    >
-                      {cfg.label}
-                    </Text>
+                  <Text style={typography.body}>
+                    {(t as any).date ? `${(t as any).date} ` : ''}
+                    {t.timestamp}
+                  </Text>
+                  <View style={[styles.trialBadge, { backgroundColor: cfg.bg }]}>
+                    <Text style={[styles.trialBadgeText, { color: cfg.text }]}>{cfg.label}</Text>
                   </View>
                 </View>
               );
@@ -196,13 +198,19 @@ function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectio
 
 export function SessionSummaryScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
-  const localIncidents = useMemo(() => route.params?.localIncidents as IncidentPayload[] || [], [route.params?.localIncidents]);
+  const localIncidents = useMemo(
+    () => (route.params?.localIncidents as IncidentPayload[]) || [],
+    [route.params?.localIncidents],
+  );
   const { showToast } = useToast();
 
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState('');
-  const [trialLogTarget, setTrialLogTarget] = useState<{ goalName: string; trials: Trial[] } | null>(null);
+  const [trialLogTarget, setTrialLogTarget] = useState<{
+    goalName: string;
+    trials: Trial[];
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -231,11 +239,14 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         rawStudents = dashboardStudents.map((ds: any, idx: number) => {
           const sid = String(ds.id);
           const sName = String(ds.name || ds.fullName || 'Student').trim();
-          const match = rosterList.find(
-            (rs: any) =>
-              String(rs.id) === sid ||
-              String(rs.fullName || rs.name || '').trim().toLowerCase() === sName.toLowerCase()
-          ) || (rosterList.length > idx ? rosterList[idx] : null);
+          const match =
+            rosterList.find(
+              (rs: any) =>
+                String(rs.id) === sid ||
+                String(rs.fullName || rs.name || '')
+                  .trim()
+                  .toLowerCase() === sName.toLowerCase(),
+            ) || (rosterList.length > idx ? rosterList[idx] : null);
 
           return {
             id: sid,
@@ -286,12 +297,13 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       const processedStudents: SessionSummaryStudent[] = rawStudents.map((stu: any) => {
         const stuId = String(stu.id);
         const stuName = String(stu.name || stu.fullName || 'Student').trim();
-        const rawGoals = Array.isArray(stu.goals) && stu.goals.length > 0
-          ? stu.goals
-          : [
-              { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
-              { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
-            ];
+        const rawGoals =
+          Array.isArray(stu.goals) && stu.goals.length > 0
+            ? stu.goals
+            : [
+                { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+                { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+              ];
 
         const processedGoals: Goal[] = rawGoals.map((g: any, gIdx: number) => {
           const goalId = String(g.id);
@@ -307,7 +319,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
             trials = gIdx === 0 ? allStuTrials : [];
           }
 
-          let promptBreakdown: Record<string, number> = {
+          const promptBreakdown: Record<string, number> = {
             FP: 0,
             PP: 0,
             G: 0,
@@ -334,12 +346,18 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
           let totalTrials = trials.length > 0 ? trials.length : Number(g.totalTrials || 0);
           const indCount = promptBreakdown['INDEPENDENT'] || promptBreakdown['+'] || 0;
-          let independencePercent = totalTrials > 0
-            ? Math.round((indCount / totalTrials) * 100)
-            : Number(g.independencePercent || 0);
+          let independencePercent =
+            totalTrials > 0
+              ? Math.round((indCount / totalTrials) * 100)
+              : Number(g.independencePercent || 0);
 
           // If no trials recorded yet, but summaryData reported totalTrials from backend:
-          if (totalTrials === 0 && summaryData?.totalTrials && summaryData.totalTrials > 0 && gIdx === 0) {
+          if (
+            totalTrials === 0 &&
+            summaryData?.totalTrials &&
+            summaryData.totalTrials > 0 &&
+            gIdx === 0
+          ) {
             totalTrials = summaryData.totalTrials;
             independencePercent = summaryData.accuracyPercent ?? 80;
             const indEstimated = Math.round((independencePercent / 100) * totalTrials);
@@ -370,15 +388,17 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       });
 
       // 5. Gather behavior incidents
-      const apiIncidents = (Array.isArray(summaryData?.incidents) ? summaryData.incidents : []).map((inc: any) => ({
-        date: inc.date,
-        time: inc.time,
-        behavior: inc.behavior || inc.behavior_name,
-        studentName: inc.studentName,
-        antecedent: inc.antecedent,
-        consequence: inc.consequence,
-        additionalNotes: inc.notes || inc.additionalNotes,
-      }));
+      const apiIncidents = (Array.isArray(summaryData?.incidents) ? summaryData.incidents : []).map(
+        (inc: any) => ({
+          date: inc.date,
+          time: inc.time,
+          behavior: inc.behavior || inc.behavior_name,
+          studentName: inc.studentName,
+          antecedent: inc.antecedent,
+          consequence: inc.consequence,
+          additionalNotes: inc.notes || inc.additionalNotes,
+        }),
+      );
 
       const cachedIncidents = getStoredIncidents(sessionId);
       const combinedLocal = [...(localIncidents || []), ...cachedIncidents];
@@ -388,7 +408,8 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         .filter((inc) => !seenKeys.has(`${inc.time}-${inc.studentName}`))
         .map((inc) => ({
           date: (inc as any).date || new Date().toLocaleDateString(),
-          time: inc.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          time:
+            inc.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           behavior: inc.behavior,
           studentName: inc.studentName || 'Student',
           antecedent: inc.antecedent,
@@ -399,16 +420,30 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       const mergedIncidents = [...uniqueLocal, ...apiIncidents];
 
       // 6. Set notes if available
-      const initialNotes = summaryData?.notes || notes || 'Session completed with active student engagement and consistent progress across goals.';
+      const initialNotes =
+        summaryData?.notes ||
+        notes ||
+        'Session completed with active student engagement and consistent progress across goals.';
       setNotes((prev) => prev || initialNotes);
 
       // 7. Assemble complete summary
       setSummary({
-        stationName: summaryData?.stationName || rosterData?.stationName || dashboardRes?.data?.todaySchedule?.stationName || 'Station 1',
-        teacherName: summaryData?.teacherName || rosterData?.teacherName || dashboardRes?.data?.todaySchedule?.teacherName || 'Teacher',
-        startTime: summaryData?.startTime || dashboardRes?.data?.todaySchedule?.startTime || '9:00 AM',
+        stationName:
+          summaryData?.stationName ||
+          rosterData?.stationName ||
+          dashboardRes?.data?.todaySchedule?.stationName ||
+          'Station 1',
+        teacherName:
+          summaryData?.teacherName ||
+          rosterData?.teacherName ||
+          dashboardRes?.data?.todaySchedule?.teacherName ||
+          'Teacher',
+        startTime:
+          summaryData?.startTime || dashboardRes?.data?.todaySchedule?.startTime || '9:00 AM',
         endTime: summaryData?.endTime || dashboardRes?.data?.todaySchedule?.endTime || '10:30 AM',
-        durationMinutes: Number(summaryData?.durationMinutes || rosterData?.blockDurationMinutes || 90),
+        durationMinutes: Number(
+          summaryData?.durationMinutes || rosterData?.blockDurationMinutes || 90,
+        ),
         status: summaryData?.status || 'in_progress',
         students: processedStudents,
         incidents: mergedIncidents,
@@ -475,7 +510,11 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         ...(Array.isArray(s.goals) ? s.goals : []).map((g) =>
           g.goalType === 'task_analysis'
             ? `  • ${g.name} (TA): ${g.independencePercent}% independent · mastery: ${g.overallMasteryStatus}`
-            : `  • ${g.name}: ${g.independencePercent}% independent · ${g.totalTrials} trials · ${Object.entries(g.promptBreakdown || {}).map(([l, c]) => `${l}:${c}`).join(' ')}`
+            : `  • ${g.name}: ${g.independencePercent}% independent · ${g.totalTrials} trials · ${Object.entries(
+                g.promptBreakdown || {},
+              )
+                .map(([l, c]) => `${l}:${c}`)
+                .join(' ')}`,
         ),
       ]),
       '',
@@ -509,18 +548,16 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   const students = Array.isArray(summary.students) ? summary.students : [];
   const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
 
-
-
   const summaryStatus = summary.status || 'pending_review';
   const isDraft = summaryStatus === 'draft';
   const statusLabel =
     summaryStatus === 'approved'
       ? 'Approved'
       : summaryStatus === 'revised_required'
-      ? 'Revision Required'
-      : isDraft
-      ? 'Draft'
-      : 'Pending Review';
+        ? 'Revision Required'
+        : isDraft
+          ? 'Draft'
+          : 'Pending Review';
   const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
   const showCoordinatorFeedback = isReviewed;
   const coordinatorFeedback = (summary as any).coordinatorFeedback || '';
@@ -561,10 +598,10 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
                 summaryStatus === 'approved'
                   ? 'approved'
                   : summaryStatus === 'revised_required'
-                  ? 'revision'
-                  : isDraft
-                  ? 'draft'
-                  : 'pending'
+                    ? 'revision'
+                    : isDraft
+                      ? 'draft'
+                      : 'pending'
               }
               label={statusLabel}
             />
@@ -598,8 +635,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
             />
           ))
         )}
-
-
 
         <View style={styles.notesCard}>
           <Text style={styles.notesTitle}>
@@ -714,7 +749,11 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     gap: spacing.md,
   },
-  goalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  goalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   goalTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   goalSubtitle: { fontSize: 13, color: '#94A3B8' },
   independenceContainer: { alignItems: 'flex-end' },
@@ -774,7 +813,12 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
   trialLogSheet: {
     backgroundColor: '#FFFFFF',
     borderRadius: radius.lg,
@@ -791,8 +835,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
-   trialBadgeText: { fontSize: 12, fontWeight: '700' },
-   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
-   emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
- });
+  trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
+  trialBadgeText: { fontSize: 12, fontWeight: '700' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+  emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
+});

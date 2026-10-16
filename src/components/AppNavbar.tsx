@@ -6,14 +6,39 @@
 // Screens only need to pass `activeTab` and `onTabPress` — everything else is
 // derived from the auth session.
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Modal, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import IconButton from './IconButton';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_TABS, ROLE_LABELS, ROLE_NOTIFICATION_ROUTE, TEACHER_ROUTE_BY_TAB, COORDINATOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB, DIRECTOR_ROUTE_BY_TAB, IA_ROUTE_BY_TAB, SYS_ROUTE_BY_TAB, PARENT_ROUTE_BY_TAB } from './appNavConfig';
+import {
+  ROLE_TABS,
+  ROLE_LABELS,
+  ROLE_NOTIFICATION_ROUTE,
+  TEACHER_ROUTE_BY_TAB,
+  COORDINATOR_ROUTE_BY_TAB,
+  PD_ROUTE_BY_TAB,
+  DIRECTOR_ROUTE_BY_TAB,
+  IA_ROUTE_BY_TAB,
+  SYS_ROUTE_BY_TAB,
+  PARENT_ROUTE_BY_TAB,
+  getTabsForSession,
+  getGroupedTabsForSession,
+  isNavGroup,
+  type NavGroupTab,
+  type NavTabItem,
+} from './appNavConfig';
 import { notificationsApi } from '../api/resources/notifications';
 import { getAccessToken } from '../api/token';
 import { useBreakpoint } from '../utils/useBreakpoint';
@@ -30,6 +55,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const navigation = useNavigation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [dropdownGroup, setDropdownGroup] = useState<NavGroupTab | null>(null);
+  const [dropdownCoords, setDropdownCoords] = useState<{ x: number; y: number } | null>(null);
+  const groupButtonRefs = React.useRef<Record<string, any>>({});
   const [liveUnreadCount, setLiveUnreadCount] = useState(0);
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
@@ -70,14 +98,8 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const stripWidth = React.useRef(0);
   const [layoutTick, setLayoutTick] = useState(0);
 
-  const scrollActiveTabIntoView = () => {
-    const layout = tabLayouts.current[activeTabNormalized ?? ''];
-    if (!layout || !tabsScrollRef.current || stripWidth.current <= 0) return;
-    const target = layout.x + layout.width / 2 - stripWidth.current / 2;
-    tabsScrollRef.current.scrollTo({ x: Math.max(0, target), animated: true });
-  };
-
-  const tabs = ROLE_TABS[role] ?? [];
+  const defaultTabs = ROLE_TABS[role] ?? [];
+  const tabs: NavTabItem[] = getGroupedTabsForSession(session, role, defaultTabs);
   const roleLabel = ROLE_LABELS[role] ?? '';
   const userName = session?.userName ?? 'User';
   const initial = userName.charAt(0).toUpperCase() || 'U';
@@ -94,28 +116,67 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const routeByTab = ((): Record<string, string> | undefined => {
     switch (role) {
       case 'teacher':
-      case 'therapist': return TEACHER_ROUTE_BY_TAB;
-      case 'coordinator': return COORDINATOR_ROUTE_BY_TAB;
-      case 'program_director': return PD_ROUTE_BY_TAB;
-      case 'director': return DIRECTOR_ROUTE_BY_TAB;
-      case 'institutional_admin': return IA_ROUTE_BY_TAB;
-      case 'system_admin': return SYS_ROUTE_BY_TAB;
-      case 'parent': return PARENT_ROUTE_BY_TAB;
-      default: return undefined;
+      case 'therapist':
+        return TEACHER_ROUTE_BY_TAB;
+      case 'coordinator':
+        return COORDINATOR_ROUTE_BY_TAB;
+      case 'program_director':
+        return PD_ROUTE_BY_TAB;
+      case 'director':
+        return DIRECTOR_ROUTE_BY_TAB;
+      case 'institutional_admin':
+        return IA_ROUTE_BY_TAB;
+      case 'system_admin':
+        return SYS_ROUTE_BY_TAB;
+      case 'parent':
+        return PARENT_ROUTE_BY_TAB;
+      default:
+        return undefined;
     }
   })();
 
   // Screens pass legacy `activeTab` labels; resolve them to the canonical tab
   // via the role's route map so the correct navbar item is highlighted.
   const activeTabNormalized = (() => {
-    if (tabs.includes(activeTab)) return activeTab;
+    for (const tab of tabs) {
+      if (typeof tab === 'string' && tab === activeTab) return activeTab;
+      if (isNavGroup(tab) && tab.items.includes(activeTab)) return activeTab;
+    }
     const route = routeByTab?.[activeTab];
     if (route) {
-      const canonical = tabs.find((tab) => routeByTab?.[tab] === route);
-      if (canonical) return canonical;
+      for (const tab of tabs) {
+        if (typeof tab === 'string' && routeByTab?.[tab] === route) return tab;
+        if (isNavGroup(tab)) {
+          const match = tab.items.find((item) => routeByTab?.[item] === route);
+          if (match) return match;
+        }
+      }
     }
     return activeTab;
   })();
+
+  const activeTopLevelKey = (() => {
+    for (const tab of tabs) {
+      if (typeof tab === 'string') {
+        if (tab === activeTabNormalized) return tab;
+      } else if (isNavGroup(tab)) {
+        if (
+          tab.items.includes(activeTabNormalized) ||
+          tab.items.some((it) => routeByTab?.[it] === routeByTab?.[activeTabNormalized])
+        ) {
+          return tab.label;
+        }
+      }
+    }
+    return activeTabNormalized;
+  })();
+
+  const scrollActiveTabIntoView = () => {
+    const layout = tabLayouts.current[activeTopLevelKey ?? ''];
+    if (!layout || !tabsScrollRef.current || stripWidth.current <= 0) return;
+    const target = layout.x + layout.width / 2 - stripWidth.current / 2;
+    tabsScrollRef.current.scrollTo({ x: Math.max(0, target), animated: true });
+  };
 
   React.useEffect(() => {
     // onLayout fires asynchronously after mount, so retry once layouts land.
@@ -123,7 +184,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     const t = setTimeout(scrollActiveTabIntoView, 80);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabNormalized, layoutTick]);
+  }, [activeTopLevelKey, layoutTick]);
 
   const openNotifications = () => {
     if (!notificationRoute) return;
@@ -131,12 +192,14 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   };
 
   const handleLogout = () => {
+    setDropdownGroup(null);
     setMenuOpen(false);
     setDrawerOpen(false);
     logout();
   };
 
   const handleTabPress = (tab: string) => {
+    setDropdownGroup(null);
     setDrawerOpen(false);
     setMenuOpen(false);
     const route = routeByTab?.[tab];
@@ -147,9 +210,72 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     }
   };
 
+  const handleGroupPress = (group: NavGroupTab, event?: any) => {
+    if (dropdownGroup?.label === group.label) {
+      setDropdownGroup(null);
+      return;
+    }
+    if (event?.currentTarget?.getBoundingClientRect) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const menuWidth = 240;
+      const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const left = Math.min(Math.max(12, rect.left), windowWidth - menuWidth - 12);
+      setDropdownCoords({ x: left, y: rect.bottom + 6 });
+      setDropdownGroup(group);
+      return;
+    }
+    const ref = groupButtonRefs.current[group.label];
+    if (ref?.measureInWindow) {
+      ref.measureInWindow((x: number, y: number, width: number, height: number) => {
+        setDropdownCoords({ x: Math.max(12, x), y: y + height + 6 });
+        setDropdownGroup(group);
+      });
+      return;
+    }
+    setDropdownCoords({ x: 120, y: 60 });
+    setDropdownGroup(group);
+  };
+
   const renderTabs = () => (
     <View style={styles.tabs}>
       {tabs.map((tab) => {
+        if (isNavGroup(tab)) {
+          const isGroupActive = tab.items.some(
+            (it) =>
+              it === activeTabNormalized || routeByTab?.[it] === routeByTab?.[activeTabNormalized],
+          );
+          const isOpen = dropdownGroup?.label === tab.label;
+          return (
+            <TouchableOpacity
+              key={tab.label}
+              ref={(el) => {
+                groupButtonRefs.current[tab.label] = el;
+              }}
+              style={[styles.tab, isGroupActive && styles.tabActive]}
+              onPress={(e) => handleGroupPress(tab, e)}
+              accessibilityRole="button"
+              accessibilityLabel={`${tab.label} menu`}
+              accessibilityState={{ expanded: isOpen, selected: isGroupActive }}
+              onLayout={(e) => {
+                const { x, width } = e.nativeEvent.layout;
+                tabLayouts.current[tab.label] = { x, width };
+                setLayoutTick((n) => n + 1);
+              }}
+            >
+              <View style={styles.tabContentRow}>
+                <Text style={[styles.tabText, isGroupActive && styles.tabTextActive]}>
+                  {tab.label}
+                </Text>
+                <Feather
+                  name={isOpen ? 'chevron-up' : 'chevron-down'}
+                  size={13}
+                  color={isGroupActive ? colors.navyText : colors.mutedText}
+                />
+              </View>
+            </TouchableOpacity>
+          );
+        }
+
         const active = tab === activeTabNormalized;
         const isNotificationsTab = tab === 'Notifications';
         return (
@@ -157,6 +283,13 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             key={tab}
             style={[styles.tab, active && styles.tabActive]}
             onPress={() => handleTabPress(tab)}
+            accessibilityRole="tab"
+            accessibilityLabel={
+              isNotificationsTab && effectiveUnread > 0
+                ? `${tab}, ${effectiveUnread} unread notifications`
+                : tab
+            }
+            accessibilityState={{ selected: active }}
             onLayout={(e) => {
               const { x, width } = e.nativeEvent.layout;
               tabLayouts.current[tab] = { x, width };
@@ -181,11 +314,19 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
         {isCompact && (
-          <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.hamburgerBtn} accessibilityLabel="Open menu">
+          <TouchableOpacity
+            onPress={() => setDrawerOpen(true)}
+            style={styles.hamburgerBtn}
+            accessibilityLabel="Open menu"
+          >
             <Feather name="menu" size={20} color={colors.navyText} />
           </TouchableOpacity>
         )}
-        <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
 
@@ -205,21 +346,35 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
 
       <View style={styles.rightBlock}>
         {Boolean(notificationRoute) && (
-          <TouchableOpacity onPress={openNotifications} style={styles.iconBtn} accessibilityLabel="Notifications">
+          <TouchableOpacity
+            onPress={openNotifications}
+            style={styles.iconBtn}
+            accessibilityLabel="Notifications"
+          >
             <Feather name="bell" size={18} color={colors.navyText} />
             {effectiveUnread > 0 && (
-              <View style={styles.badge}><Text style={styles.badgeText}>{effectiveUnread}</Text></View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{effectiveUnread}</Text>
+              </View>
             )}
           </TouchableOpacity>
         )}
 
         <View style={styles.profileWrap}>
-          <TouchableOpacity onPress={() => setMenuOpen((v) => !v)} style={styles.profileBtn} accessibilityLabel="Profile menu">
-            <View style={styles.avatar}><Text style={styles.avatarText}>{initial}</Text></View>
+          <TouchableOpacity
+            onPress={() => setMenuOpen((v) => !v)}
+            style={styles.profileBtn}
+            accessibilityLabel="Profile menu"
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
             {!isCompact && (
               <>
                 <View style={styles.profileText}>
-                  <Text style={typography.bodyBold} numberOfLines={1}>{userName}</Text>
+                  <Text style={typography.bodyBold} numberOfLines={1}>
+                    {userName}
+                  </Text>
                   <Text style={typography.caption}>{roleLabel}</Text>
                 </View>
                 <Feather name="chevron-down" size={14} color={colors.mutedText} />
@@ -227,12 +382,19 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
             )}
           </TouchableOpacity>
 
-          <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+          <Modal
+            transparent
+            visible={menuOpen}
+            animationType="fade"
+            onRequestClose={() => setMenuOpen(false)}
+          >
             <View style={styles.menuOverlay}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />
               <View style={styles.menuCard}>
                 <View style={styles.menuHeader}>
-                  <View style={[styles.avatar, styles.menuAvatar]}><Text style={styles.avatarText}>{initial}</Text></View>
+                  <View style={[styles.avatar, styles.menuAvatar]}>
+                    <Text style={styles.avatarText}>{initial}</Text>
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={typography.bodyBold}>{userName}</Text>
                     <Text style={typography.caption}>{roleLabel}</Text>
@@ -256,7 +418,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
                             accessibilityState={{ selected: active }}
                             label={`Switch to ${label} role`}
                           >
-                            <Text style={[styles.roleItemText, active && styles.roleItemTextActive]}>
+                            <Text
+                              style={[styles.roleItemText, active && styles.roleItemTextActive]}
+                            >
                               {label}
                             </Text>
                             {active && <Feather name="check" size={14} color={colors.navyText} />}
@@ -277,18 +441,104 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         </View>
       </View>
 
-      <Modal transparent visible={drawerOpen} animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
+      <Modal
+        transparent
+        visible={Boolean(dropdownGroup)}
+        animationType="fade"
+        onRequestClose={() => setDropdownGroup(null)}
+      >
+        <Pressable style={styles.dropdownBackdrop} onPress={() => setDropdownGroup(null)}>
+          {dropdownGroup && dropdownCoords && (
+            <View
+              style={[styles.dropdownMenu, { top: dropdownCoords.y, left: dropdownCoords.x }]}
+              onStartShouldSetResponder={() => true}
+            >
+              <View style={styles.dropdownHeader}>
+                <Text style={styles.dropdownHeaderTitle}>{dropdownGroup.label}</Text>
+              </View>
+              {dropdownGroup.items.map((item) => {
+                const active =
+                  item === activeTabNormalized ||
+                  routeByTab?.[item] === routeByTab?.[activeTabNormalized];
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    style={[styles.dropdownItem, active && styles.dropdownItemActive]}
+                    onPress={() => handleTabPress(item)}
+                    accessibilityRole="menuitem"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}
+                    >
+                      {item}
+                    </Text>
+                    {active && <Feather name="check" size={14} color={colors.navyText} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </Pressable>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={drawerOpen}
+        animationType="fade"
+        onRequestClose={() => setDrawerOpen(false)}
+      >
         <View style={styles.drawerRoot}>
           <View style={styles.drawer}>
             <View style={styles.drawerHeader}>
-              <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+              <Image
+                source={require('../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
               <Text style={styles.logo}>Melu'e Foundation</Text>
-              <TouchableOpacity onPress={() => setDrawerOpen(false)} style={styles.drawerClose} accessibilityLabel="Close menu">
+              <TouchableOpacity
+                onPress={() => setDrawerOpen(false)}
+                style={styles.drawerClose}
+                accessibilityLabel="Close menu"
+              >
                 <Feather name="x" size={20} color={colors.navyText} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={styles.drawerList}>
               {tabs.map((tab) => {
+                if (isNavGroup(tab)) {
+                  return (
+                    <View key={tab.label} style={styles.drawerGroup}>
+                      <View style={styles.drawerGroupHeader}>
+                        <Text style={styles.drawerGroupTitle}>{tab.label}</Text>
+                      </View>
+                      {tab.items.map((item) => {
+                        const active =
+                          item === activeTabNormalized ||
+                          routeByTab?.[item] === routeByTab?.[activeTabNormalized];
+                        return (
+                          <TouchableOpacity
+                            key={item}
+                            style={[styles.drawerSubItem, active && styles.drawerSubItemActive]}
+                            onPress={() => handleTabPress(item)}
+                          >
+                            <Text
+                              style={[
+                                styles.drawerSubItemText,
+                                active && styles.drawerSubItemTextActive,
+                              ]}
+                            >
+                              {item}
+                            </Text>
+                            {active && <Feather name="check" size={14} color={colors.navyText} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                }
+
                 const active = tab === activeTabNormalized;
                 const isNotificationsTab = tab === 'Notifications';
                 return (
@@ -298,7 +548,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
                     onPress={() => handleTabPress(tab)}
                   >
                     <View style={styles.tabContentRow}>
-                      <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>{tab}</Text>
+                      <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>
+                        {tab}
+                      </Text>
                       {isNotificationsTab && effectiveUnread > 0 && (
                         <View style={styles.tabBadge}>
                           <Text style={styles.tabBadgeText}>{effectiveUnread}</Text>
@@ -384,7 +636,14 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontWeight: '700', color: colors.navyText, fontSize: 14 },
   profileText: { maxWidth: 120 },
-  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.15)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 60, paddingRight: spacing.lg },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 60,
+    paddingRight: spacing.lg,
+  },
   menuCard: {
     minWidth: 220,
     backgroundColor: colors.bgCard,
@@ -395,12 +654,37 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  menuHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   menuAvatar: { width: 40, height: 40, borderRadius: 20 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, borderRadius: radius.md },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.md,
+  },
   menuItemText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
-  roleSection: { paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.xs },
-  roleSectionLabel: { fontSize: 10, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase', letterSpacing: 0.5 },
+  roleSection: {
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.xs,
+  },
+  roleSectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   roleList: { maxHeight: 160 },
   roleItem: {
     flexDirection: 'row',
@@ -416,15 +700,137 @@ const styles = StyleSheet.create({
 
   drawerRoot: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.4)' },
   drawerOverlay: { flex: 1 },
-  drawer: { width: 300, backgroundColor: colors.bgCard, height: '100%', padding: spacing.md, flexDirection: 'column' },
-  drawerHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  drawer: {
+    width: 300,
+    backgroundColor: colors.bgCard,
+    height: '100%',
+    padding: spacing.md,
+    flexDirection: 'column',
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   drawerClose: { marginLeft: 'auto', padding: spacing.xs },
   drawerList: { paddingVertical: spacing.sm, gap: spacing.xs },
-  drawerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  drawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
   drawerItemActive: { backgroundColor: colors.primaryYellow, borderRadius: radius.md },
   drawerItemText: { fontSize: 14, fontWeight: '500', color: colors.bodyText },
   drawerItemTextActive: { fontWeight: '700', color: colors.navyText },
-  drawerFooter: { marginTop: 'auto', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
-  drawerLogout: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  drawerFooter: {
+    marginTop: 'auto',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  drawerLogout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
   drawerLogoutText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
+
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    minWidth: 230,
+    maxWidth: 290,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...makeShadow(4, 12, 0.14, '0, 0, 0', 10),
+    padding: spacing.xs,
+    gap: 2,
+    zIndex: 9999,
+  },
+  dropdownHeader: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  dropdownHeaderTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  dropdownItemActive: {
+    backgroundColor: colors.primaryYellow,
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.bodyText,
+    flex: 1,
+  },
+  dropdownItemTextActive: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  drawerGroup: {
+    marginTop: spacing.xs,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  drawerGroupHeader: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  drawerGroupTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  drawerSubItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    marginVertical: 1,
+  },
+  drawerSubItemActive: {
+    backgroundColor: colors.primaryYellow,
+  },
+  drawerSubItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.bodyText,
+  },
+  drawerSubItemTextActive: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
 });

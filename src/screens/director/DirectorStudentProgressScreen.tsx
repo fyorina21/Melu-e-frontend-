@@ -25,7 +25,7 @@ import ExportPreviewModal from '../../components/ExportPreviewModal';
 import StatusPill, { type StatusType } from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { getDirectorStudentProgress } from '../../api/directorApi';
-import { getStudentOptions } from '../../api/optionsApi';
+import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import client from '../../api/sessionApi';
 import { useFocusEffect } from '@react-navigation/native';
 import type { DirectorStackParamList } from '../../types';
@@ -57,6 +57,7 @@ interface DirectorStudentData {
   goals: DirectorGoal[];
   sessionHistory: SessionHistoryEntry[];
   incidentSummary: string;
+  internalNotes?: string;
 }
 
 /** Maps the assessment status strings returned by the API to StatusPill keys. */
@@ -81,10 +82,7 @@ function sessionStatusType(status?: string): StatusType {
   return (status && SESSION_STATUS_KEY[status]) || 'pending';
 }
 
-export default function DirectorStudentProgressScreen({
-  navigation,
-  route,
-}: any) {
+export default function DirectorStudentProgressScreen({ navigation, route }: any) {
   const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [data, setData] = useState<DirectorStudentData | null>(null);
@@ -144,7 +142,7 @@ export default function DirectorStudentProgressScreen({
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   useEffect(() => {
@@ -165,7 +163,12 @@ export default function DirectorStudentProgressScreen({
     if (data?.internalNotes !== undefined && data.internalNotes !== null) {
       setNotes(data.internalNotes);
     } else if (selectedStudentId && typeof localStorage !== 'undefined') {
-      const alias = selectedStudentId === 'stu-1' ? 'student-a' : selectedStudentId === 'student-a' ? 'stu-1' : null;
+      const alias =
+        selectedStudentId === 'stu-1'
+          ? 'student-a'
+          : selectedStudentId === 'student-a'
+            ? 'stu-1'
+            : null;
       const local =
         localStorage.getItem(`melue_director_notes_${selectedStudentId}`) ||
         (alias ? localStorage.getItem(`melue_director_notes_${alias}`) : null);
@@ -197,19 +200,22 @@ export default function DirectorStudentProgressScreen({
 
   const selectedStudentObj = useMemo(
     () => studentOptions.find((s) => s.id === selectedStudentId) ?? null,
-    [studentOptions, selectedStudentId]
+    [studentOptions, selectedStudentId],
   );
 
   const filteredStudents = useMemo(() => {
     if (!searchStudent.trim()) return studentOptions;
-    return studentOptions.filter((s) =>
-      s.name.toLowerCase().includes(searchStudent.toLowerCase())
-    );
+    return studentOptions.filter((s) => s.name.toLowerCase().includes(searchStudent.toLowerCase()));
   }, [studentOptions, searchStudent]);
 
   const handleSaveNotes = async () => {
     if (!selectedStudentId || !notes.trim()) return;
-    const alias = selectedStudentId === 'stu-1' ? 'student-a' : selectedStudentId === 'student-a' ? 'stu-1' : null;
+    const alias =
+      selectedStudentId === 'stu-1'
+        ? 'student-a'
+        : selectedStudentId === 'student-a'
+          ? 'stu-1'
+          : null;
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(`melue_director_notes_${selectedStudentId}`, notes.trim());
       if (alias) {
@@ -245,11 +251,15 @@ export default function DirectorStudentProgressScreen({
         '',
         '----------------------------------------------------------------',
         'CURRENT GOALS & MASTERY:',
-        ...data.goals.filter((g, index, self) => index === self.findIndex((t) => t.name === g.name)).map((g, i) => `  ${i + 1}. ${g.name} — ${g.percent}% Independent`),
+        ...data.goals
+          .filter((g, index, self) => index === self.findIndex((t) => t.name === g.name))
+          .map((g, i) => `  ${i + 1}. ${g.name} — ${g.percent}% Independent`),
         '',
         '----------------------------------------------------------------',
         'SESSION HISTORY LOG:',
-        ...data.sessionHistory.map((s) => `  • ${s.date} — Therapist: ${s.teacherName}${s.status ? ` (${s.status})` : ''}`),
+        ...data.sessionHistory.map(
+          (s) => `  • ${s.date} — Therapist: ${s.teacherName}${s.status ? ` (${s.status})` : ''}`,
+        ),
         '',
         '----------------------------------------------------------------',
         'BEHAVIOR INCIDENT TRENDS:',
@@ -259,7 +269,7 @@ export default function DirectorStudentProgressScreen({
         'DIRECTOR INTERNAL NOTES:',
         notes ? `  ${notes}` : '  (None entered)',
         '================================================================',
-      ].join('\n')
+      ].join('\n'),
     );
   };
 
@@ -268,8 +278,11 @@ export default function DirectorStudentProgressScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Student Progress" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="Student Progress"
+        onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Page Header */}
         <View style={styles.pageHeader}>
@@ -279,7 +292,9 @@ export default function DirectorStudentProgressScreen({
             </View>
             <View>
               <Text style={styles.pageTitle}>Student Progress Monitoring</Text>
-              <Text style={styles.pageSubtitle}>Clinical oversight of goals, sessions, assessments & behavior trends</Text>
+              <Text style={styles.pageSubtitle}>
+                Clinical oversight of goals, sessions, assessments & behavior trends
+              </Text>
             </View>
           </View>
           <TouchableOpacity style={styles.printBtn} onPress={handlePrint}>
@@ -300,15 +315,23 @@ export default function DirectorStudentProgressScreen({
               <StudentAvatar
                 name={data.name}
                 studentId={data.studentId || selectedStudentId}
-                photoUrl={(data as any).photoUrl || (data as any).headshotUrl || (data as any).photo}
+                photoUrl={
+                  (data as any).photoUrl || (data as any).headshotUrl || (data as any).photo
+                }
                 size={40}
               />
               <View>
                 <Text style={styles.selectedStudentName}>{data.name}</Text>
-                <Text style={styles.selectedStudentMeta}>Age {data.age} · {data.program}</Text>
+                <Text style={styles.selectedStudentMeta}>
+                  Age {data.age} · {data.program}
+                </Text>
               </View>
             </View>
-            <Feather name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.bodyText} />
+            <Feather
+              name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.bodyText}
+            />
           </TouchableOpacity>
 
           {/* Dropdown Menu */}
@@ -345,7 +368,12 @@ export default function DirectorStudentProgressScreen({
                         style={{ marginRight: 8 }}
                       />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
+                        <Text
+                          style={[
+                            styles.dropdownItemText,
+                            isSelected && styles.dropdownItemTextActive,
+                          ]}
+                        >
                           {s.name}
                         </Text>
                         <Text style={styles.dropdownItemSub}>
@@ -361,7 +389,9 @@ export default function DirectorStudentProgressScreen({
                         <Text
                           style={[
                             styles.statusBadgeText,
-                            s.status === 'Active' ? styles.statusActiveText : styles.statusPendingText,
+                            s.status === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusPendingText,
                           ]}
                         >
                           {s.status}
@@ -398,7 +428,9 @@ export default function DirectorStudentProgressScreen({
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.cardTitle}>Current Active Goals</Text>
-            <Text style={styles.countBadge}>{Array.from(new Set(data.goals.map(g => g.name))).length} Goals Assigned</Text>
+            <Text style={styles.countBadge}>
+              {Array.from(new Set(data.goals.map((g) => g.name))).length} Goals Assigned
+            </Text>
           </View>
           {data.goals.length === 0 && (
             <Text style={styles.emptyText}>No active goals assigned to this student yet.</Text>
@@ -406,19 +438,23 @@ export default function DirectorStudentProgressScreen({
           {data.goals
             .filter((g, index, self) => index === self.findIndex((t) => t.name === g.name))
             .map((g) => (
-            <View key={g.id} style={styles.goalRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.goalName}>{g.name}</Text>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${Math.min(100, g.percent)}%` }]} />
+              <View key={g.id} style={styles.goalRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.goalName}>{g.name}</Text>
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[styles.progressFill, { width: `${Math.min(100, g.percent)}%` }]}
+                    />
+                  </View>
+                </View>
+                <View style={styles.goalRight}>
+                  <Text style={styles.goalPercent}>{g.percent}%</Text>
+                  <Text style={styles.goalStatusText}>
+                    {g.percent >= 80 ? 'Mastery Ready' : 'In Progress'}
+                  </Text>
                 </View>
               </View>
-              <View style={styles.goalRight}>
-                <Text style={styles.goalPercent}>{g.percent}%</Text>
-                <Text style={styles.goalStatusText}>{g.percent >= 80 ? 'Mastery Ready' : 'In Progress'}</Text>
-              </View>
-            </View>
-          ))}
+            ))}
         </View>
 
         {/* Goal Progress Trend Chart */}
@@ -520,7 +556,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 260 },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 260,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -631,15 +673,37 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.bgApp,
   },
   goalName: { fontSize: 14, fontWeight: '600', color: colors.navyText },
-  progressTrack: { height: 6, backgroundColor: '#E5E7EB', borderRadius: radius.pill, marginTop: 6, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: colors.primaryYellowDark, borderRadius: radius.pill },
+  progressTrack: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: radius.pill,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primaryYellowDark,
+    borderRadius: radius.pill,
+  },
   goalRight: { alignItems: 'flex-end', minWidth: 80 },
   goalPercent: { fontSize: 14, fontWeight: '700', color: colors.navyText },
   goalStatusText: { fontSize: 10, fontWeight: '600', color: colors.bodyText },
 
-  chartWrap: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', height: 160, paddingTop: spacing.md },
+  chartWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-around',
+    height: 160,
+    paddingTop: spacing.md,
+  },
   chartCol: { alignItems: 'center', flex: 1, height: '100%', justifyContent: 'flex-end', gap: 4 },
-  barWrap: { width: 16, height: 110, justifyContent: 'flex-end', backgroundColor: colors.bgApp, borderRadius: 4 },
+  barWrap: {
+    width: 16,
+    height: 110,
+    justifyContent: 'flex-end',
+    backgroundColor: colors.bgApp,
+    borderRadius: 4,
+  },
   bar: { width: '100%', backgroundColor: colors.primaryYellow, borderRadius: 4 },
   barLabel: { fontSize: 10, color: colors.bodyText },
   barValue: { fontSize: 10, fontWeight: '700', color: colors.navyText },
@@ -652,7 +716,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.bgApp,
   },
-  sessionIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bgApp, alignItems: 'center', justifyContent: 'center' },
+  sessionIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.bgApp,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sessionDate: { fontSize: 13, fontWeight: '600', color: colors.navyText },
   sessionTherapist: { fontSize: 11, color: colors.bodyText },
   sessionRight: { alignSelf: 'center' },
@@ -692,9 +763,9 @@ const styles = StyleSheet.create({
   savedNoteText: { fontSize: 11, color: colors.successGreen, fontWeight: '600' },
   dropdownItemSub: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
-  statusBadgeText: { fontSize: 10, fontWeight: "700" },
-  statusActive: { backgroundColor: "#DCFCE7" },
-  statusActiveText: { fontSize: 10, fontWeight: "700", color: "#166534" },
-  statusPending: { backgroundColor: "#FEF3C7" },
-  statusPendingText: { fontSize: 10, fontWeight: "700", color: "#B45309" },
+  statusBadgeText: { fontSize: 10, fontWeight: '700' },
+  statusActive: { backgroundColor: '#DCFCE7' },
+  statusActiveText: { fontSize: 10, fontWeight: '700', color: '#166534' },
+  statusPending: { backgroundColor: '#FEF3C7' },
+  statusPendingText: { fontSize: 10, fontWeight: '700', color: '#B45309' },
 });

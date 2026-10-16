@@ -49,11 +49,11 @@ export default function IupLibraryScreen({
       const { data: res } = await getIupLibrary({ search, status: statusFilter });
       const raw = Array.isArray(res)
         ? res
-        : Array.isArray(res?.iups)
-        ? res.iups
-        : Array.isArray(res?.data)
-        ? res.data
-        : [];
+        : Array.isArray((res as any)?.iups)
+          ? (res as any).iups
+          : Array.isArray((res as any)?.data)
+            ? (res as any).data
+            : [];
       setList(raw);
     } catch {
       setList([]);
@@ -100,7 +100,7 @@ export default function IupLibraryScreen({
     return list.filter(
       (i) =>
         (statusFilter === 'All' || i.status === statusFilter) &&
-        (!search || i.studentName.toLowerCase().includes(search.toLowerCase()))
+        (!search || i.studentName.toLowerCase().includes(search.toLowerCase())),
     );
   }, [list, statusFilter, search]);
 
@@ -118,8 +118,11 @@ export default function IupLibraryScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="IUP Library" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="IUP Library"
+        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.pageHeader}>
           <View style={styles.headerLeft}>
@@ -128,7 +131,9 @@ export default function IupLibraryScreen({
             </View>
             <View>
               <Text style={styles.pageTitle}>IUP Library Management</Text>
-              <Text style={styles.pageSubtitle}>Search, review, export, and manage all student intervention plans</Text>
+              <Text style={styles.pageSubtitle}>
+                Search, review, export, and manage all student intervention plans
+              </Text>
             </View>
           </View>
           <TouchableOpacity
@@ -189,7 +194,12 @@ export default function IupLibraryScreen({
                   style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
                   onPress={() => setStatusFilter(s)}
                 >
-                  <Text style={[styles.filterChipText, statusFilter === s && styles.filterChipTextActive]}>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      statusFilter === s && styles.filterChipTextActive,
+                    ]}
+                  >
                     {s}
                   </Text>
                 </TouchableOpacity>
@@ -222,16 +232,19 @@ export default function IupLibraryScreen({
                   </Text>
                 </View>
                 <StatusPill
-                  status={iup.status === 'Active' ? 'approved' : iup.status === 'Draft' ? 'pending' : 'notStarted'}
+                  status={
+                    iup.status === 'Active'
+                      ? 'approved'
+                      : iup.status === 'Draft'
+                        ? 'pending'
+                        : 'notStarted'
+                  }
                   label={iup.status}
                 />
               </View>
 
               <View style={styles.iupCardActions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => setExportTarget(iup)}
-                >
+                <TouchableOpacity style={styles.actionBtn} onPress={() => setExportTarget(iup)}>
                   <Feather name="eye" size={14} color={colors.navyText} />
                   <Text style={styles.actionBtnText}>View / Export</Text>
                 </TouchableOpacity>
@@ -239,7 +252,9 @@ export default function IupLibraryScreen({
                 {iup.status === 'Draft' && (
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.editDraftBtn]}
-                    onPress={() => navigation?.navigate?.('IupGeneration', { studentId: iup.studentId })}
+                    onPress={() =>
+                      navigation?.navigate?.('IupGeneration', { studentId: iup.studentId })
+                    }
                   >
                     <Feather name="edit-2" size={14} color={colors.navyText} />
                     <Text style={styles.actionBtnText}>Edit Draft</Text>
@@ -263,7 +278,9 @@ export default function IupLibraryScreen({
             <View style={styles.emptyCard}>
               <Feather name="inbox" size={36} color={colors.mutedText} />
               <Text style={styles.emptyTitle}>No IUP Plans Found</Text>
-              <Text style={styles.emptySub}>No intervention plans matched your search or status filter.</Text>
+              <Text style={styles.emptySub}>
+                No intervention plans matched your search or status filter.
+              </Text>
             </View>
           )}
         </View>
@@ -272,7 +289,11 @@ export default function IupLibraryScreen({
       <ExportPreviewModal
         visible={!!exportTarget}
         title="IUP Plan Record"
-        filename={exportTarget ? `${exportTarget.studentName.replace(/\s+/g, '_')}_IUP_v${exportTarget.version}.txt` : ''}
+        filename={
+          exportTarget
+            ? `${exportTarget.studentName.replace(/\s+/g, '_')}_IUP_v${exportTarget.version}.txt`
+            : ''
+        }
         content={exportTarget ? buildExportText(exportTarget) : ''}
         onClose={() => setExportTarget(null)}
       />
@@ -291,7 +312,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -359,7 +386,10 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
     backgroundColor: colors.bgApp,
   },
-  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellowDark },
+  filterChipActive: {
+    backgroundColor: colors.primaryYellow,
+    borderColor: colors.primaryYellowDark,
+  },
   filterChipText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
   filterChipTextActive: { color: colors.navyText, fontWeight: '700' },
 
@@ -384,7 +414,12 @@ const styles = StyleSheet.create({
   studentAvatarText: { fontSize: 17, fontWeight: '700', color: colors.navyText },
   iupTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   iupStudentName: { fontSize: 15, fontWeight: '700', color: colors.navyText },
-  versionBadge: { backgroundColor: colors.bgApp, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill },
+  versionBadge: {
+    backgroundColor: colors.bgApp,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
   versionBadgeText: { fontSize: 10, fontWeight: '700', color: colors.bodyText },
   iupMeta: { fontSize: 12, color: colors.bodyText, marginTop: 2 },
 
@@ -424,4 +459,3 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText, marginTop: spacing.xs },
   emptySub: { fontSize: 12, color: colors.mutedText, textAlign: 'center' },
 });
-

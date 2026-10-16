@@ -19,12 +19,18 @@ function toISO(d?: Date | string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export default function DobPicker({ value, maximumDate, onChange, placeholder = 'dd/mm/yyyy' }: Props) {
+export default function DobPicker({
+  value,
+  maximumDate,
+  onChange,
+  placeholder = 'dd/mm/yyyy',
+}: Props) {
   const formattedValue = toISO(value);
 
   return (
     <input
       type="date"
+      aria-label="Date of Birth"
       placeholder={placeholder}
       value={formattedValue}
       max={maximumDate ? toISO(maximumDate) : undefined}

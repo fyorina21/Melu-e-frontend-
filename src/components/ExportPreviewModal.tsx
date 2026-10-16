@@ -14,6 +14,8 @@ import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { downloadTextFile, openPrintWindow } from '../utils/webExport';
 
+import AccessibleModal from './AccessibleModal';
+
 interface ExportPreviewModalProps {
   visible: boolean;
   title: string;
@@ -61,7 +63,13 @@ export default function ExportPreviewModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <AccessibleModal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+      accessibilityLabel={`Export Preview: ${title}`}
+    >
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           {/* Header */}
@@ -95,10 +103,7 @@ export default function ExportPreviewModal({
                   color={viewMode === 'formatted' ? colors.navyText : colors.bodyText}
                 />
                 <Text
-                  style={[
-                    styles.segmentText,
-                    viewMode === 'formatted' && styles.segmentTextActive,
-                  ]}
+                  style={[styles.segmentText, viewMode === 'formatted' && styles.segmentTextActive]}
                 >
                   Formatted Document
                 </Text>
@@ -112,9 +117,7 @@ export default function ExportPreviewModal({
                   size={13}
                   color={viewMode === 'raw' ? colors.navyText : colors.bodyText}
                 />
-                <Text
-                  style={[styles.segmentText, viewMode === 'raw' && styles.segmentTextActive]}
-                >
+                <Text style={[styles.segmentText, viewMode === 'raw' && styles.segmentTextActive]}>
                   Raw Plaintext
                 </Text>
               </TouchableOpacity>
@@ -139,7 +142,9 @@ export default function ExportPreviewModal({
                 <View style={styles.docLetterhead}>
                   <View style={styles.letterheadTopRow}>
                     <Text style={styles.docBrand}>Melu'e Foundation</Text>
-                    <Text style={styles.docPageMeta}>Page {pageNumber} of {totalPages}</Text>
+                    <Text style={styles.docPageMeta}>
+                      Page {pageNumber} of {totalPages}
+                    </Text>
                   </View>
                   <View style={styles.letterheadMetaRow}>
                     <View style={styles.metaBadge}>
@@ -186,7 +191,7 @@ export default function ExportPreviewModal({
           </View>
         </View>
       </View>
-    </Modal>
+    </AccessibleModal>
   );
 }
 
@@ -303,7 +308,12 @@ const styles = StyleSheet.create({
   },
   metaBadgeText: { fontSize: 10, fontWeight: '700', color: '#374151' },
   docMeta: { fontSize: 11, color: colors.mutedText },
-  docContentText: { fontSize: 13, color: colors.navyText, lineHeight: 20, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
+  docContentText: {
+    fontSize: 13,
+    color: colors.navyText,
+    lineHeight: 20,
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+  },
   mono: {
     fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
     fontSize: 12,
@@ -359,4 +369,3 @@ const styles = StyleSheet.create({
   },
   shareBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 13 },
 });
-

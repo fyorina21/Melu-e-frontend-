@@ -1,0 +1,13 @@
+node_modules
+.expo
+dist
+*.log
+package-lock.json
+fix*.js
+fix*.py
+update*.js
+test-*.js
+clean-fix.js
+replace.py
+append-api.py
+items.txt

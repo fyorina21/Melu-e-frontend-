@@ -116,7 +116,8 @@ describe('Goal Mastery Check and Approval Flow', () => {
     // Reject via directorApi
     await rejectMastery('mc-student-2-g2', {
       reason: 'Generalization criteria not met with Teacher B (gestural prompt required).',
-      notes: 'Please conduct 3 additional generalization trials without prompt before re-submitting.',
+      notes:
+        'Please conduct 3 additional generalization trials without prompt before re-submitting.',
     });
 
     // Verify removed from pending
@@ -127,7 +128,7 @@ describe('Goal Mastery Check and Approval Flow', () => {
     const rejectedItem = getMasteryCheckById('mc-student-2-g2');
     expect(rejectedItem?.status).toBe('rejected');
     expect(rejectedItem?.rejectionReason).toBe(
-      'Generalization criteria not met with Teacher B (gestural prompt required).'
+      'Generalization criteria not met with Teacher B (gestural prompt required).',
     );
     expect(rejectedItem?.approvalNotes).toContain('3 additional generalization trials');
 
@@ -171,7 +172,8 @@ describe('Goal Mastery Check and Approval Flow', () => {
 
     // Approve via directorApi
     await approveMastery('mc-student-3-g3', {
-      notes: 'Exceptional generalization demonstrated across novel peers and environments. Approved.',
+      notes:
+        'Exceptional generalization demonstrated across novel peers and environments. Approved.',
     });
 
     // Verify removed from pending
@@ -189,6 +191,7 @@ describe('Goal Mastery Check and Approval Flow', () => {
       id: 'mc-detail-test',
       studentId: 'student-detail',
       studentName: 'Sophia Taylor',
+      goalId: 'g-detail-1',
       goalName: 'Color Matching',
       station: 'Foundations',
       dateSubmitted: '2026-10-12',

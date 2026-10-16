@@ -7,16 +7,20 @@ import HomeObservationLogScreen from '../screens/parent/HomeObservationLogScreen
 import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScreen';
 import ParentNotificationsScreen from '../screens/notifications/ParentNotificationsScreen';
 
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
 const Stack = createNativeStackNavigator<ParentStackParamList>();
 
 export default function ParentStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ParentDashboard" component={ParentDashboardScreen} />
-      <Stack.Screen name="ChildProgress" component={ChildProgressScreen} />
-      <Stack.Screen name="HomeObservationLog" component={HomeObservationLogScreen} />
-      <Stack.Screen name="ParentCommunication" component={ParentCommunicationScreen} />
-      <Stack.Screen name="Notifications" component={ParentNotificationsScreen} />
-    </Stack.Navigator>
+    <ErrorBoundary screenName="Parent Navigator">
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="ParentDashboard" component={ParentDashboardScreen} />
+        <Stack.Screen name="ChildProgress" component={ChildProgressScreen} />
+        <Stack.Screen name="HomeObservationLog" component={HomeObservationLogScreen} />
+        <Stack.Screen name="ParentCommunication" component={ParentCommunicationScreen} />
+        <Stack.Screen name="Notifications" component={ParentNotificationsScreen} />
+      </Stack.Navigator>
+    </ErrorBoundary>
   );
 }

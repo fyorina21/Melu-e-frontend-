@@ -11,7 +11,8 @@ export const FORMS = [
   'Sensory Assessment',
 ];
 
-export const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File'];
+export const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File'] as const;
+export type FieldType = (typeof FIELD_TYPES)[number];
 
 export const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
 
@@ -28,68 +29,181 @@ export const ABLLS_SECTIONS = [
   'General',
 ];
 
-export const SOCIAL_SKILLS_SECTIONS = ['Social Interaction', 'Communication', 'Play & Leisure', 'General'];
+export const SOCIAL_SKILLS_SECTIONS = [
+  'Social Interaction',
+  'Communication',
+  'Play & Leisure',
+  'General',
+];
 export const BEHAVIORAL_SECTIONS = ['MASS', 'FAST', 'ABC Tracking', 'General'];
 export const PREFERENCE_SECTIONS = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement', 'General'];
-export const SENSORY_SECTIONS = ['Tactile', 'Visual & Auditory', 'Proprioception & Vestibular', 'General'];
+export const SENSORY_SECTIONS = [
+  'Tactile',
+  'Visual & Auditory',
+  'Proprioception & Vestibular',
+  'General',
+];
 export const BEHAVIOR_INCIDENT_SECTIONS = ['Incident Details', 'ABC Tracking', 'General'];
 
 export const getSectionsForForm = (formName: string): string[] => {
   if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
   if (formName === 'ABLLS Assessment Form') return ABLLS_SECTIONS;
   if (formName === 'Social Skills Questionnaire') return SOCIAL_SKILLS_SECTIONS;
-  if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment') return BEHAVIORAL_SECTIONS;
+  if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment')
+    return BEHAVIORAL_SECTIONS;
   if (formName === 'Preference Assessment') return PREFERENCE_SECTIONS;
   if (formName === 'Sensory Assessment') return SENSORY_SECTIONS;
-  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident')) return BEHAVIOR_INCIDENT_SECTIONS;
+  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident'))
+    return BEHAVIOR_INCIDENT_SECTIONS;
   return [];
 };
 
 export const ASSESSMENT_DIRECT_ROUTES: Record<string, { url: string; route: string }> = {
-  'Enrollment Wizard': { url: 'http://localhost:8081/StudentEnrollmentWizard', route: 'StudentEnrollmentWizard' },
-  'ABLLS Assessment Form': { url: 'http://localhost:8081/SkillsAssessment', route: 'SkillsAssessment' },
-  'Social Skills Questionnaire': { url: 'http://localhost:8081/SocialSkillsAssessment', route: 'SocialSkillsAssessment' },
-  'Behavioral Assessment': { url: 'http://localhost:8081/BehaviorAssessment', route: 'BehaviorAssessment' },
-  'Preference Assessment': { url: 'http://localhost:8081/PreferenceAssessment', route: 'PreferenceAssessment' },
-  'Sensory Assessment': { url: 'http://localhost:8081/SensoryAssessment', route: 'SensoryAssessment' },
-  'Behavior Incident Form': { url: 'http://localhost:8081/SessionDataCollection', route: 'SessionDataCollection' },
+  'Enrollment Wizard': {
+    url: 'http://localhost:8081/StudentEnrollmentWizard',
+    route: 'StudentEnrollmentWizard',
+  },
+  'ABLLS Assessment Form': {
+    url: 'http://localhost:8081/SkillsAssessment',
+    route: 'SkillsAssessment',
+  },
+  'Social Skills Questionnaire': {
+    url: 'http://localhost:8081/SocialSkillsAssessment',
+    route: 'SocialSkillsAssessment',
+  },
+  'Behavioral Assessment': {
+    url: 'http://localhost:8081/BehaviorAssessment',
+    route: 'BehaviorAssessment',
+  },
+  'Preference Assessment': {
+    url: 'http://localhost:8081/PreferenceAssessment',
+    route: 'PreferenceAssessment',
+  },
+  'Sensory Assessment': {
+    url: 'http://localhost:8081/SensoryAssessment',
+    route: 'SensoryAssessment',
+  },
+  'Behavior Incident Form': {
+    url: 'http://localhost:8081/SessionDataCollection',
+    route: 'SessionDataCollection',
+  },
 };
 
 export const SCORE_SCALE_PRESETS = [
-  { label: '2-Level (0, 1, N/A)', short: '2-Lvl (0,1)', options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'] },
-  { label: '4-Level (0, 1, 2, 3, N/A)', short: '4-Lvl', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'] },
+  {
+    label: '2-Level (0, 1, N/A)',
+    short: '2-Lvl (0,1)',
+    options: ['0 — Not Demonstrated', '1 — Mastered', 'N/A'],
+  },
+  {
+    label: '4-Level (0, 1, 2, 3, N/A)',
+    short: '4-Lvl',
+    options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Developing', '3 — Mastered', 'N/A'],
+  },
 ];
 
 export const BEHAVIORAL_PRESETS = [
-  { label: 'Likert 6-Pt', short: 'Likert (6)', options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'] },
+  {
+    label: 'Likert 6-Pt',
+    short: 'Likert (6)',
+    options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'],
+  },
   { label: 'Yes/No', short: 'Yes/No', options: ['Yes', 'No'] },
   { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
-  { label: 'ABC Behaviors', short: 'Behaviors', options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'] },
+  {
+    label: 'ABC Behaviors',
+    short: 'Behaviors',
+    options: [
+      'Aggression',
+      'Self-injury',
+      'Tantrum',
+      'Elopement',
+      'Non-compliance',
+      'Property destruction',
+      'Repetitive behaviors',
+    ],
+  },
 ];
 
 export const SENSORY_PRESETS = [
-  { label: 'Engagement Level', short: 'Engagement', options: ['Independent', 'Partial Physical Prompt', 'Full Physical Prompt', 'Not Applicable'] },
-  { label: 'Reaction', short: 'Reaction', options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'] },
+  {
+    label: 'Engagement Level',
+    short: 'Engagement',
+    options: ['Independent', 'Partial Physical Prompt', 'Full Physical Prompt', 'Not Applicable'],
+  },
+  {
+    label: 'Reaction',
+    short: 'Reaction',
+    options: ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'],
+  },
 ];
 
 export const BEHAVIOR_INCIDENT_PRESETS = [
-  { label: 'Location Presets', short: 'Locations', options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'] },
-  { label: 'Behavior Types', short: 'Behaviors', options: ['Aggression', 'Self-injury', 'Tantrum', 'Elopement', 'Non-compliance', 'Property destruction', 'Repetitive behaviors'] },
+  {
+    label: 'Location Presets',
+    short: 'Locations',
+    options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
+  },
+  {
+    label: 'Behavior Types',
+    short: 'Behaviors',
+    options: [
+      'Aggression',
+      'Self-injury',
+      'Tantrum',
+      'Elopement',
+      'Non-compliance',
+      'Property destruction',
+      'Repetitive behaviors',
+    ],
+  },
   { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
-  { label: 'Antecedents', short: 'Antecedents', options: ['Demand / Task', 'Transition', 'Denied Access', 'Attention Diverted', 'Sensory Overload', 'Loud Noise', 'Peer Interaction'] },
-  { label: 'Consequences', short: 'Consequences', options: ['Redirection', 'Verbal Prompt', 'Break Given', 'Sensory Break', 'Physical Prompt', 'Planned Ignoring'] },
+  {
+    label: 'Antecedents',
+    short: 'Antecedents',
+    options: [
+      'Demand / Task',
+      'Transition',
+      'Denied Access',
+      'Attention Diverted',
+      'Sensory Overload',
+      'Loud Noise',
+      'Peer Interaction',
+    ],
+  },
+  {
+    label: 'Consequences',
+    short: 'Consequences',
+    options: [
+      'Redirection',
+      'Verbal Prompt',
+      'Break Given',
+      'Sensory Break',
+      'Physical Prompt',
+      'Planned Ignoring',
+    ],
+  },
 ];
 
 export const SOCIAL_SKILLS_PRESETS = [
-  { label: '4-Level Frequency (0-Never, 1-Sometimes, 2-Often, 3-Always)', short: '4-Pt (0-3)', options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'] },
+  {
+    label: '4-Level Frequency (0-Never, 1-Sometimes, 2-Often, 3-Always)',
+    short: '4-Pt (0-3)',
+    options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+  },
   { label: 'Yes/No', short: 'Yes/No', options: ['Yes', 'No'] },
-  { label: '3-Level Frequency', short: '3-Lvl', options: ['Rarely', 'Occasionally', 'Consistently'] },
+  {
+    label: '3-Level Frequency',
+    short: '3-Lvl',
+    options: ['Rarely', 'Occasionally', 'Consistently'],
+  },
 ];
 
 export const getPresetsForForm = (formName: string) => {
   if (formName === 'ABLLS Assessment Form') return SCORE_SCALE_PRESETS;
   if (formName === 'Social Skills Questionnaire') return SOCIAL_SKILLS_PRESETS;
-  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident')) return BEHAVIOR_INCIDENT_PRESETS;
+  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident'))
+    return BEHAVIOR_INCIDENT_PRESETS;
   return [];
 };
 
@@ -112,8 +226,8 @@ export const SECTION_LETTER: Record<string, string> = {
   'Requesting (Mands)': 'E',
   'Play and Leisure': 'F',
   'Social Interaction': 'G',
-  'Writing': 'H',
-  'Dressing': 'I',
+  Writing: 'H',
+  Dressing: 'I',
 };
 
 export const inferSectionFromId = (id: string): string | null => {
@@ -126,7 +240,14 @@ export const inferSectionFromId = (id: string): string | null => {
     if (id.startsWith('ABC-') || id === 'b_ant' || id === 'b_con') return 'ABC Tracking';
     if (id.startsWith('P') && /^\d+$/.test(id.slice(1))) return 'General';
     if (id.startsWith('SEN-')) return 'Tactile';
-    if (id.startsWith('b_loc') || id.startsWith('b_beh') || id.startsWith('b_int') || id.startsWith('b_dur') || /^b\d+$/i.test(id)) return 'Incident Details';
+    if (
+      id.startsWith('b_loc') ||
+      id.startsWith('b_beh') ||
+      id.startsWith('b_int') ||
+      id.startsWith('b_dur') ||
+      /^b\d+$/i.test(id)
+    )
+      return 'Incident Details';
     if (id.startsWith('b_notes')) return 'General';
     return null;
   }
@@ -188,7 +309,11 @@ export const escapeRegExp = (str: string): string => {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-export const getNextIdForSection = (form: string, section: string | undefined, prevFields: FormField[]): string => {
+export const getNextIdForSection = (
+  form: string,
+  section: string | undefined,
+  prevFields: FormField[],
+): string => {
   if (form === 'ABLLS Assessment Form' && section) {
     const letter = getDomainLetterForAblls(section, prevFields);
     if (letter) {
@@ -291,7 +416,10 @@ export const getNextIdForSection = (form: string, section: string | undefined, p
 
     let prefix = 'SEC';
     if (cleanWords.length > 1) {
-      prefix = cleanWords.map((w) => w[0].toUpperCase()).join('').slice(0, 4);
+      prefix = cleanWords
+        .map((w) => w[0].toUpperCase())
+        .join('')
+        .slice(0, 4);
     } else if (cleanWords.length === 1) {
       const w = cleanWords[0].toUpperCase();
       prefix = w.length <= 4 ? w : w.slice(0, 3);
@@ -317,4 +445,3 @@ export const getNextIdForSection = (form: string, section: string | undefined, p
 
   return `f-${Date.now()}`;
 };
-

@@ -104,7 +104,13 @@ function hasAdminBackendRole(): boolean {
 
 function hasDirectorBackendRole(): boolean {
   const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
-  return roles.some((r) => r === 'director' || r === 'program_director' || r === 'system_admin' || r === 'institutional_admin');
+  return roles.some(
+    (r) =>
+      r === 'director' ||
+      r === 'program_director' ||
+      r === 'system_admin' ||
+      r === 'institutional_admin',
+  );
 }
 
 // ---- Opt-in hooks ----
@@ -146,7 +152,11 @@ async function executeRefresh(): Promise<string | null> {
   if (!inflightRefreshPromise) {
     inflightRefreshPromise = (async () => {
       try {
-        return await refreshHandler();
+        const token = await refreshHandler();
+        if (token) {
+          await setAccessToken(token);
+        }
+        return token;
       } finally {
         inflightRefreshPromise = null;
       }
@@ -191,8 +201,7 @@ function createHttpClient(): AxiosInstance {
       }
     } else {
       const isDirectorRoute =
-        config.url?.startsWith('/director') ||
-        config.url?.includes('/director/');
+        config.url?.startsWith('/director') || config.url?.includes('/director/');
 
       const isAdminRoute =
         config.url?.startsWith('/sysadmin') ||
@@ -266,12 +275,16 @@ function createHttpClient(): AxiosInstance {
         });
       }
 
+      // Transparent single-attempt refresh on 401 or expired JWT with mutex & queue
       const status = axiosError.response?.status;
       const respData = axiosError.response?.data as any;
-      const errorMsg = String(respData?.error || respData?.message || axiosError.message || '').toLowerCase();
+      const errorMsg = String(
+        respData?.error || respData?.message || axiosError.message || '',
+      ).toLowerCase();
       const isExpiredJwt =
         status === 401 ||
-        (status === 400 && (errorMsg.includes('expired') || errorMsg.includes('jwt') || errorMsg.includes('token')));
+        (status === 400 &&
+          (errorMsg.includes('expired') || errorMsg.includes('jwt') || errorMsg.includes('token')));
 
       const isAuthUrl =
         cfg?.url?.includes('/auth/login') ||
@@ -282,9 +295,7 @@ function createHttpClient(): AxiosInstance {
 
       // Transparent retry on 403 Forbidden for director & admin routes
       if (status === 403 && cfg && !cfg._retry && !isAuthUrl) {
-        const isDirectorRoute =
-          cfg.url?.startsWith('/director') ||
-          cfg.url?.includes('/director/');
+        const isDirectorRoute = cfg.url?.startsWith('/director') || cfg.url?.includes('/director/');
 
         const isAdminRoute =
           cfg.url?.startsWith('/sysadmin') ||
@@ -323,9 +334,7 @@ function createHttpClient(): AxiosInstance {
 
       // Transparent retry on 401 Unauthorized for director routes
       if (status === 401 && cfg && !cfg._retry && !isAuthUrl) {
-        const isDirectorRoute =
-          cfg.url?.startsWith('/director') ||
-          cfg.url?.includes('/director/');
+        const isDirectorRoute = cfg.url?.startsWith('/director') || cfg.url?.includes('/director/');
 
         if (isDirectorRoute) {
           cfg._retry = true;
@@ -347,6 +356,28 @@ function createHttpClient(): AxiosInstance {
       const shouldRefresh = isExpiredJwt && cfg && !cfg._retry && !isAuthUrl && !!refreshHandler;
       if (shouldRefresh) {
         cfg._retry = true;
+
+        // If a previous concurrent request already refreshed the token while this request
+        // was in flight, reuse the newer token directly.
+        const currentToken = getAccessToken();
+        const rawAuthHeader =
+          typeof cfg.headers?.Authorization === 'string'
+            ? cfg.headers.Authorization
+            : typeof (cfg.headers as any)?.authorization === 'string'
+              ? (cfg.headers as any).authorization
+              : '';
+        const sentToken = rawAuthHeader.replace(/^Bearer\s+/i, '');
+
+        if (currentToken && sentToken && currentToken !== sentToken) {
+          cfg.headers = cfg.headers ?? {};
+          if (typeof (cfg.headers as any).set === 'function') {
+            (cfg.headers as any).set('Authorization', `Bearer ${currentToken}`);
+          } else {
+            cfg.headers.Authorization = `Bearer ${currentToken}`;
+          }
+          return instance(cfg);
+        }
+
         try {
           const token = await executeRefresh();
           if (!token) {
@@ -354,9 +385,13 @@ function createHttpClient(): AxiosInstance {
             notifySessionExpired();
             return Promise.reject(toApiError(error));
           }
-          await setAccessToken(token);
+
           cfg.headers = cfg.headers ?? {};
-          cfg.headers.Authorization = `Bearer ${token}`;
+          if (typeof (cfg.headers as any).set === 'function') {
+            (cfg.headers as any).set('Authorization', `Bearer ${token}`);
+          } else {
+            cfg.headers.Authorization = `Bearer ${token}`;
+          }
           return instance(cfg);
         } catch (refreshError) {
           await clearAuthTokens();
@@ -369,7 +404,7 @@ function createHttpClient(): AxiosInstance {
         await clearAuthTokens();
         notifySessionExpired();
       }
-      
+
       return Promise.reject(toApiError(error));
     },
   );
