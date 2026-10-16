@@ -65,13 +65,17 @@ export const authApi = {
       remember_device: payload.rememberDevice,
     });
     const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
-    const refreshToken = (data as any).refresh_token ?? (data as any).refreshToken;
+    const refreshToken =
+      (data as any).refresh_token ??
+      (data as any)['refresh-token'] ??
+      (data as any).refreshToken ??
+      (headers as any)?.['x-refresh-token'] ??
+      (headers as any)?.['refresh-token'];
     // Persist only when "remember this device" was ticked. Unchecked means the
-    // session lives for this app run only and is gone after a restart. The
-    // refresh token follows the same rule so an unremembered session cannot
-    // be resurrected from storage.
+    // session lives for this app run only and is gone after a restart. Keeping
+    // the refresh token in memory allows transparent token refresh while active.
     if (token) await setAccessToken(token, !!payload.rememberDevice);
-    if (refreshToken && payload.rememberDevice) await setRefreshToken(refreshToken);
+    if (refreshToken) await setRefreshToken(refreshToken, !!payload.rememberDevice);
     return {
       ...data,
       token: token || '',
@@ -92,13 +96,17 @@ export const authApi = {
       const token =
         data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
       const newRefreshToken =
-        (data as any).refresh_token ?? (data as any).refreshToken ?? currentRefreshToken;
+        (data as any).refresh_token ??
+        (data as any)['refresh-token'] ??
+        (data as any).refreshToken ??
+        currentRefreshToken;
 
+      const isPersisted = !!(await loadRefreshToken());
       if (token) {
-        await setAccessToken(token);
+        await setAccessToken(token, isPersisted);
       }
       if (newRefreshToken) {
-        await setRefreshToken(newRefreshToken);
+        await setRefreshToken(newRefreshToken, isPersisted);
       }
 
       return token || null;

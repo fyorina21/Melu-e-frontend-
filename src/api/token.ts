@@ -209,7 +209,7 @@ export async function loadRefreshToken(): Promise<string | null> {
   return getRefreshToken();
 }
 
-export async function setRefreshToken(token: string | null): Promise<void> {
+export async function setRefreshToken(token: string | null, persist = true): Promise<void> {
   if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
     refreshToken = null;
 
@@ -224,6 +224,15 @@ export async function setRefreshToken(token: string | null): Promise<void> {
 
   const cleanToken = token.trim();
   refreshToken = cleanToken;
+
+  if (!persist) {
+    try {
+      await resolveStorage().removeItem(REFRESH_TOKEN_KEY);
+    } catch (err) {
+      console.warn('Failed to clear stored refresh token:', err);
+    }
+    return;
+  }
 
   try {
     await resolveStorage().setItem(REFRESH_TOKEN_KEY, cleanToken);

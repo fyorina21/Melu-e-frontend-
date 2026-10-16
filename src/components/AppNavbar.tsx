@@ -316,14 +316,12 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   return (
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
-        {(isCompact || isSidebarNav) && (
+        {isCompact && !isSidebarNav && (
           <TouchableOpacity
-            onPress={isSidebarNav ? toggleSidebar : () => setDrawerOpen(true)}
+            onPress={() => setDrawerOpen(true)}
             style={styles.hamburgerBtn}
             accessibilityRole="button"
-            accessibilityLabel={
-              isSidebarNav ? (isCollapsed ? 'Expand sidebar' : 'Collapse sidebar') : 'Open menu'
-            }
+            accessibilityLabel="Open menu"
           >
             <Feather name="menu" size={20} color={colors.navyText} />
           </TouchableOpacity>
