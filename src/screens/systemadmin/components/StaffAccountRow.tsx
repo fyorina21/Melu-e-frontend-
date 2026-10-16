@@ -4,7 +4,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
 import StatusPill from '../../../components/StatusPill';
-import { type StaffMember } from '../types';
+import { type StaffMember, getSafeStaffRoles } from '../types';
 
 interface StaffAccountRowProps {
   staff: StaffMember;
@@ -30,7 +30,9 @@ export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
     onToggleActive,
     onDelete,
   }) => {
-    const isLinkable = staff.roles.includes('Teacher') || staff.roles.includes('Therapist');
+    const safeRoles = getSafeStaffRoles(staff);
+    const normalized = safeRoles.map((r) => r.trim().toLowerCase());
+    const isLinkable = normalized.includes('teacher') || normalized.includes('therapist');
 
     return (
       <View style={styles.row}>
@@ -47,7 +49,7 @@ export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
         <View style={styles.infoCol}>
           <Text style={typography.bodyBold}>{staff.name}</Text>
           <Text style={typography.caption}>
-            {staff.email} · {staff.roles.join(', ')}
+            {staff.email} · {safeRoles.length > 0 ? safeRoles.join(', ') : 'No roles assigned'}
           </Text>
         </View>
 

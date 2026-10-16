@@ -5,7 +5,7 @@ import { colors, radius, spacing } from '../../../theme';
 import { typography } from '../../../theme/typography';
 import { useToast } from '../../../context/ToastContext';
 import { resetStaffPassword } from '../../../api/SystemAdminApi';
-import type { StaffMember } from '../types';
+import { type StaffMember, getSafeStaffRoles } from '../types';
 
 export interface ResetPasswordModalProps {
   visible: boolean;
@@ -31,6 +31,8 @@ export function ResetPasswordModal({
   }, [staff, visible]);
 
   if (!staff) return null;
+
+  const safeRoles = getSafeStaffRoles(staff);
 
   const handleCustomReset = async () => {
     if (!newPassword.trim()) {
@@ -83,7 +85,7 @@ export function ResetPasswordModal({
             <Text style={typography.caption}>
               Role(s):{' '}
               <Text style={{ fontWeight: '600', color: colors.navyText }}>
-                {staff.roles.join(', ')}
+                {safeRoles.length > 0 ? safeRoles.join(', ') : 'None'}
               </Text>
             </Text>
             <Text style={typography.caption}>

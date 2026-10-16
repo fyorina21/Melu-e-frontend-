@@ -57,6 +57,17 @@ export const ROLE_OPTIONS = [
   'Parent',
 ] as const;
 
+export function getSafeStaffRoles(staff: StaffMember | any): string[] {
+  if (!staff) return [];
+  if (Array.isArray(staff.roles) && staff.roles.length > 0) {
+    return staff.roles;
+  }
+  if (staff.role) {
+    return [staff.role];
+  }
+  return [];
+}
+
 export function filterStaff(
   staff: StaffMember[] | null,
   search: string,
@@ -65,12 +76,20 @@ export function filterStaff(
 ): StaffMember[] {
   if (!staff) return [];
   const term = search.trim().toLowerCase();
+  const normalizedRoleFilter = roleFilter.trim().toLowerCase();
+
   return staff.filter((s) => {
-    if (roleFilter !== 'All' && !s.roles.includes(roleFilter)) return false;
+    const safeRoles = getSafeStaffRoles(s);
+    if (roleFilter !== 'All') {
+      const hasMatchingRole = safeRoles.some(
+        (r) => r.trim().toLowerCase() === normalizedRoleFilter,
+      );
+      if (!hasMatchingRole) return false;
+    }
     if (statusFilter !== 'All' && (statusFilter === 'Active') !== s.active) return false;
     if (term) {
-      const matchName = s.name.toLowerCase().includes(term);
-      const matchEmail = s.email.toLowerCase().includes(term);
+      const matchName = (s.name || '').toLowerCase().includes(term);
+      const matchEmail = (s.email || '').toLowerCase().includes(term);
       if (!matchName && !matchEmail) return false;
     }
     return true;

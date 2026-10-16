@@ -62,6 +62,7 @@ export default function StaffAccountManagementScreen({
   const [formTarget, setFormTarget] = useState<StaffMember | null | undefined>(undefined);
   const [credentialTarget, setCredentialTarget] = useState<StaffMember | null>(null);
   const [linkTarget, setLinkTarget] = useState<StaffMember | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const loadRoles = useCallback(async () => {
     try {
@@ -119,6 +120,7 @@ export default function StaffAccountManagementScreen({
       return;
     }
     try {
+      setSaving(true);
       if (payload.id) {
         await updateStaffAccount(payload.id, payload);
         showToast('Staff account updated successfully', 'success');
@@ -139,6 +141,8 @@ export default function StaffAccountManagementScreen({
         'Failed to save staff account';
       Alert.alert('Role Assignment / Account Error', errMsg);
       showToast(errMsg, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -156,6 +160,10 @@ export default function StaffAccountManagementScreen({
       await toggleStaffActive(s.id, next);
       showToast(`Account ${next ? 'activated' : 'deactivated'} successfully`, 'success');
     } catch {
+      // Revert optimistic update immediately on failure
+      setStaff((prev) =>
+        prev ? prev.map((item) => (item.id === s.id ? { ...item, active: !next } : item)) : prev,
+      );
       showToast('Failed to update status', 'error');
     }
     await load();
@@ -298,6 +306,7 @@ export default function StaffAccountManagementScreen({
         staff={formTarget}
         roleOptions={availableRoles}
         roleMetaMap={roleMetaMap}
+        isSaving={saving}
         onClose={() => setFormTarget(undefined)}
         onSave={handleSave}
       />

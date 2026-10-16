@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme';
@@ -19,6 +20,7 @@ export interface StaffFormModalProps {
   staff: StaffMember | null | undefined;
   roleOptions?: string[];
   roleMetaMap?: Record<string, RoleMeta>;
+  isSaving?: boolean;
   onClose: () => void;
   onSave: (payload: StaffPayload) => void;
 }
@@ -28,6 +30,7 @@ export function StaffFormModal({
   staff,
   roleOptions,
   roleMetaMap,
+  isSaving = false,
   onClose,
   onSave,
 }: StaffFormModalProps) {
@@ -281,13 +284,24 @@ export function StaffFormModal({
             </View>
           </ScrollView>
           <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={isSaving}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>
-                {staff ? 'Save Changes' : 'Create Staff Account'}
-              </Text>
+            <TouchableOpacity
+              style={[styles.saveBtn, isSaving && { opacity: 0.6 }]}
+              onPress={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <ActivityIndicator size="small" color={colors.navyText} />
+                  <Text style={styles.saveBtnText}>Saving...</Text>
+                </View>
+              ) : (
+                <Text style={styles.saveBtnText}>
+                  {staff ? 'Save Changes' : 'Create Staff Account'}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
