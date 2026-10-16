@@ -27,6 +27,7 @@ const DirectorStack = lazy(() => import('./DirectorStack'));
 const InstitutionalAdminStack = lazy(() => import('./InstitutionalAdminStack'));
 const SystemAdminStack = lazy(() => import('./SystemAdminStack'));
 const ParentStack = lazy(() => import('./ParentStack'));
+const CustomRoleStack = lazy(() => import('./CustomRoleStack'));
 
 const Stack = createNativeStackNavigator();
 
@@ -93,8 +94,8 @@ function AppNavigator() {
     );
   }
 
-  // Resolves the role's stack; configured custom roles fall back to SessionStack
-  const RoleStack = STACK_BY_ROLE[session.role] || STACK_BY_ROLE[ROLES.TEACHER];
+  // Resolves the role's stack; custom roles use CustomRoleStack
+  const RoleStack = STACK_BY_ROLE[session.role] || CustomRoleStack;
   const isSidebarRole = SIDEBAR_ROLES.has(session.role);
 
   return (

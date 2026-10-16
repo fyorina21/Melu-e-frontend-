@@ -18,6 +18,7 @@ import type {
 } from '../types';
 
 import { RESOURCE_ALIAS_MAP } from '../screens/systemadmin/permissions/permissionTypes';
+import { SCREEN_TO_MODULE, hasModuleAccess } from '../auth/permissions';
 
 export const MODULE_TO_TABS: Record<string, string[]> = {
   iups: ['IUP Creation & Goal Assignment'],
@@ -31,11 +32,23 @@ export const MODULE_TO_TABS: Record<string, string[]> = {
   admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
 };
 
+export const MODULE_DEFAULT_ROUTES: Record<string, string> = {
+  admin: 'StaffAccountManagement',
+  staff: 'DirectorScheduling',
+  assessments: 'AssessmentDashboard',
+  sessions: 'SessionDataCollection',
+  behavior_incidents: 'AbcLog',
+  iups: 'IupGeneration',
+  students: 'StudentEnrollmentWizard',
+  reports: 'ReportsOversight',
+  parent_portal: 'ParentCommunication',
+};
+
 /**
  * Returns dynamic tabs for the current session based on configured modules.
  * When session.modules is provided, tabs are filtered to only granted modules
- * (preserving Dashboard). When modules are undefined/empty (legacy or unmigrated),
- * it safely falls back to defaultRoleTabs.
+ * (preserving Dashboard). When defaultRoleTabs is empty (custom role), tabs are
+ * dynamically derived directly from granted modules and permissions.
  */
 export function getTabsForSession(
   session: AuthSession | null | undefined,
@@ -43,29 +56,64 @@ export function getTabsForSession(
 ): string[] {
   if (!session) return defaultRoleTabs;
 
-  if (session.modules && Array.isArray(session.modules) && session.modules.length > 0) {
-    const grantedModules = new Set<string>();
+  const grantedModules = new Set<string>();
+  if (session.modules && Array.isArray(session.modules)) {
     for (const rawMod of session.modules) {
       if (typeof rawMod === 'string') {
         const canonical = (RESOURCE_ALIAS_MAP[rawMod.toLowerCase()] ?? rawMod).toLowerCase();
         grantedModules.add(canonical);
       }
     }
+  }
 
-    const dynamicTabs = defaultRoleTabs.filter((tab) => {
-      if (tab === 'Dashboard') return true;
-      const entry = Object.entries(MODULE_TO_TABS).find(([_, tabs]) => tabs.includes(tab));
-      if (!entry) return true;
-      const [moduleId] = entry;
-      return grantedModules.has(moduleId);
-    });
-
-    if (dynamicTabs.length > 0) {
-      return dynamicTabs;
+  // Also extract module names from session.permissions if present
+  if (session.permissions && Array.isArray(session.permissions)) {
+    for (const rawPerm of session.permissions) {
+      if (typeof rawPerm === 'string' && rawPerm.includes(':')) {
+        const rawRes = rawPerm.split(':')[0]?.trim().toLowerCase();
+        if (rawRes) {
+          const canonical = (RESOURCE_ALIAS_MAP[rawRes] ?? rawRes).toLowerCase();
+          grantedModules.add(canonical);
+        }
+      }
     }
   }
 
-  return defaultRoleTabs;
+  if (defaultRoleTabs && defaultRoleTabs.length > 0) {
+    if (grantedModules.size > 0) {
+      const dynamicTabs = defaultRoleTabs.filter((tab) => {
+        if (tab === 'Dashboard') return true;
+        const entry = Object.entries(MODULE_TO_TABS).find(([_, tabs]) => tabs.includes(tab));
+        if (!entry) return true;
+        const [moduleId] = entry;
+        return grantedModules.has(moduleId);
+      });
+
+      if (dynamicTabs.length > 0) {
+        return dynamicTabs;
+      }
+    }
+    return defaultRoleTabs;
+  }
+
+  // Custom role or empty defaultRoleTabs: build tabs from granted modules
+  if (grantedModules.size > 0) {
+    const customTabs: string[] = [];
+    for (const [moduleId, moduleTabs] of Object.entries(MODULE_TO_TABS)) {
+      if (grantedModules.has(moduleId.toLowerCase())) {
+        for (const tab of moduleTabs) {
+          if (!customTabs.includes(tab)) {
+            customTabs.push(tab);
+          }
+        }
+      }
+    }
+    if (customTabs.length > 0) {
+      return customTabs;
+    }
+  }
+
+  return [];
 }
 
 export const ROLE_TABS: Record<Role, string[]> = {
@@ -357,7 +405,48 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   Assessments: 'AssessmentDashboard',
 };
 
-export function routeMapForRole(role: Role): Record<string, string> | undefined {
+export const GLOBAL_ROUTE_BY_TAB: Record<string, string> = {
+  ...TEACHER_ROUTE_BY_TAB,
+  ...COORDINATOR_ROUTE_BY_TAB,
+  ...PD_ROUTE_BY_TAB,
+  ...DIRECTOR_ROUTE_BY_TAB,
+  ...IA_ROUTE_BY_TAB,
+  ...SYS_ROUTE_BY_TAB,
+  ...PARENT_ROUTE_BY_TAB,
+  // Canonical overrides
+  'Staff Accounts': 'StaffAccountManagement',
+  'Role Management': 'RoleManagement',
+  'Permission Configuration': 'PermissionConfiguration',
+  'Audit Log': 'AuditLog',
+  'Form Builder': 'FormBuilder',
+  'Goal Domains': 'GoalDomainDefinitions',
+  'Schedule & Capacity': 'ScheduleCapacityConfig',
+  'ABC Dropdown Lists': 'AbcDropdownLists',
+  'Trial Logging Format': 'TrialLoggingFormat',
+  'Task Analysis': 'TaskAnalysisTemplates',
+  'Staff Scheduling': 'DirectorScheduling',
+  'Goal Mastery Approval': 'GoalMasteryApproval',
+  'Reports & Oversight': 'ReportsOversight',
+  'IUP Creation & Goal Assignment': 'IupGeneration',
+  'Enrollment Wizard': 'StudentEnrollmentWizard',
+  'Registered Student': 'StudentEnrollment',
+  'Live Sessions': 'LiveSessionMonitoring',
+  'Session Summary': 'SessionSummary',
+  'ABC Log': 'AbcLog',
+  Session: 'SessionDataCollection',
+  'Daily Notes': 'DailyNotes',
+  Assessments: 'AssessmentDashboard',
+  'Assessment Summary Report': 'AssessmentSummaryReport',
+  'Assessment Review': 'AssessmentReview',
+  'IUP Library Management': 'IupLibrary',
+  'Student Caseload Management': 'StudentCaseload',
+  'Clinical Quality Monitoring': 'GoalBankManagement',
+  Parents: 'ParentCommunication',
+  'Parent Communication': 'ParentCommunication',
+  Notifications: 'Notifications',
+};
+
+export function routeMapForRole(role: Role): Record<string, string> {
   switch (role) {
     case 'teacher':
     case 'therapist':
@@ -375,6 +464,50 @@ export function routeMapForRole(role: Role): Record<string, string> | undefined 
     case 'parent':
       return PARENT_ROUTE_BY_TAB;
     default:
-      return undefined;
+      return GLOBAL_ROUTE_BY_TAB;
   }
+}
+
+/**
+ * Resolves the primary landing screen for a custom or non-standard role
+ * based on its granted permissions and configured modules. Never falls back to
+ * TeacherDashboard unless explicitly permitted.
+ */
+export function resolveInitialRouteForCustomRole(session: AuthSession | null | undefined): string {
+  if (!session) return 'CustomRolePending';
+
+  // 1. If an explicit home route is specified and user has access, honor it
+  if (session.homeRoute) {
+    const requiredMod = SCREEN_TO_MODULE[session.homeRoute];
+    if (!requiredMod || hasModuleAccess(session.modules, requiredMod)) {
+      return session.homeRoute;
+    }
+  }
+
+  // 2. Derive dynamic tabs for this custom role session
+  const tabs = getTabsForSession(session, []);
+  if (tabs.length > 0) {
+    for (const tab of tabs) {
+      const route = GLOBAL_ROUTE_BY_TAB[tab];
+      if (route) {
+        const requiredMod = SCREEN_TO_MODULE[route];
+        if (!requiredMod || hasModuleAccess(session.modules, requiredMod)) {
+          return route;
+        }
+      }
+    }
+  }
+
+  // 3. Fallback to the first granted module's default route
+  if (session.modules && session.modules.length > 0) {
+    for (const mod of session.modules) {
+      if (typeof mod === 'string') {
+        const canonical = (RESOURCE_ALIAS_MAP[mod.toLowerCase()] ?? mod).toLowerCase();
+        const defRoute = MODULE_DEFAULT_ROUTES[canonical];
+        if (defRoute) return defRoute;
+      }
+    }
+  }
+
+  return 'CustomRolePending';
 }

@@ -725,7 +725,7 @@ export function getDefaultMatrixForRole(roleName: string): PermissionMatrix {
  * Checks if a role is legitimately authorized to access or own a page module.
  */
 export function isPageInRoleScope(page: AppPageModule, roleName: string): boolean {
-  const norm = (roleName || '').toLowerCase();
+  const norm = (roleName || '').toLowerCase().trim();
   if (norm.includes('system admin') || norm.includes('super admin')) return true;
   if (norm.includes('institutional admin') || norm.includes('institutional administrator')) {
     return page.roleKey !== 'system_admin';
@@ -736,7 +736,7 @@ export function isPageInRoleScope(page: AppPageModule, roleName: string): boolea
   if (norm.includes('program director')) {
     return page.roleKey === 'program_director';
   }
-  if (norm.includes('coordinator')) {
+  if (norm.includes('coordinator') || norm.includes('therapy coordinator')) {
     return page.roleKey === 'coordinator';
   }
   if (norm.includes('teacher') || norm.includes('therapist')) {
@@ -745,7 +745,8 @@ export function isPageInRoleScope(page: AppPageModule, roleName: string): boolea
   if (norm.includes('parent')) {
     return page.roleKey === 'parent';
   }
-  return page.roleKey === 'teacher';
+  // Custom or newly created roles can be configured with any application page
+  return true;
 }
 
 /**
@@ -985,6 +986,7 @@ export function buildSavePayload(
         }
 
         // Map catalog permission ID
+        let matchedCatalog = false;
         if (Array.isArray(catalogPermissions) && catalogPermissions.length > 0) {
           const match = catalogPermissions.find(
             (cp) =>
@@ -993,6 +995,13 @@ export function buildSavePayload(
           );
           if (match?.id) {
             permissionIdsSet.add(match.id);
+            matchedCatalog = true;
+          }
+        }
+        if (!matchedCatalog) {
+          permissionIdsSet.add(`${res}:${actLower}`);
+          if (page.subResource) {
+            permissionIdsSet.add(`${page.subResource}:${actLower}`);
           }
         }
       }

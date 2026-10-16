@@ -33,6 +33,8 @@ import {
   IA_ROUTE_BY_TAB,
   SYS_ROUTE_BY_TAB,
   PARENT_ROUTE_BY_TAB,
+  GLOBAL_ROUTE_BY_TAB,
+  routeMapForRole,
   getTabsForSession,
   getGroupedTabsForSession,
   isNavGroup,
@@ -103,7 +105,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
 
   const defaultTabs = ROLE_TABS[role] ?? [];
   const tabs: NavTabItem[] = getGroupedTabsForSession(session, role, defaultTabs);
-  const roleLabel = ROLE_LABELS[role] ?? '';
+  const roleLabel =
+    ROLE_LABELS[role] ??
+    (role ? role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Staff');
   const userName = session?.userName ?? 'User';
   const initial = userName.charAt(0).toUpperCase() || 'U';
   const notificationRoute = ROLE_NOTIFICATION_ROUTE[role];
@@ -116,27 +120,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   // Central tab → route map for the current role. Screens may still pass an
   // onTabPress fallback, but known tabs are always handled here so every
   // screen gets consistent navigation without wiring it up individually.
-  const routeByTab = ((): Record<string, string> | undefined => {
-    switch (role) {
-      case 'teacher':
-      case 'therapist':
-        return TEACHER_ROUTE_BY_TAB;
-      case 'coordinator':
-        return COORDINATOR_ROUTE_BY_TAB;
-      case 'program_director':
-        return PD_ROUTE_BY_TAB;
-      case 'director':
-        return DIRECTOR_ROUTE_BY_TAB;
-      case 'institutional_admin':
-        return IA_ROUTE_BY_TAB;
-      case 'system_admin':
-        return SYS_ROUTE_BY_TAB;
-      case 'parent':
-        return PARENT_ROUTE_BY_TAB;
-      default:
-        return undefined;
-    }
-  })();
+  const routeByTab = routeMapForRole(role) || GLOBAL_ROUTE_BY_TAB;
 
   // Screens pass legacy `activeTab` labels; resolve them to the canonical tab
   // via the role's route map so the correct navbar item is highlighted.

@@ -197,4 +197,43 @@ describe('getTabsForSession dynamic module filtering', () => {
     expect(tabs).not.toContain('ABC Log');
     expect(tabs).not.toContain('Parents');
   });
+
+  it('dynamically generates tabs for custom roles with granted modules', async () => {
+    const { getTabsForSession, routeMapForRole } = await import('../appNavConfig');
+    const customRoleSession: AuthSession = {
+      userName: 'Auditor Bob',
+      role: 'auditor',
+      modules: ['admin', 'reports'],
+    };
+
+    const tabs = getTabsForSession(customRoleSession, []);
+    expect(tabs).toContain('Staff Accounts');
+    expect(tabs).toContain('Role Management');
+    expect(tabs).toContain('Permission Configuration');
+    expect(tabs).toContain('Audit Log');
+    expect(tabs).toContain('Reports & Oversight');
+
+    // Should NOT contain ungranted modules
+    expect(tabs).not.toContain('Session');
+    expect(tabs).not.toContain('Assessments');
+
+    const routeMap = routeMapForRole('auditor');
+    expect(routeMap['Staff Accounts']).toBe('StaffAccountManagement');
+    expect(routeMap['Audit Log']).toBe('AuditLog');
+    expect(routeMap['Reports & Oversight']).toBe('ReportsOversight');
+  });
+
+  it('infers modules and tabs from permissions for custom roles', async () => {
+    const { getTabsForSession } = await import('../appNavConfig');
+    const customRoleSession: AuthSession = {
+      userName: 'Evaluator Jane',
+      role: 'clinical_evaluator',
+      permissions: ['assessments:view', 'assessments:create', 'iups:view'],
+    };
+
+    const tabs = getTabsForSession(customRoleSession, []);
+    expect(tabs).toContain('Assessments');
+    expect(tabs).toContain('IUP Creation & Goal Assignment');
+    expect(tabs).not.toContain('Staff Accounts');
+  });
 });

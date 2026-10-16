@@ -21,6 +21,7 @@ import {
 import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
 import { parsePermissions } from '../auth/permissions';
+import { storage } from '../utils/storage';
 
 export const ROLES = {
   TEACHER: 'teacher',
@@ -87,6 +88,43 @@ function resolveRoles(rawRoles?: string[], primary?: string, fallback?: string):
   return roles.length ? roles : [ROLES.TEACHER];
 }
 
+/**
+ * Resolves active modules and permissions for a role, fetching stored permissions
+ * if not returned in auth response (critical for dynamic / newly created roles).
+ */
+export function resolveSessionPermissionsAndModules(
+  role: string,
+  userModules?: string[],
+  userPermissions?: string[],
+): { modules?: string[]; permissions?: string[] } {
+  let permissions = userPermissions && userPermissions.length > 0 ? userPermissions : undefined;
+  let modules = userModules && userModules.length > 0 ? userModules : undefined;
+
+  if (!permissions) {
+    const saved =
+      storage.getJSONSync<string[]>(`sysadmin_perm_${role}`) ||
+      storage.getJSONSync<string[]>(`sysadmin_perm_${role.toLowerCase()}`);
+    if (saved && Array.isArray(saved) && saved.length > 0) {
+      permissions = saved;
+    }
+  }
+
+  if (!modules && permissions) {
+    const modSet = new Set<string>();
+    for (const p of permissions) {
+      if (typeof p === 'string' && p.includes(':')) {
+        const mod = p.split(':')[0]?.trim().toLowerCase();
+        if (mod) modSet.add(mod);
+      }
+    }
+    if (modSet.size > 0) {
+      modules = Array.from(modSet);
+    }
+  }
+
+  return { modules, permissions };
+}
+
 interface AuthContextValue {
   session: AuthSession | null;
   loginWithCredentials: (
@@ -129,15 +167,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               storedRole && roles.includes(storedRole as Role) ? (storedRole as Role) : roles[0];
             setActiveRole(activeRoleCandidate);
             setUserRoles(roles);
+            const permsAndMods = resolveSessionPermissionsAndModules(
+              activeRoleCandidate,
+              user.modules,
+              user.permissions,
+            );
             setSession({
               userId: user.id,
               role: activeRoleCandidate,
               roles,
               userName: user.name,
               email: user.email,
-              modules: user.modules,
-              permissions: user.permissions,
-              permissionMap: parsePermissions(user.permissions),
+              modules: permsAndMods.modules,
+              permissions: permsAndMods.permissions,
+              permissionMap: parsePermissions(permsAndMods.permissions),
             });
           } catch (meErr) {
             // Attempt token refresh before discarding session
@@ -153,15 +196,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     : roles[0];
                 setActiveRole(activeRoleCandidate);
                 setUserRoles(roles);
+                const permsAndMods = resolveSessionPermissionsAndModules(
+                  activeRoleCandidate,
+                  user.modules,
+                  user.permissions,
+                );
                 setSession({
                   userId: user.id,
                   role: activeRoleCandidate,
                   roles,
                   userName: user.name,
                   email: user.email,
-                  modules: user.modules,
-                  permissions: user.permissions,
-                  permissionMap: parsePermissions(user.permissions),
+                  modules: permsAndMods.modules,
+                  permissions: permsAndMods.permissions,
+                  permissionMap: parsePermissions(permsAndMods.permissions),
                 });
               } catch {
                 await clearAuthTokens();
@@ -265,15 +313,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const roles = resolveRoles(user.roles, result.role, user.role);
       setActiveRole(roles[0]);
       setUserRoles(roles);
+      const permsAndMods = resolveSessionPermissionsAndModules(
+        roles[0],
+        user.modules,
+        user.permissions,
+      );
       setSession({
         userId: user.id,
         role: roles[0],
         roles,
         userName: user.name,
         email: user.email,
-        modules: user.modules,
-        permissions: user.permissions,
-        permissionMap: parsePermissions(user.permissions),
+        modules: permsAndMods.modules,
+        permissions: permsAndMods.permissions,
+        permissionMap: parsePermissions(permsAndMods.permissions),
       });
       showToast(`Welcome back, ${user.name}!`, 'success');
       return true;
@@ -299,7 +352,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nextRoles = roles.includes(role) ? roles : [...roles, role];
       setActiveRole(role);
       setUserRoles(nextRoles);
-      return { ...prev, role, roles: nextRoles };
+      const permsAndMods = resolveSessionPermissionsAndModules(role, undefined, undefined);
+      return {
+        ...prev,
+        role,
+        roles: nextRoles,
+        modules: permsAndMods.modules ?? prev.modules,
+        permissions: permsAndMods.permissions ?? prev.permissions,
+        permissionMap: parsePermissions(permsAndMods.permissions ?? prev.permissions),
+      };
     });
 
     const seedAccounts: Record<string, { email: string; pass: string; name: string }> = {

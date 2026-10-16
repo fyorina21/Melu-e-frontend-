@@ -362,6 +362,20 @@ export const savePermissionMatrix = async (
 
   storage.setJSONSync(`sysadmin_perm_${roleId}`, permissionIds);
 
+  // Also sync by role name so session lookups by role name succeed
+  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
+  const foundCustom = custom.find((r) => r.id === roleId || r.name === roleId);
+  if (foundCustom?.name && foundCustom.name !== roleId) {
+    storage.setJSONSync(`sysadmin_perm_${foundCustom.name}`, permissionIds);
+    storage.setJSONSync(`sysadmin_perm_${foundCustom.name.toLowerCase()}`, permissionIds);
+  }
+  const updatedCustom = custom.map((r) =>
+    r.id === roleId || r.name === roleId
+      ? { ...r, has_permissions: permissionIds.length > 0, permission_count: permissionIds.length }
+      : r,
+  );
+  storage.setJSONSync('sysadmin_custom_roles', updatedCustom);
+
   const logs = storage.getJSONSync<any[]>(`sysadmin_perm_audit_${roleId}`) || [];
   const newLog = {
     id: `log-${Date.now()}`,

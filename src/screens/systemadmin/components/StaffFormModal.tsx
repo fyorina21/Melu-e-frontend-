@@ -279,7 +279,7 @@ export function StaffFormModal({
                 </View>
               )}
               <Text style={styles.fieldHintText}>
-                Users can hold multiple roles simultaneously (FR-007). Click to toggle.
+                Users can hold multiple roles simultaneously.
               </Text>
             </View>
           </ScrollView>
