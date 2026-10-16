@@ -897,12 +897,18 @@ export function checkHighRiskPermission(
 export function filterPageModules(
   pages: AppPageModule[],
   query: string,
-  roleFilter: string,
+  filter?: string,
 ): AppPageModule[] {
   let list = Array.isArray(pages) ? pages : [];
 
-  if (roleFilter && roleFilter !== 'All') {
-    list = list.filter((p) => p.role.toLowerCase() === roleFilter.toLowerCase());
+  if (filter && filter !== 'All' && filter !== 'All Categories') {
+    const fLower = filter.toLowerCase();
+    list = list.filter(
+      (p) =>
+        p.category.toLowerCase() === fLower ||
+        p.role.toLowerCase() === fLower ||
+        p.role.toLowerCase().includes(fLower),
+    );
   }
 
   if (query && query.trim()) {

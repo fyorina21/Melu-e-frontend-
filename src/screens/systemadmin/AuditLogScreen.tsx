@@ -10,7 +10,6 @@ import {
   StyleSheet,
   SafeAreaView,
   Platform,
-  Share,
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -94,82 +93,6 @@ export default function AuditLogScreen({ navigation }: Props) {
     });
   }, [entries, userFilter, actionFilter, search]);
 
-  const handleExportCsv = useCallback(() => {
-    if (!filtered || filtered.length === 0) {
-      showToast('No log entries available to export', 'error');
-      return;
-    }
-
-    const headers = [
-      'ID',
-      'Date',
-      'Time',
-      'User',
-      'Action',
-      'Resource',
-      'IP Address',
-      'Old Value',
-      'New Value',
-    ];
-    const rows = filtered.map((e) => [
-      `"${e.id}"`,
-      `"${e.date}"`,
-      `"${e.time}"`,
-      `"${(e.user || '').replace(/"/g, '""')}"`,
-      `"${e.action}"`,
-      `"${(e.resource || '').replace(/"/g, '""')}"`,
-      `"${e.ip || ''}"`,
-      `"${(e.oldValue || '').replace(/"/g, '""')}"`,
-      `"${(e.newValue || '').replace(/"/g, '""')}"`,
-    ]);
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      showToast('Audit logs exported as CSV', 'success');
-    } else {
-      Share.share({
-        title: 'Melue Audit Logs',
-        message: csvContent,
-      });
-    }
-  }, [filtered, showToast]);
-
-  const handleExportJson = useCallback(() => {
-    if (!filtered || filtered.length === 0) {
-      showToast('No log entries available to export', 'error');
-      return;
-    }
-
-    const jsonContent = JSON.stringify(filtered, null, 2);
-
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `audit_logs_${new Date().toISOString().slice(0, 10)}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      showToast('Audit logs exported as JSON', 'success');
-    } else {
-      Share.share({
-        title: 'Melue Audit Logs JSON',
-        message: jsonContent,
-      });
-    }
-  }, [filtered, showToast]);
-
   const handleResetFilters = useCallback(() => {
     setSearch('');
     setUserFilter('All');
@@ -211,37 +134,6 @@ export default function AuditLogScreen({ navigation }: Props) {
             <Text style={[typography.caption, { color: colors.mutedText }]}>
               Regulatory activity records and system traceability
             </Text>
-          </View>
-
-          <View style={styles.headerActions}>
-            <Tooltip label="Export all filtered audit records as a CSV file">
-              <TouchableOpacity
-                style={styles.exportBtn}
-                onPress={handleExportCsv}
-                accessibilityRole="button"
-                accessibilityLabel="Export audit logs as CSV"
-                {...(Platform.OS === 'web'
-                  ? { title: 'Export all filtered audit records as a CSV file' }
-                  : {})}
-              >
-                <Feather name="download" size={14} color={colors.navyText} />
-                <Text style={styles.exportBtnText}>Export CSV</Text>
-              </TouchableOpacity>
-            </Tooltip>
-            <Tooltip label="Export all filtered audit records as a JSON file">
-              <TouchableOpacity
-                style={styles.exportBtnSecondary}
-                onPress={handleExportJson}
-                accessibilityRole="button"
-                accessibilityLabel="Export audit logs as JSON"
-                {...(Platform.OS === 'web'
-                  ? { title: 'Export all filtered audit records as a JSON file' }
-                  : {})}
-              >
-                <Feather name="file-text" size={14} color={colors.navyText} />
-                <Text style={styles.exportBtnText}>Export JSON</Text>
-              </TouchableOpacity>
-            </Tooltip>
           </View>
         </View>
 

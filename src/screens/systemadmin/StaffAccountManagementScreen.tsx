@@ -6,6 +6,8 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  Modal,
+  ActivityIndicator,
   Platform,
   useWindowDimensions,
 } from 'react-native';
@@ -64,6 +66,12 @@ export default function StaffAccountManagementScreen({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formTarget, setFormTarget] = useState<StaffMember | null | undefined>(undefined);
   const [credentialTarget, setCredentialTarget] = useState<StaffMember | null>(null);
+  const [deleteConfirmStaff, setDeleteConfirmStaff] = useState<StaffMember | null>(null);
+  const [bulkActionConfirm, setBulkActionConfirm] = useState<{
+    action: string;
+    count: number;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const loadRoles = useCallback(async () => {
@@ -190,37 +198,28 @@ export default function StaffAccountManagementScreen({
       showToast('You do not have permission to delete staff accounts.', 'error');
       return;
     }
-    const message = `${s.name} (${s.email}) will be permanently removed. This cannot be undone.`;
-    const runDelete = async () => {
-      recordDeletedStaff(s);
-      setStaff((prev) =>
-        prev ? prev.filter((item) => item.id !== s.id && !isStaffDeleted(item)) : [],
-      );
-      showToast('Staff account deleted successfully', 'success');
-      try {
-        await Promise.allSettled([
-          deleteStaffAccount(s.id),
-          bulkStaffAction([s.id], 'delete'),
-          toggleStaffActive(s.id, false),
-        ]);
-      } catch {}
-      await load();
-    };
+    setDeleteConfirmStaff(s);
+  };
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`Delete staff account?\n\n${message}`)) {
-        runDelete();
-      }
-    } else {
-      Alert.alert('Delete staff account?', message, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: runDelete,
-        },
+  const confirmDeleteStaff = async () => {
+    if (!deleteConfirmStaff) return;
+    const s = deleteConfirmStaff;
+    setDeleting(true);
+    recordDeletedStaff(s);
+    setStaff((prev) =>
+      prev ? prev.filter((item) => item.id !== s.id && !isStaffDeleted(item)) : [],
+    );
+    showToast(`Staff account for ${s.name} deleted successfully`, 'success');
+    try {
+      await Promise.allSettled([
+        deleteStaffAccount(s.id),
+        bulkStaffAction([s.id], 'delete'),
+        toggleStaffActive(s.id, false),
       ]);
-    }
+    } catch {}
+    setDeleting(false);
+    setDeleteConfirmStaff(null);
+    await load();
   };
 
   const handleBulkAction = (action: string) => {
@@ -228,46 +227,40 @@ export default function StaffAccountManagementScreen({
       showToast('You do not have permission to modify staff accounts.', 'error');
       return;
     }
-    const runBulk = async () => {
-      try {
-        if (action.toLowerCase().includes('del')) {
-          selectedIds.forEach((id) => {
-            const item = staff?.find((m) => m.id === id);
-            if (item) {
-              recordDeletedStaff(item);
-            } else {
-              recordDeletedStaff({ id });
-            }
-          });
-          setStaff((prev) =>
-            prev ? prev.filter((m) => !selectedIds.includes(m.id) && !isStaffDeleted(m)) : [],
-          );
-        }
-        await bulkStaffAction(selectedIds, action);
-        showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
-        setSelectedIds([]);
-        await load();
-      } catch (err: any) {
-        const errorMsg =
-          err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          `Bulk ${action.toLowerCase()} failed`;
-        showToast(errorMsg, 'error');
-      }
-    };
+    setBulkActionConfirm({ action, count: selectedIds.length });
+  };
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`${action} ${selectedIds.length} accounts?`)) {
-        runBulk();
+  const confirmBulkAction = async () => {
+    if (!bulkActionConfirm) return;
+    const { action } = bulkActionConfirm;
+    setDeleting(true);
+    try {
+      if (action.toLowerCase().includes('del')) {
+        selectedIds.forEach((id) => {
+          const item = staff?.find((m) => m.id === id);
+          if (item) {
+            recordDeletedStaff(item);
+          } else {
+            recordDeletedStaff({ id });
+          }
+        });
+        setStaff((prev) =>
+          prev ? prev.filter((m) => !selectedIds.includes(m.id) && !isStaffDeleted(m)) : [],
+        );
       }
-    } else {
-      Alert.alert(`${action} ${selectedIds.length} accounts?`, undefined, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: runBulk,
-        },
-      ]);
+      await bulkStaffAction(selectedIds, action);
+      showToast(`Bulk ${action.toLowerCase()} completed successfully`, 'success');
+      setSelectedIds([]);
+      await load();
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        `Bulk ${action.toLowerCase()} failed`;
+      showToast(errorMsg, 'error');
+    } finally {
+      setDeleting(false);
+      setBulkActionConfirm(null);
     }
   };
 
@@ -393,6 +386,118 @@ export default function StaffAccountManagementScreen({
         onClose={() => setCredentialTarget(null)}
         onSuccess={load}
       />
+
+      {/* In-App Delete & Bulk Confirmation Modal */}
+      <Modal
+        visible={deleteConfirmStaff !== null || bulkActionConfirm !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deleting) {
+            setDeleteConfirmStaff(null);
+            setBulkActionConfirm(null);
+          }
+        }}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmDialog}>
+            <View style={styles.confirmIconWrap}>
+              <Feather name="trash-2" size={24} color="#DC2626" />
+            </View>
+
+            <Text style={styles.confirmTitle}>
+              {deleteConfirmStaff
+                ? 'Delete Staff Account?'
+                : `${bulkActionConfirm?.action || 'Confirm'} ${bulkActionConfirm?.count || 0} Accounts?`}
+            </Text>
+
+            <Text style={styles.confirmMessage}>
+              {deleteConfirmStaff ? (
+                <>
+                  Are you sure you want to permanently delete the account for{' '}
+                  <Text style={{ fontWeight: '700', color: colors.navyText }}>
+                    {deleteConfirmStaff.name}
+                  </Text>{' '}
+                  ({deleteConfirmStaff.email})?
+                </>
+              ) : (
+                <>
+                  Are you sure you want to perform{' '}
+                  <Text style={{ fontWeight: '700', color: colors.navyText }}>
+                    {bulkActionConfirm?.action.toLowerCase()}
+                  </Text>{' '}
+                  on {bulkActionConfirm?.count} selected accounts?
+                </>
+              )}
+            </Text>
+
+            <View style={styles.confirmWarningBox}>
+              <Feather name="alert-circle" size={14} color="#B45309" />
+              <Text style={styles.confirmWarningText}>
+                This action will revoke all system access and cannot be undone.
+              </Text>
+            </View>
+
+            <View style={styles.confirmActionsRow}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => {
+                  setDeleteConfirmStaff(null);
+                  setBulkActionConfirm(null);
+                }}
+                disabled={deleting}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.confirmDeleteBtn,
+                  bulkActionConfirm &&
+                    !bulkActionConfirm.action.toLowerCase().includes('del') && {
+                      backgroundColor: colors.primaryYellow,
+                    },
+                ]}
+                onPress={deleteConfirmStaff ? confirmDeleteStaff : confirmBulkAction}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Feather
+                      name={
+                        bulkActionConfirm && !bulkActionConfirm.action.toLowerCase().includes('del')
+                          ? 'check'
+                          : 'trash-2'
+                      }
+                      size={15}
+                      color={
+                        bulkActionConfirm && !bulkActionConfirm.action.toLowerCase().includes('del')
+                          ? colors.navyText
+                          : '#FFFFFF'
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.confirmDeleteText,
+                        bulkActionConfirm &&
+                          !bulkActionConfirm.action.toLowerCase().includes('del') && {
+                            color: colors.navyText,
+                          },
+                      ]}
+                    >
+                      {deleteConfirmStaff
+                        ? 'Delete Account'
+                        : `Confirm ${bulkActionConfirm?.action || ''}`}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -492,5 +597,99 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.navyText,
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  confirmDialog: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    maxWidth: 480,
+    width: '100%',
+    alignItems: 'center',
+    gap: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  confirmIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+    textAlign: 'center',
+  },
+  confirmMessage: {
+    fontSize: 14,
+    color: colors.bodyText,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  confirmWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
+  confirmWarningText: {
+    fontSize: 12,
+    color: '#92400E',
+    flex: 1,
+  },
+  confirmActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+    marginTop: spacing.sm,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.bodyText,
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

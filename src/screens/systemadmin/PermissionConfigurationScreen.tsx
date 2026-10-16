@@ -62,25 +62,30 @@ import {
   blankActions,
 } from './permissionConfigHelpers';
 
-const ROLE_FILTER_OPTIONS = [
-  'All',
-  'Director',
-  'Program Director',
-  'Therapy Coordinator',
-  'Teacher / Therapist',
-  'Institutional Admin',
-  'System Admin',
-  'Parent',
+const CATEGORY_FILTER_OPTIONS = [
+  'All Categories',
+  'Executive Oversight',
+  'Intake & Registration',
+  'Goal Management',
+  'Assessments',
+  'Clinical Verification',
+  'Operations & Scheduling',
+  'Clinical Supervision',
+  'Family & Messages',
+  'Administration',
 ];
 
-const ROLE_BADGE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  director: { bg: '#FAF5FF', text: '#7E22CE', border: '#E9D5FF' },
-  program_director: { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
-  coordinator: { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  teacher: { bg: '#F0F9FF', text: '#0284C7', border: '#BAE6FD' },
-  institutional_admin: { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
-  system_admin: { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
-  parent: { bg: '#FEFCE8', text: '#A16207', border: '#FEF08A' },
+const ADMIN_BADGE_COLORS: Record<
+  string,
+  { bg: string; text: string; border: string; label: string }
+> = {
+  system_admin: { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA', label: 'System Admin' },
+  institutional_admin: {
+    bg: '#F5F3FF',
+    text: '#6D28D9',
+    border: '#DDD6FE',
+    label: 'Institutional Admin',
+  },
 };
 
 export default function PermissionConfigurationScreen({
@@ -103,7 +108,7 @@ export default function PermissionConfigurationScreen({
 
   // Filter & Search Controls
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('All');
+  const [categoryFilter, setCategoryFilter] = useState<string>('All Categories');
   const [groupedView, setGroupedView] = useState(true);
 
   // Modals & Confirmation dialogs
@@ -158,11 +163,15 @@ export default function PermissionConfigurationScreen({
 
       try {
         const { data } = await getPermissionMatrix(roleId);
-        const backendPerms = data?.permissions;
-        // Strict backend authority: derive matrix from server response
-        const serverMatrix = mapBackendPermissionsToMatrix(backendPerms, roleName);
-        setMatrix(serverMatrix);
-        setDirty(false);
+        if (data?.matrix && Object.keys(data.matrix).length > 0) {
+          setMatrix(data.matrix);
+          setDirty(false);
+        } else {
+          const backendPerms = data?.permissions;
+          const serverMatrix = mapBackendPermissionsToMatrix(backendPerms, roleName);
+          setMatrix(serverMatrix);
+          setDirty(false);
+        }
       } catch (err) {
         // If server request fails, load safe least-privilege defaults
         setMatrix(getDefaultMatrixForRole(roleName));
@@ -205,10 +214,10 @@ export default function PermissionConfigurationScreen({
     [roles, selectedRoleId],
   );
 
-  // Filtered pages based on search query and role filter
+  // Filtered pages based on search query and category filter
   const filteredPages = useMemo(() => {
-    return filterPageModules(ALL_PAGE_MODULES, searchQuery, roleFilter);
-  }, [searchQuery, roleFilter]);
+    return filterPageModules(ALL_PAGE_MODULES, searchQuery, categoryFilter);
+  }, [searchQuery, categoryFilter]);
 
   // Grouped pages by category
   const categorizedPages = useMemo(() => {
@@ -391,14 +400,19 @@ export default function PermissionConfigurationScreen({
 
       const res = await savePermissionMatrix(selectedRoleId, {
         matrix: payload.matrix,
+        page_matrix: matrix,
         permission_ids: payload.permission_ids,
       });
 
       // Update state with confirmed server response
-      const confirmedPerms = res?.data?.permissions;
-      if (Array.isArray(confirmedPerms)) {
-        const confirmedMatrix = mapBackendPermissionsToMatrix(confirmedPerms, selectedRole.name);
-        setMatrix(confirmedMatrix);
+      if (res?.data?.matrix) {
+        setMatrix(res.data.matrix);
+      } else {
+        const confirmedPerms = res?.data?.permissions;
+        if (Array.isArray(confirmedPerms)) {
+          const confirmedMatrix = mapBackendPermissionsToMatrix(confirmedPerms, selectedRole.name);
+          setMatrix(confirmedMatrix);
+        }
       }
 
       // Record confirmed audit entry
@@ -564,10 +578,7 @@ export default function PermissionConfigurationScreen({
                       <TouchableOpacity
                         key={r.id}
                         style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
-                        onPress={() => {
-                          setSelectedRoleId(r.id);
-                          setDropdownOpen(false);
-                        }}
+                        onPress={() => handleSelectRole(r.id)}
                       >
                         <View style={{ flex: 1 }}>
                           <Text
@@ -648,13 +659,13 @@ export default function PermissionConfigurationScreen({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.roleFilterStrip}
           >
-            {ROLE_FILTER_OPTIONS.map((opt) => {
-              const active = roleFilter === opt;
+            {CATEGORY_FILTER_OPTIONS.map((opt) => {
+              const active = categoryFilter === opt;
               return (
                 <TouchableOpacity
                   key={opt}
                   style={[styles.roleFilterTab, active && styles.roleFilterTabActive]}
-                  onPress={() => setRoleFilter(opt)}
+                  onPress={() => setCategoryFilter(opt)}
                 >
                   <Text
                     style={[styles.roleFilterTabText, active && styles.roleFilterTabTextActive]}
@@ -1009,11 +1020,7 @@ function renderTableRow(
   onRowToggle: (pageId: string) => void,
 ) {
   const rowAllChecked = ACTIONS.every((a) => matrix[page.id]?.[a]);
-  const badgeStyle = ROLE_BADGE_COLORS[page.roleKey] || {
-    bg: '#F1F5F9',
-    text: '#475569',
-    border: '#CBD5E1',
-  };
+  const adminBadge = ADMIN_BADGE_COLORS[page.roleKey];
 
   return (
     <View
@@ -1028,17 +1035,21 @@ function renderTableRow(
       <View style={{ width: 380, paddingRight: spacing.sm }}>
         <View style={styles.pageTitleRow}>
           <Text style={styles.pageNameText}>{page.name}</Text>
-          <View
-            style={[
-              styles.roleBadgePill,
-              {
-                backgroundColor: badgeStyle.bg,
-                borderColor: badgeStyle.border,
-              },
-            ]}
-          >
-            <Text style={[styles.roleBadgePillText, { color: badgeStyle.text }]}>{page.role}</Text>
-          </View>
+          {adminBadge && (
+            <View
+              style={[
+                styles.roleBadgePill,
+                {
+                  backgroundColor: adminBadge.bg,
+                  borderColor: adminBadge.border,
+                },
+              ]}
+            >
+              <Text style={[styles.roleBadgePillText, { color: adminBadge.text }]}>
+                {adminBadge.label}
+              </Text>
+            </View>
+          )}
         </View>
         <Text style={styles.pageDescText} numberOfLines={1}>
           {page.description}

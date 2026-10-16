@@ -41,9 +41,13 @@ export function StaffFormModal({
   const [showPassword, setShowPassword] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [rolesDropdownOpen, setRolesDropdownOpen] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [unconfiguredRoleNotice, setUnconfiguredRoleNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setRolesDropdownOpen(false);
+    setErrors({});
+    setUnconfiguredRoleNotice(null);
     if (staff) {
       setName(staff.name);
       setEmail(staff.email);
@@ -61,94 +65,153 @@ export function StaffFormModal({
 
   const toggleRole = (r: string) => {
     const meta = roleMetaMap?.[r];
-    if (!roles.includes(r) && meta && meta.has_permissions === false) {
-      Alert.alert(
-        'Unconfigured Role',
-        `The role "${r}" cannot be assigned because it does not have any permissions configured yet.\n\nPlease configure permissions on the Permission Configuration page first before assigning it to staff.`,
+    if (
+      !roles.includes(r) &&
+      meta &&
+      (meta.has_permissions === false || meta.permission_count === 0)
+    ) {
+      setUnconfiguredRoleNotice(
+        `The role "${r}" cannot be assigned because it does not have any permissions configured yet. Please configure permissions on the Permission Configuration screen first.`,
       );
+      setErrors((prev) => ({
+        ...prev,
+        roles: `Please configure permissions first to assign "${r}".`,
+      }));
       return;
     }
+    setUnconfiguredRoleNotice(null);
+    setErrors((prev) => ({ ...prev, roles: '' }));
     setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
   };
 
   const handleSave = () => {
-    if (!name.trim() || !email.trim()) {
-      Alert.alert('Validation Error', 'Name and email are required.');
-      return;
-    }
-    if (!staff && !password.trim()) {
-      Alert.alert('Validation Error', 'Please enter a password for the new staff member.');
-      return;
-    }
-    if (roles.length === 0) {
-      Alert.alert('Validation Error', 'Please select at least one role for this staff member.');
-      return;
+    const nextErrors: Record<string, string> = {};
+
+    if (!name.trim()) {
+      nextErrors.name = 'Full name is required';
     }
 
-    // Pre-validate that no unconfigured role is selected
-    for (const r of roles) {
-      const meta = roleMetaMap?.[r];
-      if (meta && meta.has_permissions === false) {
-        Alert.alert(
-          'Unconfigured Role Selected',
-          `The role "${r}" does not have any permissions configured yet.\n\nPlease configure its permissions on the Permission Configuration page before assigning it to staff.`,
-        );
-        return;
+    if (!email.trim()) {
+      nextErrors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      nextErrors.email = 'Please enter a valid email address (e.g. jdoe@melue.org)';
+    }
+
+    if (!staff && !password.trim()) {
+      nextErrors.password = 'Login password is required for new staff members';
+    } else if (password.trim() && password.trim().length < 4) {
+      nextErrors.password = 'Password must be at least 4 characters long';
+    }
+
+    if (roles.length === 0) {
+      nextErrors.roles = 'Please select at least one system role to assign';
+    } else {
+      for (const r of roles) {
+        const meta = roleMetaMap?.[r];
+        if (meta && (meta.has_permissions === false || meta.permission_count === 0)) {
+          nextErrors.roles = `The role "${r}" has no permissions configured. Please configure permissions first to assign this role.`;
+          break;
+        }
       }
     }
 
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    setErrors({});
     onSave({
       id: staff?.id,
-      name,
-      email,
-      phone,
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
       password: password.trim() ? password.trim() : undefined,
       roles,
       active: staff?.active ?? true,
     });
   };
 
+  const hasErrors = Object.keys(errors).some((k) => !!errors[k]);
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
           <Text style={typography.h2}>{staff ? 'Edit Staff Account' : 'Add New Staff Member'}</Text>
+
+          {hasErrors && (
+            <View style={styles.errorSummaryBanner}>
+              <Feather name="alert-circle" size={16} color={colors.error} />
+              <Text style={styles.errorSummaryText}>
+                Please resolve the validation errors below before proceeding.
+              </Text>
+            </View>
+          )}
+
           <ScrollView contentContainerStyle={{ gap: spacing.md }}>
             <View style={styles.field}>
               <Text style={typography.label}>Full Name *</Text>
               <TextInput
-                style={styles.textInput}
+                style={[styles.textInput, !!errors.name && styles.textInputError]}
                 placeholder="e.g. John Doe"
                 placeholderTextColor={colors.mutedText}
                 value={name}
-                onChangeText={setName}
+                onChangeText={(val) => {
+                  setName(val);
+                  if (errors.name) setErrors((prev) => ({ ...prev, name: '' }));
+                }}
               />
+              {!!errors.name && (
+                <View style={styles.fieldErrorRow}>
+                  <Feather name="alert-circle" size={12} color={colors.error} />
+                  <Text style={styles.fieldErrorText}>{errors.name}</Text>
+                </View>
+              )}
             </View>
+
             <View style={styles.field}>
               <Text style={typography.label}>Email Address (Login Username) *</Text>
               <TextInput
-                style={styles.textInput}
+                style={[styles.textInput, !!errors.email && styles.textInputError]}
                 placeholder="e.g. jdoe@melue.org"
                 placeholderTextColor={colors.mutedText}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(val) => {
+                  setEmail(val);
+                  if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+                }}
                 autoCapitalize="none"
                 keyboardType="email-address"
               />
+              {!!errors.email && (
+                <View style={styles.fieldErrorRow}>
+                  <Feather name="alert-circle" size={12} color={colors.error} />
+                  <Text style={styles.fieldErrorText}>{errors.email}</Text>
+                </View>
+              )}
             </View>
+
             <View style={styles.field}>
               <Text style={typography.label}>
                 {staff ? 'Change Password (Optional)' : 'Login Password *'}
               </Text>
               <View style={styles.passwordRow}>
                 <TextInput
-                  style={[styles.textInput, { flex: 1 }]}
+                  style={[
+                    styles.textInput,
+                    { flex: 1 },
+                    !!errors.password && styles.textInputError,
+                  ]}
                   placeholder={
                     staff ? 'Leave blank to keep existing password' : 'Enter login password'
                   }
                   placeholderTextColor={colors.mutedText}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(val) => {
+                    setPassword(val);
+                    if (errors.password) setErrors((prev) => ({ ...prev, password: '' }));
+                  }}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                 />
@@ -163,12 +226,20 @@ export function StaffFormModal({
                   />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.fieldHintText}>
-                {staff
-                  ? 'Enter a new password if you wish to reset this user credentials.'
-                  : 'This password will allow the new staff member to sign in to the application.'}
-              </Text>
+              {!!errors.password ? (
+                <View style={styles.fieldErrorRow}>
+                  <Feather name="alert-circle" size={12} color={colors.error} />
+                  <Text style={styles.fieldErrorText}>{errors.password}</Text>
+                </View>
+              ) : (
+                <Text style={styles.fieldHintText}>
+                  {staff
+                    ? 'Enter a new password if you wish to reset this user credentials.'
+                    : 'This password will allow the new staff member to sign in to the application.'}
+                </Text>
+              )}
             </View>
+
             <View style={styles.field}>
               <Text style={typography.label}>Phone Number</Text>
               <TextInput
@@ -180,6 +251,7 @@ export function StaffFormModal({
                 keyboardType="phone-pad"
               />
             </View>
+
             <View style={styles.field}>
               <Text style={typography.label}>Assigned System Role(s) *</Text>
 
@@ -187,6 +259,7 @@ export function StaffFormModal({
                 style={[
                   styles.formDropdownTrigger,
                   rolesDropdownOpen && styles.formDropdownTriggerOpen,
+                  !!errors.roles && styles.formDropdownTriggerError,
                 ]}
                 onPress={() => setRolesDropdownOpen((v) => !v)}
                 accessibilityRole="combobox"
@@ -219,36 +292,66 @@ export function StaffFormModal({
                 />
               </TouchableOpacity>
 
+              {!!unconfiguredRoleNotice && (
+                <View style={styles.unconfiguredCalloutBox}>
+                  <Feather name="alert-triangle" size={14} color="#B45309" />
+                  <Text style={styles.unconfiguredCalloutText}>{unconfiguredRoleNotice}</Text>
+                </View>
+              )}
+
+              {!!errors.roles && (
+                <View style={styles.fieldErrorRow}>
+                  <Feather name="alert-circle" size={12} color={colors.error} />
+                  <Text style={styles.fieldErrorText}>{errors.roles}</Text>
+                </View>
+              )}
+
               {rolesDropdownOpen && (
                 <View style={styles.formDropdownMenu}>
-                  <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
+                  <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
                     {(roleOptions && roleOptions.length > 0 ? roleOptions : ROLE_OPTIONS).map(
                       (r) => {
                         const isSelected = roles.includes(r);
-                        const isUnconfigured = roleMetaMap?.[r]?.has_permissions === false;
+                        const meta = roleMetaMap?.[r];
+                        const isUnconfigured =
+                          meta?.has_permissions === false || meta?.permission_count === 0;
                         return (
                           <TouchableOpacity
                             key={r}
                             style={[
                               styles.formDropdownOption,
                               isSelected && styles.formDropdownOptionSelected,
-                              isUnconfigured && { opacity: 0.75 },
+                              isUnconfigured && styles.formDropdownOptionDisabled,
                             ]}
                             onPress={() => toggleRole(r)}
                           >
                             <Feather
                               name={isSelected ? 'check-square' : 'square'}
                               size={16}
-                              color={isSelected ? colors.navyText : colors.mutedText}
+                              color={
+                                isSelected
+                                  ? colors.navyText
+                                  : isUnconfigured
+                                    ? colors.border
+                                    : colors.mutedText
+                              }
                             />
-                            <Text
-                              style={[
-                                styles.formDropdownOptionText,
-                                isSelected && styles.formDropdownOptionTextSelected,
-                              ]}
-                            >
-                              {r}
-                            </Text>
+                            <View style={{ flex: 1, gap: 2 }}>
+                              <Text
+                                style={[
+                                  styles.formDropdownOptionText,
+                                  isSelected && styles.formDropdownOptionTextSelected,
+                                  isUnconfigured && { color: colors.mutedText },
+                                ]}
+                              >
+                                {r}
+                              </Text>
+                              {isUnconfigured && (
+                                <Text style={styles.unconfiguredRoleNoticeText}>
+                                  Please configure permissions first to assign this role
+                                </Text>
+                              )}
+                            </View>
                             {isUnconfigured && (
                               <View style={styles.unconfiguredBadge}>
                                 <Feather name="alert-circle" size={10} color={colors.error} />
@@ -460,6 +563,69 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   formDropdownDoneBtnText: { fontSize: 11, fontWeight: '700', color: colors.navyText },
+  textInputError: {
+    borderColor: colors.error,
+    backgroundColor: '#FEF2F2',
+  },
+  formDropdownTriggerError: {
+    borderColor: colors.error,
+    backgroundColor: '#FEF2F2',
+  },
+  fieldErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  fieldErrorText: {
+    fontSize: 12,
+    color: colors.error,
+    fontWeight: '500',
+  },
+  errorSummaryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  errorSummaryText: {
+    fontSize: 13,
+    color: '#B91C1C',
+    fontWeight: '600',
+    flex: 1,
+  },
+  unconfiguredCalloutBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  unconfiguredCalloutText: {
+    fontSize: 12,
+    color: '#B45309',
+    fontWeight: '500',
+    flex: 1,
+  },
+  formDropdownOptionDisabled: {
+    backgroundColor: '#F8FAFC',
+    opacity: 0.85,
+  },
+  unconfiguredRoleNoticeText: {
+    fontSize: 11,
+    color: '#D97706',
+    fontWeight: '500',
+  },
 });
 
 export default StaffFormModal;
