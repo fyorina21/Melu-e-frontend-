@@ -220,7 +220,9 @@ export default function RoleManagementScreen({ navigation }: Props) {
                   }}
                   onCancelEdit={() => setEditingRole(null)}
                   onSaveEdit={() => saveEdit(role.id)}
-                  onConfigurePermissions={() => navigation?.navigate?.('PermissionConfiguration')}
+                  onConfigurePermissions={() =>
+                    navigation?.navigate?.('PermissionConfiguration', { roleId: role.id })
+                  }
                   onDeleteRole={() => removeRole(role)}
                 />
               ))}

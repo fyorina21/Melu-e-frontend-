@@ -85,10 +85,9 @@ export type InstitutionalAdminStackParamList = {
 };
 
 export type SystemAdminStackParamList = {
-  FormBuilder: undefined;
   StaffAccountManagement: undefined;
   RoleManagement: undefined;
-  PermissionConfiguration: undefined;
+  PermissionConfiguration: { roleId?: string } | undefined;
   AuditLog: undefined;
 };
 

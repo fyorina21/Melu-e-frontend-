@@ -60,14 +60,17 @@ export type {
 
 export default function PermissionConfigurationScreen({
   navigation,
+  route,
 }: NativeStackScreenProps<SystemAdminStackParamList, 'PermissionConfiguration'>) {
   const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 
+  const routeRoleId = route?.params?.roleId;
+
   const [roles, setRoles] = useState<PermissionRole[]>([]);
   const [catalogModules, setCatalogModules] = useState<CatalogModule[]>(FALLBACK_MODULES);
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
+  const [selectedRoleId, setSelectedRoleId] = useState<string>(routeRoleId || '');
   const [matrix, setMatrix] = useState<PermissionMatrix>({});
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +79,13 @@ export default function PermissionConfigurationScreen({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
+
+  // Sync if route.params.roleId changes dynamically
+  useEffect(() => {
+    if (routeRoleId && routeRoleId !== selectedRoleId) {
+      setSelectedRoleId(routeRoleId);
+    }
+  }, [routeRoleId]);
 
   // 1. Load permission catalog
   const loadCatalog = useCallback(async () => {
@@ -97,17 +107,17 @@ export default function PermissionConfigurationScreen({
       const { data } = await getRoles();
       if (Array.isArray(data) && data.length > 0) {
         setRoles(data);
-        setSelectedRoleId((prev) => prev || data[0]?.id || '');
+        setSelectedRoleId((prev) => prev || routeRoleId || data[0]?.id || '');
       } else {
         setRoles(DEFAULT_SYSTEM_ROLES);
-        setSelectedRoleId((prev) => prev || DEFAULT_SYSTEM_ROLES[0].id);
+        setSelectedRoleId((prev) => prev || routeRoleId || DEFAULT_SYSTEM_ROLES[0].id);
       }
     } catch (err) {
       console.warn('Failed to load roles from API, using fallback system roles:', err);
       setRoles(DEFAULT_SYSTEM_ROLES);
-      setSelectedRoleId((prev) => prev || DEFAULT_SYSTEM_ROLES[0].id);
+      setSelectedRoleId((prev) => prev || routeRoleId || DEFAULT_SYSTEM_ROLES[0].id);
     }
-  }, []);
+  }, [routeRoleId]);
 
   // Initialize screen data
   useEffect(() => {
@@ -264,14 +274,70 @@ export default function PermissionConfigurationScreen({
     [matrix, displayModules],
   );
 
+  const handleSelectRole = useCallback(
+    (id: string) => {
+      if (id === selectedRoleId) {
+        setDropdownOpen(false);
+        return;
+      }
+      if (dirty) {
+        Alert.alert(
+          'Unsaved Changes',
+          `You have unsaved changes for "${selectedRole.name}". Switching roles will discard these changes. Do you want to proceed?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Discard & Switch',
+              style: 'destructive',
+              onPress: () => {
+                setDirty(false);
+                setSelectedRoleId(id);
+                setDropdownOpen(false);
+              },
+            },
+          ],
+        );
+      } else {
+        setSelectedRoleId(id);
+        setDropdownOpen(false);
+      }
+    },
+    [dirty, selectedRoleId, selectedRole.name],
+  );
+
+  const handleTabPress = useCallback(
+    (t: string) => {
+      const targetRoute = SYS_ROUTE_BY_TAB[t];
+      if (!targetRoute) return;
+
+      if (dirty) {
+        Alert.alert(
+          'Unsaved Changes',
+          'You have unsaved permission changes. Navigating away will discard them. Do you want to proceed?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Discard & Leave',
+              style: 'destructive',
+              onPress: () => {
+                setDirty(false);
+                navigation?.navigate?.(targetRoute);
+              },
+            },
+          ],
+        );
+      } else {
+        navigation?.navigate?.(targetRoute);
+      }
+    },
+    [dirty, navigation],
+  );
+
   if (loading) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Permission Configuration"
-        onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])}
-      />
+      <AppNavbar activeTab="Permission Configuration" onTabPress={handleTabPress} />
 
       <PermissionConfigHeader />
 
@@ -307,10 +373,7 @@ export default function PermissionConfigurationScreen({
         visible={dropdownOpen}
         roles={roles.length > 0 ? roles : DEFAULT_SYSTEM_ROLES}
         selectedRoleId={selectedRoleId}
-        onSelectRole={(id) => {
-          setSelectedRoleId(id);
-          setDropdownOpen(false);
-        }}
+        onSelectRole={handleSelectRole}
         onClose={() => setDropdownOpen(false)}
       />
 
