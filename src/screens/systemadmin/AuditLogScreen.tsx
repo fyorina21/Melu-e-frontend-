@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   Platform,
   Share,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -48,6 +49,9 @@ type Props = NativeStackScreenProps<SystemAdminStackParamList, 'AuditLog'>;
 
 export default function AuditLogScreen({ navigation }: Props) {
   const { showToast } = useToast();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [userFilter, setUserFilter] = useState('All');
   const [actionFilter, setActionFilter] = useState('All');
@@ -199,152 +203,163 @@ export default function AuditLogScreen({ navigation }: Props) {
         onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])}
       />
 
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={typography.h1}>Audit Log</Text>
-          <Text style={[typography.caption, { color: colors.mutedText }]}>
-            Regulatory activity records and system traceability
-          </Text>
-        </View>
-
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.exportBtn}
-            onPress={handleExportCsv}
-            accessibilityRole="button"
-            accessibilityLabel="Export audit logs as CSV"
-          >
-            <Feather name="download" size={14} color={colors.navyText} />
-            <Text style={styles.exportBtnText}>Export CSV</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.exportBtnSecondary}
-            onPress={handleExportJson}
-            accessibilityRole="button"
-            accessibilityLabel="Export audit logs as JSON"
-          >
-            <Feather name="file-text" size={14} color={colors.navyText} />
-            <Text style={styles.exportBtnText}>Export JSON</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.filtersRow}>
-        <View style={styles.searchContainer}>
-          <Feather name="search" size={16} color={colors.mutedText} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by user, action, resource, or IP..."
-            placeholderTextColor={colors.mutedText}
-            value={search}
-            onChangeText={setSearch}
-            accessibilityLabel="Search audit logs"
-          />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch('')} style={styles.clearSearchBtn}>
-              <Feather name="x" size={16} color={colors.mutedText} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <View style={styles.filterGroup}>
-          <Text style={styles.filterLabel}>User:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {availableUsers.map((u) => (
-              <Chip
-                key={u}
-                label={u}
-                selected={userFilter === u}
-                onPress={() => setUserFilter(u)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-
-        <View style={styles.filterGroup}>
-          <Text style={styles.filterLabel}>Action:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['All', ...ACTIONS].map((a) => (
-              <Chip
-                key={a}
-                label={a}
-                selected={actionFilter === a}
-                onPress={() => setActionFilter(a)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.statsRow}>
-          <Text style={typography.caption}>
-            Showing <Text style={{ fontWeight: '700' }}>{filtered.length}</Text> of {entries.length}{' '}
-            log entr(ies)
-          </Text>
-          {(userFilter !== 'All' || actionFilter !== 'All' || search) && (
-            <TouchableOpacity onPress={handleResetFilters}>
-              <Text style={styles.resetText}>Clear Filters</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {filtered.map((e) => {
-          const s = ACTION_STYLE[e.action] || {
-            bg: colors.statusPendingBg,
-            text: colors.statusPendingText,
-          };
-          return (
-            <View key={e.id} style={styles.row}>
-              <View style={styles.rowHeader}>
-                <View style={[styles.actionPill, { backgroundColor: s.bg }]}>
-                  <Text style={[styles.actionPillText, { color: s.text }]}>{e.action}</Text>
-                </View>
-                <Text style={typography.caption}>
-                  {e.date} · {e.time}
-                  {e.ip ? ` · ${e.ip}` : ''}
-                </Text>
-              </View>
-
-              <Text style={typography.bodyBold}>
-                {e.user} <Text style={{ fontWeight: '400' }}>{e.action}</Text> {e.resource}
-              </Text>
-
-              {(e.oldValue || e.newValue) && (
-                <View style={styles.changeBlock}>
-                  {e.oldValue && <Text style={styles.oldValue}>Old: {e.oldValue}</Text>}
-                  {e.newValue && <Text style={styles.newValue}>New: {e.newValue}</Text>}
-                </View>
-              )}
-            </View>
-          );
-        })}
-
-        {filtered.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Feather name="file-text" size={44} color={colors.mutedText} />
-            <Text style={[typography.h3, { marginTop: spacing.md }]}>
-              No Audit Log Entries Found
+      <View style={[styles.mainWrapper, isTablet && styles.containerTablet]}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={typography.h1}>Audit Log</Text>
+            <Text style={[typography.caption, { color: colors.mutedText }]}>
+              Regulatory activity records and system traceability
             </Text>
-            <Text style={[typography.caption, styles.emptySubtext]}>
-              {search || userFilter !== 'All' || actionFilter !== 'All'
-                ? 'No activity matches your current filters. Try resetting your search or filter options.'
-                : 'No audit records have been captured yet.'}
+          </View>
+
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.exportBtn}
+              onPress={handleExportCsv}
+              accessibilityRole="button"
+              accessibilityLabel="Export audit logs as CSV"
+            >
+              <Feather name="download" size={14} color={colors.navyText} />
+              <Text style={styles.exportBtnText}>Export CSV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.exportBtnSecondary}
+              onPress={handleExportJson}
+              accessibilityRole="button"
+              accessibilityLabel="Export audit logs as JSON"
+            >
+              <Feather name="file-text" size={14} color={colors.navyText} />
+              <Text style={styles.exportBtnText}>Export JSON</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.filtersRow}>
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={16} color={colors.mutedText} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by user, action, resource, or IP..."
+              placeholderTextColor={colors.mutedText}
+              value={search}
+              onChangeText={setSearch}
+              accessibilityLabel="Search audit logs"
+            />
+            {search ? (
+              <TouchableOpacity onPress={() => setSearch('')} style={styles.clearSearchBtn}>
+                <Feather name="x" size={16} color={colors.mutedText} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>User:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {availableUsers.map((u) => (
+                <Chip
+                  key={u}
+                  label={u}
+                  selected={userFilter === u}
+                  onPress={() => setUserFilter(u)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>Action:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {['All', ...ACTIONS].map((a) => (
+                <Chip
+                  key={a}
+                  label={a}
+                  selected={actionFilter === a}
+                  onPress={() => setActionFilter(a)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.statsRow}>
+            <Text style={typography.caption}>
+              Showing <Text style={{ fontWeight: '700' }}>{filtered.length}</Text> of{' '}
+              {entries.length} log entr(ies)
             </Text>
-            {(search || userFilter !== 'All' || actionFilter !== 'All') && (
-              <TouchableOpacity style={styles.resetBtn} onPress={handleResetFilters}>
-                <Text style={styles.resetBtnText}>Reset All Filters</Text>
+            {(userFilter !== 'All' || actionFilter !== 'All' || search) && (
+              <TouchableOpacity onPress={handleResetFilters}>
+                <Text style={styles.resetText}>Clear Filters</Text>
               </TouchableOpacity>
             )}
           </View>
-        )}
-      </ScrollView>
+
+          {filtered.map((e) => {
+            const s = ACTION_STYLE[e.action] || {
+              bg: colors.statusPendingBg,
+              text: colors.statusPendingText,
+            };
+            return (
+              <View key={e.id} style={styles.row}>
+                <View style={styles.rowHeader}>
+                  <View style={[styles.actionPill, { backgroundColor: s.bg }]}>
+                    <Text style={[styles.actionPillText, { color: s.text }]}>{e.action}</Text>
+                  </View>
+                  <Text style={typography.caption}>
+                    {e.date} · {e.time}
+                    {e.ip ? ` · ${e.ip}` : ''}
+                  </Text>
+                </View>
+
+                <Text style={typography.bodyBold}>
+                  {e.user} <Text style={{ fontWeight: '400' }}>{e.action}</Text> {e.resource}
+                </Text>
+
+                {(e.oldValue || e.newValue) && (
+                  <View style={styles.changeBlock}>
+                    {e.oldValue && <Text style={styles.oldValue}>Old: {e.oldValue}</Text>}
+                    {e.newValue && <Text style={styles.newValue}>New: {e.newValue}</Text>}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+
+          {filtered.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Feather name="file-text" size={44} color={colors.mutedText} />
+              <Text style={[typography.h3, { marginTop: spacing.md }]}>
+                No Audit Log Entries Found
+              </Text>
+              <Text style={[typography.caption, styles.emptySubtext]}>
+                {search || userFilter !== 'All' || actionFilter !== 'All'
+                  ? 'No activity matches your current filters. Try resetting your search or filter options.'
+                  : 'No audit records have been captured yet.'}
+              </Text>
+              {(search || userFilter !== 'All' || actionFilter !== 'All') && (
+                <TouchableOpacity style={styles.resetBtn} onPress={handleResetFilters}>
+                  <Text style={styles.resetBtnText}>Reset All Filters</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
+  mainWrapper: {
+    flex: 1,
+    width: '100%',
+  },
+  containerTablet: {
+    maxWidth: 1200,
+    width: '100%',
+    alignSelf: 'center',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
