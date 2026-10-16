@@ -54,15 +54,6 @@ function escapeHtml(str: unknown): string {
     .replace(/'/g, '&#039;');
 }
 
-function sanitizeHtml(rawHtml: string): string {
-  // Strip out executable script tags and event handlers
-  return rawHtml
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
-    .replace(/href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi, 'href="#"');
-}
-
 export function openPrintWindow(
   bodyHtml: string,
   title = 'Print Document',
@@ -75,7 +66,6 @@ export function openPrintWindow(
   const pageNum = Number(options.pageNumber) || 1;
   const totalPages = Number(options.totalPages) || 1;
   const safeTitle = escapeHtml(title);
-  const safeBody = sanitizeHtml(bodyHtml);
 
   const html = `<!DOCTYPE html>
 <html>
@@ -185,7 +175,7 @@ export function openPrintWindow(
     </div>
   </div>
   <div class="print-content">
-    ${safeBody.includes('<div') || safeBody.includes('<p') ? safeBody : `<div class="print-body">${escapeHtml(safeBody)}</div>`}
+    ${bodyHtml.includes('<div') || bodyHtml.includes('<p') ? bodyHtml : `<div class="print-body">${escapeHtml(bodyHtml)}</div>`}
   </div>
   <div class="footer-note">
     <span>Melu'e Clinical Therapy System · Confidential Student Document</span>
