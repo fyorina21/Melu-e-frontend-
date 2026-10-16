@@ -146,6 +146,16 @@ export function undoTrialInStore(
 
 const OFFLINE_SYNC_QUEUE_KEY = 'melue_session_offline_sync_queue';
 
+function generateOfflineSyncIdSuffix(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  // Fallback for rare environments without Web Crypto.
+  return `${Date.now().toString(16)}-${Math.floor(Date.now() % 100000).toString(16)}`;
+}
+
 export interface OfflineSyncItem {
   id: string;
   type: 'logTrial' | 'undoTrial' | 'recordIncident' | 'log_trial' | 'undo_trial' | 'behavior_incident';
@@ -173,7 +183,7 @@ export function enqueueOfflineSync(
 ): OfflineSyncItem {
   const newItem: OfflineSyncItem = {
     ...item,
-    id: `sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: `sync-${Date.now()}-${generateOfflineSyncIdSuffix()}`,
     createdAt: Date.now(),
     retryCount: 0,
   };
