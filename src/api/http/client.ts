@@ -202,9 +202,7 @@ function createHttpClient(): AxiosInstance {
     const isPublicAuthUrl =
       config.url?.includes('/auth/login') ||
       config.url?.includes('/auth/create-account') ||
-      config.url?.includes('/auth/reset-password') ||
-      config.url?.includes('/auth/jwt-refresh') ||
-      config.url?.includes('/auth/jwt_refresh');
+      config.url?.includes('/auth/reset-password');
 
     if (isPublicAuthUrl) {
       if (config.headers) {
@@ -239,7 +237,17 @@ function createHttpClient(): AxiosInstance {
         }
       }
 
-      if (token) {
+      // Check if an Authorization header is already provided on the request config
+      const existingAuth =
+        typeof config.headers?.Authorization === 'string'
+          ? config.headers.Authorization
+          : typeof (config.headers as any)?.authorization === 'string'
+            ? (config.headers as any).authorization
+            : '';
+
+      if (existingAuth) {
+        // Keep explicitly supplied Authorization header
+      } else if (token) {
         if (typeof (config.headers as any).set === 'function') {
           (config.headers as any).set('Authorization', `Bearer ${token}`);
         } else {

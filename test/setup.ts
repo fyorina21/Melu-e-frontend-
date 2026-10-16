@@ -37,7 +37,9 @@ beforeEach(() => {
   // usability, not just typeof. Force the in-memory polyfill so every test
   // sees a working, isolated storage.
   replaceUnusableLocalStorage();
+  replaceUnusableSessionStorage();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -48,6 +50,12 @@ function replaceUnusableLocalStorage(): void {
   const existing = (globalThis as Record<string, unknown>).localStorage as Storage | undefined;
   if (existing && typeof existing.getItem === 'function') return;
   (globalThis as Record<string, unknown>).localStorage = createMemoryStorage();
+}
+
+function replaceUnusableSessionStorage(): void {
+  const existing = (globalThis as Record<string, unknown>).sessionStorage as Storage | undefined;
+  if (existing && typeof existing.getItem === 'function') return;
+  (globalThis as Record<string, unknown>).sessionStorage = createMemoryStorage();
 }
 
 function createMemoryStorage(): Storage {

@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   useMemo,
   useCallback,
   type ReactNode,
@@ -103,6 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+  const lastActivityRef = useRef<number>(Date.now());
+  const lastRefreshRef = useRef<number>(Date.now());
 
   useEffect(() => {
     setTokenRefreshHandler(authApi.refreshToken);
@@ -175,6 +178,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionExpiredHandler(null);
     };
   }, [showToast]);
+
+  // Inactivity tracking & proactive token renewal (NFR-015)
+  useEffect(() => {
+    if (!session) return;
+
+    lastActivityRef.current = Date.now();
+    lastRefreshRef.current = Date.now();
+
+    let lastThrottledRecord = 0;
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastThrottledRecord > 5000) {
+        lastThrottledRecord = now;
+        lastActivityRef.current = now;
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mousedown', handleUserActivity, { passive: true });
+      window.addEventListener('keydown', handleUserActivity, { passive: true });
+      window.addEventListener('touchstart', handleUserActivity, { passive: true });
+      window.addEventListener('scroll', handleUserActivity, { passive: true });
+    }
+
+    // Periodic check for inactivity timeout and proactive token renewal
+    const interval = setInterval(async () => {
+      const now = Date.now();
+      const idleMs = now - lastActivityRef.current;
+      // Staff sessions timeout after 15 minutes of inactivity; parent sessions after 30 minutes (NFR-015)
+      const timeoutMs = session.role === 'parent' ? 30 * 60 * 1000 : 15 * 60 * 1000;
+
+      if (idleMs >= timeoutMs) {
+        setSession(null);
+        await clearAuthTokens();
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(null, '', '/');
+        }
+        showToast('Your session has expired due to inactivity. Please sign in again.', 'info');
+        return;
+      }
+
+      // Proactively refresh JWT every 5 minutes while user is active to prevent sudden 401s
+      if (now - lastRefreshRef.current >= 5 * 60 * 1000) {
+        lastRefreshRef.current = now;
+        try {
+          await authApi.refreshToken();
+        } catch (err) {
+          console.warn('Proactive token refresh attempt failed:', err);
+        }
+      }
+    }, 60 * 1000);
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('mousedown', handleUserActivity);
+        window.removeEventListener('keydown', handleUserActivity);
+        window.removeEventListener('touchstart', handleUserActivity);
+        window.removeEventListener('scroll', handleUserActivity);
+      }
+      clearInterval(interval);
+    };
+  }, [session?.userId, session?.role, showToast]);
 
   const loginWithCredentials = async (
     email: string,

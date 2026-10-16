@@ -7,11 +7,13 @@
 import { http } from '../http/client';
 import {
   setAccessToken,
+  getAccessToken,
   loadToken,
   getRefreshToken,
   setRefreshToken,
   loadRefreshToken,
   clearAuthTokens,
+  isTokenPersisted,
 } from '../token';
 
 export interface LoginRequest {
@@ -87,12 +89,23 @@ export const authApi = {
   async refreshToken(): Promise<string | null> {
     const currentRefreshToken = getRefreshToken() || (await loadRefreshToken());
     if (!currentRefreshToken) return null;
+    const currentAccessToken = getAccessToken() || (await loadToken());
 
     try {
-      const { data, headers } = await http.post<LoginResponse>('/auth/jwt-refresh', {
-        refresh_token: currentRefreshToken,
-        'refresh-token': currentRefreshToken,
-      });
+      const { data, headers } = await http.post<LoginResponse>(
+        '/auth/jwt-refresh',
+        {
+          refresh_token: currentRefreshToken,
+          'refresh-token': currentRefreshToken,
+        },
+        currentAccessToken
+          ? {
+              headers: {
+                Authorization: `Bearer ${currentAccessToken}`,
+              },
+            }
+          : undefined,
+      );
       const token =
         data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
       const newRefreshToken =
@@ -101,7 +114,7 @@ export const authApi = {
         (data as any).refreshToken ??
         currentRefreshToken;
 
-      const isPersisted = !!(await loadRefreshToken());
+      const isPersisted = isTokenPersisted();
       if (token) {
         await setAccessToken(token, isPersisted);
       }

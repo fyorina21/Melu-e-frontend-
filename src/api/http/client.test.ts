@@ -107,4 +107,28 @@ describe('HTTP client token refresh mutex and queue', () => {
       http.defaults.adapter = originalAdapter;
     }
   });
+
+  it('preserves Authorization header for /auth/jwt-refresh endpoints', async () => {
+    await setAccessToken('test-access-token');
+    const originalAdapter = http.defaults.adapter;
+    let capturedAuth: string | undefined;
+
+    http.defaults.adapter = async (config) => {
+      capturedAuth = config.headers?.Authorization as string | undefined;
+      return {
+        data: { access_token: 'new-token' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      };
+    };
+
+    try {
+      await http.post('/auth/jwt-refresh', { refresh_token: 'some-refresh-token' });
+      expect(capturedAuth).toBe('Bearer test-access-token');
+    } finally {
+      http.defaults.adapter = originalAdapter;
+    }
+  });
 });
