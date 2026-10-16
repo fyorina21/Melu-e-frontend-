@@ -1,9 +1,7 @@
-// src/screens/session/SessionDataCollectionScreen.tsx
-// SCR-SESS-001: Session Data Collection Screen
-
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
+  Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -11,32 +9,54 @@ import {
   Alert,
   useWindowDimensions,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, spacing } from '../../theme/colors';
+import { colors, radius, spacing } from '../../theme/colors';
+import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
+import StudentSessionCard from './components/StudentSessionCard';
+import BehaviorIncidentModal from './components/BehaviorIncidentModal';
+import type { IncidentPayload } from './components/BehaviorIncidentModal';
 import {
-  StudentSessionCard,
-  BehaviorIncidentModal,
-  SessionHeaderTimer,
-  SessionEmptyStudents,
-  SessionFooterActions,
-} from './components';
-import {
-  getSessionRoster,
   startSession,
+  getSessionRoster,
   logTrial,
   undoLastTrial,
   recordBehaviorIncident,
   swapStudents,
 } from '../../api/sessionApi';
-import { http as client } from '../../api/http/client';
-import { getStoredIupDraft, getAllStoredIupDrafts } from '../../api/programDirectorApi';
-import type { SessionStackParamList, SessionRoster, Payload, Trial } from '../../types';
+import { studentsApi } from '../../api/resources/students';
+import { getStoredIupDraft } from '../../api/programDirectorApi';
+import { getTeacherDashboard } from '../../api/teacherExtrasApi';
+import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
+import { getDirectorSchedule } from '../../api/directorApi';
+import {
+  isStudentEligibleForSession,
+  registerStudentStatuses,
+  getRegisteredStudentStatus,
+} from '../../utils/studentLifecycleHelper';
+import {
+  findLoggedInTeacher,
+  resolveTeacherAssignedStudentIds,
+  getDirectorAssignmentsForTeacher,
+  onScheduleAssignmentsChanged,
+} from '../../utils/teacherScheduleHelper';
+import {
+  isStaffDeleted,
+  filterOutDeletedStaff,
+  onDeletedStaffChanged,
+} from '../../utils/deletedStaffHelper';
+import type {
+  SessionStackParamList,
+  SessionRoster,
+  Payload,
+  Trial,
+} from '../../types';
 import {
   startSessionTimer,
   resumeSessionTimer,
@@ -48,14 +68,110 @@ import {
   getStoredTrials,
   recordTrialInStore,
   undoTrialInStore,
+  updateTrialIdInStore,
   recordIncidentInStore,
+  removeStoredSessionIncident,
+  getStoredIncidents,
+  setStoredSessionStudents,
+  getStoredSessionStudents,
+  enqueueOfflineSync,
+  getOfflineSyncQueue,
+  removeOfflineSyncItem,
+  incrementOfflineSyncRetry,
 } from '../../stores/trialsStore';
-import type { IncidentModalState, IncidentPayload } from './sessionDataTypes';
-import { getStudentAssignedGoals, checkStudentEligibility } from './sessionEligibilityHelper';
 
-type Props = NativeStackScreenProps<SessionStackParamList, 'SessionDataCollection'>;
+type Props = NativeStackScreenProps<
+  SessionStackParamList,
+  'SessionDataCollection'
+>;
 
-export default function SessionDataCollectionScreen({ route, navigation }: Props) {
+interface IncidentModalState {
+  studentId: string;
+  studentGoalId?: string;
+  studentName?: string;
+  goalName?: string;
+}
+
+function getStudentAssignedGoals(studentId: string, rawGoals: any[] = []): any[] {
+  const draft = getStoredIupDraft(studentId);
+  const extractedGoals: any[] = [];
+
+  if (draft) {
+    if (draft.slots && typeof draft.slots === 'object') {
+      const s1 = Array.isArray((draft.slots as any).station1) ? (draft.slots as any).station1 : [];
+      const s2 = Array.isArray((draft.slots as any).station2) ? (draft.slots as any).station2 : [];
+      [...s1, ...s2].filter(Boolean).forEach((g: any, idx: number) => {
+        extractedGoals.push({
+          id: String(g.id || `${studentId}-draft-g-${idx}`),
+          name: String(g.name || g.title || g.description || 'Assigned Goal'),
+          category: g.domain || g.category || 'Adaptive',
+          goalType: g.goalType || g.goal_type || 'standard',
+          totalTrials: 0,
+          independencePercent: 0,
+          trialLog: [],
+        });
+      });
+    }
+
+    if (extractedGoals.length === 0 && Array.isArray(draft.goals) && draft.goals.length > 0) {
+      draft.goals.forEach((g: any, idx: number) => {
+        if (typeof g === 'object' && g !== null) {
+          extractedGoals.push({
+            id: String(g.id || `${studentId}-draft-g-${idx}`),
+            name: String(g.name || g.title || g.description || 'Assigned Goal'),
+            category: g.domain || g.category || 'Adaptive',
+            goalType: g.goalType || g.goal_type || 'standard',
+            totalTrials: 0,
+            independencePercent: 0,
+            trialLog: [],
+          });
+        } else if (typeof g === 'string' && g.trim()) {
+          extractedGoals.push({
+            id: g.trim(),
+            name: 'Assigned Goal',
+            category: 'Adaptive',
+            goalType: 'standard',
+            totalTrials: 0,
+            independencePercent: 0,
+            trialLog: [],
+          });
+        }
+      });
+    }
+  }
+
+  if (extractedGoals.length > 0) {
+    return extractedGoals;
+  }
+
+  // Filter out default synthetic backend fallback IDs (e.g., studentId-g1, studentId-g2)
+  const realBackendGoals = (Array.isArray(rawGoals) ? rawGoals : []).filter((g: any) => {
+    const gid = String(g.id || '');
+    const isFallbackId =
+      gid === `${studentId}-g1` ||
+      gid === `${studentId}-g2` ||
+      gid.endsWith('-g1') ||
+      gid.endsWith('-g2');
+    return !isFallbackId && gid.trim() !== '';
+  });
+
+  return realBackendGoals;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 5000, fallback: T): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+export default function SessionDataCollectionScreen({
+  route,
+  navigation,
+}: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
   const { session: authSession } = useAuth();
   const { showToast } = useToast();
@@ -63,154 +179,347 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [session, setSession] = useState<SessionRoster | null>(null);
-  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
-  const [isRunning, setIsRunning] = useState(isTimerRunning());
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(() => {
+    const rem = remainingSeconds();
+    return rem > 0 ? rem : null;
+  });
+  const [isRunning, setIsRunning] = useState(() => isTimerRunning());
   const [incidentModal, setIncidentModal] = useState<IncidentModalState | null>(null);
-  const [localIncidents, setLocalIncidents] = useState<IncidentPayload[]>([]);
+  const [localIncidents, setLocalIncidents] = useState<IncidentPayload[]>(() => {
+    return (getStoredIncidents(sessionId) as unknown as IncidentPayload[]) || [];
+  });
+
+  const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(() => {
+    return (
+      (route.params as any)?.teacherId ||
+      (typeof localStorage !== 'undefined'
+        ? localStorage.getItem('melue_session_selected_teacher_id') || ''
+        : '')
+    );
+  });
+
+  const teachersRef = useRef<Array<{ id: string; name: string }>>([]);
+  const selectedTeacherIdRef = useRef<string>(selectedTeacherId);
+  selectedTeacherIdRef.current = selectedTeacherId;
+  const fetchRequestIdRef = useRef<number>(0);
+  const isFlushingSyncRef = useRef<boolean>(false);
+  const initializedRef = useRef<boolean>(false);
+
+  const flushOfflineSyncQueue = useCallback(async (currentSessionId?: string) => {
+    if (isFlushingSyncRef.current) return;
+    const queue = getOfflineSyncQueue();
+    if (!queue || queue.length === 0) return;
+
+    isFlushingSyncRef.current = true;
+    try {
+      for (const item of queue) {
+        if (currentSessionId && item.sessionId !== currentSessionId) continue;
+        if (item.retryCount > 5) {
+          removeOfflineSyncItem(item.id);
+          continue;
+        }
+
+        try {
+          if (item.type === 'log_trial' || item.type === 'logTrial') {
+            const res = await logTrial(
+              item.sessionId,
+              item.studentId || '',
+              item.goalId || '',
+              item.payload
+            );
+            const serverTrialId = (res as any)?.data?.trial?.id || (res as any)?.data?.id;
+            if (serverTrialId && item.trialId && serverTrialId !== item.trialId && item.studentId) {
+              updateTrialIdInStore(item.sessionId, item.studentId, item.trialId, String(serverTrialId));
+            }
+            removeOfflineSyncItem(item.id);
+          } else if (item.type === 'undo_trial' || item.type === 'undoTrial') {
+            await undoLastTrial(
+              item.sessionId,
+              item.studentId || '',
+              item.goalId || ''
+            );
+            removeOfflineSyncItem(item.id);
+          } else if (item.type === 'behavior_incident' || item.type === 'recordIncident') {
+            await recordBehaviorIncident(
+              item.sessionId,
+              item.payload as Payload
+            );
+            removeOfflineSyncItem(item.id);
+          }
+        } catch {
+          incrementOfflineSyncRetry(item.id);
+          break;
+        }
+      }
+    } finally {
+      isFlushingSyncRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    flushOfflineSyncQueue(sessionId);
+    const handleOnline = () => {
+      flushOfflineSyncQueue(sessionId);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+      };
+    }
+  }, [sessionId, flushOfflineSyncQueue]);
+
+  useEffect(() => {
+    const cached = getStoredIncidents(sessionId) as unknown as IncidentPayload[];
+    if (cached && cached.length > 0) {
+      setLocalIncidents(cached);
+    }
+  }, [sessionId]);
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-  const isTablet = width >= 768;
 
   const loadRoster = useCallback(
-    async (silent = false) => {
+    async (teacherIdToLoad?: string, silent = false) => {
+      const requestId = ++fetchRequestIdRef.current;
       try {
+        if (!silent) {
+          setLoading(true);
+          setLoadError(false);
+        }
+        // Start the session on the backend asynchronously without blocking roster load
         startSession(sessionId).catch(() => {});
 
-        const { data } = await getSessionRoster(sessionId);
+        // Fetch teachers list if not already cached
+        let currentTeachers = filterOutDeletedStaff(teachersRef.current.length > 0 ? teachersRef.current : teachers);
+        if (currentTeachers.length === 0) {
+          try {
+            const staffRes = await withTimeout<any>(getStaffOptions().catch(() => null), 4000, null);
+            const teacherRows: Array<{ id: string; name: string }> = (filterOutDeletedStaff(staffRes?.data || []) as any[]).filter((s: any) => s.role === 'teacher');
+            if (teacherRows.length > 0) {
+              currentTeachers = teacherRows;
+              teachersRef.current = teacherRows;
+              setTeachers(teacherRows);
+            }
+          } catch {}
+        }
 
-        const [optionsRes, pipelineRes] = await Promise.all([
-          client.get<any[]>('/options/students').catch(() => null),
-          client.get<any>('/program_director/assessment_pipeline').catch(() => null),
+        // Determine active target teacher ID
+        let targetTeacherId = teacherIdToLoad || (route.params as any)?.teacherId;
+        if (targetTeacherId && isStaffDeleted(targetTeacherId)) {
+          targetTeacherId = undefined;
+        }
+        if (!targetTeacherId && currentTeachers.length > 0) {
+          const matched = findLoggedInTeacher(authSession, currentTeachers);
+          if (matched && !isStaffDeleted(matched)) targetTeacherId = matched.id;
+        }
+        if (!targetTeacherId && selectedTeacherIdRef.current && !isStaffDeleted(selectedTeacherIdRef.current)) {
+          targetTeacherId = selectedTeacherIdRef.current;
+        }
+        if (!targetTeacherId && currentTeachers.length > 0) {
+          targetTeacherId = currentTeachers[0].id;
+        }
+        if (targetTeacherId && targetTeacherId !== selectedTeacherIdRef.current) {
+          selectedTeacherIdRef.current = targetTeacherId;
+          setSelectedTeacherId(targetTeacherId);
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem('melue_session_selected_teacher_id', targetTeacherId);
+            } catch {}
+          }
+        }
+
+        // Parallel fetch with 5000ms timeout: director schedule for target teacher, all director schedule blocks, student options, dashboard, and session roster
+        const [schedRes, allSchedRes, studentOptsRes, dashRes, sessionRosterRes] = await Promise.all([
+          targetTeacherId ? withTimeout(getDirectorSchedule({ teacherId: targetTeacherId }).catch(() => null), 5000, null) : null,
+          withTimeout(getDirectorSchedule({}).catch(() => null), 5000, null),
+          withTimeout(getStudentOptions().catch(() => null), 5000, null),
+          withTimeout(getTeacherDashboard().catch(() => null), 5000, null),
+          withTimeout(getSessionRoster(sessionId).catch(() => null), 5000, null),
         ]);
 
-        const studentMetaMap = new Map<
-          string,
-          { id: string; name: string; status: string; program?: string }
-        >();
+        if (requestId !== fetchRequestIdRef.current) return;
 
-        if (Array.isArray(optionsRes?.data)) {
-          optionsRes.data.forEach((s: any) => {
-            const id = String(s.id || s.student_id || s.studentId);
-            if (id) {
-              studentMetaMap.set(id, {
-                id,
-                name: String(s.name || '').trim(),
-                status: String(s.status || '')
-                  .toLowerCase()
-                  .trim(),
-                program: s.program,
-              });
-            }
-          });
-        }
+        const studentOpts = Array.isArray(studentOptsRes?.data) ? studentOptsRes.data : [];
+        registerStudentStatuses(studentOpts);
+        const studentMap = new Map(studentOpts.map((s: any) => [String(s.id), s]));
 
-        const pipeList = Array.isArray(pipelineRes?.data?.pipeline)
-          ? pipelineRes.data.pipeline
-          : Array.isArray(pipelineRes?.data?.students)
-            ? pipelineRes.data.students
-            : Array.isArray(pipelineRes?.data)
-              ? pipelineRes.data
-              : [];
+        const sessionRosterStudents: any[] = Array.isArray(sessionRosterRes?.data?.students)
+          ? sessionRosterRes.data.students
+          : [];
 
-        pipeList.forEach((p: any) => {
-          const id = String(p.student_id || p.id);
-          if (!id) return;
-          const existing = studentMetaMap.get(id);
-          const st = String(p.status || p.stage || '')
-            .toLowerCase()
-            .trim();
-          if (existing) {
-            if (st) existing.status = st;
-          } else {
-            studentMetaMap.set(id, {
-              id,
-              name: String(p.student_name || p.name || 'Student').trim(),
-              status: st,
-            });
+        // Build goals map from session roster
+        const studentGoalsMap = new Map<string, any[]>();
+        sessionRosterStudents.forEach((s: any) => {
+          if (s?.id && Array.isArray(s?.goals)) {
+            studentGoalsMap.set(String(s.id), s.goals);
           }
         });
 
-        const rosterRaw = Array.isArray(data?.students)
-          ? data.students
-          : Array.isArray(data)
-            ? data
-            : [];
+        const blocks: any[] = Array.isArray(schedRes?.data) ? schedRes.data : [];
+        const allBlocks: any[] = Array.isArray(allSchedRes?.data) ? allSchedRes.data : blocks;
+        const currentTeacherObj = currentTeachers.find((t) => String(t.id) === String(targetTeacherId));
 
+        // 1. Resolve assigned student IDs strictly belonging to this teacher
+        const { assignedStudentIds: strictlyAssignedIds, activeBlock } = resolveTeacherAssignedStudentIds(
+          currentTeacherObj || null,
+          blocks.length > 0 ? blocks : allBlocks
+        );
+
+        // Check if director has explicit assignments for this teacher
+        const directorAssignedIds = targetTeacherId ? getDirectorAssignmentsForTeacher(targetTeacherId) : null;
+
+        // 2. Check if students were explicitly assigned or passed for this specific teacher
+        let assignedStudentIds = strictlyAssignedIds;
+
+        if (directorAssignedIds !== null) {
+          assignedStudentIds = directorAssignedIds.slice(0, 2);
+        } else if (route.params?.students && Array.isArray(route.params.students) && route.params.students.length > 0) {
+          const passedTeacherId = (route.params as any)?.teacherId;
+          if (!passedTeacherId || String(passedTeacherId) === String(targetTeacherId)) {
+            const passedIds = route.params.students.map((s: any) => String(s.id));
+            if (assignedStudentIds.length === 0 || passedIds.some((pid) => assignedStudentIds.includes(pid))) {
+              assignedStudentIds = Array.from(new Set(passedIds)).slice(0, 2);
+            }
+          }
+        }
+
+        // Check teacher-scoped stored session students (which preserves swapped order)
+        let storedOrder: string[] | null = null;
+        if (targetTeacherId) {
+          const stored = getStoredSessionStudents(sessionId, targetTeacherId);
+          if (Array.isArray(stored)) {
+            if (assignedStudentIds.length === 0 && stored.length > 0) {
+              assignedStudentIds = Array.from(new Set(stored.map((s: any) => String(s.id)))).slice(0, 2);
+            }
+            if (stored.length > 0) {
+              storedOrder = stored.map((s: any) => String(s.id));
+            }
+          }
+        }
+
+        // Fallback to session roster only if no specific teacher was requested, or for non-active sessions with explicit roster
+        if (assignedStudentIds.length === 0 && sessionRosterStudents.length > 0) {
+          if (!targetTeacherId || sessionId !== 'active') {
+            assignedStudentIds = sessionRosterStudents.map((s: any) => String(s.id)).slice(0, 2);
+          }
+        }
+
+        const fallbackBlock = allBlocks.find((b: any) => b?.teacherName || b?.stationName) || null;
+        const currentTeacherName =
+          currentTeacherObj?.name || activeBlock?.teacherName || (authSession?.userName ?? 'Teacher');
+        const currentStationName = activeBlock?.stationName || fallbackBlock?.stationName || 'Station 1';
+        const currentRoomName = activeBlock?.roomName || fallbackBlock?.roomName || 'Room 101';
+        const currentDurationMinutes = Number(activeBlock?.blockDurationMinutes || fallbackBlock?.blockDurationMinutes || 90);
+
+        // Filter assigned students strictly by session eligibility
         const eligibleStudents: any[] = [];
-        const seenStudentIds = new Set<string>();
+        for (const sid of assignedStudentIds) {
+          const opt = studentMap.get(sid);
+          const reg = getRegisteredStudentStatus(sid);
+          const fromRoster = sessionRosterStudents.find((s: any) => String(s.id) === sid);
+          const base = opt || reg || fromRoster || { id: sid, name: `Student ${sid.slice(0, 4)}` };
 
-        // 1. Process students from backend roster
-        rosterRaw.forEach((s: any) => {
-          const sid = String(s.id);
-          const meta = studentMetaMap.get(sid);
-          const rawStatus =
-            meta?.status ||
-            String(s.status || '')
-              .toLowerCase()
-              .trim();
-          const assignedGoals = getStudentAssignedGoals(sid, s.goals);
-          const hasAssigned = assignedGoals.length > 0;
+          const candidate = {
+            ...base,
+            id: sid,
+            sessionAssigned: true,
+          };
 
-          if (checkStudentEligibility(rawStatus, hasAssigned)) {
-            seenStudentIds.add(sid);
-            const sName = String(s.name || s.fullName || meta?.name || 'Student').trim();
-            const goalsToUse =
-              assignedGoals.length > 0 ? assignedGoals : Array.isArray(s.goals) ? s.goals : [];
-
+          if (isStudentEligibleForSession(candidate)) {
             eligibleStudents.push({
-              id: sid,
-              name: sName,
-              initial: String(s.initial || (sName.slice(0, 2) || 'ST').toUpperCase()),
-              program: String(s.program || meta?.program || 'Regular'),
-              goals: goalsToUse,
-              trials: Array.isArray(s.trials) ? s.trials : [],
+              ...candidate,
+              status: 'in_session',
             });
           }
+        }
+
+        // Limit strictly to at most 2 students per station
+        const cappedStudents = eligibleStudents.slice(0, 2);
+
+        // Fetch real backend student detail goals for assigned students if not present in draft or roster
+        const studentProfileMap = new Map<string, any>();
+        await Promise.all(
+          cappedStudents.map(async (ds: any) => {
+            const sid = String(ds.id);
+            try {
+              const detailRes = await withTimeout(studentsApi.show(sid).catch(() => null), 3000, null);
+              const sData = (detailRes as any)?.data || detailRes;
+              if (sData) {
+                studentProfileMap.set(sid, sData);
+              }
+              if (!studentGoalsMap.has(sid) && (!ds.goals || ds.goals.length === 0)) {
+                const extracted: any[] = [];
+                if (Array.isArray(sData?.current_goals_summary)) {
+                  sData.current_goals_summary.forEach((group: any) => {
+                    if (Array.isArray(group?.goals)) {
+                      group.goals.forEach((g: any) => {
+                        extracted.push({
+                          id: String(g.id),
+                          name: String(g.goal_name || g.name || 'Assigned Goal'),
+                          category: group?.station?.name || 'Adaptive',
+                          goalType: 'standard',
+                          totalTrials: 0,
+                          independencePercent: Number(g.progress_percent || 0),
+                          trialLog: [],
+                        });
+                      });
+                    }
+                  });
+                }
+                if (extracted.length > 0) {
+                  studentGoalsMap.set(sid, extracted);
+                }
+              }
+            } catch {}
+          })
+        );
+
+        if (requestId !== fetchRequestIdRef.current) return;
+
+        // Map into full session student models without synthesizing mock goals
+        let finalStudents: any[] = cappedStudents.map((ds: any) => {
+          const sid = String(ds.id);
+          const profile = studentProfileMap.get(sid);
+          const sName = String(profile?.full_name || profile?.name || ds.name || ds.fullName || 'Student').trim();
+          const initial = String(ds.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
+          const program = String(profile?.program_type || profile?.program || ds.program || 'Regular');
+
+          const rawGoals = studentGoalsMap.get(sid) || ds.goals || [];
+          const assignedGoals = getStudentAssignedGoals(sid, rawGoals);
+
+          return {
+            id: sid,
+            name: sName,
+            initial,
+            program,
+            goals: assignedGoals,
+            trials: Array.isArray(ds.trials) ? ds.trials : [],
+          };
         });
 
-        // 2. Candidate drafts if roster yielded < 2 eligible students
-        if (eligibleStudents.length < 2) {
-          const allDrafts = getAllStoredIupDrafts();
-          const draftStudentIds = Object.keys(allDrafts);
-          const candidateIds = Array.from(
-            new Set([...draftStudentIds, ...Array.from(studentMetaMap.keys())]),
-          );
-
-          for (const cid of candidateIds) {
-            if (eligibleStudents.length >= 2) break;
-            if (seenStudentIds.has(cid)) continue;
-
-            const meta = studentMetaMap.get(cid);
-            const draft = getStoredIupDraft(cid);
-            const draftStatus = draft?.status ? String(draft.status).toLowerCase().trim() : '';
-            const rawStatus = meta?.status || draftStatus || '';
-            const assignedGoals = getStudentAssignedGoals(cid, []);
-            const hasAssigned = assignedGoals.length > 0;
-
-            if (checkStudentEligibility(rawStatus, hasAssigned)) {
-              seenStudentIds.add(cid);
-              const studentName =
-                meta?.name ||
-                (draft?.studentName ? String(draft.studentName) : `Student ${cid.slice(0, 4)}`);
-              eligibleStudents.push({
-                id: cid,
-                name: studentName,
-                initial: (studentName.slice(0, 2) || 'ST').toUpperCase(),
-                program: meta?.program || 'Regular',
-                goals: assignedGoals,
-                trials: [],
-              });
-            }
+        // If a swapped order was saved for this teacher, preserve it!
+        if (storedOrder && storedOrder.length === finalStudents.length) {
+          const sorted = [...finalStudents].sort((a, b) => {
+            const idxA = storedOrder!.indexOf(String(a.id));
+            const idxB = storedOrder!.indexOf(String(b.id));
+            return (idxA >= 0 ? idxA : 99) - (idxB >= 0 ? idxB : 99);
+          });
+          if (sorted.length === finalStudents.length) {
+            finalStudents = sorted;
           }
         }
+
+        // Persist the teacher-specific student roster
+        setStoredSessionStudents(sessionId, finalStudents, targetTeacherId);
 
         const parsedRoster: SessionRoster = {
-          teacherName: data?.teacherName || 'Teacher',
-          stationName: data?.stationName || 'Station 1',
-          roomName: data?.roomName || 'Room 101',
-          blockDurationMinutes: Number(data?.blockDurationMinutes || 90),
-          students: eligibleStudents.map((s: any, idx: number) => ({
+          teacherName: currentTeacherName,
+          stationName: currentStationName,
+          roomName: currentRoomName,
+          blockDurationMinutes: currentDurationMinutes,
+          students: finalStudents.map((s: any, idx: number) => ({
             id: String(s.id),
             name: String(s.name).trim(),
             initial: String(s.initial || (String(s.name).slice(0, 2) || 'ST').toUpperCase()),
@@ -235,7 +544,10 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           parsedRoster.students[0].active = true;
         }
 
+        if (requestId !== fetchRequestIdRef.current) return;
+
         setSession((prev) => {
+          if (requestId !== fetchRequestIdRef.current) return prev;
           const mergedStudents = parsedRoster.students.map((s) => {
             const prevStudent = prev?.students.find((ps) => ps.id === s.id);
             const storedTrials = getStoredTrials(sessionId, s.id);
@@ -247,18 +559,21 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
             const mergedGoals = s.goals.map((g) => {
               const prevGoal = prevStudent?.goals.find((pg) => pg.id === g.id);
               const goalTrials = trialsToUse.filter(
-                (t) => !t.studentGoalId || t.studentGoalId === g.id,
+                (t) => t.studentGoalId === g.id
               );
               const trialLog =
-                prevGoal?.trialLog && prevGoal.trialLog.length > 0 ? prevGoal.trialLog : goalTrials;
-              const totalTrials = prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
+                prevGoal?.trialLog && prevGoal.trialLog.length > 0
+                  ? prevGoal.trialLog
+                  : goalTrials;
+              const totalTrials =
+                prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
               const indCount = trialLog.filter(
-                (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+',
+                (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
               ).length;
               const independencePercent =
                 totalTrials > 0
                   ? Math.round((indCount / totalTrials) * 100)
-                  : prevGoal?.independencePercent || g.independencePercent || 0;
+                  : (prevGoal?.independencePercent || g.independencePercent || 0);
 
               return {
                 ...g,
@@ -275,7 +590,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
             };
           });
 
-          parsedRoster.students = mergedStudents;
+          parsedRoster.students = mergedStudents.slice(0, 2);
 
           if (prev && parsedRoster.students.length > 0) {
             const activeStudentId = prev.students.find((s) => s.active)?.id;
@@ -289,35 +604,92 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           return parsedRoster;
         });
 
-        startSessionTimer(sessionId, (parsedRoster.blockDurationMinutes || 90) * 60);
+        // Start session timer safely (no-op if already running or paused for this sessionId)
+        startSessionTimer(
+          sessionId,
+          (parsedRoster.blockDurationMinutes || 90) * 60
+        );
 
+        if (requestId !== fetchRequestIdRef.current) return;
         setSecondsRemaining(remainingSeconds());
         setIsRunning(isTimerRunning());
-      } catch {
-        if (!silent) {
+        setLoadError(false);
+
+        // Flush offline sync queue in the background
+        flushOfflineSyncQueue(sessionId).catch(() => {});
+      } catch (err) {
+        if (requestId === fetchRequestIdRef.current && !silent) {
           setSession(null);
           setLoadError(true);
         }
       } finally {
-        if (!silent) setLoading(false);
+        if (requestId === fetchRequestIdRef.current && !silent) {
+          setLoading(false);
+        }
       }
     },
-    [sessionId],
+    [sessionId, authSession, flushOfflineSyncQueue]
   );
 
+  const fetchTeachersAndRoster = useCallback(async () => {
+    try {
+      const staffRes = await withTimeout<any>(getStaffOptions().catch(() => null), 4000, null);
+      const teacherRows: Array<{ id: string; name: string }> = (filterOutDeletedStaff(staffRes?.data || []) as any[]).filter((s: any) => s.role === 'teacher');
+      setTeachers(teacherRows);
+      teachersRef.current = teacherRows;
+
+      let initialId = (route.params as any)?.teacherId;
+      if (initialId && isStaffDeleted(initialId)) initialId = undefined;
+
+      if (!initialId) {
+        const matched = findLoggedInTeacher(authSession, teacherRows);
+        if (matched && !isStaffDeleted(matched)) initialId = matched.id;
+      }
+
+      if (!initialId && typeof localStorage !== 'undefined') {
+        const storedId = localStorage.getItem('melue_session_selected_teacher_id') || undefined;
+        if (storedId && !isStaffDeleted(storedId)) initialId = storedId;
+      }
+
+      const resolvedTeacherId = initialId || teacherRows[0]?.id || '';
+      if (resolvedTeacherId) {
+        selectedTeacherIdRef.current = resolvedTeacherId;
+        setSelectedTeacherId(resolvedTeacherId);
+      }
+      await loadRoster(resolvedTeacherId);
+    } catch {
+      await loadRoster();
+    }
+  }, [sessionId, (route.params as any)?.teacherId, authSession, loadRoster]);
+
   useEffect(() => {
-    loadRoster();
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      fetchTeachersAndRoster();
+    }
+  }, [fetchTeachersAndRoster]);
+
+  useEffect(() => {
+    return onDeletedStaffChanged(() => {
+      loadRoster(selectedTeacherIdRef.current, true);
+    });
   }, [loadRoster]);
 
   useEffect(() => {
-    if (!isRunning || secondsRemaining === null) return undefined;
+    return onScheduleAssignmentsChanged(() => {
+      loadRoster(selectedTeacherIdRef.current, true);
+    });
+  }, [loadRoster]);
+
+  useEffect(() => {
+    if (!isRunning) return undefined;
 
     const timer = setInterval(() => {
       setSecondsRemaining(remainingSeconds());
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isRunning, secondsRemaining]);
+  }, [isRunning]);
 
   const handleToggleTimer = () => {
     if (isRunning) {
@@ -334,20 +706,26 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     studentId: string,
     goalId: string | undefined,
     level: string,
-    stepId?: string,
+    stepId?: string
   ) => {
-    const trialId = `trial-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-    const timeStr = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-
     const targetStudent = session?.students.find((s) => s.id === studentId);
+    if (!targetStudent) {
+      showToast('Student is not in this session', 'error');
+      return;
+    }
+
     const activeGoal = goalId
-      ? targetStudent?.goals.find((g) => g.id === goalId)
-      : targetStudent?.goals[0];
-    const resolvedGoalId = activeGoal?.id || goalId || 'goal-1';
+      ? targetStudent.goals.find((g) => g.id === goalId)
+      : targetStudent.goals[0];
+
+    if (!activeGoal || !activeGoal.id) {
+      showToast('No active goal assigned to record trial', 'info');
+      return;
+    }
+
+    const resolvedGoalId = activeGoal.id;
+    const trialId = `trial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     const newTrial: Trial = {
       id: trialId,
@@ -360,56 +738,55 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     // 1. Optimistic UI update
     setSession((prev) => {
       if (!prev) return prev;
-      return {
-        ...prev,
-        students: prev.students.map((stu) => {
-          if (stu.id !== studentId) return stu;
+      const updatedStudents = prev.students.map((stu) => {
+        if (stu.id !== studentId) return stu;
 
-          const updatedTrials = [...(stu.trials || []), newTrial];
-          const isInd = level === 'INDEPENDENT' || level === '+';
+        const updatedTrials = [...(stu.trials || []), newTrial];
+        const isInd = level === 'INDEPENDENT' || level === '+';
 
-          const updatedGoals = (stu.goals || []).map((g) => {
-            const isMatch = g.id === resolvedGoalId;
-            if (!isMatch) return g;
+        const updatedGoals = (stu.goals || []).map((g) => {
+          if (g.id !== resolvedGoalId) return g;
 
-            const updatedTrialLog = [...(g.trialLog || []), newTrial];
-            const newTotalTrials = (g.totalTrials || 0) + 1;
-            const currentIndCount = updatedTrialLog.filter(
-              (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+',
-            ).length;
-            const newIndependencePercent = Math.round((currentIndCount / newTotalTrials) * 100);
+          const updatedTrialLog = [...(g.trialLog || []), newTrial];
+          const newTotalTrials = (g.totalTrials || 0) + 1;
+          const currentIndCount = updatedTrialLog.filter(
+            (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+          ).length;
+          const newIndependencePercent = Math.round((currentIndCount / newTotalTrials) * 100);
 
-            let updatedSteps = g.steps;
-            if (stepId && Array.isArray(g.steps)) {
-              updatedSteps = g.steps.map((st) => {
-                if (st.id !== stepId) return st;
-                const stepTotal = (st.totalTrials || 0) + 1;
-                const stepSuccess = (st.successCount || 0) + (isInd ? 1 : 0);
-                return {
-                  ...st,
-                  totalTrials: stepTotal,
-                  successCount: stepSuccess,
-                  independencePercent: Math.round((stepSuccess / stepTotal) * 100),
-                };
-              });
-            }
-
-            return {
-              ...g,
-              totalTrials: newTotalTrials,
-              independencePercent: newIndependencePercent,
-              trialLog: updatedTrialLog,
-              steps: updatedSteps,
-            };
-          });
+          let updatedSteps = g.steps;
+          if (stepId && Array.isArray(g.steps)) {
+            updatedSteps = g.steps.map((st) => {
+              if (st.id !== stepId) return st;
+              const stepTotal = (st.totalTrials || 0) + 1;
+              const stepSuccess = (st.successCount || 0) + (isInd ? 1 : 0);
+              return {
+                ...st,
+                totalTrials: stepTotal,
+                successCount: stepSuccess,
+                independencePercent: Math.round((stepSuccess / stepTotal) * 100),
+              };
+            });
+          }
 
           return {
-            ...stu,
-            trials: updatedTrials,
-            goals: updatedGoals,
+            ...g,
+            totalTrials: newTotalTrials,
+            independencePercent: newIndependencePercent,
+            trialLog: updatedTrialLog,
+            steps: updatedSteps,
           };
-        }),
-      };
+        });
+
+        return {
+          ...stu,
+          trials: updatedTrials,
+          goals: updatedGoals,
+        };
+      });
+
+      setStoredSessionStudents(sessionId, updatedStudents, selectedTeacherId);
+      return { ...prev, students: updatedStudents };
     });
 
     // 2. Persist in local store
@@ -423,49 +800,67 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
       const res = await logTrial(sessionId, studentId, resolvedGoalId, {
         promptLevel: level,
         stepId,
+        clientEventId: trialId,
+        timestamp: timeStr,
       });
-      const serverTrialId = (res as any)?.data?.trial?.id;
-      if (serverTrialId) {
+      const serverTrialId = (res as any)?.data?.trial?.id || (res as any)?.data?.id;
+      if (serverTrialId && serverTrialId !== trialId) {
+        updateTrialIdInStore(sessionId, studentId, trialId, String(serverTrialId));
         setSession((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            students: prev.students.map((stu) => {
-              if (stu.id !== studentId) return stu;
-              return {
-                ...stu,
-                trials: stu.trials?.map((t) =>
-                  t.id === trialId ? { ...t, id: String(serverTrialId) } : t,
-                ),
-                goals: stu.goals.map((g) => ({
-                  ...g,
-                  trialLog: g.trialLog?.map((t) =>
-                    t.id === trialId ? { ...t, id: String(serverTrialId) } : t,
-                  ),
-                })),
-              };
-            }),
-          };
+          const updatedStudents = prev.students.map((stu) => {
+            if (stu.id !== studentId) return stu;
+            return {
+              ...stu,
+              trials: stu.trials?.map((t) => (t.id === trialId ? { ...t, id: String(serverTrialId) } : t)),
+              goals: stu.goals.map((g) => ({
+                ...g,
+                trialLog: g.trialLog?.map((t) => (t.id === trialId ? { ...t, id: String(serverTrialId) } : t)),
+              })),
+            };
+          });
+          setStoredSessionStudents(sessionId, updatedStudents, selectedTeacherId);
+          return { ...prev, students: updatedStudents };
         });
       }
     } catch (err) {
-      console.warn('Backend logTrial sync skipped/failed:', err);
+      console.warn('Backend logTrial sync deferred (offline/cached):', err);
+      enqueueOfflineSync({
+        type: 'log_trial',
+        sessionId,
+        studentId,
+        goalId: resolvedGoalId,
+        trialId,
+        payload: {
+          promptLevel: level,
+          stepId,
+          clientEventId: trialId,
+          timestamp: timeStr,
+        },
+      });
     }
   };
 
-  const handleUndoTrial = async (studentId: string, goalId: string | undefined) => {
+  const handleUndoTrial = async (
+    studentId: string,
+    goalId: string | undefined
+  ) => {
     const student = session?.students.find((s) => s.id === studentId);
     if (!student) return;
 
-    const activeGoal = goalId ? student.goals.find((g) => g.id === goalId) : student.goals[0];
-    const resolvedGoalId = activeGoal?.id || goalId;
+    const activeGoal = goalId
+      ? student.goals.find((g) => g.id === goalId)
+      : student.goals[0];
 
-    const goalTrials =
-      Array.isArray(activeGoal?.trialLog) && activeGoal.trialLog.length > 0
-        ? activeGoal.trialLog
-        : (student.trials || []).filter(
-            (t) => !resolvedGoalId || !t.studentGoalId || t.studentGoalId === resolvedGoalId,
-          );
+    if (!activeGoal || !activeGoal.id) {
+      showToast('No active goal assigned', 'info');
+      return;
+    }
+
+    const resolvedGoalId = activeGoal.id;
+    const goalTrials = Array.isArray(activeGoal.trialLog) && activeGoal.trialLog.length > 0
+      ? activeGoal.trialLog
+      : (student.trials || []).filter((t) => t.studentGoalId === resolvedGoalId);
 
     if (!goalTrials || goalTrials.length === 0) {
       showToast('No trials to undo', 'info');
@@ -478,158 +873,223 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     // 1. Optimistic UI update
     setSession((prev) => {
       if (!prev) return prev;
-      return {
-        ...prev,
-        students: prev.students.map((stu) => {
-          if (stu.id !== studentId) return stu;
+      const updatedStudents = prev.students.map((stu) => {
+        if (stu.id !== studentId) return stu;
 
-          const updatedTrials = [...(stu.trials || [])];
-          let removedFromStu = false;
-          for (let i = updatedTrials.length - 1; i >= 0; i--) {
-            const t = updatedTrials[i];
-            const matchesId = targetTrialId ? t.id === targetTrialId : true;
-            const matchesGoal =
-              !resolvedGoalId || !t.studentGoalId || t.studentGoalId === resolvedGoalId;
-            if (matchesId && matchesGoal) {
-              updatedTrials.splice(i, 1);
-              removedFromStu = true;
+        const updatedTrials = [...(stu.trials || [])];
+        for (let i = updatedTrials.length - 1; i >= 0; i--) {
+          const t = updatedTrials[i];
+          const matchesId = targetTrialId ? t.id === targetTrialId : false;
+          const matchesGoal = t.studentGoalId === resolvedGoalId;
+          if (matchesId || (matchesGoal && !targetTrialId)) {
+            updatedTrials.splice(i, 1);
+            break;
+          }
+        }
+
+        const updatedGoals = (stu.goals || []).map((g) => {
+          if (g.id !== resolvedGoalId) return g;
+
+          const updatedTrialLog = [...(g.trialLog || [])];
+          for (let i = updatedTrialLog.length - 1; i >= 0; i--) {
+            const t = updatedTrialLog[i];
+            if (!targetTrialId || t.id === targetTrialId) {
+              updatedTrialLog.splice(i, 1);
               break;
             }
           }
-          if (!removedFromStu && updatedTrials.length > 0) {
-            updatedTrials.pop();
-          }
 
-          const updatedGoals = (stu.goals || []).map((g) => {
-            const isMatch = resolvedGoalId ? g.id === resolvedGoalId : true;
-            if (!isMatch) return g;
-
-            const updatedTrialLog = [...(g.trialLog || [])];
-            let removedFromLog = false;
-            for (let i = updatedTrialLog.length - 1; i >= 0; i--) {
-              const t = updatedTrialLog[i];
-              if (!targetTrialId || t.id === targetTrialId) {
-                updatedTrialLog.splice(i, 1);
-                removedFromLog = true;
-                break;
-              }
-            }
-            if (!removedFromLog && updatedTrialLog.length > 0) {
-              updatedTrialLog.pop();
-            }
-
-            const newTotalTrials = Math.max(0, (g.totalTrials || 0) - 1);
-            const remainingIndCount = updatedTrialLog.filter(
-              (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+',
-            ).length;
-            const newIndependencePercent =
-              newTotalTrials > 0 ? Math.round((remainingIndCount / newTotalTrials) * 100) : 0;
-
-            return {
-              ...g,
-              totalTrials: newTotalTrials,
-              independencePercent: newIndependencePercent,
-              trialLog: updatedTrialLog,
-            };
-          });
+          const newTotalTrials = Math.max(0, (g.totalTrials || 0) - 1);
+          const remainingIndCount = updatedTrialLog.filter(
+            (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+          ).length;
+          const newIndependencePercent =
+            newTotalTrials > 0
+              ? Math.round((remainingIndCount / newTotalTrials) * 100)
+              : 0;
 
           return {
-            ...stu,
-            trials: updatedTrials,
-            goals: updatedGoals,
+            ...g,
+            totalTrials: newTotalTrials,
+            independencePercent: newIndependencePercent,
+            trialLog: updatedTrialLog,
           };
-        }),
-      };
+        });
+
+        return {
+          ...stu,
+          trials: updatedTrials,
+          goals: updatedGoals,
+        };
+      });
+
+      setStoredSessionStudents(sessionId, updatedStudents, selectedTeacherId);
+      return { ...prev, students: updatedStudents };
     });
 
-    // 2. Persist in local store
-    undoTrialInStore(sessionId, studentId, resolvedGoalId);
+    // 2. Persist in local store with targetTrialId and strict goal isolation
+    undoTrialInStore(sessionId, studentId, resolvedGoalId, targetTrialId);
 
     // 3. User feedback
     showToast('Trial undone successfully', 'success');
 
-    // 4. Background backend sync
+    // 4. Background backend sync with offline retry enqueue
     try {
-      await undoLastTrial(sessionId, studentId, resolvedGoalId || '');
+      await undoLastTrial(sessionId, studentId, resolvedGoalId);
     } catch (err) {
-      console.warn('Backend undoLastTrial failed, preserved locally:', err);
+      console.warn('Backend undoLastTrial deferred (offline/cached):', err);
+      enqueueOfflineSync({
+        type: 'undo_trial',
+        sessionId,
+        studentId,
+        goalId: resolvedGoalId,
+        trialId: targetTrialId,
+      });
     }
   };
 
-  const handleOpenIncidentModal = (studentId: string, goalId: string | undefined) => {
-    const student = session?.students.find((s) => s.id === studentId);
-    const goal = student?.goals?.find((g) => g.id === goalId) || student?.goals?.[0];
-    const activeGoalId = goalId || goal?.id;
+  const handleOpenIncidentModal = (
+    studentId: string,
+    goalId: string | undefined
+  ) => {
+    const student = session?.students.find(
+      (s) => s.id === studentId
+    );
+    if (!student) {
+      showToast('Student is not in session', 'error');
+      return;
+    }
+
+    const goal = student.goals?.find(
+      (g) => g.id === goalId
+    ) || student.goals?.[0];
 
     setIncidentModal({
       studentId,
-      studentGoalId: activeGoalId,
-      studentName: student?.name,
+      studentGoalId: goal?.id,
+      studentName: student.name,
       goalName: goal?.name,
     });
   };
 
   const handleCancelIncident = (hadChanges: boolean) => {
     if (hadChanges) {
-      Alert.alert('Discard incident?', 'Any entered data will be lost.', [
-        {
-          text: 'Keep editing',
-          style: 'cancel',
-        },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => setIncidentModal(null),
-        },
-      ]);
+      Alert.alert(
+        'Discard incident?',
+        'Any entered data will be lost.',
+        [
+          {
+            text: 'Keep editing',
+            style: 'cancel',
+          },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => setIncidentModal(null),
+          },
+        ]
+      );
     } else {
       setIncidentModal(null);
     }
   };
 
-  const handleSaveIncident = async (incidentData: IncidentPayload) => {
+  const handleSaveIncident = async (
+    incidentData: IncidentPayload
+  ) => {
     const studentId =
       incidentModal?.studentId ||
-      (incidentData as any).student_id ||
-      (incidentData as any).studentId ||
-      '';
-    const studentGoalId =
-      incidentModal?.studentGoalId ||
-      (incidentData as any).student_goal_id ||
-      (incidentData as any).studentGoalId ||
-      '';
-    const payload = {
-      ...incidentData,
-      student_id: studentId,
-      studentId,
-      student_goal_id: studentGoalId,
-      studentGoalId,
-    };
+      incidentData.studentId ||
+      incidentData.student_id;
 
-    try {
-      await recordBehaviorIncident(sessionId, payload as unknown as Payload);
-      await loadRoster();
-    } catch {
-      // Demo/offline fallback: incident recorded locally
+    const student = session?.students.find((s) => s.id === studentId);
+    if (!studentId || !student) {
+      showToast('Cannot record incident: student is invalid or not in session', 'error');
+      return;
     }
 
-    const student = session?.students.find((s) => s.id === incidentModal?.studentId);
-    const fullIncident = {
+    const studentGoalId =
+      incidentModal?.studentGoalId ||
+      incidentData.studentGoalId ||
+      incidentData.student_goal_id ||
+      '';
+
+    const incidentId =
+      incidentData.id ||
+      `inc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const fullIncident: IncidentPayload = {
       ...incidentData,
-      studentName: student?.name ?? 'Unknown Student',
-      time: new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      id: incidentId,
+      studentId,
+      student_id: studentId,
+      studentName: incidentData.studentName || student.name || 'Student',
+      studentGoalId,
+      student_goal_id: studentGoalId,
+      goalName: incidentModal?.goalName || incidentData.goalName,
+      date: incidentData.date || new Date().toISOString().split('T')[0],
+      time: incidentData.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      teacher: incidentData.teacher || authSession?.userName || session?.teacherName || 'Teacher',
     };
-    setLocalIncidents((prev) => [...prev, fullIncident]);
+
+    // 1. Update local state avoiding duplicates
+    setLocalIncidents((prev) => {
+      const existingIdx = prev.findIndex((i: any) => i.id === incidentId);
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = fullIncident;
+        return copy;
+      }
+      return [...prev, fullIncident];
+    });
+
+    // 2. Persist in local storage and mirror to ABC log store
     recordIncidentInStore(sessionId, fullIncident as any);
 
+    // 3. User feedback and close modal
     setIncidentModal(null);
     showToast('Behavior incident logged successfully', 'success');
+
+    // 4. Background sync with backend
+    try {
+      await recordBehaviorIncident(
+        sessionId,
+        fullIncident as unknown as Payload
+      );
+    } catch (err) {
+      console.warn('Backend recordBehaviorIncident failed, safely preserved locally:', err);
+      enqueueOfflineSync({
+        type: 'behavior_incident',
+        sessionId,
+        studentId,
+        goalId: studentGoalId,
+        payload: fullIncident,
+      });
+    }
   };
 
-  const handleMasteryCheck = (studentId: string, goalId: string | undefined) => {
+  const handleDeleteIncident = (incidentIdOrIndex: string | number) => {
+    setLocalIncidents((prev) => {
+      let next: IncidentPayload[];
+      let targetId: string | null = null;
+      if (typeof incidentIdOrIndex === 'number') {
+        next = [...prev];
+        targetId = (next[incidentIdOrIndex] as any)?.id || null;
+        next.splice(incidentIdOrIndex, 1);
+      } else {
+        targetId = incidentIdOrIndex;
+        next = prev.filter((i: any) => String(i.id) !== String(incidentIdOrIndex));
+      }
+      removeStoredSessionIncident(sessionId, targetId || incidentIdOrIndex);
+      return next;
+    });
+    showToast('Incident record removed', 'info');
+  };
+
+  const handleMasteryCheck = (
+    studentId: string,
+    goalId: string | undefined
+  ) => {
     navigation?.navigate?.('GoalMasteryCheck', {
       studentId,
       goalId: goalId ?? '',
@@ -637,12 +1097,29 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   };
 
   const handleSwapStudents = async () => {
+    if (!session || session.students.length < 2) {
+      showToast('Need at least 2 students to swap', 'info');
+      return;
+    }
     try {
-      await swapStudents(sessionId, {});
-    } catch {
+      await swapStudents(sessionId, {
+        studentIds: session.students.map((s) => s.id).reverse(),
+        teacherId: selectedTeacherId,
+      });
+    } catch (err) {
       // Continue with local swap if backend is unavailable.
     }
-    setSession((prev) => (prev ? { ...prev, students: [...prev.students].reverse() } : prev));
+
+    // Swap the order of the two students locally and persist with teacher scope
+    setSession((prev) => {
+      if (!prev) return prev;
+      const reversed = [...prev.students].reverse();
+      reversed.forEach((s, idx) => {
+        s.active = idx === 0;
+      });
+      setStoredSessionStudents(sessionId, reversed, selectedTeacherId);
+      return { ...prev, students: reversed };
+    });
     showToast('Students swapped successfully', 'success');
   };
 
@@ -656,11 +1133,14 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
               active: s.id === studentId,
             })),
           }
-        : prev,
+        : prev
     );
   };
 
-  const handleViewGoalProgress = (studentId: string, goalId: string) => {
+  const handleViewGoalProgress = (
+    studentId: string,
+    goalId: string
+  ) => {
     navigation?.navigate?.('GoalProgress', {
       studentId,
       goalId,
@@ -674,59 +1154,101 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   };
 
   const handleSessionSummary = () => {
+    if (session?.students && session.students.length > 0) {
+      setStoredSessionStudents(sessionId, session.students, selectedTeacherId);
+    }
     navigation?.navigate?.('SessionSummary', {
       sessionId,
       localIncidents,
+      students: session?.students,
     });
   };
 
-  if (loadError) return <ScreenError onRetry={loadRoster} />;
-
-  if (loading || !session || secondsRemaining === null) {
-    return <ScreenLoader />;
-  }
-
-  if (session.students.length === 0) {
+  if (loadError) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <AppNavbar
-          activeTab="Session"
-          onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-        />
-        <SessionHeaderTimer
-          teacherName={session.teacherName}
-          stationName={session.stationName}
-          roomName={session.roomName}
-          secondsRemaining={secondsRemaining}
-          isRunning={isRunning}
-          onToggleTimer={handleToggleTimer}
-        />
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={[styles.contentWrapper, isTablet && styles.tabletWrapper]}>
-            <SessionEmptyStudents />
-          </View>
-        </ScrollView>
-      </SafeAreaView>
+      <ScreenError
+        onRetry={() => {
+          loadRoster(selectedTeacherIdRef.current);
+        }}
+      />
     );
   }
 
+  if (loading && !session) {
+    return <ScreenLoader />;
+  }
+
+  if (!session) {
+    return <ScreenLoader />;
+  }
+
+  const timerRem = remainingSeconds();
+  const safeSeconds = Math.max(
+    0,
+    secondsRemaining ?? (timerRem > 0 ? timerRem : ((session?.blockDurationMinutes || 90) * 60))
+  );
+  const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+  const seconds = String(safeSeconds % 60).padStart(2, '0');
+
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
-
-      <SessionHeaderTimer
-        teacherName={session.teacherName}
-        stationName={session.stationName}
-        roomName={session.roomName}
-        secondsRemaining={secondsRemaining}
-        isRunning={isRunning}
-        onToggleTimer={handleToggleTimer}
+      <AppNavbar
+        activeTab="Session"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
       />
 
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <View style={styles.headerTitleRow}>
+            <Text style={typography.h1}>Today's Session</Text>
+          </View>
+
+          <Text style={typography.body}>
+            {session.teacherName} • {session.stationName} • {session.roomName}
+          </Text>
+        </View>
+
+        <View style={styles.timerRow}>
+          <View style={styles.timerPill}>
+            <Feather
+              name="clock"
+              size={14}
+              color={colors.mutedText}
+              style={{ marginRight: spacing.xs }}
+            />
+            <Text style={styles.timerText}>
+              {minutes}:{seconds}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.playPauseBtn}
+            onPress={handleToggleTimer}
+            accessibilityLabel={isRunning ? 'Pause timer' : 'Resume timer'}
+          >
+            <Feather
+              name={isRunning ? 'pause' : 'play'}
+              size={16}
+              color={colors.white}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.contentWrapper, isTablet && styles.tabletWrapper]}>
+        {session.students.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Feather name="users" size={28} color={colors.mutedText} />
+            </View>
+            <Text style={styles.emptyTitle}>No Students Assigned</Text>
+            <Text style={styles.emptyText}>
+              No eligible students are currently scheduled or assigned to this station for {session.teacherName}.
+            </Text>
+          </View>
+        ) : (
           <View style={[styles.studentsRow, isLandscape && styles.studentsRowLandscape]}>
-            {session.students.map((student) => (
+            {session.students.slice(0, 2).map((student) => (
               <TouchableOpacity
                 key={student.id}
                 style={styles.studentCardWrapper}
@@ -746,14 +1268,39 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        )}
       </ScrollView>
 
-      <SessionFooterActions
-        onSwapStudents={handleSwapStudents}
-        onSessionSummary={handleSessionSummary}
-      />
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[
+            styles.secondaryBtn,
+            session.students.length < 2 && styles.btnDisabled,
+          ]}
+          disabled={session.students.length < 2}
+          onPress={handleSwapStudents}
+        >
+          <Text
+            style={[
+              styles.secondaryBtnText,
+              session.students.length < 2 && styles.btnTextDisabled,
+            ]}
+          >
+            ⇄ Swap Students
+          </Text>
+        </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={handleSessionSummary}
+        >
+          <Text style={styles.primaryBtnText}>
+            📄 Session Summary
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Behavior Incident Modal */}
       <BehaviorIncidentModal
         visible={!!incidentModal}
         studentId={incidentModal?.studentId}
@@ -773,25 +1320,157 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgApp,
   },
+
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: 4,
+  },
+
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+
+  timerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+
+  timerText: {
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+
+  playPauseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   scrollContent: {
     padding: spacing.lg,
   },
-  contentWrapper: {
-    width: '100%',
-  },
-  tabletWrapper: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-  },
+
   studentsRow: {
     flexDirection: 'column',
     gap: spacing.md,
     width: '100%',
   },
+
   studentsRowLandscape: {
     flexDirection: 'row',
   },
+
   studentCardWrapper: {
     flex: 1,
+  },
+
+  footer: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+
+  secondaryBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+
+  btnDisabled: {
+    opacity: 0.5,
+    backgroundColor: colors.bgApp,
+  },
+
+  btnTextDisabled: {
+    color: colors.mutedText,
+  },
+
+  secondaryBtnText: {
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+
+  primaryBtn: {
+    flex: 2,
+    backgroundColor: colors.primaryYellow,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+
+  primaryBtnText: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl * 1.5,
+    gap: spacing.sm,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.md,
+  },
+
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+    textAlign: 'center',
+  },
+
+  emptyText: {
+    fontSize: 14,
+    color: colors.mutedText,
+    textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 420,
   },
 });

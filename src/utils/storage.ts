@@ -23,11 +23,7 @@ export interface KeyValueStorage {
 const memoryStore = new Map<string, string>();
 
 function isWebLocalStorageAvailable(): boolean {
-  if (
-    Platform.OS !== 'web' ||
-    typeof window === 'undefined' ||
-    typeof localStorage === 'undefined'
-  ) {
+  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') {
     return false;
   }
   try {
@@ -41,10 +37,8 @@ function isWebLocalStorageAvailable(): boolean {
 }
 
 class UnifiedStorage implements KeyValueStorage {
-  private hasLocalStorage: boolean;
-
-  constructor() {
-    this.hasLocalStorage = isWebLocalStorageAvailable();
+  private get hasLocalStorage(): boolean {
+    return isWebLocalStorageAvailable();
   }
 
   // --- Async Methods ---

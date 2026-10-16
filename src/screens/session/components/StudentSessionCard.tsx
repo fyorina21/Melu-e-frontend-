@@ -1,12 +1,12 @@
 // screens/session/components/StudentSessionCard.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
 import PromptEntryRow from './PromptEntryRow';
 import StudentAvatar from '../../../components/StudentAvatar';
-import type { Student, Goal } from '../../../types';
+import type { Student, Goal, Trial } from '../../../types';
 import { getPromptLevelOrder, getTrialConfig } from '../../../stores/promptLevelsStore';
 
 const TRIAL_ICON_COLOR: Record<string, string> = {
@@ -17,7 +17,7 @@ const TRIAL_ICON_COLOR: Record<string, string> = {
   FP: '#f171aa',
 };
 
-function formatTrialPrompt(level?: string): { text: string; bg: string } {
+function formatTrialPrompt(level: string): { text: string; bg: string } {
   const norm = (level || '').toUpperCase().trim();
   if (norm === '+' || norm.includes('IND')) {
     return { text: '+', bg: '#6fe99c' };
@@ -62,7 +62,9 @@ export default function StudentSessionCard({
 }: StudentSessionCardProps) {
   const [activeGoalIndex, setActiveGoalIndex] = useState(0);
 
-  const activeGoal = student.goals?.[activeGoalIndex];
+  const goalsList = Array.isArray(student.goals) ? student.goals : [];
+  const safeGoalIndex = goalsList.length > 0 ? Math.min(activeGoalIndex, goalsList.length - 1) : 0;
+  const activeGoal = goalsList[safeGoalIndex];
   const isActive = student.active;
 
   const isTaskAnalysis = activeGoal?.goalType === 'task_analysis';
@@ -75,15 +77,49 @@ export default function StudentSessionCard({
           (t) => !t.studentGoalId || !activeGoal?.id || t.studentGoalId === activeGoal?.id,
         );
 
-  // Deduplicate trials by ID or timestamp+index
-  const uniqueTrials = Array.from(
-    new Map(goalTrials.map((t, idx) => [t.id || `trial-${idx}-${t.timestamp || ''}`, t])).values(),
-  );
+  // Deduplicate trials by ID or fingerprint (timestamp + promptLevel + studentGoalId)
+  const uniqueTrials: Trial[] = [];
+  const seenTrialKeys = new Set<string>();
+  for (const t of goalTrials) {
+    const key = t.id
+      ? `id:${t.id}`
+      : `fp:${t.timestamp || ''}:${t.promptLevel || ''}:${t.studentGoalId || ''}`;
+    if (!seenTrialKeys.has(key)) {
+      seenTrialKeys.add(key);
+      uniqueTrials.push(t);
+    }
+  }
   const trials = uniqueTrials;
 
   const orderMap = getPromptLevelOrder();
-  const { consecutive } = getTrialConfig();
-  const displayedTrials = [...trials.slice(-5)];
+  const [configConsecutive, setConfigConsecutive] = useState(() => {
+    const cfg = getTrialConfig();
+    return typeof cfg.consecutive === 'number' && cfg.consecutive > 0 ? cfg.consecutive : 5;
+  });
+
+  useEffect(() => {
+    const updateConfig = () => {
+      const cfg = getTrialConfig();
+      if (typeof cfg.consecutive === 'number' && cfg.consecutive > 0) {
+        setConfigConsecutive(cfg.consecutive);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_prompt_levels_changed', updateConfig);
+      window.addEventListener('storage', updateConfig);
+      window.addEventListener('focus', updateConfig);
+      return () => {
+        window.removeEventListener('melue_prompt_levels_changed', updateConfig);
+        window.removeEventListener('storage', updateConfig);
+        window.removeEventListener('focus', updateConfig);
+      };
+    }
+  }, []);
+
+  const maxTrials =
+    typeof configConsecutive === 'number' && configConsecutive > 0 ? configConsecutive : 5;
+  const displayedTrials = [...trials.slice(-maxTrials)];
   const trialCount = displayedTrials.length;
 
   const handlePromptBarPress = () => {
@@ -124,24 +160,25 @@ export default function StudentSessionCard({
         )}
       </View>
 
-      <View style={styles.goalTabs}>
-        {[0, 1].map((idx) => {
-          const goal = student.goals?.[idx];
-          const isGoalTabActive = idx === activeGoalIndex && isActive;
-          return (
-            <TouchableOpacity
-              key={goal?.id ?? `goal-slot-${idx}`}
-              style={[styles.goalTab, isGoalTabActive && styles.goalTabActive]}
-              disabled={!isActive}
-              onPress={() => setActiveGoalIndex(idx)}
-            >
-              <Text style={[styles.goalTabText, isGoalTabActive && styles.goalTabTextActive]}>
-                Goal {idx + 1}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {goalsList.length > 0 ? (
+        <View style={styles.goalTabs}>
+          {goalsList.map((goal, idx) => {
+            const isGoalTabActive = idx === safeGoalIndex && isActive;
+            return (
+              <TouchableOpacity
+                key={goal?.id ?? `goal-slot-${idx}`}
+                style={[styles.goalTab, isGoalTabActive && styles.goalTabActive]}
+                disabled={!isActive}
+                onPress={() => setActiveGoalIndex(idx)}
+              >
+                <Text style={[styles.goalTabText, isGoalTabActive && styles.goalTabTextActive]}>
+                  Goal {idx + 1}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
 
       {activeGoal ? (
         <View style={styles.goalDetail}>
@@ -191,10 +228,11 @@ export default function StudentSessionCard({
           <View style={styles.promptHeaderRow}>
             <Text style={typography.label}>Prompt Entry</Text>
 
-            {isActive && (
+            {isActive && !!activeGoal && (
               <TouchableOpacity
                 onPress={() => onUndo(activeGoal?.id)}
                 style={[styles.undoBtn, trialCount === 0 && styles.undoBtnDisabled]}
+                disabled={trialCount === 0}
                 activeOpacity={trialCount === 0 ? 0.8 : 0.6}
                 accessibilityLabel="Undo last trial"
               >
@@ -211,9 +249,12 @@ export default function StudentSessionCard({
             )}
           </View>
 
-          <TouchableOpacity activeOpacity={isActive ? 1 : 0.6} onPress={handlePromptBarPress}>
+          <TouchableOpacity
+            activeOpacity={isActive && !!activeGoal ? 1 : 0.6}
+            onPress={handlePromptBarPress}
+          >
             <PromptEntryRow
-              disabled={!isActive}
+              disabled={!isActive || !activeGoal}
               onSelect={(level) => onSelectPromptLevel(student.id, activeGoal?.id, level)}
             />
           </TouchableOpacity>
@@ -227,7 +268,7 @@ export default function StudentSessionCard({
             {trialCount > 0 ? (
               <View style={styles.trialRecordRow}>
                 {displayedTrials.map((t, i) => {
-                  const { text, bg } = formatTrialPrompt(t.promptLevel);
+                  const { text, bg } = formatTrialPrompt(t.promptLevel || '');
                   return (
                     <View
                       key={t.id || `badge-${i}`}
@@ -281,16 +322,21 @@ export default function StudentSessionCard({
 
         <TouchableOpacity
           style={styles.actionBtn}
-          disabled={!isActive}
+          disabled={!isActive || !activeGoal}
           onPress={() => onMasteryCheck(student.id, activeGoal?.id)}
         >
           <Feather
             name="check-circle"
             size={14}
-            color={isActive ? colors.navyText : colors.mutedText}
+            color={isActive && !!activeGoal ? colors.navyText : colors.mutedText}
           />
 
-          <Text style={[styles.actionBtnText, !isActive && styles.actionBtnTextDisabled]}>
+          <Text
+            style={[
+              styles.actionBtnText,
+              (!isActive || !activeGoal) && styles.actionBtnTextDisabled,
+            ]}
+          >
             Mastery Check
           </Text>
         </TouchableOpacity>

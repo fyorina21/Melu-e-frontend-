@@ -1,4 +1,5 @@
 import type { QueryParams, Payload } from '../types';
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 
 // The legacy session API delegates to the shared http client from the API
 // foundation (src/api/http/client.ts). Config, auth headers, error
@@ -26,9 +27,14 @@ export const resetPassword = (payload: Payload) =>
 export const getTodaysSchedule = (therapistId: string) =>
   client.get(`/therapists/${therapistId}/sessions/today`);
 
-export const getAppointments = (params: QueryParams) =>
+export const getAppointments = async (params: QueryParams) => {
   // params: { therapistId, startDate, endDate, status }
-  client.get('/appointments', { params });
+  const res = await client.get('/appointments', { params });
+  if (Array.isArray(res?.data)) {
+    return { ...res, data: filterOutDeletedStaff(res.data) };
+  }
+  return res;
+};
 
 export const getAppointmentDetail = (appointmentId: string) =>
   client.get(`/appointments/${appointmentId}`);
@@ -58,11 +64,24 @@ export const getSessionRoster = (sessionId: string) =>
   // returns students + their goals for this session
   client.get(`/sessions/${sessionId}/roster`);
 
-export const logTrial = (sessionId: string, studentId: string, goalId: string, payload: Payload) =>
-  // payload: { promptLevel: 'FP' | 'PP' | 'G' | 'INDEPENDENT', timestamp }
-  client.post(`/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials`, payload);
+export const logTrial = async (
+  sessionId: string,
+  studentId: string,
+  goalId: string,
+  payload: Payload,
+) => {
+  if (!sessionId) throw new Error('Trial logging requires a valid sessionId');
+  if (!studentId) throw new Error('Trial logging requires a valid studentId');
+  if (!goalId) throw new Error('Trial logging requires a valid goalId');
+  return client.post(
+    `/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials`,
+    payload,
+  );
+};
 
 export const undoLastTrial = async (sessionId: string, studentId: string, goalId: string) => {
+  if (!sessionId) throw new Error('Undo trial requires a valid sessionId');
+  if (!studentId) throw new Error('Undo trial requires a valid studentId');
   try {
     return await client.delete(
       `/sessions/${sessionId}/students/${studentId}/goals/${goalId}/trials/last`,
@@ -74,15 +93,22 @@ export const undoLastTrial = async (sessionId: string, studentId: string, goalId
   }
 };
 
-export const recordBehaviorIncident = (sessionId: string, payload: Payload) =>
-  client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, payload);
+export const recordBehaviorIncident = async (sessionId: string, payload: Payload) => {
+  if (!sessionId) throw new Error('Recording incident requires a valid sessionId');
+  const studentId = payload?.student_id || payload?.studentId;
+  if (!studentId) throw new Error('Recording incident requires a valid studentId');
+  return client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, payload);
+};
 
-export const recordIncident = (sessionId: string, studentId: string, payload: Payload) =>
-  client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, {
+export const recordIncident = async (sessionId: string, studentId: string, payload: Payload) => {
+  if (!sessionId) throw new Error('Recording incident requires a valid sessionId');
+  if (!studentId) throw new Error('Recording incident requires a valid studentId');
+  return client.post(`/therapy_sessions/${sessionId}/behavior_incidents`, {
     student_id: studentId,
     studentId,
     ...payload,
   });
+};
 
 export const requestMasteryCheck = (sessionId: string, studentId: string, goalId: string) =>
   client.post(`/student_goals/${goalId}/mastery_checks`, { sessionId, studentId });
@@ -472,9 +498,23 @@ export const updateGoalProgress = (studentId: string, goalId: string, payload: P
 // ---- MR-38: Staff Scheduling Calendar ----
 // Per SCR-TC-005 (Operational Management): weekly grid, teacher filter,
 // mark unavailable, reassign students, export schedule.
-export const getStaffCalendar = (params: QueryParams) =>
+export const getStaffCalendar = async (params: QueryParams) => {
   // params: { therapistId, weekStart }
-  client.get('/staff-calendar', { params });
+  const res = await client.get('/staff-calendar', { params });
+  if (res?.data && typeof res.data === 'object') {
+    if (Array.isArray(res.data)) {
+      return { ...res, data: filterOutDeletedStaff(res.data) };
+    }
+    const filtered: Record<string, any> = {};
+    Object.keys(res.data).forEach((key) => {
+      filtered[key] = Array.isArray(res.data[key])
+        ? filterOutDeletedStaff(res.data[key])
+        : res.data[key];
+    });
+    return { ...res, data: filtered };
+  }
+  return res;
+};
 
 export const markTeacherUnavailable = async (therapistId: string, payload: Payload) => {
   try {
@@ -505,7 +545,24 @@ export const markBulkAttendance = (sessionId: string, payload: Payload) =>
   // payload: { entries: [{ personId, personType, status }] }
   client.post(`/sessions/${sessionId}/attendance/bulk`, payload);
 
-export const getAttendanceHistory = (params: QueryParams) => client.get('/attendance', { params });
+export const getAttendanceHistory = async (params: QueryParams) => {
+  const res = await client.get('/attendance', { params });
+  if (res?.data && typeof res.data === 'object') {
+    return {
+      ...res,
+      data: {
+        ...res.data,
+        therapist: Array.isArray(res.data.therapist)
+          ? filterOutDeletedStaff(res.data.therapist)
+          : res.data.therapist,
+        support_staff: Array.isArray(res.data.support_staff)
+          ? filterOutDeletedStaff(res.data.support_staff)
+          : res.data.support_staff,
+      },
+    };
+  }
+  return res;
+};
 
 export const getAttendanceReport = (params: QueryParams) =>
   // params: { scope: 'daily' | 'monthly', date }

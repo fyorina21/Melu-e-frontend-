@@ -221,12 +221,20 @@ export function subscribe(listener: () => void): () => void {
   return useScheduleStore.subscribe(listener);
 }
 
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
+
 export function getWeekData(): WeekData {
-  return useScheduleStore.getState().schedule;
+  const schedule = useScheduleStore.getState().schedule;
+  const filtered: WeekData = {};
+  for (const day of Object.keys(schedule)) {
+    const dayNum = Number(day);
+    filtered[dayNum] = filterOutDeletedStaff(schedule[dayNum] || []);
+  }
+  return filtered;
 }
 
 export function getUnavailability(): UnavailabilityEntry[] {
-  return useScheduleStore.getState().unavailability;
+  return filterOutDeletedStaff(useScheduleStore.getState().unavailability);
 }
 
 export function addAppointment(

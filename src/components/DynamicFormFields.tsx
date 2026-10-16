@@ -59,23 +59,50 @@ export default function DynamicFormFields({
     }
     let mounted = true;
     setLoading(true);
-    getFormConfig(formName)
-      .then(({ data }) => {
-        if (mounted && Array.isArray(data?.fields)) {
-          setFields(data.fields.filter((f: DynamicFormField) => f.visible !== false));
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+
+    const fetchFields = () => {
+      getFormConfig(formName)
+        .then(({ data }) => {
+          if (mounted && Array.isArray(data?.fields)) {
+            setFields(data.fields.filter((f: DynamicFormField) => f.visible !== false));
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    };
+
+    fetchFields();
+
+    const handleSync = () => {
+      fetchFields();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleSync);
+      window.addEventListener('melue_form_config_changed', handleSync as EventListener);
+      window.addEventListener('focus', handleSync);
+    }
+
     return () => {
       mounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleSync);
+        window.removeEventListener('melue_form_config_changed', handleSync as EventListener);
+        window.removeEventListener('focus', handleSync);
+      }
     };
   }, [formName, initialFields]);
 
   const customFields = fields.filter((f) => {
-    if (excludeStandardLabels.some((l) => l.toLowerCase() === f.label.toLowerCase())) {
+    if (
+      excludeStandardLabels.some(
+        (l) =>
+          l.toLowerCase().trim() === f.label.toLowerCase().trim() ||
+          l.toLowerCase().trim() === f.id.toLowerCase().trim(),
+      )
+    ) {
       return false;
     }
     if (section) {

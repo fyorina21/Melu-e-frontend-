@@ -100,10 +100,10 @@ export default function AuditLogScreen({ navigation }: Props) {
                 <Text style={typography.caption}>{e.date} · {e.time}{e.ip ? ` · ${e.ip}` : ''}</Text>
               </View>
               <Text style={typography.bodyBold}>{e.user} {e.action} {e.resource}</Text>
-              {(e.oldValue || e.newValue) && (
+              {Boolean(e.oldValue || e.newValue) && (
                 <View style={styles.changeBlock}>
-                  {e.oldValue && <Text style={styles.oldValue}>Old: {e.oldValue}</Text>}
-                  {e.newValue && <Text style={styles.newValue}>New: {e.newValue}</Text>}
+                  {Boolean(e.oldValue) && <Text style={styles.oldValue}>Old: {e.oldValue}</Text>}
+                  {Boolean(e.newValue) && <Text style={styles.newValue}>New: {e.newValue}</Text>}
                 </View>
               )}
             </View>

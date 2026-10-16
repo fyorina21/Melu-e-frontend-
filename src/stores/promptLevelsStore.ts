@@ -100,6 +100,15 @@ export function setPromptLevels(
   streamCount: number = usePromptLevelsStore.getState().streamCount,
 ): void {
   usePromptLevelsStore.getState().setPromptLevels(next, consecutive, streamCount);
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('melue_prompt_levels_changed', {
+          detail: { promptLevels: next, consecutive, streamCount },
+        }),
+      );
+    } catch {}
+  }
 }
 
 export function syncPromptLevelsFromApi(

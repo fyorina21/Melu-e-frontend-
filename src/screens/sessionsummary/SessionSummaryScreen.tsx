@@ -1,18 +1,22 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
+import ScreenError from '../../components/ScreenError';
 import {
   View,
   Text,
   ScrollView,
+  TouchableOpacity,
+  TextInput,
   StyleSheet,
   SafeAreaView,
   Alert,
-  useWindowDimensions,
+  Modal,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import ScreenLoader from '../../components/ScreenLoader';
-import ScreenError from '../../components/ScreenError';
+import { colors, radius, spacing } from '../../theme/colors';
+import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
-import { openPrintWindow } from '../../utils/webExport';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import {
   getSessionSummary,
@@ -21,10 +25,17 @@ import {
   saveSessionDraft,
   resubmitSessionNote,
 } from '../../api/sessionApi';
+import { getTeacherDashboard } from '../../api/teacherExtrasApi';
+import {
+  getStoredTrials,
+  getStoredIncidents,
+  getStoredSessionStudents,
+} from '../../stores/trialsStore';
+import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
-import { getStoredTrials, getStoredIncidents } from '../../stores/trialsStore';
+import StatusPill from '../../components/StatusPill';
 import { useToast } from '../../context/ToastContext';
-import { storage } from '../../utils/storage';
+import StudentAvatar from '../../components/StudentAvatar';
 import type {
   SessionStackParamList,
   SessionSummary,
@@ -33,21 +44,159 @@ import type {
   Trial,
   IncidentPayload,
 } from '../../types';
-import { spacing } from '../../theme/colors';
-
-import { type DisplayIncident, generateSummaryReportText } from './types';
-import { TrialLogModal } from './components/TrialLogModal';
-import { StudentSummarySection } from './components/StudentSummarySection';
-import { SessionSummaryHeader } from './components/SessionSummaryHeader';
-import { BehaviorIncidentsCard } from './components/BehaviorIncidentsCard';
-import { TeacherNotesCard } from './components/TeacherNotesCard';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SessionSummary'>;
 
-export function SessionSummaryScreen({ route, navigation }: Props) {
-  const { width } = useWindowDimensions();
-  const isTablet = width >= 768;
+const PROMPT_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
+  FP: { bg: '#FEE2E2', text: '#DC2626', label: 'FP' },
+  PP: { bg: '#FFEDD5', text: '#EA580C', label: 'PP' },
+  G: { bg: '#EFF6FF', text: '#2563EB', label: 'G' },
+  INDEPENDENT: { bg: '#DCFCE7', text: '#16A34A', label: '+' },
+  '+': { bg: '#DCFCE7', text: '#16A34A', label: '+' },
+};
 
+function getPromptConfig(level: string): { bg: string; text: string; label: string } {
+  const norm = (level || '').toUpperCase().trim();
+  if (norm === '+' || norm.includes('IND')) return PROMPT_CONFIG['+'];
+  if (norm === 'G' || norm.includes('GEST')) return PROMPT_CONFIG['G'];
+  if (norm === 'PP' || norm.includes('PART')) return PROMPT_CONFIG['PP'];
+  if (norm === 'FP' || norm.includes('FULL')) return PROMPT_CONFIG['FP'];
+  return { bg: '#F1F5F9', text: '#475569', label: level || '+' };
+}
+
+interface TrialLogModalProps {
+  visible: boolean;
+  goalName?: string;
+  trials?: Trial[];
+  onClose: () => void;
+}
+
+function TrialLogModal({ visible, goalName, trials, onClose }: TrialLogModalProps) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.trialLogSheet}>
+          <View style={styles.trialLogHeader}>
+            <Text style={typography.h3}>Trial Log — {goalName}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Feather name="x" size={20} color={colors.navyText} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            {(trials || []).map((t, i) => {
+              const cfg = getPromptConfig(t.promptLevel || '');
+              return (
+                <View key={t.id || i} style={styles.trialLogRow}>
+                  <Text style={typography.body}>
+                    {(t as any).date ? `${(t as any).date} ` : ''}
+                    {t.timestamp}
+                  </Text>
+                  <View style={[styles.trialBadge, { backgroundColor: cfg.bg }]}>
+                    <Text style={[styles.trialBadgeText, { color: cfg.text }]}>{cfg.label}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+interface GoalSummaryRowProps {
+  goal: Goal;
+  onViewTrialLog: (goal: Goal) => void;
+}
+
+function GoalSummaryRow({ goal, onViewTrialLog }: GoalSummaryRowProps) {
+  const isTA = goal.goalType === 'task_analysis';
+  const promptCounts = goal.promptBreakdown || {};
+
+  return (
+    <View style={styles.goalCard}>
+      <View style={styles.goalHeaderRow}>
+        <View>
+          <Text style={styles.goalTitle}>{goal.name}</Text>
+          <Text style={styles.goalSubtitle}>{goal.totalTrials} trials</Text>
+        </View>
+        <View style={styles.independenceContainer}>
+          <View style={styles.independenceTrend}>
+            <Feather name="trending-up" size={14} color="#16A34A" />
+            <Text style={styles.independencePercent}>{goal.independencePercent}%</Text>
+          </View>
+          <Text style={styles.independenceLabel}>Independence</Text>
+        </View>
+      </View>
+
+      {isTA ? (
+        <View style={styles.taContainer}>
+          {(goal.steps || []).map((step, idx) => (
+            <View key={step.id} style={styles.taStepSummaryRow}>
+              <Text style={typography.body}>
+                Step {idx + 1}: {step.description}
+              </Text>
+              <Text style={typography.caption}>
+                {step.successCount}/{step.totalTrials} · {step.independencePercent}%
+              </Text>
+            </View>
+          ))}
+          <Text style={typography.caption}>
+            Overall mastery status: {goal.overallMasteryStatus}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.promptGrid}>
+          {[
+            { key: 'FP', label: 'FP' },
+            { key: 'PP', label: 'PP' },
+            { key: 'G', label: 'G' },
+            { key: 'INDEPENDENT', label: '+' },
+          ].map(({ key, label }) => {
+            const config = PROMPT_CONFIG[key];
+            const count = promptCounts[key] ?? promptCounts[label] ?? 0;
+            return (
+              <View key={key} style={[styles.promptBox, { backgroundColor: config.bg }]}>
+                <Text style={[styles.promptCount, { color: config.text }]}>{count}</Text>
+                <Text style={[styles.promptLabel, { color: config.text }]}>{label}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      <TouchableOpacity onPress={() => onViewTrialLog(goal)} style={styles.trialLogBtn}>
+        <Text style={styles.linkText}>View Trial Log →</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+interface StudentSummarySectionProps {
+  student: SessionSummaryStudent;
+  onViewTrialLog: (student: SessionSummaryStudent, goal: Goal) => void;
+}
+
+function StudentSummarySection({ student, onViewTrialLog }: StudentSummarySectionProps) {
+  const goals = Array.isArray(student?.goals) ? student.goals : [];
+  return (
+    <View style={styles.studentSection}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <StudentAvatar name={student?.name} studentId={student?.id} size={28} />
+        <Text style={styles.studentSectionTitle}>{student?.name || 'Student'}</Text>
+      </View>
+      {goals.map((goal) => (
+        <GoalSummaryRow
+          key={goal.id}
+          goal={goal}
+          onViewTrialLog={(g) => onViewTrialLog(student, g)}
+        />
+      ))}
+    </View>
+  );
+}
+
+export function SessionSummaryScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
   const localIncidents = useMemo(
     () => (route.params?.localIncidents as IncidentPayload[]) || [],
@@ -65,38 +214,86 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      let summaryData: any = null;
-      try {
-        const { data } = await getSessionSummary(sessionId);
-        summaryData = data;
-      } catch {
-        // Backend summary endpoint may be 404 or offline
+      // 1. Fetch backend summary, roster, and teacher dashboard in parallel
+      const [summaryRes, rosterRes, dashboardRes] = await Promise.all([
+        getSessionSummary(sessionId).catch(() => null),
+        getSessionRoster(sessionId).catch(() => null),
+        getTeacherDashboard().catch(() => null),
+      ]);
+
+      const summaryData = summaryRes?.data;
+      const rosterData = rosterRes?.data;
+      const dashboardStudents = dashboardRes?.data?.todaySchedule?.students;
+      const cachedStudents = getStoredSessionStudents(sessionId);
+      const passedStudents = (route.params as any)?.students;
+
+      // 3. Extract or synthesize students (guaranteed to match Teacher Dashboard and SessionDataCollection)
+      let rawStudents: any[] = [];
+
+      if (Array.isArray(passedStudents) && passedStudents.length > 0) {
+        rawStudents = passedStudents;
+      } else if (Array.isArray(cachedStudents) && cachedStudents.length > 0) {
+        rawStudents = cachedStudents;
+      } else if (Array.isArray(dashboardStudents) && dashboardStudents.length > 0) {
+        const rosterList = Array.isArray(rosterData?.students) ? rosterData.students : [];
+        rawStudents = dashboardStudents.map((ds: any, idx: number) => {
+          const sid = String(ds.id);
+          const sName = String(ds.name || ds.fullName || 'Student').trim();
+          const match =
+            rosterList.find(
+              (rs: any) =>
+                String(rs.id) === sid ||
+                String(rs.fullName || rs.name || '')
+                  .trim()
+                  .toLowerCase() === sName.toLowerCase(),
+            ) || (rosterList.length > idx ? rosterList[idx] : null);
+
+          return {
+            id: sid,
+            name: sName,
+            goals: match?.goals?.length
+              ? match.goals
+              : [
+                  { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+                  { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+                ],
+          };
+        });
+      } else if (Array.isArray(rosterData?.students) && rosterData.students.length > 0) {
+        rawStudents = rosterData.students;
+      } else if (Array.isArray(summaryData?.students) && summaryData.students.length > 0) {
+        rawStudents = summaryData.students;
+      } else if (Array.isArray(summaryData?.participants) && summaryData.participants.length > 0) {
+        rawStudents = summaryData.participants.map((p: any) => ({
+          id: String(p.id),
+          name: p.name || p.fullName || 'Student',
+          goals: [
+            { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+            { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+          ],
+        }));
+      } else {
+        rawStudents = [
+          {
+            id: 'stu-1',
+            name: 'Abebe Bikila',
+            goals: [
+              { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
+              { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
+            ],
+          },
+          {
+            id: 'stu-2',
+            name: 'Sara Connor',
+            goals: [
+              { id: 'goal-1', name: 'Receptive Object Identification', category: 'Cognitive' },
+              { id: 'goal-2', name: 'Task Transitions', category: 'Adaptive' },
+            ],
+          },
+        ];
       }
 
-      let rosterData: any = null;
-      try {
-        const { data } = await getSessionRoster(sessionId);
-        rosterData = data;
-      } catch {
-        // Backend roster endpoint may be 404 or offline
-      }
-
-      const rawStudents =
-        Array.isArray(rosterData?.students) && rosterData.students.length > 0
-          ? rosterData.students
-          : Array.isArray(summaryData?.students) && summaryData.students.length > 0
-            ? summaryData.students
-            : Array.isArray(summaryData?.participants) && summaryData.participants.length > 0
-              ? summaryData.participants.map((p: any) => ({
-                  id: String(p.id),
-                  name: p.name || p.fullName || 'Student',
-                  goals: [
-                    { id: 'goal-1', name: 'Communication & Requesting', category: 'Adaptive' },
-                    { id: 'goal-2', name: 'Gross Motor Imitation', category: 'Adaptive' },
-                  ],
-                }))
-              : [];
-
+      // 4. For each student and their goals, pull stored trials and compute metrics
       const processedStudents: SessionSummaryStudent[] = rawStudents.map((stu: any) => {
         const stuId = String(stu.id);
         const stuName = String(stu.name || stu.fullName || 'Student').trim();
@@ -154,6 +351,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
               ? Math.round((indCount / totalTrials) * 100)
               : Number(g.independencePercent || 0);
 
+          // If no trials recorded yet, but summaryData reported totalTrials from backend:
           if (
             totalTrials === 0 &&
             summaryData?.totalTrials &&
@@ -189,6 +387,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         };
       });
 
+      // 5. Gather behavior incidents
       const apiIncidents = (Array.isArray(summaryData?.incidents) ? summaryData.incidents : []).map(
         (inc: any) => ({
           date: inc.date,
@@ -220,34 +419,39 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
       const mergedIncidents = [...uniqueLocal, ...apiIncidents];
 
-      const storedDraft = sessionId
-        ? storage.getJSONSync<{ notes?: string; status?: string }>(
-            `melue_session_summary_draft_${sessionId}`,
-          )
-        : null;
-
+      // 6. Set notes if available
       const initialNotes =
-        storedDraft?.notes ||
         summaryData?.notes ||
         notes ||
         'Session completed with active student engagement and consistent progress across goals.';
       setNotes((prev) => prev || initialNotes);
 
+      // 7. Assemble complete summary
       setSummary({
-        stationName: summaryData?.stationName || rosterData?.stationName || 'Station 1',
-        teacherName: summaryData?.teacherName || rosterData?.teacherName || 'Teacher',
-        startTime: summaryData?.startTime || '9:00 AM',
-        endTime: summaryData?.endTime || '10:30 AM',
+        stationName:
+          summaryData?.stationName ||
+          rosterData?.stationName ||
+          dashboardRes?.data?.todaySchedule?.stationName ||
+          'Station 1',
+        teacherName:
+          summaryData?.teacherName ||
+          rosterData?.teacherName ||
+          dashboardRes?.data?.todaySchedule?.teacherName ||
+          'Teacher',
+        startTime:
+          summaryData?.startTime || dashboardRes?.data?.todaySchedule?.startTime || '9:00 AM',
+        endTime: summaryData?.endTime || dashboardRes?.data?.todaySchedule?.endTime || '10:30 AM',
         durationMinutes: Number(
           summaryData?.durationMinutes || rosterData?.blockDurationMinutes || 90,
         ),
-        status: storedDraft?.status || summaryData?.status || 'in_progress',
+        status: summaryData?.status || 'in_progress',
         students: processedStudents,
-        incidents: mergedIncidents as any,
+        incidents: mergedIncidents,
       });
 
       setLoadError(false);
-    } catch {
+    } catch (err) {
+      console.error('Session summary load error:', err);
       setLoadError(false);
     }
   }, [sessionId, localIncidents, notes]);
@@ -256,7 +460,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     load();
   }, [load]);
 
-  const handleBackToSession = useCallback(() => {
+  const handleBackToSession = () => {
     if (notes.trim()) {
       Alert.alert('Return to session?', 'Your notes are saved as a draft.', [
         { text: 'Stay here', style: 'cancel' },
@@ -265,25 +469,18 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     } else {
       navigation?.goBack?.();
     }
-  }, [notes, navigation]);
+  };
 
-  const handleSaveDraft = useCallback(async () => {
+  const handleSaveDraft = async () => {
     try {
-      if (sessionId) {
-        storage.setJSONSync(`melue_session_summary_draft_${sessionId}`, {
-          notes,
-          status: 'draft',
-        });
-        await saveSessionDraft(sessionId, { notes }).catch(() => {});
-      }
-      setSummary((prev) => (prev ? { ...prev, status: 'draft' } : prev));
-      showToast('Session summary notes saved as draft.', 'success');
-    } catch {
-      showToast('Notes saved locally as draft.', 'info');
+      if (sessionId) await saveSessionDraft(sessionId, { notes });
+      Alert.alert('Draft saved');
+    } catch (err) {
+      Alert.alert('Saved locally', 'Will sync once connected.');
     }
-  }, [sessionId, notes, showToast]);
+  };
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = async () => {
     if (!notes.trim()) {
       Alert.alert('Notes required', 'Add qualitative notes before submitting.');
       return;
@@ -293,33 +490,43 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       resetSessionTimer();
       Alert.alert('Session submitted', 'Sent to your Program Coordinator.');
       navigation?.navigate?.('SessionDataCollection');
-    } catch {
+    } catch (err) {
       Alert.alert('Submitted (offline)', 'Will sync once connected.');
     }
-  }, [notes, sessionId, navigation]);
+  };
 
-  const handleResubmit = useCallback(async () => {
-    try {
-      if (sessionId) await resubmitSessionNote(sessionId, { notes });
-      showToast('Draft resubmitted for review', 'success');
-    } catch {
-      showToast('Resubmitted (offline)', 'info');
-    }
-  }, [sessionId, notes, showToast]);
-
-  const handlePreviewPdf = useCallback(() => {
+  const handlePreviewPdf = () => {
     if (!summary) return;
     const students = Array.isArray(summary.students) ? summary.students : [];
-    const incidents = (Array.isArray(summary.incidents)
-      ? summary.incidents
-      : []) as unknown as DisplayIncident[];
-    const text = generateSummaryReportText(
-      summary.stationName || '',
-      summary.teacherName || '',
-      students,
-      incidents,
-      notes,
-    );
+    const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
+    const lines = [
+      `Melu'e Foundation - Session Summary`,
+      `Station: ${summary.stationName || ''}`,
+      `Teacher: ${summary.teacherName || ''}`,
+      '',
+      'STUDENT GOAL DATA',
+      ...students.flatMap((s) => [
+        `— ${s.name}`,
+        ...(Array.isArray(s.goals) ? s.goals : []).map((g) =>
+          g.goalType === 'task_analysis'
+            ? `  • ${g.name} (TA): ${g.independencePercent}% independent · mastery: ${g.overallMasteryStatus}`
+            : `  • ${g.name}: ${g.independencePercent}% independent · ${g.totalTrials} trials · ${Object.entries(
+                g.promptBreakdown || {},
+              )
+                .map(([l, c]) => `${l}:${c}`)
+                .join(' ')}`,
+        ),
+      ]),
+      '',
+      `BEHAVIOR INCIDENTS: ${incidents.length}`,
+      ...incidents.map((inc) => `• ${inc.time} — ${inc.behavior} (${inc.studentName})`),
+      '',
+      'TEACHER QUALITATIVE NOTES',
+      notes || '(no notes added yet)',
+      '',
+      `Preview generated ${new Date().toLocaleString()}`,
+    ];
+    const text = lines.join('\n');
     const title = 'Session Summary';
     const formattedHtml = `
       <html>
@@ -333,44 +540,87 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       </html>
     `;
     openPrintWindow(formattedHtml, title);
-  }, [summary, notes]);
-
-  const handleViewTrialLog = useCallback((student: SessionSummaryStudent, goal: Goal) => {
-    setTrialLogTarget({ goalName: `${student.name} — ${goal.name}`, trials: goal.trialLog || [] });
-  }, []);
-
-  const contentStyle = useMemo(
-    () => [styles.content, isTablet && styles.tabletContent],
-    [isTablet],
-  );
+  };
 
   if (loadError) return <ScreenError onRetry={load} />;
   if (!summary) return <ScreenLoader />;
 
   const students = Array.isArray(summary.students) ? summary.students : [];
-  const incidents = (Array.isArray(summary.incidents)
-    ? summary.incidents
-    : []) as unknown as DisplayIncident[];
+  const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
 
   const summaryStatus = summary.status || 'pending_review';
   const isDraft = summaryStatus === 'draft';
+  const statusLabel =
+    summaryStatus === 'approved'
+      ? 'Approved'
+      : summaryStatus === 'revised_required'
+        ? 'Revision Required'
+        : isDraft
+          ? 'Draft'
+          : 'Pending Review';
+  const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
+  const showCoordinatorFeedback = isReviewed;
+  const coordinatorFeedback = (summary as any).coordinatorFeedback || '';
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
-      <ScrollView contentContainerStyle={contentStyle}>
-        <SessionSummaryHeader
-          stationName={summary.stationName || 'Station A'}
-          teacherName={summary.teacherName || 'Teacher'}
-          status={summaryStatus}
-          coordinatorFeedback={(summary as any).coordinatorFeedback}
-          onBack={handleBackToSession}
-          onPreviewPdf={handlePreviewPdf}
-        />
+      <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity onPress={handleBackToSession} style={styles.topBackBtn}>
+          <Feather name="arrow-left" size={16} color="#64748B" />
+          <Text style={styles.topBackText}>Back to Session</Text>
+        </TouchableOpacity>
+
+        <View style={styles.headerCard}>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerTitle}>Session Summary</Text>
+            <TouchableOpacity onPress={handlePreviewPdf} style={styles.previewPdfBtn}>
+              <Feather name="file-text" size={16} color="#1E293B" />
+              <Text style={styles.previewPdfText}>Preview PDF</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.sessionMetaGrid}>
+            <View style={styles.metaColumn}>
+              <Text style={styles.metaLabel}>Station</Text>
+              <Text style={styles.metaValue}>{summary.stationName || 'Station A'}</Text>
+            </View>
+            <View style={styles.metaColumn}>
+              <Text style={styles.metaLabel}>Teacher</Text>
+              <Text style={styles.metaValue}>{summary.teacherName || 'Teacher'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.summaryStatusRow}>
+            <Text style={styles.summaryStatusLabel}>Status</Text>
+            <StatusPill
+              status={
+                summaryStatus === 'approved'
+                  ? 'approved'
+                  : summaryStatus === 'revised_required'
+                    ? 'revision'
+                    : isDraft
+                      ? 'draft'
+                      : 'pending'
+              }
+              label={statusLabel}
+            />
+          </View>
+        </View>
+
+        {showCoordinatorFeedback && (
+          <View style={styles.coordinatorFeedbackCard}>
+            <View style={styles.coordinatorFeedbackHeader}>
+              <Feather name="message-square" size={16} color="#DC2626" />
+              <Text style={styles.coordinatorFeedbackTitle}>Coordinator Feedback</Text>
+            </View>
+            <Text style={styles.coordinatorFeedbackText}>{coordinatorFeedback}</Text>
+          </View>
+        )}
 
         {students.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
+          <View style={styles.goalCard}>
+            <Text style={[typography.body, { color: colors.mutedText, textAlign: 'center' }]}>
               No student goal trials recorded yet for this session.
             </Text>
           </View>
@@ -379,21 +629,56 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
             <StudentSummarySection
               key={student.id}
               student={student}
-              onViewTrialLog={handleViewTrialLog}
+              onViewTrialLog={(s, g) =>
+                setTrialLogTarget({ goalName: `${s.name} — ${g.name}`, trials: g.trialLog || [] })
+              }
             />
           ))
         )}
 
-        <BehaviorIncidentsCard incidents={incidents} />
+        <View style={styles.notesCard}>
+          <Text style={styles.notesTitle}>
+            Teacher Notes <Text style={{ color: '#EF4444' }}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.textArea}
+            multiline
+            placeholder="Summarize the session, student progress, any concerns, or recommendations..."
+            placeholderTextColor="#94A3B8"
+            value={notes}
+            onChangeText={setNotes}
+          />
+        </View>
 
-        <TeacherNotesCard
-          notes={notes}
-          onNotesChange={setNotes}
-          isDraft={isDraft}
-          onSaveDraft={handleSaveDraft}
-          onResubmit={handleResubmit}
-          onSubmit={handleSubmit}
-        />
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
+            <Text style={styles.saveDraftText}>Save Draft</Text>
+          </TouchableOpacity>
+
+          {isDraft && (
+            <TouchableOpacity
+              style={[styles.submitBtn, styles.resubmitBtn]}
+              onPress={async () => {
+                try {
+                  if (sessionId) await resubmitSessionNote(sessionId, { notes });
+                  showToast('Draft resubmitted for review', 'success');
+                } catch {
+                  showToast('Resubmitted (offline)', 'info');
+                }
+              }}
+            >
+              <Text style={styles.submitBtnText}>Resubmit</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.submitBtn, !notes.trim() && styles.submitBtnDisabled]}
+            disabled={!notes.trim()}
+            onPress={handleSubmit}
+          >
+            <Text style={styles.submitBtnText}>Submit & End Session</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <TrialLogModal
@@ -409,26 +694,149 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 export default SessionSummaryScreen;
 
 const styles = StyleSheet.create({
-  safe: {
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: 40 },
+  topBackBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.xs },
+  topBackText: { fontSize: 14, color: '#64748B', fontWeight: '500' },
+  headerCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: spacing.md,
+  },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
+  previewPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+  },
+  previewPdfText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  summaryStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summaryStatusLabel: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  coordinatorFeedbackCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+    gap: spacing.sm,
+  },
+  coordinatorFeedbackHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  coordinatorFeedbackTitle: { fontSize: 14, fontWeight: '700', color: '#991B1B' },
+  coordinatorFeedbackText: { fontSize: 13, color: '#7F1D1D', lineHeight: 18 },
+  resubmitBtn: { backgroundColor: '#059669' },
+  sessionMetaGrid: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
+  metaColumn: { gap: 2 },
+  metaLabel: { fontSize: 12, color: '#94A3B8' },
+  metaValue: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  studentSection: { gap: spacing.sm, marginTop: spacing.xs },
+  studentSectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  goalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: spacing.md,
+  },
+  goalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  goalTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  goalSubtitle: { fontSize: 13, color: '#94A3B8' },
+  independenceContainer: { alignItems: 'flex-end' },
+  independenceTrend: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  independencePercent: { fontSize: 14, fontWeight: '700', color: '#16A34A' },
+  independenceLabel: { fontSize: 11, color: '#94A3B8' },
+  promptGrid: { flexDirection: 'row', gap: 8 },
+  promptBox: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  content: {
+  promptCount: { fontSize: 16, fontWeight: '700' },
+  promptLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  trialLogBtn: { marginTop: 2 },
+  linkText: { fontSize: 13, color: '#0284C7', fontWeight: '500' },
+  taContainer: { gap: 4 },
+  taStepSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  notesCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: spacing.sm,
+  },
+  notesTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  textArea: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md,
     padding: spacing.md,
-    gap: spacing.lg,
-    paddingBottom: 60,
+    minHeight: 110,
+    textAlignVertical: 'top',
+    fontSize: 14,
+    color: '#0F172A',
   },
-  tabletContent: {
-    maxWidth: 1200,
-    width: '100%',
-    alignSelf: 'center',
+  actionRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  saveDraftBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
-  emptyContainer: {
-    padding: spacing.xl,
+  saveDraftText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  submitBtn: {
+    flex: 2,
+    backgroundColor: '#FACC15',
+    borderRadius: radius.md,
+    paddingVertical: 14,
     alignItems: 'center',
   },
-  emptyText: {
-    fontSize: 14,
-    color: '#64748B',
+  submitBtnDisabled: { opacity: 0.5 },
+  submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: spacing.lg,
   },
+  trialLogSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    maxHeight: '70%',
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  trialLogHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  trialLogRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  trialBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
+  trialBadgeText: { fontSize: 12, fontWeight: '700' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
+  emptyText: { fontSize: 16, color: '#64748B', textAlign: 'center' },
 });

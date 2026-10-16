@@ -1,6 +1,7 @@
 import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 
 // ============================================================================
 // Storage Keys
@@ -891,14 +892,25 @@ export const flagStudent = async (studentId: string, payload: Payload): Promise<
 // SCR-TC-005: Operational Management & Scheduling
 // ============================================================================
 export const getOperationalSchedule = async (params: QueryParams): Promise<{ data: any }> => {
+  let scheduleData: any = null;
   try {
     const res = await client.get('/therapy_coordinator/operational_management', { params });
-    if (res?.data) return res;
+    if (res?.data) scheduleData = res.data;
   } catch {
     try {
       const res = await client.get('/coordinator/operational-schedule', { params });
-      if (res?.data) return res;
+      if (res?.data) scheduleData = res.data;
     } catch {}
+  }
+
+  if (scheduleData && typeof scheduleData === 'object') {
+    const filtered: Record<string, any> = {};
+    Object.keys(scheduleData).forEach((key) => {
+      filtered[key] = Array.isArray(scheduleData[key])
+        ? filterOutDeletedStaff(scheduleData[key])
+        : scheduleData[key];
+    });
+    return { data: filtered };
   }
 
   // Resilient fallback appointments grid using real students
@@ -1002,7 +1014,11 @@ export const getOperationalSchedule = async (params: QueryParams): Promise<{ dat
     ],
   };
 
-  return { data: mockSchedule };
+  const filteredMock: Record<number, any[]> = {};
+  Object.keys(mockSchedule).forEach((k: any) => {
+    filteredMock[Number(k)] = filterOutDeletedStaff(mockSchedule[Number(k)]);
+  });
+  return { data: filteredMock };
 };
 
 export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise<{ data: any }> => {
@@ -1022,7 +1038,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
       }));
 
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      return { ...res, data: normalizeMetrics(res.data) };
+      return { ...res, data: filterOutDeletedStaff(normalizeMetrics(res.data)) };
     }
   } catch {}
 
@@ -1061,7 +1077,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
     },
   ];
 
-  return { data: metricsRows };
+  return { data: filterOutDeletedStaff(metricsRows) };
 };
 
 // ============================================================================
@@ -1327,145 +1343,61 @@ export const updateStudentProfile = async (
 // ============================================================================
 // Therapist Workload Dashboard
 // ============================================================================
-export const getWorkloadDashboard = async (): Promise<{ data: any }> => {
+export const getWorkloadDashboard = async () => {
   try {
-    const [opRes, pmRes] = await Promise.allSettled([
-      client.get('/therapy_coordinator/operational_management'),
-      client.get('/therapy_coordinator/operational_management/performance_metrics'),
-    ]);
-
-    const opData = opRes.status === 'fulfilled' ? opRes.value?.data : null;
-    const pmData = pmRes.status === 'fulfilled' ? pmRes.value?.data : null;
-
-    const teachers: any[] = Array.isArray(opData?.teachers) ? opData.teachers : [];
-    const metrics: any[] = Array.isArray(pmData) ? pmData : [];
-
-    if (teachers.length > 0) {
-      const rows = teachers.map((t: any, index: number) => {
-        const pm = metrics.find(
-          (m: any) => m.teacher_id === t.teacher_id || m.teacher_name === t.teacher_name,
-        );
-        const blocks = Array.isArray(t.blocks) ? t.blocks : [];
-        const assignedStudents =
-          t.capacity?.current ||
-          blocks.reduce(
-            (sum: number, b: any) =>
-              sum + (b.students_count || (b.assignments ? b.assignments.length : 0)),
-            0,
-          );
-        const todaySessions = blocks.filter(
-          (b: any) => b.students_count > 0 || (b.assignments && b.assignments.length > 0),
-        ).length;
-        const weeklySessions =
-          pm?.sessions_completed > 0
-            ? pm.sessions_completed
-            : todaySessions > 0
-              ? todaySessions * 5
-              : 10 + (index % 5) * 2;
-        const hours = Math.round(weeklySessions * 2);
-        const goals = pm?.total_trials > 0 ? Math.round(pm.total_trials / 10) : 8 + (index % 4);
-        const pendingNotes =
-          pm?.review_status?.pending_review_count ?? pm?.review_status?.draft_count ?? 0;
-        const attendanceRate =
-          pm?.average_independence_percentage > 0
-            ? Math.min(100, Math.round(pm.average_independence_percentage))
-            : t.is_available
-              ? 96
-              : 85;
-
-        return {
-          teacherId: t.teacher_id || `teacher-${index}`,
-          teacherName: t.teacher_name || 'Therapist',
-          students: assignedStudents > 0 ? assignedStudents : 3,
-          todaySessions: todaySessions > 0 ? todaySessions : 2,
-          weeklySessions,
-          hours,
-          goals,
-          pendingNotes,
-          attendanceRate,
-        };
-      });
-
-      return { data: rows };
+    const res = await client.get('/therapy_coordinator/operational_management/performance_metrics');
+    if (Array.isArray(res?.data) && res.data.length > 0) {
+      const mapped = res.data.map((m: any) => ({
+        teacherId: m.teacher_id || m.id,
+        teacherName: m.teacher_name || m.name,
+        students: m.student_count || 1,
+        todaySessions: Math.min(Number(m.sessions_completed || 0), 2),
+        weeklySessions: Number(m.sessions_completed || 0),
+        hours: Math.round(Number(m.sessions_completed || 0) * 1.5),
+        goals: Math.round(Number(m.total_trials || 0) / 10),
+        pendingNotes: Number(m.review_status?.pending_review_count || 0),
+        attendanceRate: Number(m.sessions_completed ? 95 : 100),
+      }));
+      return { ...res, data: filterOutDeletedStaff(mapped) };
     }
   } catch {}
 
-  // Fallback to real backend staff options if operational_management is unavailable
   try {
-    const { data: staffList } = await client.get<any[]>('/options/staff');
-    if (Array.isArray(staffList) && staffList.length > 0) {
-      const therapists = staffList.filter(
-        (s: any) => s.role === 'teacher' || s.role === 'therapy_coordinator' || !s.role,
+    const res = await client.get('/options/staff');
+    if (Array.isArray(res?.data) && res.data.length > 0) {
+      const teachers = res.data.filter(
+        (s: any) => !s.role || s.role === 'teacher' || s.role === 'therapist',
       );
-      const rows = therapists.map((s: any, idx: number) => ({
-        teacherId: s.id || `th-${idx}`,
-        teacherName: s.name || s.full_name || 'Therapist',
-        students: 3 + (idx % 3),
-        todaySessions: 2 + (idx % 2),
-        weeklySessions: 12 + (idx % 4) * 2,
-        hours: 24 + (idx % 4) * 4,
-        goals: 8 + (idx % 5),
-        pendingNotes: idx === 1 ? 1 : 0,
-        attendanceRate: 94 + (idx % 7),
+      const mapped = (teachers.length > 0 ? teachers : res.data).map((t: any) => ({
+        teacherId: String(t.id),
+        teacherName: t.name || t.label || 'Teacher',
+        students: 1,
+        todaySessions: 0,
+        weeklySessions: 0,
+        hours: 0,
+        goals: 0,
+        pendingNotes: 0,
+        attendanceRate: 100,
       }));
-      return { data: rows };
+      return { ...res, data: filterOutDeletedStaff(mapped) };
     }
   } catch {}
 
   return { data: [] };
 };
 
-export const getWorkloadTrend = async (): Promise<{ data: any }> => {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const dayCounts: Record<string, number> = {
-    Mon: 0,
-    Tue: 0,
-    Wed: 0,
-    Thu: 0,
-    Fri: 0,
-  };
-
+export const getWorkloadTrend = async () => {
   try {
-    const res = await client.get('/therapy_coordinator/session_summaries');
-    const summaries = Array.isArray(res?.data?.session_summaries)
-      ? res.data.session_summaries
-      : Array.isArray(res?.data)
-        ? res.data
-        : [];
-
-    if (summaries.length > 0) {
-      summaries.forEach((s: any) => {
-        const dateStr = s.submitted_at || s.created_at || s.session_date;
-        if (dateStr) {
-          const d = new Date(dateStr);
-          const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-          if (dayCounts[dayName] !== undefined) {
-            dayCounts[dayName] += 1;
-          }
-        }
-      });
-    }
-  } catch {}
-
-  const hasData = Object.values(dayCounts).some((c) => c > 0);
-  if (hasData) {
-    return {
-      data: days.map((label) => ({
-        label,
-        sessions: dayCounts[label] > 0 ? dayCounts[label] : 10,
-      })),
-    };
+    const dashRes = await getWorkloadDashboard();
+    const rows = Array.isArray(dashRes?.data) ? dashRes.data : [];
+    const trend = rows.map((r: any) => ({
+      label: r.teacherName || r.name || 'Therapist',
+      sessions: Number(r.weeklySessions ?? r.sessions ?? r.sessions_completed ?? 0),
+    }));
+    return { data: filterOutDeletedStaff(trend) };
+  } catch {
+    return { data: [] };
   }
-
-  return {
-    data: [
-      { label: 'Mon', sessions: 12 },
-      { label: 'Tue', sessions: 15 },
-      { label: 'Wed', sessions: 16 },
-      { label: 'Thu', sessions: 14 },
-      { label: 'Fri', sessions: 11 },
-    ],
-  };
 };
 
 // ============================================================================

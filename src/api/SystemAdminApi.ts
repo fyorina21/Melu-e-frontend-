@@ -1,5 +1,6 @@
 import client from './sessionApi';
 import type { QueryParams, Payload } from '../types';
+import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { storage } from '../utils/storage';
 import { FALLBACK_MODULES } from '../screens/systemadmin/permissions/permissionTypes';
 
@@ -160,14 +161,15 @@ export const getStaffAccounts = async (params: QueryParams) => {
   try {
     const res = await client.get('/sysadmin/staff', { params });
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-      storage.setJSONSync('sysadmin_staff_accounts', res.data);
-      return res;
+      const filtered = filterOutDeletedStaff(res.data);
+      storage.setJSONSync('sysadmin_staff_accounts', filtered);
+      return { ...res, data: filtered };
     }
   } catch {}
 
   const cached = storage.getJSONSync<any[]>('sysadmin_staff_accounts');
   const list = cached && cached.length > 0 ? cached : DEFAULT_STAFF;
-  return { data: list };
+  return { data: filterOutDeletedStaff(list) };
 };
 
 export const createStaffAccount = async (payload: Payload) => {
@@ -325,10 +327,13 @@ export const getPermissionCatalog = async () => {
     if (res?.data?.modules && Array.isArray(res.data.modules) && res.data.modules.length > 0) {
       return res;
     }
+    if (res?.data) return res;
   } catch {}
 
   return { data: { modules: FALLBACK_MODULES } };
 };
+
+export const getPermissionsCatalog = getPermissionCatalog;
 
 export const getPermissionMatrix = async (roleId: string) => {
   try {
@@ -344,9 +349,15 @@ export const getPermissionMatrix = async (roleId: string) => {
   return { data: { permissions: [] } };
 };
 
-export const savePermissionMatrix = async (roleId: string, permissionIds: string[]) => {
+export const savePermissionMatrix = async (
+  roleId: string,
+  payload:
+    { permission_ids?: string[]; matrix?: Record<string, Record<string, boolean>> } | string[],
+) => {
+  const permissionIds = Array.isArray(payload) ? payload : payload.permission_ids || [];
+  const body = Array.isArray(payload) ? { permission_ids: payload } : payload;
   try {
-    await client.post(`/sysadmin/roles/${roleId}/permissions`, { permission_ids: permissionIds });
+    await client.post(`/sysadmin/roles/${roleId}/permissions`, body);
   } catch {}
 
   storage.setJSONSync(`sysadmin_perm_${roleId}`, permissionIds);
@@ -367,9 +378,14 @@ export const savePermissionMatrix = async (roleId: string, permissionIds: string
 
 export const resetDefaultPermissions = async (roleId: string) => {
   try {
-    const res = await client.post(`/sysadmin/roles/${roleId}/permissions/reset-default`);
+    const res = await client.post(`/sysadmin/roles/${roleId}/permissions/reset_default`);
     if (res?.data) return res;
-  } catch {}
+  } catch {
+    try {
+      const res = await client.post(`/sysadmin/roles/${roleId}/permissions/reset-default`);
+      if (res?.data) return res;
+    } catch {}
+  }
 
   storage.removeSync(`sysadmin_perm_${roleId}`);
   return { data: { ok: true, permissions: [] } };
@@ -377,11 +393,18 @@ export const resetDefaultPermissions = async (roleId: string) => {
 
 export const copyPermissionsFromRole = async (roleId: string, sourceRoleId: string) => {
   try {
-    const res = await client.post(`/sysadmin/roles/${roleId}/permissions/copy-from`, {
+    const res = await client.post(`/sysadmin/roles/${roleId}/permissions/copy_from`, {
       source_role_id: sourceRoleId,
     });
     if (res?.data) return res;
-  } catch {}
+  } catch {
+    try {
+      const res = await client.post(`/sysadmin/roles/${roleId}/permissions/copy-from`, {
+        source_role_id: sourceRoleId,
+      });
+      if (res?.data) return res;
+    } catch {}
+  }
 
   const sourcePerms = storage.getJSONSync<string[]>(`sysadmin_perm_${sourceRoleId}`) || [];
   storage.setJSONSync(`sysadmin_perm_${roleId}`, sourcePerms);

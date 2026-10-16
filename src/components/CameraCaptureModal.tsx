@@ -230,7 +230,7 @@ export default function CameraCaptureModal({
               </View>
             )}
 
-            {errorMsg && (
+            {Boolean(errorMsg) && (
               <View style={styles.errorBox}>
                 <Feather name="alert-circle" size={36} color="#DC2626" />
                 <Text style={styles.errorTitle}>Camera Unavailable</Text>

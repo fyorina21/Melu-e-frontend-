@@ -42,6 +42,7 @@ export interface AuthSession {
   roles?: Role[];
   userName: string;
   email?: string;
+  userId?: string;
   modules?: string[];
   permissions?: string[];
 }

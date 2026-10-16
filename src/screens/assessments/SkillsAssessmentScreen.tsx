@@ -1,50 +1,59 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import {
-  getSkillsAssessment,
-  saveSkillsAssessment,
-  bulkSaveAbllsResponses,
-  getTeacherStudentProfile,
-} from '../../api/teacherExtrasApi';
+import { getSkillsAssessment, saveSkillsAssessment, bulkSaveAbllsResponses, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
+import { markStudentAssessmentCompleted } from '../../utils/studentLifecycleHelper';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import {
   DEFAULT_ABLLS_DOMAINS,
   buildAbllsDomainsFromConfig,
+  getItemScoreOptions,
   saveStorageAssessment,
   loadStorageAssessment,
+  SCORE_COLOR,
+  SCORE_LABEL,
   type AbllsDomainDef,
   type Score,
 } from './abllsConfigHelper';
 import type { SessionStackParamList } from '../../types';
-import { storage } from '../../utils/storage';
-import { type StudentProfile } from './skills/types';
-import { AbllsHeader, AbllsSkillCard, AbllsBottomBar } from './skills/components';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SkillsAssessment'>;
 
-export default function SkillsAssessmentScreen({ navigation, route }: Props) {
-  const { width } = useWindowDimensions();
-  const isTablet = width >= 768;
+interface StudentProfile {
+  id: string;
+  fullName: string;
+  age: number;
+}
 
-  const urlSid =
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('studentId')
-      : null;
-  const localSid = storage.getSync('last_assessment_student_id');
+export default function SkillsAssessmentScreen({ navigation, route }: Props) {
+  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
+  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
   const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
   const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
 
   useEffect(() => {
-    if (studentId) {
-      storage.setSync('last_assessment_student_id', studentId);
+    if (typeof localStorage !== 'undefined' && studentId) {
+      try {
+        localStorage.setItem('last_assessment_student_id', studentId);
+      } catch {}
     }
   }, [studentId]);
 
@@ -62,15 +71,15 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     try {
       const { data: res } = await getTeacherStudentProfile(studentId);
       setProfile(res);
-    } catch {
+    } catch (err) {
       setProfile(null);
     }
     try {
       const { data: cfg } = await getFormConfig('ABLLS Assessment Form');
       if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-        setDomains(buildAbllsDomainsFromConfig(cfg.fields));
+        setDomains(buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections));
       }
-    } catch {
+    } catch (err) {
       setDomains(DEFAULT_ABLLS_DOMAINS);
     }
     try {
@@ -83,12 +92,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         notes?: Record<string, string>;
         customFields?: Record<string, any>;
       };
-      const foundId =
-        savedData?.ablls_assessment_id ||
-        savedData?.assessment_id ||
-        savedData?.id ||
-        (saved as any)?.id ||
-        (saved as any)?.ablls_assessment?.id;
+      const foundId = savedData?.ablls_assessment_id || savedData?.assessment_id || savedData?.id || (saved as any)?.id;
       if (foundId) {
         setAssessmentId(foundId);
       }
@@ -96,14 +100,11 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       const localData = loadStorageAssessment(studentId);
       const mergedScores = { ...apiScores, ...(localData?.scores ?? {}) };
       const mergedNotes = { ...(savedData.notes ?? {}), ...(localData?.notes ?? {}) };
-      const mergedCustomFields = {
-        ...(savedData.customFields ?? {}),
-        ...(localData?.customFields ?? {}),
-      };
+      const mergedCustomFields = { ...(savedData.customFields ?? {}), ...(localData?.customFields ?? {}) };
       setScores(mergedScores);
       if (Object.keys(mergedNotes).length > 0) setNotes(mergedNotes);
       if (Object.keys(mergedCustomFields).length > 0) setCustomFields(mergedCustomFields);
-    } catch {
+    } catch (err) {
       const localData = loadStorageAssessment(studentId);
       if (localData?.scores) setScores(localData.scores);
       else setScores({});
@@ -116,49 +117,56 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load]),
+    }, [load])
   );
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('ablls') || name.includes('skill')) {
+        const cfg = e.detail?.config;
+        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
+          setDomains(buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections));
+        } else {
+          load();
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, [load]);
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalItems = domains.reduce((sum, d) => sum + d.items.length, 0);
   const totalAnswered = Object.keys(scores).length;
 
-  const persistBulkResponses = useCallback(
-    (
-      updatedScores: Record<string, Score>,
-      updatedNotes: Record<string, string>,
-      status = 'in_progress',
-    ) => {
-      saveStorageAssessment(studentId, {
-        scores: updatedScores,
-        notes: updatedNotes,
-        customFields,
-      });
-      const formattedResponses = Object.entries(updatedScores).map(([k, v]) => ({
-        skill_item_id: k,
-        score: String(v),
-        note: updatedNotes[k] || undefined,
-      }));
-      const targetId = assessmentId || studentId;
-      bulkSaveAbllsResponses(targetId, {
-        responses: formattedResponses,
-        scores: updatedScores,
-        notes: updatedNotes,
-      }).catch((err) => {
-        console.warn('Failed to auto-save ABLLS responses:', err);
-      });
-      saveSkillsAssessment(studentId, {
-        scores: updatedScores,
-        notes: updatedNotes,
-        customFields,
-        status,
-      }).catch((err) => {
-        console.warn('Failed to auto-save skills assessment:', err);
-      });
-    },
-    [assessmentId, studentId, customFields],
-  );
+  const persistBulkResponses = useCallback((updatedScores: Record<string, Score>, updatedNotes: Record<string, string>, status = 'in_progress') => {
+    const answered = Object.keys(updatedScores).length;
+    const progress = totalItems > 0 ? Math.min(100, Math.round((answered / totalItems) * 100)) : 0;
+    saveStorageAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, progress, status });
+    const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+    if (aliasSid) {
+      saveStorageAssessment(aliasSid, { scores: updatedScores, notes: updatedNotes, customFields, progress, status });
+    }
+    const formattedResponses = Object.entries(updatedScores).map(([k, v]) => ({
+      skill_item_id: k,
+      score: String(v),
+      note: updatedNotes[k] || undefined,
+    }));
+    const targetId = assessmentId || studentId;
+    bulkSaveAbllsResponses(targetId, {
+      responses: formattedResponses,
+      scores: updatedScores,
+      notes: updatedNotes,
+    }).catch(() => {});
+    saveSkillsAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, status, progress }).catch(() => {});
+    if (aliasSid) {
+      saveSkillsAssessment(aliasSid, { scores: updatedScores, notes: updatedNotes, customFields, status, progress }).catch(() => {});
+    }
+  }, [assessmentId, studentId, customFields, totalItems]);
 
   useEffect(() => {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
@@ -177,9 +185,11 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   const domain = domains[activeDomain] || domains[0];
   const studentName = profile?.fullName || 'Student A';
+  const studentInitials = studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase();
 
   const domainTotalItems = domain?.items?.length ?? 0;
   const domainAnswered = (domain?.items ?? []).filter((i) => scores[i.id] !== undefined).length;
+  const domainProgress = domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
 
   const setScore = (itemId: string, score: Score) => {
     const updated = { ...scores, [itemId]: score };
@@ -198,8 +208,16 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const handleSaveDraft = async () => {
     try {
       const allAnswered = totalItems > 0 && totalAnswered >= totalItems;
-      const status = allAnswered ? 'completed' : 'in_progress';
-      saveStorageAssessment(studentId, { scores, notes, customFields });
+      const status = allAnswered ? 'completed' : totalAnswered > 0 ? 'in_progress' : 'not_started';
+      const progress = totalItems > 0 ? Math.min(100, Math.round((totalAnswered / totalItems) * 100)) : 0;
+      if (allAnswered) {
+        markStudentAssessmentCompleted(studentId);
+      }
+      saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
+      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        saveStorageAssessment(aliasSid, { scores, notes, customFields, progress, status });
+      }
       const formattedResponses = Object.entries(scores).map(([k, v]) => ({
         skill_item_id: k,
         score: String(v),
@@ -210,15 +228,18 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         responses: formattedResponses,
         scores,
         notes,
-      }).catch(() => {});
-      await saveSkillsAssessment(studentId, { scores, notes, customFields, status });
+      });
+      await saveSkillsAssessment(studentId, { scores, notes, customFields, status, progress });
+      if (aliasSid) {
+        await saveSkillsAssessment(aliasSid, { scores, notes, customFields, status, progress });
+      }
       showToast(
         allAnswered
           ? `${studentName} ABLLS assessment completed!`
-          : `${studentName} ABLLS assessment draft saved.`,
-        'success',
+          : `${studentName} ABLLS assessment draft saved (${progress}%).`,
+        'success'
       );
-    } catch {
+    } catch (err) {
       showToast('Failed to save assessment draft', 'error');
     }
   };
@@ -227,57 +248,154 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     saveStorageAssessment(studentId, { scores, notes, customFields });
     try {
       await saveSkillsAssessment(studentId, { scores, notes, customFields });
-    } catch (err) {
-      console.warn('Failed to save assessment before navigating to Need Map:', err);
-    }
+    } catch (err) {}
     navigation?.navigate?.('AbllsNeedMap', { studentId });
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Assessments"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-      />
+      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
-      <View style={[styles.mainWrapper, isTablet && styles.tabletWrapper]}>
-        <AbllsHeader
-          onBack={() => navigation?.goBack?.()}
-          profile={profile}
-          studentId={studentId}
-          photoUrl={
-            (profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo
-          }
-          domains={domains}
-          activeDomain={activeDomain}
-          onSelectDomain={setActiveDomain}
-          domainAnswered={domainAnswered}
-          domainTotalItems={domainTotalItems}
-        />
+      {/* Header Bar */}
+      <View style={styles.headerContainer}>
+        <View style={styles.topNavRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+            <Feather name="arrow-left" size={16} color="#334155" />
+            <Text style={styles.backBtnText}>Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>ABLLS-R Assessment</Text>
+        </View>
 
-        <View style={styles.scrollArea}>
-          <ScrollView contentContainerStyle={styles.content}>
-            {(domain?.items ?? []).map((item) => (
-              <AbllsSkillCard
-                key={item.id}
-                item={item}
-                score={scores[item.id]}
-                onSelectScore={(score) => setScore(item.id, score)}
-                note={notes[item.id] || ''}
-                onNoteChange={(t) => handleNotesChange(item.id, t)}
+        {/* Student Profile Row */}
+        <View style={styles.studentRow}>
+          <StudentAvatar
+            name={studentName}
+            studentId={studentId}
+            photoUrl={(profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo}
+            size={40}
+            style={{ marginRight: 10 }}
+          />
+          <View style={styles.studentInfo}>
+            <View style={styles.studentNameRow}>
+              <Text style={styles.studentName}>{studentName}</Text>
+              <Text style={styles.studentAge}>Age {profile?.age ?? '—'}</Text>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusPillText}>In Assessment</Text>
+              </View>
+            </View>
+            <Text style={styles.stationText}>Station A</Text>
+          </View>
+        </View>
+
+
+        {/* Domain Tabs Navigation */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsRow}
+        >
+          {domains.map((d, idx) => (
+            <TouchableOpacity
+              key={d.name}
+              style={[styles.tab, activeDomain === idx && styles.tabActive]}
+              onPress={() => setActiveDomain(idx)}
+            >
+              <Text style={[styles.tabText, activeDomain === idx && styles.tabTextActive]}>
+                {d.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Domain Progress Bar */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${domainProgress}%` }]} />
+          </View>
+          <Text style={styles.progressPercentage}>{domainProgress}%</Text>
+        </View>
+        <Text style={styles.progressSubtext}>
+          {domainAnswered} of {domainTotalItems} items scored in {domain.name}
+        </Text>
+      </View>
+
+      {/* Scrollable card area + pinned bottom bar in a flex column */}
+      <View style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.content}>
+          {domain.items.map((item) => (
+            <View key={item.id} style={styles.itemCard}>
+              <View style={styles.itemTitleRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{item.id}</Text>
+                </View>
+                <Text style={styles.itemDescription}>{item.description}</Text>
+              </View>
+
+              {/* Score Selector Options — Numbers only; N/A omitted if only 2 options */}
+              <View style={styles.scoreRow}>
+                {getItemScoreOptions(item).map((opt) => {
+                  const s = opt.score;
+                  const selected = scores[item.id] === s;
+                  const color = opt.color;
+
+                  return (
+                    <TouchableOpacity
+                      key={`${item.id}-${opt.label}`}
+                      style={[
+                        styles.scoreBtn,
+                        { borderColor: color },
+                        selected && { backgroundColor: color },
+                      ]}
+                      onPress={() => setScore(item.id, s)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.scoreBtnText,
+                          { color: selected ? '#FFFFFF' : color },
+                          selected && styles.scoreBtnTextActive,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Notes Input */}
+              <TextInput
+                style={styles.notesInput}
+                placeholder="Add notes..."
+                placeholderTextColor="#94A3B8"
+                value={notes[item.id] || ''}
+                onChangeText={(t) => handleNotesChange(item.id, t)}
               />
-            ))}
+            </View>
+          ))}
 
-            <DynamicFormFields
-              formName="ABLLS Assessment Form"
-              values={customFields}
-              onChange={(key, val) => setCustomFields((prev) => ({ ...prev, [key]: val }))}
-              excludeStandardLabels={['Assessment Date', 'Assessor Name']}
-              section="General"
-            />
-          </ScrollView>
+          <DynamicFormFields
+            formName="ABLLS Assessment Form"
+            values={customFields}
+            onChange={(key, val) => setCustomFields((prev) => ({ ...prev, [key]: val }))}
+            excludeStandardLabels={['Assessment Date', 'Assessor Name']}
+            section="General"
+          />
+        </ScrollView>
 
-          <AbllsBottomBar onSaveDraft={handleSaveDraft} onOpenNeedMap={openNeedMap} />
+        {/* Bottom Action Bar — sits at the bottom of the flex column, always tappable */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
+            <Feather name="file-text" size={16} color="#0F172A" />
+            <Text style={styles.saveDraftText}>Save Draft</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.needMapBtn} onPress={openNeedMap}>
+            <Feather name="bar-chart-2" size={16} color="#0F172A" />
+            <Text style={styles.needMapText}>View Need Analysis Map</Text>
+            <Feather name="chevron-right" size={16} color="#0F172A" />
+          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
@@ -289,20 +407,277 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  mainWrapper: {
-    flex: 1,
-    width: '100%',
+  headerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingTop: 12,
   },
-  tabletWrapper: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-    width: '100%',
+  topNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  scrollArea: {
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backBtnText: {
+    fontSize: 14,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    borderLeftWidth: 1,
+    borderLeftColor: '#CBD5E1',
+    paddingLeft: 12,
+  },
+  studentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 12,
+    gap: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#38BDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  studentInfo: {
+    gap: 2,
+  },
+  studentNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  studentName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  studentAge: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  statusPill: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  stationText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  keyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  keyLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  keyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  keyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+  },
+  keyText: {
+    fontSize: 11,
+    color: '#475569',
+  },
+  tabsScroll: {
+    marginTop: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 20,
+  },
+  tab: {
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#0EA5E9',
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  tabTextActive: {
+    color: '#0EA5E9',
+    fontWeight: '700',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 12,
+    gap: 12,
+  },
+  progressTrack: {
     flex: 1,
+    height: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#0EA5E9',
+  },
+  progressPercentage: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  progressSubtext: {
+    fontSize: 12,
+    color: '#64748B',
+    paddingHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
   },
   content: {
     padding: 16,
     gap: 12,
+  },
+  itemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+  },
+  itemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  badge: {
+    backgroundColor: '#38BDF8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  itemDescription: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+    flex: 1,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  scoreBtn: {
+    borderWidth: 1.5,
+    borderRadius: 8,
+    minWidth: 44,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  scoreBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  scoreBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  bottomBar: {
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    padding: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  saveDraftBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  saveDraftText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  needMapBtn: {
+    flex: 2,
+    backgroundColor: '#FACC15',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+  },
+  needMapText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
   },
 });

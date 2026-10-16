@@ -3,7 +3,15 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import ScreenLoader from '../../components/ScreenLoader';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  RefreshControl,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -27,42 +35,74 @@ export default function DirectorDashboardScreen({
   navigation,
 }: NativeStackScreenProps<DirectorStackParamList, 'DirectorDashboard'>) {
   const [data, setData] = useState<DirectorDashboardData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { data: rawRes } = await getDirectorDashboard();
-      const res =
-        rawRes && typeof rawRes === 'object' && 'data' in rawRes ? (rawRes as any).data : rawRes;
+      const res = (rawRes && typeof rawRes === 'object' && 'data' in rawRes) ? (rawRes as any).data : rawRes;
 
-      const recentActivity: string[] = Array.isArray(res?.recentActivity) ? res.recentActivity : [];
-      if (recentActivity.length === 0 && res?.activity) {
+      const recentActivity: string[] = Array.isArray(res?.recentActivity)
+        ? [...res.recentActivity]
+        : [];
+      if (res?.activity) {
         if (res.activity.trials_logged_today > 0) {
-          recentActivity.push(`${res.activity.trials_logged_today} trials logged today`);
+          recentActivity.push(`${res.activity.trials_logged_today} trial(s) logged today`);
         }
         if (res.activity.behavior_incidents_today > 0) {
-          recentActivity.push(
-            `${res.activity.behavior_incidents_today} behavior incident(s) logged today`,
-          );
+          recentActivity.push(`${res.activity.behavior_incidents_today} behavior incident(s) logged today`);
         }
         if (res.activity.goals_mastered_this_month > 0) {
-          recentActivity.push(
-            `${res.activity.goals_mastered_this_month} goal(s) mastered this month`,
-          );
+          recentActivity.push(`${res.activity.goals_mastered_this_month} goal(s) mastered this month`);
         }
       }
+      if (res?.reviews) {
+        if (res.reviews.mastery_checks_pending_approval > 0) {
+          recentActivity.push(`${res.reviews.mastery_checks_pending_approval} goal mastery check(s) pending verification approval`);
+        }
+        if (res.reviews.session_summaries_pending_review > 0) {
+          recentActivity.push(`${res.reviews.session_summaries_pending_review} session summary report(s) pending review`);
+        }
+      }
+      if (res?.sessions?.in_progress > 0) {
+        recentActivity.push(`${res.sessions.in_progress} therapy session(s) active in facility`);
+      }
+      if (res?.students?.in_assessment > 0) {
+        recentActivity.push(`${res.students.in_assessment} student(s) currently in assessment phase`);
+      }
+      if (res?.students?.ready_for_iup > 0) {
+        recentActivity.push(`${res.students.ready_for_iup} student(s) ready for IUP creation`);
+      }
+      if (recentActivity.length === 0) {
+        recentActivity.push('All clinical reviews, session blocks and records are current for today');
+      }
+
+      const totalStudents =
+        (res?.students?.total_active ?? 0) +
+        (res?.students?.in_assessment ?? 0) +
+        (res?.students?.ready_for_iup ?? 0) ||
+        (res?.students?.total_active ?? res?.totalStudents ?? 0);
+
+      const activeTeachers =
+        (res?.staff?.teachers_on_duty && res.staff.teachers_on_duty > 0)
+          ? res.staff.teachers_on_duty
+          : (res?.staff?.total_teachers ?? res?.activeTeachers ?? 0);
+
+      const pendingApprovals = res?.reviews?.mastery_checks_pending_approval ?? res?.pendingApprovals ?? 0;
+      const pendingReports = res?.reviews?.session_summaries_pending_review ?? res?.pendingReports ?? 0;
+      const unreadCount = res?.unreadCount ?? (pendingApprovals + pendingReports);
 
       setData({
-        unreadCount: res?.unreadCount ?? 0,
-        totalStudents: res?.students?.total_active ?? res?.totalStudents ?? 0,
-        activeTeachers:
-          res?.staff?.teachers_on_duty ?? res?.staff?.total_teachers ?? res?.activeTeachers ?? 0,
-        pendingApprovals:
-          res?.reviews?.mastery_checks_pending_approval ?? res?.pendingApprovals ?? 0,
-        unreadParentMessages: res?.unreadParentMessages ?? 0,
-        pendingReports: res?.reviews?.session_summaries_pending_review ?? res?.pendingReports ?? 0,
+        unreadCount,
+        totalStudents,
+        activeTeachers,
+        pendingApprovals,
+        unreadParentMessages: res?.unreadParentMessages ?? (res?.conversations?.unread ?? 0),
+        pendingReports,
         recentActivity,
       });
-    } catch {
+    } catch (err) {
+      console.error('Error loading director dashboard:', err);
       setData({
         unreadCount: 0,
         totalStudents: 0,
@@ -70,10 +110,16 @@ export default function DirectorDashboardScreen({
         pendingApprovals: 0,
         unreadParentMessages: 0,
         pendingReports: 0,
-        recentActivity: [],
+        recentActivity: ['Unable to load live backend data. Please verify network connection.'],
       });
     }
   }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   useEffect(() => {
     load();
@@ -81,34 +127,24 @@ export default function DirectorDashboardScreen({
 
   const goto = (tab: string) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[tab]);
 
-  // Spec SCR-DIR-001: recent-activity items navigate to the relevant screen.
-  const gotoActivity = (text: string) => {
-    const t = text.toLowerCase();
-    if (t.includes('master')) {
-      navigation?.navigate?.('GoalMasteryApproval');
-    } else if (
-      t.includes('behavior') ||
-      t.includes('incident') ||
-      t.includes('trial') ||
-      t.includes('progress')
-    ) {
-      navigation?.navigate?.('DirectorStudentProgress');
-    } else if (t.includes('parent') || t.includes('message')) {
-      navigation?.navigate?.('DirectorParentCommunication');
-    } else if (t.includes('report')) {
-      navigation?.navigate?.('ReportsOversight');
-    } else {
-      navigation?.navigate?.('ReportsOversight');
-    }
-  };
-
   if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Dashboard" onTabPress={goto} />
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primaryYellowDark]}
+            tintColor={colors.primaryYellowDark}
+          />
+        }
+      >
         {/* Header Row */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
@@ -117,9 +153,7 @@ export default function DirectorDashboardScreen({
             </View>
             <View>
               <Text style={styles.pageTitle}>Director Overview Dashboard</Text>
-              <Text style={styles.pageSubtitle}>
-                Executive oversight, clinical approvals, scheduling & parent communications
-              </Text>
+              <Text style={styles.pageSubtitle}>Executive oversight, clinical approvals, scheduling & parent communications</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.notifBtn} onPress={() => goto('Parents')}>
@@ -134,11 +168,7 @@ export default function DirectorDashboardScreen({
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => goto('Student Progress')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statCard} onPress={() => goto('Student Progress')} activeOpacity={0.7}>
             <View style={[styles.statIconWrap, { backgroundColor: '#DBEAFE' }]}>
               <Feather name="users" size={20} color="#1E40AF" />
             </View>
@@ -150,11 +180,7 @@ export default function DirectorDashboardScreen({
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => goto('Staff Scheduling')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statCard} onPress={() => goto('Staff Scheduling')} activeOpacity={0.7}>
             <View style={[styles.statIconWrap, { backgroundColor: '#DCFCE7' }]}>
               <Feather name="calendar" size={20} color="#166534" />
             </View>
@@ -166,11 +192,7 @@ export default function DirectorDashboardScreen({
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => goto('Goal Mastery Approval')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statCard} onPress={() => goto('Goal Mastery Approval')} activeOpacity={0.7}>
             <View style={[styles.statIconWrap, { backgroundColor: '#FEF3C7' }]}>
               <Feather name="award" size={20} color="#B45309" />
             </View>
@@ -182,11 +204,7 @@ export default function DirectorDashboardScreen({
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => goto('Parent Communication')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statCard} onPress={() => goto('Parent Communication')} activeOpacity={0.7}>
             <View style={[styles.statIconWrap, { backgroundColor: '#F3E8FF' }]}>
               <Feather name="message-circle" size={20} color="#6B21A8" />
             </View>
@@ -198,11 +216,7 @@ export default function DirectorDashboardScreen({
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => goto('Report & Oversight')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statCard} onPress={() => goto('Report & Oversight')} activeOpacity={0.7}>
             <View style={[styles.statIconWrap, { backgroundColor: '#FEE2E2' }]}>
               <Feather name="file-text" size={20} color="#991B1B" />
             </View>
@@ -219,37 +233,25 @@ export default function DirectorDashboardScreen({
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Quick Management Actions</Text>
           <View style={styles.quickActionsGrid}>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => goto('Staff Scheduling')}
-            >
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Staff Scheduling')}>
               <Feather name="calendar" size={18} color={colors.navyText} />
               <Text style={styles.quickActionTitle}>Staff Scheduling</Text>
               <Text style={styles.quickActionSub}>Assign student blocks & check capacity</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => goto('Goal Mastery Approval')}
-            >
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Goal Mastery Approval')}>
               <Feather name="check-circle" size={18} color={colors.navyText} />
               <Text style={styles.quickActionTitle}>Mastery Approvals</Text>
               <Text style={styles.quickActionSub}>Multi-therapist verification review</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => goto('Parent Communication')}
-            >
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Parent Communication')}>
               <Feather name="message-square" size={18} color={colors.navyText} />
               <Text style={styles.quickActionTitle}>Parent Messages</Text>
               <Text style={styles.quickActionSub}>Communication hub & escalation log</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => goto('Report & Oversight')}
-            >
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => goto('Report & Oversight')}>
               <Feather name="bar-chart-2" size={18} color={colors.navyText} />
               <Text style={styles.quickActionTitle}>Reports & Oversight</Text>
               <Text style={styles.quickActionSub}>Custom report builder & analytics</Text>
@@ -265,21 +267,11 @@ export default function DirectorDashboardScreen({
           </View>
           <View style={styles.activityList}>
             {data.recentActivity.map((a, i) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.activityRow}
-                onPress={() => gotoActivity(a)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open: ${a}`}
-              >
+              <View key={i} style={styles.activityRow}>
                 <View style={styles.activityDot} />
                 <Text style={styles.activityText}>{a}</Text>
-                <Feather name="chevron-right" size={14} color={colors.mutedText} />
-              </TouchableOpacity>
+              </View>
             ))}
-            {data.recentActivity.length === 0 && (
-              <Text style={styles.activityEmpty}>No recent clinical activity to review.</Text>
-            )}
           </View>
         </View>
       </ScrollView>
@@ -298,13 +290,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    flex: 1,
-    minWidth: 260,
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 260 },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -405,10 +391,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryYellowDark,
   },
   activityText: { fontSize: 13, color: colors.navyText, flex: 1 },
-  activityEmpty: {
-    fontSize: 13,
-    color: colors.mutedText,
-    fontStyle: 'italic',
-    paddingVertical: spacing.sm,
-  },
 });
+
