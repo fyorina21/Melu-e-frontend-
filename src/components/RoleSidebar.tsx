@@ -2,7 +2,7 @@
 // Lists only that role's links and supports collapsing to an icon rail or hiding on mobile.
 
 import React, { useContext } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NavigationState } from '@react-navigation/native';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
@@ -109,6 +109,18 @@ export default function RoleSidebar({ role }: { role: Role }) {
       ]}
     >
       <View style={styles.headerRow}>
+        {isCompact && (
+          <View style={styles.compactBrand}>
+            <Image
+              source={require('../../assets/logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <Text style={styles.brandTitle} numberOfLines={1}>
+              Melu'e
+            </Text>
+          </View>
+        )}
         <Text style={styles.roleLabel} numberOfLines={1}>
           {ROLE_LABELS[role]}
         </Text>
@@ -176,15 +188,31 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    width: 260,
+    width: 280,
+    maxWidth: '85%',
     backgroundColor: colors.bgCard,
     borderRightWidth: 1,
     borderRightColor: colors.border,
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.md,
     gap: spacing.md,
-    zIndex: 100,
-    ...makeShadow(6, 18, 0.2, '0, 0, 0', 12),
+    zIndex: 300,
+    ...makeShadow(8, 24, 0.25, '0, 0, 0', 16),
+  },
+  compactBrand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginRight: spacing.xs,
+  },
+  logoImage: {
+    width: 22,
+    height: 22,
+  },
+  brandTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.navyText,
   },
   sidebarWebTransition: {
     // Smooth transition on web

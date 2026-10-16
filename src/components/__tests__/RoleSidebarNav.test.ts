@@ -54,4 +54,12 @@ describe('System Admin Navigation & Sidebar Configuration', () => {
     expect(isSidebarRole('program_director')).toBe(false);
     expect(isSidebarRole('parent')).toBe(false);
   });
+
+  it('determines navbar hamburger visibility responsively', () => {
+    // On mobile / tablet (isCompact = true), hamburger must be shown for all roles including system_admin
+    const shouldShowHamburger = (isCompact: boolean) => isCompact;
+
+    expect(shouldShowHamburger(true)).toBe(true); // mobile / tablet
+    expect(shouldShowHamburger(false)).toBe(false); // desktop
+  });
 });

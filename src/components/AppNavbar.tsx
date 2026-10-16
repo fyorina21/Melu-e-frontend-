@@ -316,9 +316,9 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   return (
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
-        {isCompact && !isSidebarNav && (
+        {isCompact && (
           <TouchableOpacity
-            onPress={() => setDrawerOpen(true)}
+            onPress={isSidebarNav ? toggleSidebar : () => setDrawerOpen(true)}
             style={styles.hamburgerBtn}
             accessibilityRole="button"
             accessibilityLabel="Open menu"
