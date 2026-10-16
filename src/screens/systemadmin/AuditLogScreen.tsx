@@ -218,6 +218,9 @@ export default function AuditLogScreen({ navigation }: Props) {
               onPress={handleExportCsv}
               accessibilityRole="button"
               accessibilityLabel="Export audit logs as CSV"
+              {...(Platform.OS === 'web'
+                ? { title: 'Export all filtered audit records as a CSV file' }
+                : {})}
             >
               <Feather name="download" size={14} color={colors.navyText} />
               <Text style={styles.exportBtnText}>Export CSV</Text>
@@ -227,6 +230,9 @@ export default function AuditLogScreen({ navigation }: Props) {
               onPress={handleExportJson}
               accessibilityRole="button"
               accessibilityLabel="Export audit logs as JSON"
+              {...(Platform.OS === 'web'
+                ? { title: 'Export all filtered audit records as a JSON file' }
+                : {})}
             >
               <Feather name="file-text" size={14} color={colors.navyText} />
               <Text style={styles.exportBtnText}>Export JSON</Text>
@@ -246,7 +252,13 @@ export default function AuditLogScreen({ navigation }: Props) {
               accessibilityLabel="Search audit logs"
             />
             {search ? (
-              <TouchableOpacity onPress={() => setSearch('')} style={styles.clearSearchBtn}>
+              <TouchableOpacity
+                onPress={() => setSearch('')}
+                style={styles.clearSearchBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search text"
+                {...(Platform.OS === 'web' ? { title: 'Clear search query' } : {})}
+              >
                 <Feather name="x" size={16} color={colors.mutedText} />
               </TouchableOpacity>
             ) : null}

@@ -1,7 +1,5 @@
-// src/screens/systemadmin/roles/components/RoleManagementHeader.tsx
-
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../../../../theme/colors';
 import { typography } from '../../../../theme/typography';
@@ -32,6 +30,9 @@ export default function RoleManagementHeader({
           onPress={onConfigurePermissions}
           accessibilityRole="button"
           accessibilityLabel="Configure Permissions"
+          {...(Platform.OS === 'web'
+            ? { title: 'Open system-wide permission configuration matrix' }
+            : {})}
         >
           <Feather name="shield" size={14} color="#0284C7" />
           <Text style={styles.configureBtnText}>Configure Permissions</Text>
@@ -43,6 +44,7 @@ export default function RoleManagementHeader({
           accessibilityRole="button"
           accessibilityLabel="Add Role"
           disabled={addingRole}
+          {...(Platform.OS === 'web' ? { title: 'Add a new custom staff role' } : {})}
         >
           <Feather name="plus" size={14} color={colors.primaryBlue} />
           <Text style={styles.addBtnText}>Add Role</Text>

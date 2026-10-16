@@ -287,6 +287,7 @@ export default function StaffAccountManagementScreen({
               onPress={() => setFormTarget(null)}
               accessibilityRole="button"
               accessibilityLabel="Add staff member"
+              {...(Platform.OS === 'web' ? { title: 'Add a new staff member account' } : {})}
             >
               <Feather name="plus" size={14} color={colors.navyText} />
               <Text style={styles.addBtnText}>Add Staff</Text>
@@ -317,6 +318,9 @@ export default function StaffAccountManagementScreen({
               onPress={() => handleBulkAction('Deactivate')}
               accessibilityRole="button"
               accessibilityLabel="Deactivate selected accounts"
+              {...(Platform.OS === 'web'
+                ? { title: 'Deactivate all currently selected staff accounts' }
+                : {})}
             >
               <Text style={styles.bulkBtnText}>Deactivate</Text>
             </TouchableOpacity>
