@@ -44,25 +44,44 @@ export interface PrintOptions {
   totalPages?: number;
 }
 
+function escapeHtml(str: unknown): string {
+  if (typeof str !== 'string') return String(str ?? '');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function sanitizeHtml(rawHtml: string): string {
+  // Strip out executable script tags and event handlers
+  return rawHtml
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+    .replace(/href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi, 'href="#"');
+}
+
 export function openPrintWindow(
   bodyHtml: string,
   title = 'Print Document',
   options: PrintOptions = {}
 ): boolean {
-  if (!isWeb()) return false;
-  const win = window.open('', '_blank');
-  if (!win) return false;
+  if (!isWeb() || typeof window === 'undefined') return false;
 
-  const formId = options.formId || 'MCTC-TRP-015';
-  const revisionNumber = options.revisionNumber || 'Rev: August 2025';
-  const pageNum = options.pageNumber || 1;
-  const totalPages = options.totalPages || 1;
+  const safeFormId = escapeHtml(options.formId || 'MCTC-TRP-015');
+  const safeRevisionNumber = escapeHtml(options.revisionNumber || 'Rev: August 2025');
+  const pageNum = Number(options.pageNumber) || 1;
+  const totalPages = Number(options.totalPages) || 1;
+  const safeTitle = escapeHtml(title);
+  const safeBody = sanitizeHtml(bodyHtml);
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>${title}</title>
+  <title>${safeTitle}</title>
   <style>
     @media print {
       @page {
@@ -153,10 +172,10 @@ export function openPrintWindow(
   <div class="print-header">
     <div>
       <h1 class="brand-title">Melu'e Foundation</h1>
-      <p class="doc-subtitle">${title} — Official Clinical Record</p>
+      <p class="doc-subtitle">${safeTitle} — Official Clinical Record</p>
       <div class="header-metadata">
-        <span>Form ID: ${formId}</span>
-        <span>Revision: ${revisionNumber}</span>
+        <span>Form ID: ${safeFormId}</span>
+        <span>Revision: ${safeRevisionNumber}</span>
         <span>Page ${pageNum} of ${totalPages}</span>
       </div>
     </div>
@@ -166,18 +185,32 @@ export function openPrintWindow(
     </div>
   </div>
   <div class="print-content">
-    ${bodyHtml.includes('<div') || bodyHtml.includes('<p') ? bodyHtml : `<div class="print-body">${bodyHtml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`}
+    ${safeBody.includes('<div') || safeBody.includes('<p') ? safeBody : `<div class="print-body">${escapeHtml(safeBody)}</div>`}
   </div>
   <div class="footer-note">
     <span>Melu'e Clinical Therapy System · Confidential Student Document</span>
-    <span>Form ID: ${formId} | ${revisionNumber} | Page ${pageNum} of ${totalPages}</span>
+    <span>Form ID: ${safeFormId} | ${safeRevisionNumber} | Page ${pageNum} of ${totalPages}</span>
   </div>
+  <script>
+    window.addEventListener('load', function() {
+      window.focus();
+      setTimeout(function() { window.print(); }, 350);
+    });
+  </script>
 </body>
 </html>`;
 
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 350);
-  return true;
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const win = window.open(blobUrl, '_blank');
+    if (!win) {
+      URL.revokeObjectURL(blobUrl);
+      return false;
+    }
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    return true;
+  } catch {
+    return false;
+  }
 }
