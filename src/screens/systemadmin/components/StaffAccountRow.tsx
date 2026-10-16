@@ -9,30 +9,16 @@ import { type StaffMember, getSafeStaffRoles } from '../types';
 interface StaffAccountRowProps {
   staff: StaffMember;
   isSelected: boolean;
-  isLinkingActive: boolean;
   onToggleSelect: (id: string) => void;
   onEdit: (staff: StaffMember) => void;
-  onLinkToggle: (staff: StaffMember) => void;
   onResetPassword: (staff: StaffMember) => void;
   onToggleActive: (staff: StaffMember) => void;
   onDelete: (staff: StaffMember) => void;
 }
 
 export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
-  ({
-    staff,
-    isSelected,
-    isLinkingActive,
-    onToggleSelect,
-    onEdit,
-    onLinkToggle,
-    onResetPassword,
-    onToggleActive,
-    onDelete,
-  }) => {
+  ({ staff, isSelected, onToggleSelect, onEdit, onResetPassword, onToggleActive, onDelete }) => {
     const safeRoles = getSafeStaffRoles(staff);
-    const normalized = safeRoles.map((r) => r.trim().toLowerCase());
-    const isLinkable = normalized.includes('teacher') || normalized.includes('therapist');
 
     return (
       <View style={styles.row}>
@@ -66,16 +52,6 @@ export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
           >
             <Feather name="edit-2" size={14} color={colors.navyText} />
           </TouchableOpacity>
-
-          {isLinkable && (
-            <TouchableOpacity
-              style={[styles.iconBtn, isLinkingActive && styles.iconBtnActive]}
-              accessibilityLabel={`Link ${staff.name} to students`}
-              onPress={() => onLinkToggle(staff)}
-            >
-              <Feather name="link-2" size={14} color={colors.navyText} />
-            </TouchableOpacity>
-          )}
 
           <TouchableOpacity
             style={styles.iconBtn}

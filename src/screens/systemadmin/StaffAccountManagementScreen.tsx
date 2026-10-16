@@ -43,13 +43,7 @@ import {
   ROLE_OPTIONS,
   filterStaff,
 } from './types';
-import {
-  StaffFormModal,
-  ResetPasswordModal,
-  TeacherLinkingPanel,
-  StaffFilterBar,
-  StaffAccountRow,
-} from './components';
+import { StaffFormModal, ResetPasswordModal, StaffFilterBar, StaffAccountRow } from './components';
 
 export default function StaffAccountManagementScreen({
   navigation,
@@ -69,7 +63,6 @@ export default function StaffAccountManagementScreen({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formTarget, setFormTarget] = useState<StaffMember | null | undefined>(undefined);
   const [credentialTarget, setCredentialTarget] = useState<StaffMember | null>(null);
-  const [linkTarget, setLinkTarget] = useState<StaffMember | null>(null);
   const [saving, setSaving] = useState(false);
 
   const loadRoles = useCallback(async () => {
@@ -339,12 +332,8 @@ export default function StaffAccountManagementScreen({
               <StaffAccountRow
                 staff={s}
                 isSelected={selectedIds.includes(s.id)}
-                isLinkingActive={linkTarget?.id === s.id}
                 onToggleSelect={toggleSelect}
                 onEdit={setFormTarget}
-                onLinkToggle={(target) =>
-                  setLinkTarget(linkTarget?.id === target.id ? null : target)
-                }
                 onResetPassword={setCredentialTarget}
                 onToggleActive={handleToggleActive}
                 onDelete={handleDelete}
@@ -374,11 +363,6 @@ export default function StaffAccountManagementScreen({
                   </TouchableOpacity>
                 )}
               </View>
-            }
-            ListFooterComponent={
-              linkTarget ? (
-                <TeacherLinkingPanel teacher={linkTarget} onClose={() => setLinkTarget(null)} />
-              ) : null
             }
           />
         </View>
