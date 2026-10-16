@@ -19,6 +19,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
+import Tooltip from '../../components/Tooltip';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAuditLogs } from '../../api/SystemAdminApi';
 import { useToast } from '../../context/ToastContext';
@@ -213,30 +214,34 @@ export default function AuditLogScreen({ navigation }: Props) {
           </View>
 
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.exportBtn}
-              onPress={handleExportCsv}
-              accessibilityRole="button"
-              accessibilityLabel="Export audit logs as CSV"
-              {...(Platform.OS === 'web'
-                ? { title: 'Export all filtered audit records as a CSV file' }
-                : {})}
-            >
-              <Feather name="download" size={14} color={colors.navyText} />
-              <Text style={styles.exportBtnText}>Export CSV</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.exportBtnSecondary}
-              onPress={handleExportJson}
-              accessibilityRole="button"
-              accessibilityLabel="Export audit logs as JSON"
-              {...(Platform.OS === 'web'
-                ? { title: 'Export all filtered audit records as a JSON file' }
-                : {})}
-            >
-              <Feather name="file-text" size={14} color={colors.navyText} />
-              <Text style={styles.exportBtnText}>Export JSON</Text>
-            </TouchableOpacity>
+            <Tooltip label="Export all filtered audit records as a CSV file">
+              <TouchableOpacity
+                style={styles.exportBtn}
+                onPress={handleExportCsv}
+                accessibilityRole="button"
+                accessibilityLabel="Export audit logs as CSV"
+                {...(Platform.OS === 'web'
+                  ? { title: 'Export all filtered audit records as a CSV file' }
+                  : {})}
+              >
+                <Feather name="download" size={14} color={colors.navyText} />
+                <Text style={styles.exportBtnText}>Export CSV</Text>
+              </TouchableOpacity>
+            </Tooltip>
+            <Tooltip label="Export all filtered audit records as a JSON file">
+              <TouchableOpacity
+                style={styles.exportBtnSecondary}
+                onPress={handleExportJson}
+                accessibilityRole="button"
+                accessibilityLabel="Export audit logs as JSON"
+                {...(Platform.OS === 'web'
+                  ? { title: 'Export all filtered audit records as a JSON file' }
+                  : {})}
+              >
+                <Feather name="file-text" size={14} color={colors.navyText} />
+                <Text style={styles.exportBtnText}>Export JSON</Text>
+              </TouchableOpacity>
+            </Tooltip>
           </View>
         </View>
 

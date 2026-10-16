@@ -73,11 +73,12 @@ export const authApi = {
       (data as any).refreshToken ??
       (headers as any)?.['x-refresh-token'] ??
       (headers as any)?.['refresh-token'];
-    // Persist only when "remember this device" was ticked. Unchecked means the
-    // session lives for this app run only and is gone after a restart. Keeping
-    // the refresh token in memory allows transparent token refresh while active.
-    if (token) await setAccessToken(token, !!payload.rememberDevice);
-    if (refreshToken) await setRefreshToken(refreshToken, !!payload.rememberDevice);
+    // Persist session tokens across browser reloads.
+    // When rememberDevice is true or omitted, persists in localStorage.
+    // When rememberDevice is explicitly false, stores in sessionStorage so refresh survives in the tab.
+    const shouldPersist = payload.rememberDevice ?? true;
+    if (token) await setAccessToken(token, shouldPersist);
+    if (refreshToken) await setRefreshToken(refreshToken, shouldPersist);
     return {
       ...data,
       token: token || '',

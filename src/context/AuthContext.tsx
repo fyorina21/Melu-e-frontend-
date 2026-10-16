@@ -123,12 +123,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (token) {
           try {
             const user = await authApi.me();
-            const roles = resolveRoles(user.roles, user.role);
-            setActiveRole(roles[0]);
+            const storedRole = getActiveRole();
+            const roles = resolveRoles(user.roles, storedRole || user.role);
+            const activeRoleCandidate =
+              storedRole && roles.includes(storedRole as Role) ? (storedRole as Role) : roles[0];
+            setActiveRole(activeRoleCandidate);
             setUserRoles(roles);
             setSession({
               userId: user.id,
-              role: roles[0],
+              role: activeRoleCandidate,
               roles,
               userName: user.name,
               email: user.email,
@@ -142,12 +145,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (freshToken) {
               try {
                 const user = await authApi.me();
-                const roles = resolveRoles(user.roles, user.role);
-                setActiveRole(roles[0]);
+                const storedRole = getActiveRole();
+                const roles = resolveRoles(user.roles, storedRole || user.role);
+                const activeRoleCandidate =
+                  storedRole && roles.includes(storedRole as Role)
+                    ? (storedRole as Role)
+                    : roles[0];
+                setActiveRole(activeRoleCandidate);
                 setUserRoles(roles);
                 setSession({
                   userId: user.id,
-                  role: roles[0],
+                  role: activeRoleCandidate,
                   roles,
                   userName: user.name,
                   email: user.email,
@@ -306,11 +314,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const targetSeed = seedAccounts[role];
     if (targetSeed) {
       authApi
-        .login({ email: targetSeed.email, password: targetSeed.pass })
+        .login({ email: targetSeed.email, password: targetSeed.pass, rememberDevice: true })
         .then((res) => {
           const token = res.token || res.access_token;
           if (token) {
-            setAccessToken(token);
+            setAccessToken(token, true);
             setActiveRole(role);
             setUserRoles([role]);
             setSession((prev) =>

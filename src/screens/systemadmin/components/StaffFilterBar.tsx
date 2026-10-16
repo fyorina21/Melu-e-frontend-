@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing, makeShadow } from '../../../theme/colors';
+import Tooltip from '../../../components/Tooltip';
 
 interface StaffFilterBarProps {
   search: string;
@@ -54,37 +55,39 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
         <View style={[styles.filterControlsRow, { zIndex: roleFilterOpen ? 1000 : 1 }]}>
           {/* Role Filter Dropdown */}
           <View style={[styles.filterDropdownContainer, { zIndex: roleFilterOpen ? 1001 : 1 }]}>
-            <TouchableOpacity
-              style={[
-                styles.filterDropdownTrigger,
-                roleFilter !== 'All' && styles.filterDropdownTriggerActive,
-              ]}
-              onPress={onToggleRoleFilter}
-              accessibilityRole="combobox"
-              accessibilityLabel="Filter by role"
-              {...(Platform.OS === 'web'
-                ? { title: 'Click to filter staff accounts by role' }
-                : {})}
-            >
-              <Feather
-                name="shield"
-                size={14}
-                color={roleFilter !== 'All' ? colors.navyText : colors.mutedText}
-              />
-              <Text
+            <Tooltip label="Click to filter staff accounts by role">
+              <TouchableOpacity
                 style={[
-                  styles.filterDropdownTriggerText,
-                  roleFilter !== 'All' && styles.filterDropdownTriggerTextActive,
+                  styles.filterDropdownTrigger,
+                  roleFilter !== 'All' && styles.filterDropdownTriggerActive,
                 ]}
+                onPress={onToggleRoleFilter}
+                accessibilityRole="combobox"
+                accessibilityLabel="Filter by role"
+                {...(Platform.OS === 'web'
+                  ? { title: 'Click to filter staff accounts by role' }
+                  : {})}
               >
-                {roleFilter === 'All' ? 'Role: All' : `Role: ${roleFilter}`}
-              </Text>
-              <Feather
-                name={roleFilterOpen ? 'chevron-up' : 'chevron-down'}
-                size={14}
-                color={colors.navyText}
-              />
-            </TouchableOpacity>
+                <Feather
+                  name="shield"
+                  size={14}
+                  color={roleFilter !== 'All' ? colors.navyText : colors.mutedText}
+                />
+                <Text
+                  style={[
+                    styles.filterDropdownTriggerText,
+                    roleFilter !== 'All' && styles.filterDropdownTriggerTextActive,
+                  ]}
+                >
+                  {roleFilter === 'All' ? 'Role: All' : `Role: ${roleFilter}`}
+                </Text>
+                <Feather
+                  name={roleFilterOpen ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color={colors.navyText}
+                />
+              </TouchableOpacity>
+            </Tooltip>
 
             {roleFilterOpen && (
               <View style={styles.filterDropdownMenu}>
@@ -127,23 +130,31 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
           <View style={[styles.statusChipsContainer, { zIndex: 1 }]}>
             <Text style={styles.filterLabel}>Status:</Text>
             {['All', 'Active', 'Inactive'].map((s) => (
-              <TouchableOpacity
+              <Tooltip
                 key={s}
-                style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
-                onPress={() => onStatusFilterChange(s)}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter status ${s}`}
-                accessibilityState={{ selected: statusFilter === s }}
-                {...(Platform.OS === 'web'
-                  ? { title: `Filter staff accounts by ${s.toLowerCase()} status` }
-                  : {})}
+                label={`Filter staff accounts by ${s.toLowerCase()} status`}
+                placement="bottom"
               >
-                <Text
-                  style={[styles.filterChipText, statusFilter === s && styles.filterChipTextActive]}
+                <TouchableOpacity
+                  style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
+                  onPress={() => onStatusFilterChange(s)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter status ${s}`}
+                  accessibilityState={{ selected: statusFilter === s }}
+                  {...(Platform.OS === 'web'
+                    ? { title: `Filter staff accounts by ${s.toLowerCase()} status` }
+                    : {})}
                 >
-                  {s}
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      statusFilter === s && styles.filterChipTextActive,
+                    ]}
+                  >
+                    {s}
+                  </Text>
+                </TouchableOpacity>
+              </Tooltip>
             ))}
           </View>
         </View>

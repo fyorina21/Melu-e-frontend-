@@ -45,13 +45,38 @@ function createWebStorage(): KeyValueStorage | null {
 
   return {
     async getItem(key) {
-      return localStorage.getItem(key);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const fromLocal = localStorage.getItem(key);
+          if (fromLocal) return fromLocal;
+        } catch {}
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          const fromSession = sessionStorage.getItem(key);
+          if (fromSession) return fromSession;
+        } catch {}
+      }
+      return null;
     },
     async setItem(key, value) {
-      localStorage.setItem(key, value);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(key, value);
+        } catch {}
+      }
     },
     async removeItem(key) {
-      localStorage.removeItem(key);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.removeItem(key);
+        } catch {}
+      }
     },
   };
 }
@@ -305,40 +330,61 @@ let userRoles: string[] = [];
 
 export function setActiveRole(role: string | null): void {
   activeRole = role ? role.trim() : null;
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+  if (Platform.OS === 'web') {
     try {
-      if (activeRole) localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
-      else localStorage.removeItem(ACTIVE_ROLE_KEY);
+      if (typeof localStorage !== 'undefined') {
+        if (activeRole) localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+        else localStorage.removeItem(ACTIVE_ROLE_KEY);
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        if (activeRole) sessionStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+        else sessionStorage.removeItem(ACTIVE_ROLE_KEY);
+      }
     } catch {}
   }
 }
 
 export function getActiveRole(): string | null {
-  if (!activeRole && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-    activeRole = localStorage.getItem(ACTIVE_ROLE_KEY);
+  if (!activeRole && Platform.OS === 'web') {
+    if (typeof localStorage !== 'undefined') {
+      activeRole = localStorage.getItem(ACTIVE_ROLE_KEY);
+    }
+    if (!activeRole && typeof sessionStorage !== 'undefined') {
+      activeRole = sessionStorage.getItem(ACTIVE_ROLE_KEY);
+    }
   }
   return activeRole;
 }
 
 export function setUserRoles(roles: string[]): void {
   userRoles = Array.isArray(roles) ? roles : [];
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+  if (Platform.OS === 'web') {
     try {
-      localStorage.setItem(ROLES_KEY, JSON.stringify(userRoles));
+      const val = JSON.stringify(userRoles);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(ROLES_KEY, val);
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(ROLES_KEY, val);
+      }
     } catch {}
   }
 }
 
 export function getUserRoles(): string[] {
-  if (
-    (!userRoles || userRoles.length === 0) &&
-    Platform.OS === 'web' &&
-    typeof localStorage !== 'undefined'
-  ) {
-    try {
-      const stored = localStorage.getItem(ROLES_KEY);
-      if (stored) userRoles = JSON.parse(stored);
-    } catch {}
+  if ((!userRoles || userRoles.length === 0) && Platform.OS === 'web') {
+    let stored: string | null = null;
+    if (typeof localStorage !== 'undefined') {
+      stored = localStorage.getItem(ROLES_KEY);
+    }
+    if (!stored && typeof sessionStorage !== 'undefined') {
+      stored = sessionStorage.getItem(ROLES_KEY);
+    }
+    if (stored) {
+      try {
+        userRoles = JSON.parse(stored);
+      } catch {}
+    }
   }
   return userRoles || [];
 }

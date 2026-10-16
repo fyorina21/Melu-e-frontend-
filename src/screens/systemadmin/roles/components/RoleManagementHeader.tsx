@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../../../../theme/colors';
 import { typography } from '../../../../theme/typography';
+import Tooltip from '../../../../components/Tooltip';
 
 interface RoleManagementHeaderProps {
   onConfigurePermissions: () => void;
@@ -25,30 +26,34 @@ export default function RoleManagementHeader({
       </View>
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={[styles.btn, styles.configureBtn]}
-          onPress={onConfigurePermissions}
-          accessibilityRole="button"
-          accessibilityLabel="Configure Permissions"
-          {...(Platform.OS === 'web'
-            ? { title: 'Open system-wide permission configuration matrix' }
-            : {})}
-        >
-          <Feather name="shield" size={14} color="#0284C7" />
-          <Text style={styles.configureBtnText}>Configure Permissions</Text>
-        </TouchableOpacity>
+        <Tooltip label="Open system-wide permission configuration matrix">
+          <TouchableOpacity
+            style={[styles.btn, styles.configureBtn]}
+            onPress={onConfigurePermissions}
+            accessibilityRole="button"
+            accessibilityLabel="Configure Permissions"
+            {...(Platform.OS === 'web'
+              ? { title: 'Open system-wide permission configuration matrix' }
+              : {})}
+          >
+            <Feather name="shield" size={14} color="#0284C7" />
+            <Text style={styles.configureBtnText}>Configure Permissions</Text>
+          </TouchableOpacity>
+        </Tooltip>
 
-        <TouchableOpacity
-          style={[styles.btn, styles.addBtn]}
-          onPress={onAddRole}
-          accessibilityRole="button"
-          accessibilityLabel="Add Role"
-          disabled={addingRole}
-          {...(Platform.OS === 'web' ? { title: 'Add a new custom staff role' } : {})}
-        >
-          <Feather name="plus" size={14} color={colors.primaryBlue} />
-          <Text style={styles.addBtnText}>Add Role</Text>
-        </TouchableOpacity>
+        <Tooltip label="Add a new custom staff role">
+          <TouchableOpacity
+            style={[styles.btn, styles.addBtn]}
+            onPress={onAddRole}
+            accessibilityRole="button"
+            accessibilityLabel="Add Role"
+            disabled={addingRole}
+            {...(Platform.OS === 'web' ? { title: 'Add a new custom staff role' } : {})}
+          >
+            <Feather name="plus" size={14} color={colors.primaryBlue} />
+            <Text style={styles.addBtnText}>Add Role</Text>
+          </TouchableOpacity>
+        </Tooltip>
       </View>
     </View>
   );

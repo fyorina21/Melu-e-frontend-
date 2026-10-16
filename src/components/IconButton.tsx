@@ -13,21 +13,27 @@
 
 import React from 'react';
 import { TouchableOpacity, type TouchableOpacityProps } from 'react-native';
+import Tooltip from './Tooltip';
 
 export interface IconButtonProps extends TouchableOpacityProps {
   /** Tooltip text. Rendered as a hover tooltip on web and read aloud on native. */
   label?: string;
+  tooltipPlacement?: 'top' | 'bottom';
 }
 
-export default function IconButton({ label, accessibilityLabel, ...rest }: IconButtonProps) {
-  const tooltip = label ? ({ title: label } as unknown as TouchableOpacityProps) : {};
-
+export default function IconButton({
+  label,
+  accessibilityLabel,
+  tooltipPlacement = 'top',
+  ...rest
+}: IconButtonProps) {
   return (
-    <TouchableOpacity
-      accessibilityRole="button"
-      {...rest}
-      accessibilityLabel={accessibilityLabel ?? label}
-      {...tooltip}
-    />
+    <Tooltip label={label} placement={tooltipPlacement}>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        {...rest}
+      />
+    </Tooltip>
   );
 }

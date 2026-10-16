@@ -15,6 +15,7 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
+import Tooltip from '../../components/Tooltip';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getStaffAccounts,
@@ -282,16 +283,18 @@ export default function StaffAccountManagementScreen({
         <View style={styles.header}>
           <Text style={typography.h1}>Staff Account Management</Text>
           {staffPerms.canCreate && (
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => setFormTarget(null)}
-              accessibilityRole="button"
-              accessibilityLabel="Add staff member"
-              {...(Platform.OS === 'web' ? { title: 'Add a new staff member account' } : {})}
-            >
-              <Feather name="plus" size={14} color={colors.navyText} />
-              <Text style={styles.addBtnText}>Add Staff</Text>
-            </TouchableOpacity>
+            <Tooltip label="Add a new staff member account">
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={() => setFormTarget(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Add staff member"
+                {...(Platform.OS === 'web' ? { title: 'Add a new staff member account' } : {})}
+              >
+                <Feather name="plus" size={14} color={colors.navyText} />
+                <Text style={styles.addBtnText}>Add Staff</Text>
+              </TouchableOpacity>
+            </Tooltip>
           )}
         </View>
 
@@ -313,17 +316,19 @@ export default function StaffAccountManagementScreen({
         {selectedIds.length > 0 && (
           <View style={styles.bulkRow}>
             <Text style={typography.caption}>{selectedIds.length} selected</Text>
-            <TouchableOpacity
-              style={styles.bulkBtn}
-              onPress={() => handleBulkAction('Deactivate')}
-              accessibilityRole="button"
-              accessibilityLabel="Deactivate selected accounts"
-              {...(Platform.OS === 'web'
-                ? { title: 'Deactivate all currently selected staff accounts' }
-                : {})}
-            >
-              <Text style={styles.bulkBtnText}>Deactivate</Text>
-            </TouchableOpacity>
+            <Tooltip label="Deactivate all currently selected staff accounts">
+              <TouchableOpacity
+                style={styles.bulkBtn}
+                onPress={() => handleBulkAction('Deactivate')}
+                accessibilityRole="button"
+                accessibilityLabel="Deactivate selected accounts"
+                {...(Platform.OS === 'web'
+                  ? { title: 'Deactivate all currently selected staff accounts' }
+                  : {})}
+              >
+                <Text style={styles.bulkBtnText}>Deactivate</Text>
+              </TouchableOpacity>
+            </Tooltip>
           </View>
         )}
 
