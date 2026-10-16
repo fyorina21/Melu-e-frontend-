@@ -42,6 +42,7 @@ import {
 import { notificationsApi } from '../api/resources/notifications';
 import { getAccessToken } from '../api/token';
 import { useBreakpoint } from '../utils/useBreakpoint';
+import { useSidebarNav } from '../navigation/SidebarNavContext';
 import type { Role } from '../types';
 
 interface AppNavbarProps {
@@ -53,6 +54,7 @@ interface AppNavbarProps {
 export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: AppNavbarProps) {
   const { session, logout, switchRole } = useAuth();
   const navigation = useNavigation();
+  const { isCollapsed, toggleSidebar } = useSidebarNav();
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dropdownGroup, setDropdownGroup] = useState<NavGroupTab | null>(null);
@@ -62,6 +64,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const role = (session?.role ?? 'teacher') as Role;
+  const isSidebarNav = role === 'system_admin' || role === 'institutional_admin';
 
   // Automatically fetch unread count from backend if not provided as a prop
   React.useEffect(() => {
@@ -313,11 +316,14 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   return (
     <View style={[styles.wrap, isCompact && styles.wrapCompact]}>
       <View style={styles.logoBlock}>
-        {isCompact && (
+        {(isCompact || isSidebarNav) && (
           <TouchableOpacity
-            onPress={() => setDrawerOpen(true)}
+            onPress={isSidebarNav ? toggleSidebar : () => setDrawerOpen(true)}
             style={styles.hamburgerBtn}
-            accessibilityLabel="Open menu"
+            accessibilityRole="button"
+            accessibilityLabel={
+              isSidebarNav ? (isCollapsed ? 'Expand sidebar' : 'Collapse sidebar') : 'Open menu'
+            }
           >
             <Feather name="menu" size={20} color={colors.navyText} />
           </TouchableOpacity>
@@ -330,7 +336,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         <Text style={styles.logo}>Melu'e Foundation</Text>
       </View>
 
-      {!isCompact && (
+      {!isCompact && !isSidebarNav && (
         <ScrollView
           ref={tabsScrollRef}
           horizontal
@@ -482,96 +488,100 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
         </Pressable>
       </Modal>
 
-      <Modal
-        transparent
-        visible={drawerOpen}
-        animationType="fade"
-        onRequestClose={() => setDrawerOpen(false)}
-      >
-        <View style={styles.drawerRoot}>
-          <View style={styles.drawer}>
-            <View style={styles.drawerHeader}>
-              <Image
-                source={require('../../assets/logo.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-              <Text style={styles.logo}>Melu'e Foundation</Text>
-              <TouchableOpacity
-                onPress={() => setDrawerOpen(false)}
-                style={styles.drawerClose}
-                accessibilityLabel="Close menu"
-              >
-                <Feather name="x" size={20} color={colors.navyText} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.drawerList}>
-              {tabs.map((tab) => {
-                if (isNavGroup(tab)) {
-                  return (
-                    <View key={tab.label} style={styles.drawerGroup}>
-                      <View style={styles.drawerGroupHeader}>
-                        <Text style={styles.drawerGroupTitle}>{tab.label}</Text>
-                      </View>
-                      {tab.items.map((item) => {
-                        const active =
-                          item === activeTabNormalized ||
-                          routeByTab?.[item] === routeByTab?.[activeTabNormalized];
-                        return (
-                          <TouchableOpacity
-                            key={item}
-                            style={[styles.drawerSubItem, active && styles.drawerSubItemActive]}
-                            onPress={() => handleTabPress(item)}
-                          >
-                            <Text
-                              style={[
-                                styles.drawerSubItemText,
-                                active && styles.drawerSubItemTextActive,
-                              ]}
-                            >
-                              {item}
-                            </Text>
-                            {active && <Feather name="check" size={14} color={colors.navyText} />}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  );
-                }
-
-                const active = tab === activeTabNormalized;
-                const isNotificationsTab = tab === 'Notifications';
-                return (
-                  <TouchableOpacity
-                    key={tab}
-                    style={[styles.drawerItem, active && styles.drawerItemActive]}
-                    onPress={() => handleTabPress(tab)}
-                  >
-                    <View style={styles.tabContentRow}>
-                      <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>
-                        {tab}
-                      </Text>
-                      {isNotificationsTab && effectiveUnread > 0 && (
-                        <View style={styles.tabBadge}>
-                          <Text style={styles.tabBadgeText}>{effectiveUnread}</Text>
+      {!isSidebarNav && (
+        <Modal
+          transparent
+          visible={drawerOpen}
+          animationType="fade"
+          onRequestClose={() => setDrawerOpen(false)}
+        >
+          <View style={styles.drawerRoot}>
+            <View style={styles.drawer}>
+              <View style={styles.drawerHeader}>
+                <Image
+                  source={require('../../assets/logo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+                <Text style={styles.logo}>Melu'e Foundation</Text>
+                <TouchableOpacity
+                  onPress={() => setDrawerOpen(false)}
+                  style={styles.drawerClose}
+                  accessibilityLabel="Close menu"
+                >
+                  <Feather name="x" size={20} color={colors.navyText} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView contentContainerStyle={styles.drawerList}>
+                {tabs.map((tab) => {
+                  if (isNavGroup(tab)) {
+                    return (
+                      <View key={tab.label} style={styles.drawerGroup}>
+                        <View style={styles.drawerGroupHeader}>
+                          <Text style={styles.drawerGroupTitle}>{tab.label}</Text>
                         </View>
-                      )}
-                    </View>
-                    {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.drawerFooter}>
-              <TouchableOpacity style={styles.drawerLogout} onPress={handleLogout}>
-                <Feather name="log-out" size={16} color={colors.navyText} />
-                <Text style={styles.drawerLogoutText}>Log out</Text>
-              </TouchableOpacity>
+                        {tab.items.map((item) => {
+                          const active =
+                            item === activeTabNormalized ||
+                            routeByTab?.[item] === routeByTab?.[activeTabNormalized];
+                          return (
+                            <TouchableOpacity
+                              key={item}
+                              style={[styles.drawerSubItem, active && styles.drawerSubItemActive]}
+                              onPress={() => handleTabPress(item)}
+                            >
+                              <Text
+                                style={[
+                                  styles.drawerSubItemText,
+                                  active && styles.drawerSubItemTextActive,
+                                ]}
+                              >
+                                {item}
+                              </Text>
+                              {active && <Feather name="check" size={14} color={colors.navyText} />}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    );
+                  }
+
+                  const active = tab === activeTabNormalized;
+                  const isNotificationsTab = tab === 'Notifications';
+                  return (
+                    <TouchableOpacity
+                      key={tab}
+                      style={[styles.drawerItem, active && styles.drawerItemActive]}
+                      onPress={() => handleTabPress(tab)}
+                    >
+                      <View style={styles.tabContentRow}>
+                        <Text
+                          style={[styles.drawerItemText, active && styles.drawerItemTextActive]}
+                        >
+                          {tab}
+                        </Text>
+                        {isNotificationsTab && effectiveUnread > 0 && (
+                          <View style={styles.tabBadge}>
+                            <Text style={styles.tabBadgeText}>{effectiveUnread}</Text>
+                          </View>
+                        )}
+                      </View>
+                      {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.drawerFooter}>
+                <TouchableOpacity style={styles.drawerLogout} onPress={handleLogout}>
+                  <Feather name="log-out" size={16} color={colors.navyText} />
+                  <Text style={styles.drawerLogoutText}>Log out</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+            <Pressable style={styles.drawerOverlay} onPress={() => setDrawerOpen(false)} />
           </View>
-          <Pressable style={styles.drawerOverlay} onPress={() => setDrawerOpen(false)} />
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 }
