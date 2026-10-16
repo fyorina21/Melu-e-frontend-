@@ -292,6 +292,31 @@ export default function StaffAccountManagementScreen({
                 onDelete={handleDelete}
               />
             )}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Feather name="users" size={44} color={colors.mutedText} />
+                <Text style={[typography.h3, { marginTop: spacing.md }]}>
+                  No Staff Members Found
+                </Text>
+                <Text style={[typography.caption, styles.emptySubtext]}>
+                  {search || roleFilter !== 'All' || statusFilter !== 'All'
+                    ? 'No staff accounts match your current filters. Try resetting the filters.'
+                    : 'No staff accounts have been registered yet.'}
+                </Text>
+                {(search || roleFilter !== 'All' || statusFilter !== 'All') && (
+                  <TouchableOpacity
+                    style={styles.resetBtn}
+                    onPress={() => {
+                      setSearch('');
+                      setRoleFilter('All');
+                      setStatusFilter('All');
+                    }}
+                  >
+                    <Text style={styles.resetBtnText}>Reset Filters</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            }
             ListFooterComponent={
               linkTarget ? (
                 <TeacherLinkingPanel teacher={linkTarget} onClose={() => setLinkTarget(null)} />
@@ -386,5 +411,35 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: spacing.xl,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    marginTop: spacing.md,
+  },
+  emptySubtext: {
+    color: colors.mutedText,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    maxWidth: 380,
+  },
+  resetBtn: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.primaryYellow,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+  },
+  resetBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.navyText,
   },
 });
