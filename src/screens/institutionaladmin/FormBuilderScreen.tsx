@@ -77,44 +77,8 @@ interface HistoryEntry {
   newValue: string;
 }
 
-export const FORM_METADATA: Record<string, { id: string; revision: string; pages: string }> = {
-  'Enrollment Wizard': {
-    id: 'FRM-ENR-001',
-    revision: 'Rev 2.4 · 2026-09-19',
-    pages: 'Page 1 of 3',
-  },
-  'IUP Form': { id: 'FRM-IUP-001', revision: 'Rev 1.8 · 2026-09-19', pages: 'Page 1 of 2' },
-  'ABLLS Assessment Form': {
-    id: 'FRM-ABLLS-001',
-    revision: 'Rev 3.1 · 2026-09-19',
-    pages: 'Page 1 of 1',
-  },
-  'Behavioral Assessment': {
-    id: 'FRM-BEH-001',
-    revision: 'Rev 2.0 · 2026-09-19',
-    pages: 'Page 1 of 1',
-  },
-  'Preference Assessment': {
-    id: 'FRM-PREF-001',
-    revision: 'Rev 1.5 · 2026-09-19',
-    pages: 'Page 1 of 1',
-  },
-  'Sensory Assessment': {
-    id: 'FRM-SEN-001',
-    revision: 'Rev 1.6 · 2026-09-19',
-    pages: 'Page 1 of 1',
-  },
-  'Social Skills Questionnaire': {
-    id: 'FRM-SOC-001',
-    revision: 'Rev 1.2 · 2026-09-19',
-    pages: 'Page 1 of 1',
-  },
-  'Behavior Incident Form': {
-    id: 'FRM-BIF-001',
-    revision: 'Rev 1.4 · 2026-09-19',
-    pages: 'Page 1 of 1',
-  },
-};
+import { FORM_METADATA } from './formBuilderConfig';
+export { FORM_METADATA };
 
 export default function FormBuilderScreen({
   navigation,

@@ -36,24 +36,15 @@ import {
 
 type Props = NativeStackScreenProps<InstitutionalAdminStackParamList, 'TrialLoggingFormat'>;
 
-interface LevelItem {
-  id: string;
-  name: string;
-  color: string;
-  order: number;
-  status: 'Active';
-}
+import {
+  type LevelItem,
+  type TrialLayout,
+  COLOR_SWATCHES,
+  sortPromptLevels,
+  validatePromptLevel,
+} from './triallogging/types';
 
-const COLOR_SWATCHES = [
-  '#EF4444',
-  '#F97316',
-  '#EAB308',
-  '#22C55E',
-  '#3B82F6',
-  '#6366F1',
-  '#8B5CF6',
-  '#EC4899',
-];
+export type { LevelItem, TrialLayout };
 
 export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const { showToast } = useToast();
@@ -114,16 +105,9 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
   };
 
   const saveEdit = async (id: string) => {
-    if (!editBuf.name.trim()) {
-      showToast('Every prompt level needs a name', 'error');
-      return;
-    }
-    const orderTaken = levels.some((l) => l.id !== id && l.order === editBuf.order);
-    if (orderTaken) {
-      showToast(
-        `Order ${editBuf.order} is already in use. Each prompt level needs a unique order number.`,
-        'error',
-      );
+    const validation = validatePromptLevel(editBuf.name, editBuf.order, levels, id);
+    if (!validation.isValid) {
+      showToast(validation.error || 'Invalid prompt level', 'error');
       return;
     }
     try {
@@ -142,8 +126,8 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       } catch (apiErr) {
         console.warn('API update failed, saving locally', apiErr);
       }
-      const next = levels
-        .map((l) =>
+      const next = sortPromptLevels(
+        levels.map((l) =>
           l.id === id
             ? {
                 ...l,
@@ -152,8 +136,8 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 order: updated?.order ?? updated?.display_order ?? editBuf.order,
               }
             : l,
-        )
-        .sort((a, b) => a.order - b.order);
+        ),
+      );
       setLevels(next);
       syncPromptLevelsFromApi(next, consecutive, streamCount);
       setEditingId(null);
@@ -189,16 +173,9 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
   };
 
   const addLevel = async () => {
-    if (!newLevel.name.trim()) {
-      showToast('Every prompt level needs a name', 'error');
-      return;
-    }
-    const orderTaken = levels.some((l) => l.order === newLevel.order);
-    if (orderTaken) {
-      showToast(
-        `Order ${newLevel.order} is already in use. Each prompt level needs a unique order number.`,
-        'error',
-      );
+    const validation = validatePromptLevel(newLevel.name, newLevel.order, levels);
+    if (!validation.isValid) {
+      showToast(validation.error || 'Invalid prompt level', 'error');
       return;
     }
     try {

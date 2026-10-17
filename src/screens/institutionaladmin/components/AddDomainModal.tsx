@@ -3,7 +3,7 @@ import { View, Text, Modal, TextInput, TouchableOpacity, StyleSheet } from 'reac
 import { Feather } from '@expo/vector-icons';
 import { radius, spacing } from '../../../theme/colors';
 
-interface AddDomainModalProps {
+export interface AddDomainModalProps {
   visible: boolean;
   title: string;
   subtitle: string;

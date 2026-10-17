@@ -32,6 +32,10 @@ vi.mock('@shopify/flash-list', () => ({
   FlashList: 'FlashList',
 }));
 
+vi.mock('expo-document-picker', () => ({
+  getDocumentAsync: vi.fn(async () => ({ canceled: true })),
+}));
+
 beforeEach(() => {
   // Node ships a non-functional `localStorage` global (object), so guard on
   // usability, not just typeof. Force the in-memory polyfill so every test

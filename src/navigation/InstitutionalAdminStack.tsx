@@ -1,12 +1,14 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../types';
-import FormBuilderScreen from '../screens/institutionaladmin/FormBuilderScreen';
-import TrialLoggingFormatScreen from '../screens/institutionaladmin/TrialLoggingFormatScreen';
-import AbcDropdownListsScreen from '../screens/institutionaladmin/AbcDropdownListsScreen';
-import ScheduleCapacityConfigScreen from '../screens/institutionaladmin/ScheduleCapacityConfigScreen';
-import GoalDomainDefinitionsScreen from '../screens/institutionaladmin/GoalDomainDefinitionsScreen';
-import TaskAnalysisTemplatesScreen from '../screens/institutionaladmin/TaskAnalysisTemplatesScreen';
+import {
+  FormBuilderScreen,
+  TrialLoggingFormatScreen,
+  AbcDropdownListsScreen,
+  ScheduleCapacityConfigScreen,
+  GoalDomainDefinitionsScreen,
+  TaskAnalysisTemplatesScreen,
+} from '../screens/institutionaladmin';
 import { ErrorBoundary, withErrorBoundary } from '../components/ErrorBoundary';
 import { withModuleGuard } from '../auth/withModuleGuard';
 

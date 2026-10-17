@@ -10,7 +10,6 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
-  Alert,
   Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -38,6 +37,11 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { colors, radius, spacing } from '../../theme/colors';
 import { useToast } from '../../context/ToastContext';
 import { confirmAction } from '../../utils/dialogs';
+import {
+  moveItemInList,
+  validateDomainSubmission,
+  validateTemplateSubmission,
+} from './goaldomains/goalDomainsHelper';
 
 export { GoalDomain };
 
@@ -134,25 +138,11 @@ export default function GoalDomainDefinitionsScreen({
 
   // Domain Handlers
   const handleMoveDomainUp = (index: number) => {
-    if (index === 0) return;
-    setDomains((prev) => {
-      const list = [...prev];
-      const temp = list[index - 1];
-      list[index - 1] = list[index];
-      list[index] = temp;
-      return list;
-    });
+    setDomains((prev) => moveItemInList(prev, index, 'up'));
   };
 
   const handleMoveDomainDown = (index: number) => {
-    if (index === domains.length - 1) return;
-    setDomains((prev) => {
-      const list = [...prev];
-      const temp = list[index + 1];
-      list[index + 1] = list[index];
-      list[index] = temp;
-      return list;
-    });
+    setDomains((prev) => moveItemInList(prev, index, 'down'));
   };
 
   const handleConfirmAddDomain = () => {
@@ -195,9 +185,9 @@ export default function GoalDomainDefinitionsScreen({
   const [savingDomains, setSavingDomains] = useState(false);
 
   const handleSaveDomains = async () => {
-    const activeCount = domains.filter((d) => d.active !== false).length;
-    if (activeCount === 0) {
-      showToast('At least one active domain is required', 'error');
+    const validation = validateDomainSubmission(domains);
+    if (!validation.valid) {
+      showToast(validation.error || 'At least one active domain is required', 'error');
       return;
     }
     setSavingDomains(true);
@@ -323,24 +313,13 @@ export default function GoalDomainDefinitionsScreen({
   };
 
   const moveTemplateStep = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= formSteps.length) return;
-    setFormSteps((prev) => {
-      const updated = [...prev];
-      const temp = updated[index];
-      updated[index] = updated[targetIndex];
-      updated[targetIndex] = temp;
-      return updated;
-    });
+    setFormSteps((prev) => moveItemInList(prev, index, direction));
   };
 
   const handleSaveTemplate = async () => {
-    if (!formName.trim()) {
-      showToast('Template Name is required', 'error');
-      return;
-    }
-    if (formSteps.length === 0) {
-      showToast('At least one step is required', 'error');
+    const validation = validateTemplateSubmission(formName, formSteps);
+    if (!validation.valid) {
+      showToast(validation.error || 'Please fill in all template fields', 'error');
       return;
     }
 
