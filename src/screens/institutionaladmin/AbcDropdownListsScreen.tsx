@@ -17,6 +17,7 @@ import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAbcLists, saveAbcList, resetAbcListsToDefault } from '../../api/institutionalAdminApi';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import {
   getStoredAbcLists,
   setStoredAbcLists,
@@ -38,7 +39,9 @@ export default function AbcDropdownListsScreen({
   // Datasets per tab initialized from abcListsStore
   const [behaviors, setBehaviors] = useState<AbcItem[]>(() => getStoredAbcLists().behaviors);
   const [antecedents, setAntecedents] = useState<AbcItem[]>(() => getStoredAbcLists().antecedents);
-  const [consequences, setConsequences] = useState<AbcItem[]>(() => getStoredAbcLists().consequences);
+  const [consequences, setConsequences] = useState<AbcItem[]>(
+    () => getStoredAbcLists().consequences,
+  );
   const [locations, setLocations] = useState<AbcItem[]>(() => getStoredAbcLists().locations);
 
   const toWire = (items: AbcItem[]) =>
@@ -61,15 +64,12 @@ export default function AbcDropdownListsScreen({
       status: r.active === false ? 'Inactive' : 'Active',
     }));
 
-  const applyLoaded = useCallback(
-    (data: Record<string, unknown>) => {
-      if (Array.isArray(data.Behaviors)) setBehaviors(fromWire(data.Behaviors));
-      if (Array.isArray(data.Antecedents)) setAntecedents(fromWire(data.Antecedents));
-      if (Array.isArray(data.Consequences)) setConsequences(fromWire(data.Consequences));
-      if (Array.isArray(data.Locations)) setLocations(fromWire(data.Locations));
-    },
-    []
-  );
+  const applyLoaded = useCallback((data: Record<string, unknown>) => {
+    if (Array.isArray(data.Behaviors)) setBehaviors(fromWire(data.Behaviors));
+    if (Array.isArray(data.Antecedents)) setAntecedents(fromWire(data.Antecedents));
+    if (Array.isArray(data.Consequences)) setConsequences(fromWire(data.Consequences));
+    if (Array.isArray(data.Locations)) setLocations(fromWire(data.Locations));
+  }, []);
 
   useEffect(() => {
     getAbcLists()
@@ -112,8 +112,11 @@ export default function AbcDropdownListsScreen({
     const updater = (prev: AbcItem[]) =>
       prev.map((item) =>
         item.id === id
-          ? { ...item, status: (item.status === 'Active' ? 'Inactive' : 'Active') as 'Active' | 'Inactive' }
-          : item
+          ? {
+              ...item,
+              status: (item.status === 'Active' ? 'Inactive' : 'Active') as 'Active' | 'Inactive',
+            }
+          : item,
       );
 
     if (tab === 'Behaviors') {
@@ -157,7 +160,7 @@ export default function AbcDropdownListsScreen({
   const commitAdd = (
     list: AbcItem[],
     setList: React.Dispatch<React.SetStateAction<AbcItem[]>>,
-    withType: boolean
+    withType: boolean,
   ) => {
     if (!newName.trim()) return;
     const newItem: AbcItem = {
@@ -177,7 +180,7 @@ export default function AbcDropdownListsScreen({
 
   const commitEdit = (
     list: AbcItem[],
-    setList: React.Dispatch<React.SetStateAction<AbcItem[]>>
+    setList: React.Dispatch<React.SetStateAction<AbcItem[]>>,
   ) => {
     if (!editName.trim() || !editingId) return;
     const next = list.map((i) =>
@@ -187,14 +190,10 @@ export default function AbcDropdownListsScreen({
             name: editName.trim(),
             status: editStatus,
             ...(i.type !== undefined ? { type: editType.trim() } : {}),
-            ...(i.definition !== undefined
-              ? { definition: editDefinition.trim() }
-              : {}),
-            ...(i.category !== undefined
-              ? { category: editCategory.trim() }
-              : {}),
+            ...(i.definition !== undefined ? { definition: editDefinition.trim() } : {}),
+            ...(i.category !== undefined ? { category: editCategory.trim() } : {}),
           }
-        : i
+        : i,
     );
     setList(next);
     if (activeTab === 'Behaviors') setStoredAbcLists({ behaviors: next });
@@ -231,47 +230,99 @@ export default function AbcDropdownListsScreen({
   };
 
   const handleDeleteBehavior = (id: string) => {
-    const next = behaviors.filter((item) => item.id !== id);
-    setBehaviors(next);
-    setStoredAbcLists({ behaviors: next });
-    showToast('Behavior removed — changes saved', 'info');
+    const item = behaviors.find((b) => b.id === id);
+    const label = item?.name || 'this behavior';
+    confirmAction({
+      title: 'Delete Behavior',
+      message: `Are you sure you want to remove "${label}" from ABC dropdown lists?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        const next = behaviors.filter((b) => b.id !== id);
+        setBehaviors(next);
+        setStoredAbcLists({ behaviors: next });
+        showToast(`Behavior "${label}" removed`, 'info');
+      },
+    });
   };
 
   const handleDeleteAntecedent = (id: string) => {
-    const next = antecedents.filter((item) => item.id !== id);
-    setAntecedents(next);
-    setStoredAbcLists({ antecedents: next });
-    showToast('Antecedent removed — changes saved', 'info');
+    const item = antecedents.find((a) => a.id === id);
+    const label = item?.name || 'this antecedent';
+    confirmAction({
+      title: 'Delete Antecedent',
+      message: `Are you sure you want to remove "${label}" from ABC dropdown lists?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        const next = antecedents.filter((a) => a.id !== id);
+        setAntecedents(next);
+        setStoredAbcLists({ antecedents: next });
+        showToast(`Antecedent "${label}" removed`, 'info');
+      },
+    });
   };
 
   const handleDeleteConsequence = (id: string) => {
-    const next = consequences.filter((item) => item.id !== id);
-    setConsequences(next);
-    setStoredAbcLists({ consequences: next });
-    showToast('Consequence removed — changes saved', 'info');
+    const item = consequences.find((c) => c.id === id);
+    const label = item?.name || 'this consequence';
+    confirmAction({
+      title: 'Delete Consequence',
+      message: `Are you sure you want to remove "${label}" from ABC dropdown lists?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        const next = consequences.filter((c) => c.id !== id);
+        setConsequences(next);
+        setStoredAbcLists({ consequences: next });
+        showToast(`Consequence "${label}" removed`, 'info');
+      },
+    });
   };
 
   const handleDeleteLocation = (id: string) => {
-    const next = locations.filter((item) => item.id !== id);
-    setLocations(next);
-    setStoredAbcLists({ locations: next });
-    showToast('Location removed — changes saved', 'info');
+    const item = locations.find((l) => l.id === id);
+    const label = item?.name || 'this location';
+    confirmAction({
+      title: 'Delete Location',
+      message: `Are you sure you want to remove "${label}" from ABC dropdown lists?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        const next = locations.filter((l) => l.id !== id);
+        setLocations(next);
+        setStoredAbcLists({ locations: next });
+        showToast(`Location "${label}" removed`, 'info');
+      },
+    });
   };
 
-  const handleResetToDefault = async () => {
-    try {
-      try {
-        await resetAbcListsToDefault();
-      } catch {}
-      const resetData = resetStoredAbcLists();
-      setBehaviors(resetData.behaviors);
-      setAntecedents(resetData.antecedents);
-      setConsequences(resetData.consequences);
-      setLocations(resetData.locations);
-      showToast('ABC lists reset to defaults', 'success');
-    } catch (err) {
-      showToast('Failed to reset ABC lists', 'error');
-    }
+  const handleResetToDefault = () => {
+    confirmAction({
+      title: 'Reset ABC Dropdown Lists',
+      message:
+        'Are you sure you want to restore the default ABC dropdown items? All customized behaviors, antecedents, consequences, and locations will be reverted.',
+      confirmLabel: 'Reset to Default',
+      destructive: true,
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          try {
+            await resetAbcListsToDefault();
+          } catch {}
+          const resetData = resetStoredAbcLists();
+          setBehaviors(resetData.behaviors);
+          setAntecedents(resetData.antecedents);
+          setConsequences(resetData.consequences);
+          setLocations(resetData.locations);
+          showToast('ABC lists reset to defaults', 'success');
+        } catch (err) {
+          showToast('Failed to reset ABC lists', 'error');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const handleSaveConfiguration = async () => {
@@ -298,7 +349,10 @@ export default function AbcDropdownListsScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="ABC Lists" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="ABC Lists"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Sub Header / Breadcrumb */}
         <View style={styles.topHeader}>
@@ -334,9 +388,7 @@ export default function AbcDropdownListsScreen({
                 setIsAddingBehavior(false);
               }}
             >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab}
-              </Text>
+              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -354,7 +406,7 @@ export default function AbcDropdownListsScreen({
                 <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
               </View>
 
-              {behaviors.map((item) => (
+              {behaviors.map((item) =>
                 editingId === item.id ? (
                   <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
                     <View style={{ flex: 3, paddingRight: 8 }}>
@@ -387,8 +439,14 @@ export default function AbcDropdownListsScreen({
                           {CATEGORY_OPTIONS.map((cat) => (
                             <TouchableOpacity
                               key={cat}
-                              style={[styles.dropdownItem, editCategory === cat && styles.dropdownItemActive]}
-                              onPress={() => { setEditCategory(cat); setEditCategoryDropdownOpen(false); }}
+                              style={[
+                                styles.dropdownItem,
+                                editCategory === cat && styles.dropdownItemActive,
+                              ]}
+                              onPress={() => {
+                                setEditCategory(cat);
+                                setEditCategoryDropdownOpen(false);
+                              }}
                             >
                               <Text style={styles.dropdownItemText}>{cat}</Text>
                             </TouchableOpacity>
@@ -398,16 +456,31 @@ export default function AbcDropdownListsScreen({
                     </View>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                        style={
+                          editStatus === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
+                        onPress={() =>
+                          setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))
+                        }
                       >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            editStatus === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {editStatus}
                         </Text>
                       </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
-                      <TouchableOpacity onPress={() => commitEdit(behaviors, setBehaviors)} style={{ marginRight: 10 }}>
+                      <TouchableOpacity
+                        onPress={() => commitEdit(behaviors, setBehaviors)}
+                        style={{ marginRight: 10 }}
+                      >
                         <Feather name="check" size={16} color="#22C55E" />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={cancelEdit}>
@@ -422,10 +495,20 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellText, { flex: 2 }]}>{item.category}</Text>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        style={
+                          item.status === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
                         onPress={() => toggleItemStatus('Behaviors', item.id)}
                       >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            item.status === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {item.status}
                         </Text>
                       </TouchableOpacity>
@@ -450,8 +533,8 @@ export default function AbcDropdownListsScreen({
                       </TouchableOpacity>
                     </View>
                   </View>
-                )
-              ))}
+                ),
+              )}
 
               {/* Inline Add Row */}
               {isAddingBehavior && (
@@ -510,10 +593,7 @@ export default function AbcDropdownListsScreen({
                     </View>
                   </View>
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity
-                      style={{ marginRight: 10 }}
-                      onPress={handleSaveNewBehavior}
-                    >
+                    <TouchableOpacity style={{ marginRight: 10 }} onPress={handleSaveNewBehavior}>
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => setIsAddingBehavior(false)}>
@@ -534,27 +614,53 @@ export default function AbcDropdownListsScreen({
                 <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
                 <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
               </View>
-              {antecedents.map((item) => (
+              {antecedents.map((item) =>
                 editingId === item.id ? (
                   <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
                     <View style={{ flex: 4, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
+                      <TextInput
+                        style={styles.tableInput}
+                        value={editName}
+                        onChangeText={setEditName}
+                        autoFocus
+                      />
                     </View>
                     <View style={{ flex: 3, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editType} onChangeText={setEditType} placeholder="Type" placeholderTextColor="#94A3B8" />
+                      <TextInput
+                        style={styles.tableInput}
+                        value={editType}
+                        onChangeText={setEditType}
+                        placeholder="Type"
+                        placeholderTextColor="#94A3B8"
+                      />
                     </View>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                        style={
+                          editStatus === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
+                        onPress={() =>
+                          setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))
+                        }
                       >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            editStatus === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {editStatus}
                         </Text>
                       </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(antecedents, setAntecedents)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => commitEdit(antecedents, setAntecedents)}
+                      >
                         <Feather name="check" size={16} color="#22C55E" />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={cancelEdit}>
@@ -568,10 +674,20 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellText, { flex: 3 }]}>{item.type}</Text>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        style={
+                          item.status === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
                         onPress={() => toggleItemStatus('Antecedents', item.id)}
                       >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            item.status === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {item.status}
                         </Text>
                       </TouchableOpacity>
@@ -596,19 +712,35 @@ export default function AbcDropdownListsScreen({
                       </TouchableOpacity>
                     </View>
                   </View>
-                )
-              ))}
+                ),
+              )}
               {addingTab === 'Antecedents' && (
                 <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
                   <View style={{ flex: 4, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newName} onChangeText={setNewName} placeholder="Antecedent name" placeholderTextColor="#94A3B8" autoFocus />
+                    <TextInput
+                      style={styles.tableInput}
+                      value={newName}
+                      onChangeText={setNewName}
+                      placeholder="Antecedent name"
+                      placeholderTextColor="#94A3B8"
+                      autoFocus
+                    />
                   </View>
                   <View style={{ flex: 3, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newType} onChangeText={setNewType} placeholder="Type" placeholderTextColor="#94A3B8" />
+                    <TextInput
+                      style={styles.tableInput}
+                      value={newType}
+                      onChangeText={setNewType}
+                      placeholder="Type"
+                      placeholderTextColor="#94A3B8"
+                    />
                   </View>
                   <View style={{ flex: 2 }} />
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitAdd(antecedents, setAntecedents, true)}>
+                    <TouchableOpacity
+                      style={{ marginRight: 10 }}
+                      onPress={() => commitAdd(antecedents, setAntecedents, true)}
+                    >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={cancelAdd}>
@@ -629,27 +761,53 @@ export default function AbcDropdownListsScreen({
                 <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
                 <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
               </View>
-              {consequences.map((item) => (
+              {consequences.map((item) =>
                 editingId === item.id ? (
                   <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
                     <View style={{ flex: 4, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
+                      <TextInput
+                        style={styles.tableInput}
+                        value={editName}
+                        onChangeText={setEditName}
+                        autoFocus
+                      />
                     </View>
                     <View style={{ flex: 3, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editType} onChangeText={setEditType} placeholder="Type" placeholderTextColor="#94A3B8" />
+                      <TextInput
+                        style={styles.tableInput}
+                        value={editType}
+                        onChangeText={setEditType}
+                        placeholder="Type"
+                        placeholderTextColor="#94A3B8"
+                      />
                     </View>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                        style={
+                          editStatus === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
+                        onPress={() =>
+                          setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))
+                        }
                       >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            editStatus === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {editStatus}
                         </Text>
                       </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(consequences, setConsequences)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => commitEdit(consequences, setConsequences)}
+                      >
                         <Feather name="check" size={16} color="#22C55E" />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={cancelEdit}>
@@ -663,10 +821,20 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellText, { flex: 3 }]}>{item.type}</Text>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        style={
+                          item.status === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
                         onPress={() => toggleItemStatus('Consequences', item.id)}
                       >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            item.status === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {item.status}
                         </Text>
                       </TouchableOpacity>
@@ -691,19 +859,35 @@ export default function AbcDropdownListsScreen({
                       </TouchableOpacity>
                     </View>
                   </View>
-                )
-              ))}
+                ),
+              )}
               {addingTab === 'Consequences' && (
                 <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
                   <View style={{ flex: 4, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newName} onChangeText={setNewName} placeholder="Consequence name" placeholderTextColor="#94A3B8" autoFocus />
+                    <TextInput
+                      style={styles.tableInput}
+                      value={newName}
+                      onChangeText={setNewName}
+                      placeholder="Consequence name"
+                      placeholderTextColor="#94A3B8"
+                      autoFocus
+                    />
                   </View>
                   <View style={{ flex: 3, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newType} onChangeText={setNewType} placeholder="Type" placeholderTextColor="#94A3B8" />
+                    <TextInput
+                      style={styles.tableInput}
+                      value={newType}
+                      onChangeText={setNewType}
+                      placeholder="Type"
+                      placeholderTextColor="#94A3B8"
+                    />
                   </View>
                   <View style={{ flex: 2 }} />
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitAdd(consequences, setConsequences, true)}>
+                    <TouchableOpacity
+                      style={{ marginRight: 10 }}
+                      onPress={() => commitAdd(consequences, setConsequences, true)}
+                    >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={cancelAdd}>
@@ -723,24 +907,44 @@ export default function AbcDropdownListsScreen({
                 <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
                 <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
               </View>
-              {locations.map((item) => (
+              {locations.map((item) =>
                 editingId === item.id ? (
                   <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
                     <View style={{ flex: 5, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
+                      <TextInput
+                        style={styles.tableInput}
+                        value={editName}
+                        onChangeText={setEditName}
+                        autoFocus
+                      />
                     </View>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
+                        style={
+                          editStatus === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
+                        onPress={() =>
+                          setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))
+                        }
                       >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            editStatus === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {editStatus}
                         </Text>
                       </TouchableOpacity>
                     </View>
                     <View style={styles.actionsCol}>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(locations, setLocations)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => commitEdit(locations, setLocations)}
+                      >
                         <Feather name="check" size={16} color="#22C55E" />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={cancelEdit}>
@@ -753,10 +957,20 @@ export default function AbcDropdownListsScreen({
                     <Text style={[styles.cellTextBold, { flex: 5 }]}>{item.name}</Text>
                     <View style={{ flex: 2 }}>
                       <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
+                        style={
+                          item.status === 'Active'
+                            ? styles.statusActiveBadge
+                            : styles.statusInactiveBadge
+                        }
                         onPress={() => toggleItemStatus('Locations', item.id)}
                       >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
+                        <Text
+                          style={
+                            item.status === 'Active'
+                              ? styles.statusActiveText
+                              : styles.statusInactiveText
+                          }
+                        >
                           {item.status}
                         </Text>
                       </TouchableOpacity>
@@ -781,16 +995,26 @@ export default function AbcDropdownListsScreen({
                       </TouchableOpacity>
                     </View>
                   </View>
-                )
-              ))}
+                ),
+              )}
               {addingTab === 'Locations' && (
                 <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
                   <View style={{ flex: 5, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newName} onChangeText={setNewName} placeholder="Location name" placeholderTextColor="#94A3B8" autoFocus />
+                    <TextInput
+                      style={styles.tableInput}
+                      value={newName}
+                      onChangeText={setNewName}
+                      placeholder="Location name"
+                      placeholderTextColor="#94A3B8"
+                      autoFocus
+                    />
                   </View>
                   <View style={{ flex: 2 }} />
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitAdd(locations, setLocations, false)}>
+                    <TouchableOpacity
+                      style={{ marginRight: 10 }}
+                      onPress={() => commitAdd(locations, setLocations, false)}
+                    >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={cancelAdd}>
@@ -805,10 +1029,7 @@ export default function AbcDropdownListsScreen({
 
         {/* Add Behavior Link Button */}
         {activeTab === 'Behaviors' && !isAddingBehavior && (
-          <TouchableOpacity
-            style={styles.addInlineBtn}
-            onPress={() => setIsAddingBehavior(true)}
-          >
+          <TouchableOpacity style={styles.addInlineBtn} onPress={() => setIsAddingBehavior(true)}>
             <Feather name="plus" size={14} color="#0284C7" />
             <Text style={styles.addInlineBtnText}>Add Behavior</Text>
           </TouchableOpacity>
@@ -836,12 +1057,20 @@ export default function AbcDropdownListsScreen({
 
         {/* Bottom Action Controls */}
         <View style={styles.bottomControls}>
-          <TouchableOpacity style={[styles.saveConfigBtn, saving && styles.saveBtnDisabled]} onPress={handleSaveConfiguration} disabled={saving}>
+          <TouchableOpacity
+            style={[styles.saveConfigBtn, saving && styles.saveBtnDisabled]}
+            onPress={handleSaveConfiguration}
+            disabled={saving}
+          >
             <Feather name="save" size={14} color="#0F172A" />
             <Text style={styles.saveConfigBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.resetBtn} onPress={handleResetToDefault}>
+          <TouchableOpacity
+            style={[styles.resetBtn, saving && { opacity: 0.5 }]}
+            onPress={handleResetToDefault}
+            disabled={saving}
+          >
             <Feather name="refresh-cw" size={14} color="#EF4444" />
             <Text style={styles.resetBtnText}>Reset to Default</Text>
           </TouchableOpacity>

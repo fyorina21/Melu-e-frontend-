@@ -44,7 +44,16 @@ interface LevelItem {
   status: 'Active';
 }
 
-const COLOR_SWATCHES = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#6366F1', '#8B5CF6', '#EC4899'];
+const COLOR_SWATCHES = [
+  '#EF4444',
+  '#F97316',
+  '#EAB308',
+  '#22C55E',
+  '#3B82F6',
+  '#6366F1',
+  '#8B5CF6',
+  '#EC4899',
+];
 
 export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const { showToast } = useToast();
@@ -70,18 +79,20 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       setLoading(true);
       const res = await getPromptLevelsApi();
       const rawData = Array.isArray(res.data) ? res.data : (res.data?.prompt_levels ?? []);
-      const mapped: LevelItem[] = rawData.map((item: any, idx: number) => ({
-        id: String(item.id),
-        name: String(item.name ?? item.label ?? ''),
-        color: String(item.color ?? '#64748B'),
-        order:
-          typeof item.order === 'number'
-            ? item.order
-            : typeof item.display_order === 'number'
-            ? item.display_order
-            : idx + 1,
-        status: 'Active',
-      })).sort((a: LevelItem, b: LevelItem) => a.order - b.order);
+      const mapped: LevelItem[] = rawData
+        .map((item: any, idx: number) => ({
+          id: String(item.id),
+          name: String(item.name ?? item.label ?? ''),
+          color: String(item.color ?? '#64748B'),
+          order:
+            typeof item.order === 'number'
+              ? item.order
+              : typeof item.display_order === 'number'
+                ? item.display_order
+                : idx + 1,
+          status: 'Active',
+        }))
+        .sort((a: LevelItem, b: LevelItem) => a.order - b.order);
 
       setLevels(mapped);
       syncPromptLevelsFromApi(mapped, consecutive, streamCount);
@@ -109,7 +120,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
     }
     const orderTaken = levels.some((l) => l.id !== id && l.order === editBuf.order);
     if (orderTaken) {
-      showToast(`Order ${editBuf.order} is already in use. Each prompt level needs a unique order number.`, 'error');
+      showToast(
+        `Order ${editBuf.order} is already in use. Each prompt level needs a unique order number.`,
+        'error',
+      );
       return;
     }
     try {
@@ -137,7 +151,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 color: updated?.color || editBuf.color,
                 order: updated?.order ?? updated?.display_order ?? editBuf.order,
               }
-            : l
+            : l,
         )
         .sort((a, b) => a.order - b.order);
       setLevels(next);
@@ -181,7 +195,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
     }
     const orderTaken = levels.some((l) => l.order === newLevel.order);
     if (orderTaken) {
-      showToast(`Order ${newLevel.order} is already in use. Each prompt level needs a unique order number.`, 'error');
+      showToast(
+        `Order ${newLevel.order} is already in use. Each prompt level needs a unique order number.`,
+        'error',
+      );
       return;
     }
     try {
@@ -228,9 +245,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const handleSaveConfiguration = async () => {
     try {
       setSubmitting(true);
-      const validNumericIds = levels
-        .map((l) => Number(l.id))
-        .filter((id) => !isNaN(id) && id > 0);
+      const validNumericIds = levels.map((l) => Number(l.id)).filter((id) => !isNaN(id) && id > 0);
       if (validNumericIds.length === levels.length && validNumericIds.length > 0) {
         try {
           await reorderPromptLevelsApi(validNumericIds);
@@ -238,13 +253,14 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
           console.warn('Reorder endpoint warning:', reorderErr);
         }
       }
-      const numConsecutive = Number(consecutive) || 5;
-      const numStream = Number(streamCount) || 5;
+      const numConsecutive = Math.min(Math.max(Number(consecutive) || 5, 1), 50);
+      const numStream = Math.min(Math.max(Number(streamCount) || 5, 3), 20);
+      const numIndependence = Math.min(Math.max(Number(independence) || 0, 0), 100);
       try {
         await saveTrialLoggingConfig({
           streamCount: numStream,
           consecutive: numConsecutive,
-          independence,
+          independence: numIndependence,
           autoSuggest,
           layout,
         });
@@ -301,10 +317,16 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
     }
     return (
       <View style={styles.actionRow}>
-        <TouchableOpacity onPress={() => startEdit(levels.find((l) => l.id === id)!)} style={styles.actionBtn}>
+        <TouchableOpacity
+          onPress={() => startEdit(levels.find((l) => l.id === id)!)}
+          style={styles.actionBtn}
+        >
           <Feather name="edit-3" size={14} color={colors.navyText} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setDeleteConfirmId(id)} style={[styles.actionBtn, styles.deleteBtn]}>
+        <TouchableOpacity
+          onPress={() => setDeleteConfirmId(id)}
+          style={[styles.actionBtn, styles.deleteBtn]}
+        >
           <Feather name="trash-2" size={14} color={colors.white} />
         </TouchableOpacity>
       </View>
@@ -313,7 +335,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Trial Logging" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Trial Logging"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header */}
         <View style={styles.header}>
@@ -380,10 +405,16 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                       <ActivityIndicator size="small" color="#0284C7" />
                     ) : (
                       <>
-                        <TouchableOpacity onPress={() => saveEdit(lv.id)} style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}>
+                        <TouchableOpacity
+                          onPress={() => saveEdit(lv.id)}
+                          style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}
+                        >
                           <Feather name="check" size={14} color={colors.white} />
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setEditingId(null)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
+                        <TouchableOpacity
+                          onPress={() => setEditingId(null)}
+                          style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}
+                        >
                           <Feather name="x" size={14} color={colors.white} />
                         </TouchableOpacity>
                       </>
@@ -444,10 +475,16 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                   <ActivityIndicator size="small" color="#22C55E" />
                 ) : (
                   <>
-                    <TouchableOpacity onPress={addLevel} style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}>
+                    <TouchableOpacity
+                      onPress={addLevel}
+                      style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}
+                    >
                       <Feather name="check" size={14} color={colors.white} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setAddingLevel(false)} style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}>
+                    <TouchableOpacity
+                      onPress={() => setAddingLevel(false)}
+                      style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}
+                    >
                       <Feather name="x" size={14} color={colors.white} />
                     </TouchableOpacity>
                   </>
@@ -465,7 +502,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
               .slice()
               .sort((a, b) => a.order - b.order)
               .map((lv) => (
-                <TouchableOpacity key={lv.id} style={[styles.previewBtn, { backgroundColor: lv.color }]}>
+                <TouchableOpacity
+                  key={lv.id}
+                  style={[styles.previewBtn, { backgroundColor: lv.color }]}
+                >
                   <Text style={styles.previewBtnText}>{lv.name}</Text>
                 </TouchableOpacity>
               ))}
@@ -479,11 +519,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
             <Text style={styles.cardTitle}>Trial Stream Layout</Text>
             <View style={{ flexDirection: 'column', gap: 8 }}>
               {(['Horizontal', 'Vertical', 'Card Grid'] as const).map((opt) => (
-                <TouchableOpacity
-                  key={opt}
-                  style={styles.radioRow}
-                  onPress={() => setLayout(opt)}
-                >
+                <TouchableOpacity key={opt} style={styles.radioRow} onPress={() => setLayout(opt)}>
                   <View style={[styles.radioOuter, layout === opt && styles.radioOuterActive]}>
                     {layout === opt && <View style={styles.radioInner} />}
                   </View>
@@ -494,8 +530,22 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
             <View style={{ marginTop: 12 }}>
               <Text style={styles.fieldLabel}>Trial Stream Count (3–20)</Text>
               <TextInput
-                value={String(streamCount)}
-                onChangeText={(e) => setStreamCount(Number(e))}
+                value={streamCount > 0 ? String(streamCount) : ''}
+                placeholder="5"
+                placeholderTextColor="#94A3B8"
+                onChangeText={(e) => {
+                  const cleaned = e.replace(/[^0-9]/g, '');
+                  if (!cleaned) {
+                    setStreamCount(0);
+                    return;
+                  }
+                  const num = parseInt(cleaned, 10);
+                  setStreamCount(isNaN(num) ? 5 : num);
+                }}
+                onBlur={() => {
+                  const clamped = Math.min(Math.max(Number(streamCount) || 5, 3), 20);
+                  setStreamCount(clamped);
+                }}
                 style={styles.numberInput}
                 keyboardType="numeric"
               />
@@ -509,9 +559,16 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
               <View>
                 <Text style={styles.fieldLabel}>Consecutive Trials</Text>
                 <TextInput
-                  value={String(consecutive)}
+                  value={consecutive > 0 ? String(consecutive) : ''}
+                  placeholder="5"
+                  placeholderTextColor="#94A3B8"
                   onChangeText={(e) => {
-                    const parsed = parseInt(e, 10);
+                    const cleaned = e.replace(/[^0-9]/g, '');
+                    if (!cleaned) {
+                      setConsecutive(0);
+                      return;
+                    }
+                    const parsed = parseInt(cleaned, 10);
                     const val = isNaN(parsed) ? 0 : parsed;
                     setConsecutive(val);
                     if (val > 0) {
@@ -519,7 +576,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     }
                   }}
                   onBlur={() => {
-                    const val = Number(consecutive) || 5;
+                    const val = Math.min(Math.max(Number(consecutive) || 5, 1), 50);
                     setConsecutive(val);
                     setPromptLevels(levels, val, streamCount);
                   }}
@@ -530,8 +587,22 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
               <View>
                 <Text style={styles.fieldLabel}>Independence % Threshold</Text>
                 <TextInput
-                  value={String(independence)}
-                  onChangeText={(e) => setIndependence(Number(e))}
+                  value={independence > 0 ? String(independence) : ''}
+                  placeholder="80"
+                  placeholderTextColor="#94A3B8"
+                  onChangeText={(e) => {
+                    const cleaned = e.replace(/[^0-9]/g, '');
+                    if (!cleaned) {
+                      setIndependence(0);
+                      return;
+                    }
+                    const num = parseInt(cleaned, 10);
+                    setIndependence(isNaN(num) ? 80 : Math.min(num, 100));
+                  }}
+                  onBlur={() => {
+                    const clamped = Math.min(Math.max(Number(independence) || 0, 0), 100);
+                    setIndependence(clamped);
+                  }}
                   style={styles.numberInput}
                   keyboardType="numeric"
                 />
@@ -604,8 +675,21 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     paddingVertical: 6,
   },
-  tableColHeader: { fontSize: 10, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, textAlign: 'center' },
-  tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingHorizontal: 8 },
+  tableColHeader: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    paddingHorizontal: 8,
+  },
   addingRow: { backgroundColor: 'rgba(34,197,94,0.06)' },
   cellText: { fontSize: 14, fontWeight: '600', color: '#1A2233', textAlign: 'center' },
   inlineInput: {
@@ -663,7 +747,14 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#F9FAFB',
   },
-  previewLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' },
+  previewLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
   previewButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   previewBtn: {
     paddingHorizontal: 16,
@@ -687,7 +778,15 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...typography.h3 },
   radioRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#9CA3AF', alignItems: 'center', justifyContent: 'center' },
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   radioOuterActive: { borderColor: '#0284C7' },
   radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#0284C7' },
   radioLabel: { fontSize: 13, color: '#374151' },

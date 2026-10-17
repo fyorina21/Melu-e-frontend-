@@ -287,7 +287,7 @@ export default function ScheduleCapacityConfigScreen({
               <TextInput
                 style={styles.numberInput}
                 value={capacity}
-                onChangeText={setCapacity}
+                onChangeText={(val) => setCapacity(val.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
               />
             </View>
@@ -301,7 +301,7 @@ export default function ScheduleCapacityConfigScreen({
               <TextInput
                 style={styles.numberInput}
                 value={draftExpiry}
-                onChangeText={setDraftExpiry}
+                onChangeText={(val) => setDraftExpiry(val.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
               />
               <Text style={styles.fieldHint}>
