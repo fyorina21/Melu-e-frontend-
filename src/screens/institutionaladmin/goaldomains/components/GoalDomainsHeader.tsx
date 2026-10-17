@@ -9,8 +9,8 @@ interface GoalDomainsHeaderProps {
 }
 
 export function GoalDomainsHeader({
-  title = 'Goal Domains & Task Analysis',
-  subtitle = 'Unified clinical workbench for goal categories, milestones & task analysis step templates',
+  title = 'Goals',
+  subtitle = 'Clinical goal bank, domain definitions, and mastery criteria',
 }: GoalDomainsHeaderProps) {
   return (
     <View style={styles.pageHeader}>

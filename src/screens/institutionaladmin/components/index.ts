@@ -13,3 +13,6 @@ export { InlineAddFieldBox } from './InlineAddFieldBox';
 export { default as ModificationHistoryCard } from './ModificationHistoryCard';
 export type { HistoryItem } from './ModificationHistoryCard';
 export { PreviewFormModal } from './PreviewFormModal';
+export { TemplateVersionModal } from './TemplateVersionModal';
+export { EditMetadataModal } from './EditMetadataModal';
+export type { FormMetadataValues } from './EditMetadataModal';

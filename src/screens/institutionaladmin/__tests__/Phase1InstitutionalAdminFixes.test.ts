@@ -9,11 +9,11 @@ import { SCREEN_TO_MODULE } from '../../../auth/permissions';
 import type { AuthSession } from '../../../types';
 
 describe('Phase 1: Institutional Admin Routing & Module Guards', () => {
-  it('includes Task Analysis in ROLE_TABS for institutional_admin', () => {
-    expect(ROLE_TABS.institutional_admin).toContain('Task Analysis');
+  it('includes Goals and excludes Task Analysis from ROLE_TABS for institutional_admin', () => {
+    expect(ROLE_TABS.institutional_admin).not.toContain('Task Analysis');
+    expect(ROLE_TABS.institutional_admin).toContain('Goals');
     expect(ROLE_TABS.institutional_admin).toEqual([
-      'Goal Domains',
-      'Task Analysis',
+      'Goals',
       'Schedule & Capacity',
       'ABC Dropdown Lists',
       'Trial Logging Format',
@@ -21,10 +21,8 @@ describe('Phase 1: Institutional Admin Routing & Module Guards', () => {
     ]);
   });
 
-  it('maps Task Analysis to TaskAnalysisTemplates route in IA_ROUTE_BY_TAB', () => {
-    expect(IA_ROUTE_BY_TAB['Task Analysis']).toBe('TaskAnalysisTemplates');
-    expect(IA_ROUTE_BY_TAB['Task']).toBe('TaskAnalysisTemplates');
-    expect(IA_ROUTE_BY_TAB['Goal Domains']).toBe('GoalDomainDefinitions');
+  it('maps Goals to GoalDomainDefinitions route in IA_ROUTE_BY_TAB', () => {
+    expect(IA_ROUTE_BY_TAB['Goals']).toBe('GoalDomainDefinitions');
     expect(IA_ROUTE_BY_TAB['Schedule & Capacity']).toBe('ScheduleCapacityConfig');
     expect(IA_ROUTE_BY_TAB['ABC Dropdown Lists']).toBe('AbcDropdownLists');
     expect(IA_ROUTE_BY_TAB['Trial Logging Format']).toBe('TrialLoggingFormat');
@@ -32,8 +30,8 @@ describe('Phase 1: Institutional Admin Routing & Module Guards', () => {
   });
 
   it('wires institutional admin tabs into MODULE_TO_TABS for RBAC filtering', () => {
-    expect(MODULE_TO_TABS.iups).toContain('Goal Domains');
-    expect(MODULE_TO_TABS.iups).toContain('Task Analysis');
+    expect(MODULE_TO_TABS.iups).toContain('Goals');
+    expect(MODULE_TO_TABS.iups).not.toContain('Task Analysis');
     expect(MODULE_TO_TABS.sessions).toContain('Trial Logging Format');
     expect(MODULE_TO_TABS.behavior_incidents).toContain('ABC Dropdown Lists');
     expect(MODULE_TO_TABS.staff).toContain('Schedule & Capacity');
@@ -49,8 +47,8 @@ describe('Phase 1: Institutional Admin Routing & Module Guards', () => {
 
     const tabs = getTabsForSession(sessionWithOnlyIupsAndSessions, ROLE_TABS.institutional_admin);
 
-    expect(tabs).toContain('Goal Domains');
-    expect(tabs).toContain('Task Analysis');
+    expect(tabs).toContain('Goals');
+    expect(tabs).not.toContain('Task Analysis');
     expect(tabs).toContain('Trial Logging Format');
 
     // Modules not granted should be filtered out

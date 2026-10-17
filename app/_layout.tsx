@@ -5,6 +5,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../src/api/queryClient';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ToastProvider } from '../src/context/ToastContext';
+import { ConfirmDialogProvider } from '../src/context/ConfirmDialogContext';
+import { UnsavedChangesProvider } from '../src/context/UnsavedChangesContext';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 export default function RootLayout() {
@@ -49,7 +51,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <UnsavedChangesProvider>
+              <ConfirmDialogProvider>
+                <Stack screenOptions={{ headerShown: false }} />
+              </ConfirmDialogProvider>
+            </UnsavedChangesProvider>
           </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>

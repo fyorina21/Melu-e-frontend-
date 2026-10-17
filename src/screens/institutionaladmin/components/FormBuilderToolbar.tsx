@@ -2,36 +2,51 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { radius, spacing } from '../../../theme/colors';
-import { FORM_METADATA, ASSESSMENT_DIRECT_ROUTES } from '../formBuilderConfig';
+import { FORM_METADATA } from '../formBuilderConfig';
 
 interface FormBuilderToolbarProps {
   selectedForm: string;
   isDefault: boolean;
   saving?: boolean;
+  metadata?: {
+    formId: string;
+    formName: string;
+    revision: string;
+    pages: string;
+  };
+  onEditMetadata?: () => void;
   onOpenFormModal: () => void;
   onNavigateDirect?: (route: string) => void;
   onPreview: () => void;
   onReset: () => void;
   onSave: () => void;
+  onViewTemplates?: () => void;
 }
 
 export default function FormBuilderToolbar({
   selectedForm,
   isDefault,
   saving = false,
+  metadata,
+  onEditMetadata,
   onOpenFormModal,
-  onNavigateDirect,
   onPreview,
   onReset,
   onSave,
+  onViewTemplates,
 }: FormBuilderToolbarProps) {
-  const meta = FORM_METADATA[selectedForm] || {
+  const fallbackMeta = FORM_METADATA[selectedForm] || {
     id: 'FRM-SYS-001',
     revision: 'Rev 1.0 · 2026-09-19',
     pages: 'Page 1 of 1',
   };
 
-  const directRoute = ASSESSMENT_DIRECT_ROUTES[selectedForm];
+  const currentMeta = {
+    id: metadata?.formId || fallbackMeta.id,
+    formName: metadata?.formName || selectedForm,
+    revision: metadata?.revision || fallbackMeta.revision,
+    pages: metadata?.pages || fallbackMeta.pages,
+  };
 
   return (
     <View style={styles.container}>
@@ -40,7 +55,7 @@ export default function FormBuilderToolbar({
         <View>
           <Text style={styles.headerTitle}>Form Builder</Text>
           <Text style={styles.headerSubtitle}>
-            SCR-ADMIN-001 · Configure enrollment and assessment form templates
+            Configure enrollment, assessment, and clinical form templates
           </Text>
         </View>
       </View>
@@ -52,13 +67,15 @@ export default function FormBuilderToolbar({
           <Feather name="chevron-down" size={16} color="#475569" />
         </TouchableOpacity>
 
-        {directRoute && onNavigateDirect && (
-          <TouchableOpacity
-            style={styles.openAssessmentBtn}
-            onPress={() => onNavigateDirect(directRoute.route)}
-          >
-            <Feather name="external-link" size={14} color="#0284C7" />
-            <Text style={styles.openAssessmentBtnText}>Open Assessment</Text>
+        <TouchableOpacity style={styles.livePreviewTopBtn} onPress={onPreview}>
+          <Feather name="eye" size={14} color="#0284C7" />
+          <Text style={styles.livePreviewTopBtnText}>Live Preview</Text>
+        </TouchableOpacity>
+
+        {onViewTemplates && (
+          <TouchableOpacity style={styles.templatesTopBtn} onPress={onViewTemplates}>
+            <Feather name="layers" size={14} color="#475569" />
+            <Text style={styles.templatesTopBtnText}>Templates & Versions</Text>
           </TouchableOpacity>
         )}
 
@@ -73,30 +90,42 @@ export default function FormBuilderToolbar({
         </View>
       </View>
 
-      {/* Standard Form Header Card */}
+      {/* Standard Form Header Card (Editable) */}
       <View style={styles.formHeaderCard}>
         <View style={styles.formHeaderTop}>
           <View style={styles.formMetaLeft}>
             <View style={styles.metaRowItem}>
               <Text style={styles.metaLabel}>FORM ID:</Text>
-              <Text style={styles.metaValue}>{meta.id}</Text>
+              <Text style={styles.metaValue}>{currentMeta.id}</Text>
             </View>
             <View style={styles.metaRowItem}>
               <Text style={styles.metaLabel}>FORM NAME:</Text>
-              <Text style={styles.metaValue}>{selectedForm}</Text>
+              <Text style={styles.metaValue}>{currentMeta.formName}</Text>
             </View>
           </View>
 
           <View style={styles.formMetaRight}>
             <View style={styles.metaRowItem}>
               <Text style={styles.metaLabel}>REVISION:</Text>
-              <Text style={styles.metaValue}>{meta.revision}</Text>
+              <Text style={styles.metaValue}>{currentMeta.revision}</Text>
             </View>
             <View style={styles.metaRowItem}>
               <Text style={styles.metaLabel}>PAGE:</Text>
-              <Text style={styles.metaValue}>{meta.pages}</Text>
+              <Text style={styles.metaValue}>{currentMeta.pages}</Text>
             </View>
           </View>
+
+          {onEditMetadata && (
+            <TouchableOpacity
+              style={styles.editMetaBtn}
+              onPress={onEditMetadata}
+              accessibilityRole="button"
+              accessibilityLabel="Edit form header details"
+            >
+              <Feather name="edit-2" size={13} color="#2563EB" />
+              <Text style={styles.editMetaBtnText}>Edit Header</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -106,6 +135,13 @@ export default function FormBuilderToolbar({
           <Feather name="rotate-ccw" size={14} color="#64748B" />
           <Text style={styles.actionBtnOutlineText}>Reset to Default</Text>
         </TouchableOpacity>
+
+        {onViewTemplates && (
+          <TouchableOpacity style={styles.actionBtnOutline} onPress={onViewTemplates}>
+            <Feather name="folder" size={14} color="#64748B" />
+            <Text style={styles.actionBtnOutlineText}>Import / Templates</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.actionBtnOutline} onPress={onPreview}>
           <Feather name="eye" size={14} color="#0284C7" />
@@ -151,76 +187,97 @@ const styles = StyleSheet.create({
   topControlRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.sm,
     marginBottom: spacing.md,
     flexWrap: 'wrap',
   },
   selectDropdown: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   selectDropdownText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#0F172A',
   },
-  openAssessmentBtn: {
+  livePreviewTopBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     backgroundColor: '#E0F2FE',
     borderWidth: 1,
     borderColor: '#BAE6FD',
     borderRadius: radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
+    paddingVertical: 8,
   },
-  openAssessmentBtnText: {
+  livePreviewTopBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#0284C7',
   },
+  templatesTopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  templatesTopBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
   badge: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.full,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
   },
   badgeDefault: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
   badgeCustom: {
     backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
   badgeText: {
     fontSize: 12,
     fontWeight: '600',
   },
   badgeTextDefault: {
-    color: '#475569',
+    color: '#1E40AF',
   },
   badgeTextCustom: {
-    color: '#D97706',
+    color: '#92400E',
   },
   formHeaderCard: {
     backgroundColor: '#FFFFFF',
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
   formHeaderTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: spacing.md,
   },
   formMetaLeft: {
     gap: 4,
@@ -231,35 +288,51 @@ const styles = StyleSheet.create({
   metaRowItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   metaLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
+    minWidth: 80,
   },
   metaValue: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#0F172A',
+  },
+  editMetaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  editMetaBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   actionBtnOutline: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    gap: 6,
   },
   actionBtnOutlineText: {
     fontSize: 13,
@@ -269,11 +342,12 @@ const styles = StyleSheet.create({
   saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0284C7',
+    gap: 6,
+    backgroundColor: '#2563EB',
     borderRadius: radius.md,
     paddingHorizontal: 16,
-    paddingVertical: 9,
-    gap: 6,
+    paddingVertical: 8,
+    marginLeft: 'auto',
   },
   saveBtnDisabled: {
     opacity: 0.6,

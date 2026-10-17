@@ -30,6 +30,8 @@ import { useToast } from '../../context/ToastContext';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { InstitutionalAdminStackParamList } from '../../types';
 import { confirmAction } from '../../utils/dialogs';
+import { useUnsavedChanges } from '../../context/UnsavedChangesContext';
+import { EditMetadataModal, TemplateVersionModal } from './components';
 
 import {
   FORMS,
@@ -107,6 +109,19 @@ export default function FormBuilderScreen({
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const { setDirty } = useUnsavedChanges();
+
+  // Form Metadata State (Editable in accordance with backend configuration)
+  const [formId, setFormId] = useState<string>(FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001');
+  const [formName, setFormName] = useState<string>(selectedForm);
+  const [formRevision, setFormRevision] = useState<string>(
+    FORM_METADATA[selectedForm]?.revision || 'Rev 1.0 · 2026-09-19',
+  );
+  const [formPages, setFormPages] = useState<string>(
+    FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1',
+  );
+  const [showEditMetadataModal, setShowEditMetadataModal] = useState<boolean>(false);
+  const [showTemplateVersionModal, setShowTemplateVersionModal] = useState<boolean>(false);
 
   useEffect(() => {
     const fromParam = (route?.params as any)?.form;
@@ -236,6 +251,20 @@ export default function FormBuilderScreen({
         ? data.deletedSections
         : [];
       setDeletedSections(loadedDeleted);
+
+      // Populate metadata
+      const meta = data?.metadata || {};
+      setFormId(data?.formId || meta.formId || FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001');
+      setFormName(data?.form_name || data?.formName || meta.formName || selectedForm);
+      setFormRevision(
+        data?.revision ||
+          meta.revision ||
+          FORM_METADATA[selectedForm]?.revision ||
+          'Rev 1.0 · 2026-09-19',
+      );
+      setFormPages(
+        data?.pages || meta.pages || FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1',
+      );
     } catch (err) {
       const defaultCfg = getDefaultFormConfig(selectedForm);
       setFields(defaultCfg?.fields || []);
@@ -243,6 +272,11 @@ export default function FormBuilderScreen({
       setHistory([]);
       setCustomSections(defaultCfg?.customSections || []);
       setDeletedSections([]);
+      const meta = FORM_METADATA[selectedForm];
+      setFormId(meta?.id || 'FRM-SYS-001');
+      setFormName(selectedForm);
+      setFormRevision(meta?.revision || 'Rev 1.0 · 2026-09-19');
+      setFormPages(meta?.pages || 'Page 1 of 1');
     } finally {
       setLoading(false);
     }
@@ -842,7 +876,19 @@ export default function FormBuilderScreen({
         deletedSections,
         history,
         isDefault: false,
+        formId,
+        formName,
+        form_name: formName,
+        revision: formRevision,
+        pages: formPages,
+        metadata: {
+          formId,
+          formName,
+          revision: formRevision,
+          pages: formPages,
+        },
       });
+      setDirty(false);
       await load();
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
     } catch (err) {
@@ -875,7 +921,7 @@ export default function FormBuilderScreen({
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
-        activeTab="Forms"
+        activeTab="Form Builder"
         onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
       />
 
@@ -885,7 +931,7 @@ export default function FormBuilderScreen({
           <View>
             <Text style={styles.headerTitle}>Form Builder</Text>
             <Text style={styles.headerSubtitle}>
-              SCR-ADMIN-001 · Configure enrollment and assessment form templates
+              Configure enrollment, assessment, and clinical form templates
             </Text>
           </View>
         </View>
@@ -902,39 +948,25 @@ export default function FormBuilderScreen({
             <Feather name="chevron-down" size={16} color="#475569" />
           </TouchableOpacity>
 
-          {ASSESSMENT_DIRECT_ROUTES[selectedForm] && (
-            <TouchableOpacity
-              style={styles.openAssessmentBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Live ${selectedForm === 'Social Skills Questionnaire' ? 'Questionnaire' : 'Assessment'}`}
-              onPress={() => {
-                const target = ASSESSMENT_DIRECT_ROUTES[selectedForm];
-                if (!target) return;
-                if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
-                  const currentOrigin = window.location.origin || 'http://localhost:8081';
-                  const targetUrl = `${currentOrigin}/${target.route}`;
-                  window.open(targetUrl, '_blank', 'noopener,noreferrer');
-                } else {
-                  const parentNav = navigation.getParent?.();
-                  if (parentNav && typeof (parentNav.navigate as any) === 'function') {
-                    try {
-                      (parentNav.navigate as any)(target.route);
-                    } catch {
-                      setShowPreviewModal(true);
-                    }
-                  } else {
-                    setShowPreviewModal(true);
-                  }
-                }
-              }}
-            >
-              <Feather name="external-link" size={13} color="#0284C7" />
-              <Text style={styles.openAssessmentBtnText}>
-                Live{' '}
-                {selectedForm === 'Social Skills Questionnaire' ? 'Questionnaire' : 'Assessment'}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.livePreviewTopBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Live Preview Form"
+            onPress={() => setShowPreviewModal(true)}
+          >
+            <Feather name="eye" size={14} color="#0284C7" />
+            <Text style={styles.livePreviewTopBtnText}>Live Preview</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.templatesTopBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Templates & Versions"
+            onPress={() => setShowTemplateVersionModal(true)}
+          >
+            <Feather name="layers" size={14} color="#475569" />
+            <Text style={styles.templatesTopBtnText}>Templates & Versions</Text>
+          </TouchableOpacity>
 
           <View style={{ flex: 1 }} />
 
@@ -950,36 +982,40 @@ export default function FormBuilderScreen({
           </View>
         </View>
 
-        {/* Standard Form Header Component */}
+        {/* Standard Form Header Component (Editable) */}
         <View style={styles.formHeaderCard}>
           <View style={styles.formHeaderTop}>
             <View style={styles.formMetaLeft}>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>FORM ID:</Text>
-                <Text style={styles.metaValue}>
-                  {FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001'}
-                </Text>
+                <Text style={styles.metaValue}>{formId}</Text>
               </View>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>FORM NAME:</Text>
-                <Text style={styles.metaValue}>{selectedForm}</Text>
+                <Text style={styles.metaValue}>{formName}</Text>
               </View>
             </View>
 
             <View style={styles.formMetaRight}>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>REVISION:</Text>
-                <Text style={styles.metaValue}>
-                  {FORM_METADATA[selectedForm]?.revision || 'Rev 1.0 · 2026-09-19'}
-                </Text>
+                <Text style={styles.metaValue}>{formRevision}</Text>
               </View>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>PAGE:</Text>
-                <Text style={styles.metaValue}>
-                  {FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1'}
-                </Text>
+                <Text style={styles.metaValue}>{formPages}</Text>
               </View>
             </View>
+
+            <TouchableOpacity
+              style={styles.editMetaBtn}
+              onPress={() => setShowEditMetadataModal(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit form header details"
+            >
+              <Feather name="edit-2" size={13} color="#2563EB" />
+              <Text style={styles.editMetaBtnText}>Edit Header</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -2150,6 +2186,48 @@ export default function FormBuilderScreen({
           </View>
         </View>
       </Modal>
+
+      {/* Edit Form Metadata Modal */}
+      <EditMetadataModal
+        visible={showEditMetadataModal}
+        initialValues={{
+          formId,
+          formName,
+          revision: formRevision,
+          pages: formPages,
+        }}
+        onSave={(vals) => {
+          setFormId(vals.formId);
+          setFormName(vals.formName);
+          setFormRevision(vals.revision);
+          setFormPages(vals.pages);
+          setIsDefault(false);
+          setDirty(true);
+          showToast('Form header updated. Click Save to persist.', 'success');
+        }}
+        onClose={() => setShowEditMetadataModal(false)}
+      />
+
+      {/* Template & Version Management Modal */}
+      <TemplateVersionModal
+        visible={showTemplateVersionModal}
+        selectedForm={selectedForm}
+        currentFields={fields}
+        history={history}
+        onClose={() => setShowTemplateVersionModal(false)}
+        onReuseTemplate={(tplName, tplFields) => {
+          setFields(tplFields);
+          setIsDefault(tplName.includes('Default'));
+          setDirty(true);
+          showToast(`Loaded ${tplName} into canvas`, 'info');
+        }}
+        onImportJson={(importedFields) => {
+          setFields(importedFields);
+          setIsDefault(false);
+          setDirty(true);
+          showToast(`Imported ${importedFields.length} fields into canvas`, 'success');
+        }}
+      />
 
       {/* Edit Field Modal */}
       <Modal
@@ -3536,5 +3614,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#94A3B8',
     textAlign: 'center',
+  },
+  livePreviewTopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  livePreviewTopBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  templatesTopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  templatesTopBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  editMetaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  editMetaBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
   },
 });

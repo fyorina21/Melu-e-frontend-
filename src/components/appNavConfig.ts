@@ -21,7 +21,7 @@ import { RESOURCE_ALIAS_MAP } from '../screens/systemadmin/permissions/permissio
 import { SCREEN_TO_MODULE, hasModuleAccess } from '../auth/permissions';
 
 export const MODULE_TO_TABS: Record<string, string[]> = {
-  iups: ['IUP Creation & Goal Assignment', 'Goal Domains', 'Task Analysis'],
+  iups: ['IUP Creation & Goal Assignment', 'Goals'],
   assessments: ['Assessments'],
   sessions: ['Session', 'Daily Notes', 'Trial Logging Format'],
   behavior_incidents: ['ABC Log', 'ABC Dropdown Lists'],
@@ -158,8 +158,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Reports',
   ],
   institutional_admin: [
-    'Goal Domains',
-    'Task Analysis',
+    'Goals',
     'Schedule & Capacity',
     'ABC Dropdown Lists',
     'Trial Logging Format',
@@ -321,7 +320,7 @@ export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> =
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
   // Canonical tabs
   Dashboard: 'FormBuilder',
-  'Task Analysis': 'TaskAnalysisTemplates',
+  Goals: 'GoalDomainDefinitions',
   'Goal Domains': 'GoalDomainDefinitions',
   'Schedule & Capacity': 'ScheduleCapacityConfig',
   'ABC Dropdown Lists': 'AbcDropdownLists',
@@ -426,11 +425,11 @@ export const GLOBAL_ROUTE_BY_TAB: Record<string, string> = {
   'Permission Configuration': 'PermissionConfiguration',
   'Audit Log': 'AuditLog',
   'Form Builder': 'FormBuilder',
+  Goals: 'GoalDomainDefinitions',
   'Goal Domains': 'GoalDomainDefinitions',
   'Schedule & Capacity': 'ScheduleCapacityConfig',
   'ABC Dropdown Lists': 'AbcDropdownLists',
   'Trial Logging Format': 'TrialLoggingFormat',
-  'Task Analysis': 'TaskAnalysisTemplates',
   'Staff Scheduling': 'DirectorScheduling',
   'Goal Mastery Approval': 'GoalMasteryApproval',
   'Reports & Oversight': 'ReportsOversight',

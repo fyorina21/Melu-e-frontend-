@@ -367,7 +367,7 @@ export default function GoalDomainDefinitionsScreen({
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
-        activeTab="Goal Domains"
+        activeTab="Goals"
         onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
       />
 
@@ -376,13 +376,12 @@ export default function GoalDomainDefinitionsScreen({
         <View style={styles.pageHeader}>
           <View style={styles.headerLeft}>
             <View style={styles.badgeIcon}>
-              <Feather name="layers" size={20} color={colors.navyText} />
+              <Feather name="target" size={20} color={colors.navyText} />
             </View>
             <View>
-              <Text style={styles.pageTitle}>Goal Domains & Task Analysis</Text>
+              <Text style={styles.pageTitle}>Goals</Text>
               <Text style={styles.pageSubtitle}>
-                Unified clinical workbench for goal categories, milestones & task analysis step
-                templates
+                Clinical goal bank, domain definitions, and mastery criteria
               </Text>
             </View>
           </View>
@@ -429,27 +428,6 @@ export default function GoalDomainDefinitionsScreen({
               ]}
             >
               Target Goals ({goals.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.switcherBtn, activeSection === 'templates' && styles.switcherBtnActive]}
-            onPress={() => setActiveSection('templates')}
-            accessibilityRole="button"
-            accessibilityLabel={`Task Analysis Templates, ${templates.length} items`}
-          >
-            <Feather
-              name="list"
-              size={15}
-              color={activeSection === 'templates' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[
-                styles.switcherBtnText,
-                activeSection === 'templates' && styles.switcherBtnTextActive,
-              ]}
-            >
-              Task Analysis Templates ({templates.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -727,11 +705,6 @@ export default function GoalDomainDefinitionsScreen({
                       <View style={styles.goalDomainBadge}>
                         <Text style={styles.goalDomainBadgeText}>{g.domain}</Text>
                       </View>
-                      {g.goalType === 'task_analysis' && (
-                        <View style={styles.goalTaskBadge}>
-                          <Text style={styles.goalTaskBadgeText}>Task Analysis</Text>
-                        </View>
-                      )}
                     </View>
                   </View>
 
@@ -810,8 +783,8 @@ export default function GoalDomainDefinitionsScreen({
           </View>
         )}
 
-        {/* SECTION 3: TASK ANALYSIS TEMPLATES */}
-        {activeSection === 'templates' && (
+        {/* SECTION 3: TASK ANALYSIS TEMPLATES (HIDDEN) */}
+        {false && (
           <View style={{ gap: spacing.md }}>
             <View style={styles.tableCard}>
               <View style={styles.tableCardHeader}>
@@ -1123,46 +1096,8 @@ export default function GoalDomainDefinitionsScreen({
                 />
               </View>
 
-              {/* Goal Type & Status */}
+              {/* Goal Status (All goals are Standard for this version) */}
               <View style={{ flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' }}>
-                <View style={{ flex: 1, minWidth: 140, gap: 4 }}>
-                  <Text style={styles.modalLabel}>Goal Architecture Type</Text>
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                    <TouchableOpacity
-                      style={[
-                        styles.typeSelectBtn,
-                        goalFormType === 'standard' && styles.typeSelectBtnActive,
-                      ]}
-                      onPress={() => setGoalFormType('standard')}
-                    >
-                      <Text
-                        style={[
-                          styles.typeSelectBtnText,
-                          goalFormType === 'standard' && styles.typeSelectBtnTextActive,
-                        ]}
-                      >
-                        Standard
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.typeSelectBtn,
-                        goalFormType === 'task_analysis' && styles.typeSelectBtnActive,
-                      ]}
-                      onPress={() => setGoalFormType('task_analysis')}
-                    >
-                      <Text
-                        style={[
-                          styles.typeSelectBtnText,
-                          goalFormType === 'task_analysis' && styles.typeSelectBtnTextActive,
-                        ]}
-                      >
-                        Task Analysis
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
                 <View style={{ width: 120, gap: 4 }}>
                   <Text style={styles.modalLabel}>Status</Text>
                   <TouchableOpacity

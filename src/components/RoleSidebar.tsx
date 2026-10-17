@@ -25,6 +25,7 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   'Role Management': 'shield',
   'Permission Configuration': 'lock',
   'Audit Log': 'activity',
+  Goals: 'target',
   'Goal Domains': 'target',
   'Task Analysis': 'check-square',
   'Schedule & Capacity': 'calendar',
