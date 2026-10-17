@@ -11,10 +11,38 @@ export const FORMS = [
   'Sensory Assessment',
 ];
 
-export const FIELD_TYPES = ['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File'] as const;
+export const FIELD_TYPES = [
+  'Text',
+  'TextArea',
+  'Number',
+  'Date',
+  'Dropdown',
+  'Radio',
+  'CheckboxGroup',
+  'Switch',
+  'Phone',
+  'ImagePicker',
+  'File',
+  'SectionHeader',
+  'Divider',
+] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
-export const ENROLLMENT_SECTIONS = ['Student Info', 'Parent Info', 'Medical Info'];
+export const ENROLLMENT_SECTIONS = [
+  'Student Info',
+  'Parent Info',
+  'Medical Info',
+  'Program Placement',
+  'Assign Therapist',
+  'Review & Complete',
+];
+
+export const IUP_SECTIONS = [
+  'Student & Assessment Summary',
+  'Reinforcement & Behavioral Strategies',
+  'Target Goals & Milestones',
+  'Review & Approvals',
+];
 
 export const ABLLS_SECTIONS = [
   'Visual Performance',
@@ -46,45 +74,170 @@ export const SENSORY_SECTIONS = [
 export const BEHAVIOR_INCIDENT_SECTIONS = ['ABC Tracking', 'General'];
 
 export const getSectionsForForm = (formName: string): string[] => {
-  if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
-  if (formName === 'ABLLS Assessment Form') return ABLLS_SECTIONS;
-  if (formName === 'Social Skills Questionnaire') return SOCIAL_SKILLS_SECTIONS;
-  if (formName === 'Behavioral Assessment' || formName === 'Behavior Assessment')
+  const norm = (formName || '').toLowerCase().trim();
+  if (norm.includes('enrollment')) return ENROLLMENT_SECTIONS;
+  if (norm.includes('iup')) return IUP_SECTIONS;
+  if (norm.includes('social')) return SOCIAL_SKILLS_SECTIONS;
+  if (norm.includes('ablls') || norm.includes('skill')) return ABLLS_SECTIONS;
+  if (norm.includes('behavioral') || norm.includes('behavior assessment'))
     return BEHAVIORAL_SECTIONS;
-  if (formName === 'Preference Assessment') return PREFERENCE_SECTIONS;
-  if (formName === 'Sensory Assessment') return SENSORY_SECTIONS;
-  if (formName === 'Behavior Incident Form' || formName.toLowerCase().includes('incident'))
-    return BEHAVIOR_INCIDENT_SECTIONS;
+  if (norm.includes('preference')) return PREFERENCE_SECTIONS;
+  if (norm.includes('sensory')) return SENSORY_SECTIONS;
+  if (norm.includes('incident')) return BEHAVIOR_INCIDENT_SECTIONS;
   return [];
 };
 
+export const getPagesForForm = (
+  formName: string,
+  customSections: string[] = [],
+  deletedSections: string[] = [],
+): string[] => {
+  const norm = (formName || '').toLowerCase().trim();
+  if (norm.includes('enrollment')) {
+    const base = [
+      'Student Info',
+      'Parent Info',
+      'Medical Info',
+      'Program Placement',
+      'Assign Therapist',
+      'Review & Complete',
+    ];
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    // Position custom sections between Medical Info and Assign Therapist
+    const full = [
+      'Student Info',
+      'Parent Info',
+      'Medical Info',
+      'Program Placement',
+      ...custom,
+      'Assign Therapist',
+      'Review & Complete',
+    ];
+    return full.filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('iup')) {
+    const base = IUP_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('social')) {
+    const base = SOCIAL_SKILLS_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('ablls') || norm.includes('skill')) {
+    const base = ABLLS_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('incident')) {
+    const base = BEHAVIOR_INCIDENT_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('behavior')) {
+    const base = BEHAVIORAL_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('preference')) {
+    const base = PREFERENCE_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('sensory')) {
+    const base = SENSORY_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  if (norm.includes('social')) {
+    const base = SOCIAL_SKILLS_SECTIONS;
+    const custom = customSections.filter(
+      (s) => !base.some((b) => b.toLowerCase() === s.toLowerCase()),
+    );
+    return [...base, ...custom].filter((s) => !deletedSections.includes(s));
+  }
+
+  const sections = getSectionsForForm(formName);
+  const combined = Array.from(new Set([...sections, ...customSections]));
+  return combined.filter((s) => !deletedSections.includes(s));
+};
+
+/**
+ * Resolves the appropriate base URL for direct assessment links.
+ * In production web deployments, it resolves dynamically to the current origin,
+ * while safely preserving the local dev / Vitest default (http://localhost:8081).
+ */
+export const getDirectBaseUrl = (): string => {
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1')
+  ) {
+    return window.location.origin;
+  }
+  return 'http://localhost:8081';
+};
+
+export const getDirectRouteUrl = (formOrRoute: string): string => {
+  const route = ASSESSMENT_DIRECT_ROUTES[formOrRoute]?.route || formOrRoute;
+  return `${getDirectBaseUrl()}/${route}`;
+};
+
+const directBaseUrl = getDirectBaseUrl();
+
 export const ASSESSMENT_DIRECT_ROUTES: Record<string, { url: string; route: string }> = {
   'Enrollment Wizard': {
-    url: 'http://localhost:8081/StudentEnrollmentWizard',
+    url: `${directBaseUrl}/StudentEnrollmentWizard`,
     route: 'StudentEnrollmentWizard',
   },
   'ABLLS Assessment Form': {
-    url: 'http://localhost:8081/SkillsAssessment',
+    url: `${directBaseUrl}/SkillsAssessment`,
     route: 'SkillsAssessment',
   },
   'Social Skills Questionnaire': {
-    url: 'http://localhost:8081/SocialSkillsAssessment',
+    url: `${directBaseUrl}/SocialSkillsAssessment`,
     route: 'SocialSkillsAssessment',
   },
   'Behavioral Assessment': {
-    url: 'http://localhost:8081/BehaviorAssessment',
+    url: `${directBaseUrl}/BehaviorAssessment`,
     route: 'BehaviorAssessment',
   },
   'Preference Assessment': {
-    url: 'http://localhost:8081/PreferenceAssessment',
+    url: `${directBaseUrl}/PreferenceAssessment`,
     route: 'PreferenceAssessment',
   },
   'Sensory Assessment': {
-    url: 'http://localhost:8081/SensoryAssessment',
+    url: `${directBaseUrl}/SensoryAssessment`,
     route: 'SensoryAssessment',
   },
   'Behavior Incident Form': {
-    url: 'http://localhost:8081/SessionDataCollection',
+    url: `${directBaseUrl}/SessionDataCollection`,
     route: 'SessionDataCollection',
   },
 };
@@ -458,37 +611,41 @@ export const FORM_METADATA: Record<string, { id: string; revision: string; pages
   'Enrollment Wizard': {
     id: 'FRM-ENR-001',
     revision: 'Rev 2.4 · 2026-09-19',
-    pages: 'Page 1 of 3',
+    pages: 'Page 1 of 6',
   },
-  'IUP Form': { id: 'FRM-IUP-001', revision: 'Rev 1.8 · 2026-09-19', pages: 'Page 1 of 2' },
+  'IUP Form': {
+    id: 'FRM-IUP-001',
+    revision: 'Rev 1.8 · 2026-09-19',
+    pages: 'Page 1 of 4',
+  },
   'ABLLS Assessment Form': {
     id: 'FRM-ABLLS-001',
     revision: 'Rev 3.1 · 2026-09-19',
-    pages: 'Page 1 of 1',
+    pages: 'Page 1 of 10',
   },
   'Behavioral Assessment': {
     id: 'FRM-BEH-001',
     revision: 'Rev 2.0 · 2026-09-19',
-    pages: 'Page 1 of 1',
+    pages: 'Page 1 of 5',
   },
   'Preference Assessment': {
     id: 'FRM-PREF-001',
     revision: 'Rev 1.5 · 2026-09-19',
-    pages: 'Page 1 of 1',
+    pages: 'Page 1 of 6',
   },
   'Sensory Assessment': {
     id: 'FRM-SEN-001',
     revision: 'Rev 1.6 · 2026-09-19',
-    pages: 'Page 1 of 1',
+    pages: 'Page 1 of 4',
   },
   'Social Skills Questionnaire': {
     id: 'FRM-SOC-001',
     revision: 'Rev 1.2 · 2026-09-19',
-    pages: 'Page 1 of 1',
+    pages: 'Page 1 of 4',
   },
   'Behavior Incident Form': {
     id: 'FRM-BIF-001',
     revision: 'Rev 1.4 · 2026-09-19',
-    pages: 'Page 1 of 1',
+    pages: 'Page 1 of 2',
   },
 };

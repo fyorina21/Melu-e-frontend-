@@ -31,7 +31,7 @@ import DynamicFormFields from '../../components/DynamicFormFields';
 import type { InstitutionalAdminStackParamList } from '../../types';
 import { confirmAction } from '../../utils/dialogs';
 import { useUnsavedChanges } from '../../context/UnsavedChangesContext';
-import { EditMetadataModal, TemplateVersionModal } from './components';
+import { EditMetadataModal, TemplateVersionModal, PreviewFormModal } from './components';
 
 import {
   FORMS,
@@ -43,6 +43,7 @@ import {
   SENSORY_SECTIONS,
   SOCIAL_SKILLS_SECTIONS,
   getSectionsForForm,
+  getPagesForForm,
   ASSESSMENT_DIRECT_ROUTES,
   SCORE_SCALE_PRESETS,
   SOCIAL_SKILLS_PRESETS,
@@ -78,6 +79,36 @@ interface HistoryEntry {
   oldValue: string;
   newValue: string;
 }
+
+export const getTypeBadgeStyle = (rawType: string) => {
+  const t = (rawType || '').toLowerCase().replace(/[\s_-]+/g, '');
+  if (t === 'textarea')
+    return { bg: '#F3E8FF', border: '#D8B4FE', text: '#7E22CE', label: 'TextArea' };
+  if (t === 'checkboxgroup' || t === 'checkbox')
+    return { bg: '#FEF3C7', border: '#FDE68A', text: '#B45309', label: 'Checkbox' };
+  if (t === 'switch') return { bg: '#ECFCCB', border: '#D9F99D', text: '#4D7C0F', label: 'Switch' };
+  if (t === 'phone') return { bg: '#CCFBF1', border: '#99F6E4', text: '#0F766E', label: 'Phone' };
+  if (t === 'imagepicker' || t === 'fileupload' || t === 'file')
+    return {
+      bg: '#FFE4E6',
+      border: '#FECDD3',
+      text: '#BE123C',
+      label: t.includes('image') ? 'Image' : 'File',
+    };
+  if (t === 'sectionheader' || t === 'divider')
+    return {
+      bg: '#F1F5F9',
+      border: '#CBD5E1',
+      text: '#334155',
+      label: t === 'divider' ? 'Divider' : 'Header',
+    };
+  if (t === 'number') return { bg: '#DCFCE7', border: '#BBF7D0', text: '#15803D', label: 'Number' };
+  if (t === 'date') return { bg: '#EDE9FE', border: '#DDD6FE', text: '#6D28D9', label: 'Date' };
+  if (t === 'radio') return { bg: '#E0E7FF', border: '#C7D2FE', text: '#4338CA', label: 'Radio' };
+  if (t === 'dropdown')
+    return { bg: '#FEF9C3', border: '#FEF08A', text: '#A16207', label: 'Dropdown' };
+  return { bg: '#E0F2FE', border: '#BAE6FD', text: '#0369A1', label: rawType || 'Text' };
+};
 
 import { FORM_METADATA } from './formBuilderConfig';
 export { FORM_METADATA };
@@ -159,6 +190,33 @@ export default function FormBuilderScreen({
   // Skill Type / Info Type / Section State
   const [customSections, setCustomSections] = useState<string[]>([]);
   const [deletedSections, setDeletedSections] = useState<string[]>([]);
+
+  // Multi-Page Navigation State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [viewAllPages, setViewAllPages] = useState<boolean>(false);
+
+  // Compute canonical pages for active form
+  const formPagesList = useMemo(() => {
+    return getPagesForForm(selectedForm, customSections, deletedSections);
+  }, [selectedForm, customSections, deletedSections]);
+
+  const totalPages = Math.max(1, formPagesList.length);
+
+  // Reset to page 1 whenever switching forms
+  useEffect(() => {
+    setCurrentPage(1);
+    setViewAllPages(false);
+  }, [selectedForm]);
+
+  // Keep formPages header string in sync
+  useEffect(() => {
+    if (viewAllPages) {
+      setFormPages(`All Pages (${totalPages})`);
+    } else {
+      setFormPages(`Page ${currentPage} of ${totalPages}`);
+    }
+  }, [currentPage, totalPages, viewAllPages]);
+
   const [showAddSkillTypeModal, setShowAddSkillTypeModal] = useState<boolean>(false);
   const [newSkillTypeName, setNewSkillTypeName] = useState<string>('');
   const [showAddInfoTypeModal, setShowAddInfoTypeModal] = useState<boolean>(false);
@@ -698,13 +756,17 @@ export default function FormBuilderScreen({
     }
 
     const trimmedLabel = newFieldLabel.trim();
-    const parsedOptions =
-      newFieldType === 'Dropdown' || newFieldType === 'Radio'
-        ? newFieldOptions
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
+    const isOptionsType =
+      newFieldType === 'Dropdown' ||
+      newFieldType === 'Radio' ||
+      newFieldType === 'CheckboxGroup' ||
+      newFieldType === 'checkbox_group';
+    const parsedOptions = isOptionsType
+      ? newFieldOptions
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
 
     const effectiveSection = addingToSection ?? newFieldSection;
     const targetSection =
@@ -786,19 +848,23 @@ export default function FormBuilderScreen({
       return;
     }
     const trimmedLabel = editLabel.trim();
-    const parsedOptions =
-      editType === 'Dropdown' || editType === 'Radio'
-        ? editOptions
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
+    const isOptionsType =
+      editType === 'Dropdown' ||
+      editType === 'Radio' ||
+      editType === 'CheckboxGroup' ||
+      editType === 'checkbox_group';
+    const parsedOptions = isOptionsType
+      ? editOptions
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
 
     const allPresets = getPresetsForForm(selectedForm);
     const selectedPreset = allPresets.find((p) => p.label === editLevel);
     const resolvedOptions = selectedPreset
       ? selectedPreset.options
-      : editType === 'Dropdown' || editType === 'Radio'
+      : isOptionsType
         ? parsedOptions
         : undefined;
 
@@ -1003,7 +1069,60 @@ export default function FormBuilderScreen({
               </View>
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>PAGE:</Text>
-                <Text style={styles.metaValue}>{formPages}</Text>
+                <View style={styles.pageHeaderNavRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.pageNavArrowBtn,
+                      currentPage <= 1 && styles.pageNavArrowBtnDisabled,
+                    ]}
+                    disabled={currentPage <= 1}
+                    onPress={() => {
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                      setViewAllPages(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go to previous page"
+                  >
+                    <Feather
+                      name="chevron-left"
+                      size={13}
+                      color={currentPage <= 1 ? '#94A3B8' : '#2563EB'}
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.pageIndicatorPill}
+                    onPress={() => setViewAllPages((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Toggle between single page and all pages view"
+                  >
+                    <Text style={styles.metaValue}>
+                      {viewAllPages
+                        ? `All Pages (${totalPages})`
+                        : `Page ${currentPage} of ${totalPages}`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.pageNavArrowBtn,
+                      currentPage >= totalPages && styles.pageNavArrowBtnDisabled,
+                    ]}
+                    disabled={currentPage >= totalPages}
+                    onPress={() => {
+                      setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      setViewAllPages(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go to next page"
+                  >
+                    <Feather
+                      name="chevron-right"
+                      size={13}
+                      color={currentPage >= totalPages ? '#94A3B8' : '#2563EB'}
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
@@ -1060,6 +1179,78 @@ export default function FormBuilderScreen({
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Multi-Page Stepper Navigation Bar */}
+          {totalPages > 1 && (
+            <View style={styles.canvasPageStepperBar}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.canvasPageStepperScroll}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.canvasPageStepPill,
+                    viewAllPages && styles.canvasPageStepPillActive,
+                  ]}
+                  onPress={() => setViewAllPages(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View all pages"
+                >
+                  <Feather name="layers" size={13} color={viewAllPages ? '#FFFFFF' : '#475569'} />
+                  <Text
+                    style={[
+                      styles.canvasPageStepPillText,
+                      viewAllPages && styles.canvasPageStepPillTextActive,
+                    ]}
+                  >
+                    All Pages ({totalPages})
+                  </Text>
+                </TouchableOpacity>
+
+                {formPagesList.map((pgName, idx) => {
+                  const pageNum = idx + 1;
+                  const isActive = !viewAllPages && currentPage === pageNum;
+                  return (
+                    <TouchableOpacity
+                      key={pgName + idx}
+                      style={[
+                        styles.canvasPageStepPill,
+                        isActive && styles.canvasPageStepPillActive,
+                      ]}
+                      onPress={() => {
+                        setCurrentPage(pageNum);
+                        setViewAllPages(false);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Go to Page ${pageNum}: ${pgName}`}
+                    >
+                      <View
+                        style={[styles.canvasStepBadge, isActive && styles.canvasStepBadgeActive]}
+                      >
+                        <Text
+                          style={[
+                            styles.canvasStepBadgeText,
+                            isActive && styles.canvasStepBadgeTextActive,
+                          ]}
+                        >
+                          {pageNum}
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.canvasPageStepPillText,
+                          isActive && styles.canvasPageStepPillTextActive,
+                        ]}
+                      >
+                        {pgName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Quick Scoring Scale Presets — ONLY on ABLLS Assessment Form */}
           {selectedForm === 'ABLLS Assessment Form' && (
@@ -1125,499 +1316,778 @@ export default function FormBuilderScreen({
                   grouped[sec].push(f);
                 });
 
-                return allSectionNames
-                  .filter(
-                    (sec) =>
-                      (grouped[sec] && grouped[sec].length > 0) ||
-                      customSections.includes(sec) ||
-                      addingToSection === sec,
-                  )
-                  .map((sec) => {
-                    const nextId = getNextIdForSection(selectedForm, sec, fields);
-                    const sectionItems = grouped[sec] || [];
-                    const isCustomSection = customSections.includes(sec);
+                const activePageName = formPagesList[currentPage - 1];
 
-                    return (
-                      <View key={sec} style={styles.sectionContainer}>
-                        {/* Section Header with + Add button, Edit button, and Delete button */}
-                        <View style={styles.sectionHeader}>
-                          <View
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}
-                          >
-                            <Feather name="folder" size={13} color="#0369A1" />
-                            <Text style={styles.sectionHeaderText}>{sec}</Text>
-                            <Text style={styles.sectionHeaderCount}>
-                              {sectionItems.length} item{sectionItems.length !== 1 ? 's' : ''}
-                            </Text>
+                const displayedSectionNames = viewAllPages
+                  ? allSectionNames.filter(
+                      (sec) =>
+                        (grouped[sec] && grouped[sec].length > 0) ||
+                        customSections.includes(sec) ||
+                        addingToSection === sec,
+                    )
+                  : allSectionNames.filter(
+                      (sec) =>
+                        sec.toLowerCase().trim() === activePageName?.toLowerCase().trim() ||
+                        (activePageName &&
+                          sec.toLowerCase().includes(activePageName.toLowerCase())),
+                    );
+
+                const finalSections =
+                  !viewAllPages && displayedSectionNames.length === 0 && activePageName
+                    ? [activePageName]
+                    : displayedSectionNames;
+
+                return (
+                  <View style={{ gap: spacing.md }}>
+                    {!viewAllPages && activePageName && (
+                      <View style={styles.activePageBanner}>
+                        <View style={styles.activePageBannerLeft}>
+                          <View style={styles.activePageNumBadge}>
+                            <Text style={styles.activePageNumText}>{currentPage}</Text>
                           </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <TouchableOpacity
-                              style={styles.sectionAddBtn}
-                              onPress={() => {
-                                setAddingToSection(sec);
-                                setNewFieldSection(sec);
-                                const isAblls = selectedForm === 'ABLLS Assessment Form';
-                                const isSocial = selectedForm === 'Social Skills Questionnaire';
-                                setNewFieldType(
-                                  selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
-                                    ? 'Text'
-                                    : isAblls || isSocial
-                                      ? 'Radio'
-                                      : 'Text',
-                                );
-                                setNewFieldLabel('');
-                                setNewFieldOptions(
-                                  isAblls
-                                    ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
-                                    : isSocial
-                                      ? '0 — Never, 1 — Sometimes, 2 — Often, 3 — Always'
-                                      : '',
-                                );
-                                setNewFieldPlaceholder(
-                                  isSocial ? `e.g. ${nextId}: Expresses empathy to peers` : '',
-                                );
-                                setNewFieldRequired(true);
-                                setShowAddFieldBox(true);
-                              }}
-                            >
-                              <Feather name="plus" size={11} color="#0284C7" />
-                              <Text style={styles.sectionAddBtnText}>Add</Text>
-                            </TouchableOpacity>
-
-                            {/* Edit option for ALL sections (new custom + old presets) */}
-                            <TouchableOpacity
-                              style={styles.sectionEditBtn}
-                              onPress={() => handleOpenEditSkillType(sec)}
-                              accessibilityLabel={`Edit ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
-                            >
-                              <Feather name="edit-2" size={11} color="#0284C7" />
-                              <Text style={styles.sectionEditBtnText}>Edit</Text>
-                            </TouchableOpacity>
-
-                            {/* Delete option for ALL sections (new custom + old presets) */}
-                            <TouchableOpacity
-                              style={styles.sectionDeleteBtn}
-                              onPress={() => handleDeleteSkillType(sec)}
-                              accessibilityLabel={`Delete ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
-                            >
-                              <Feather name="trash-2" size={13} color="#EF4444" />
-                            </TouchableOpacity>
+                          <View>
+                            <Text style={styles.activePageBannerTitle}>
+                              PAGE {currentPage} OF {totalPages} — {activePageName.toUpperCase()}
+                            </Text>
+                            <Text style={styles.activePageBannerSubtitle}>
+                              Form fields configured on this page are presented to users during this
+                              step
+                            </Text>
                           </View>
                         </View>
+                      </View>
+                    )}
 
-                        {/* Empty state helper if folder has 0 items */}
-                        {sectionItems.length === 0 && addingToSection !== sec && (
-                          <View style={styles.emptySectionBox}>
-                            <Feather name="inbox" size={18} color="#94A3B8" />
-                            <Text style={styles.emptySectionText}>
-                              {selectedForm === 'Enrollment Wizard'
-                                ? 'Empty info type folder (0 items).'
-                                : selectedForm === 'ABLLS Assessment Form'
-                                  ? 'Empty skill type folder (0 items).'
-                                  : 'Empty folder (0 items).'}
-                            </Text>
-                            <TouchableOpacity
-                              style={styles.emptySectionAddBtn}
-                              onPress={() => {
-                                setAddingToSection(sec);
-                                setNewFieldSection(sec);
-                                const isAblls = selectedForm === 'ABLLS Assessment Form';
-                                const isSocial = selectedForm === 'Social Skills Questionnaire';
-                                setNewFieldType(
-                                  selectedForm === 'Behavioral Assessment' && sec === 'ABC Tracking'
-                                    ? 'Text'
-                                    : isAblls || isSocial
-                                      ? 'Radio'
-                                      : 'Text',
-                                );
-                                setNewFieldLabel('');
-                                setNewFieldOptions(
-                                  isAblls
-                                    ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
-                                    : isSocial
-                                      ? '0 — Never, 1 — Sometimes, 2 — Often, 3 — Always'
-                                      : '',
-                                );
-                                setNewFieldPlaceholder(
-                                  isSocial ? `e.g. ${nextId}: Expresses empathy to peers` : '',
-                                );
-                                setNewFieldRequired(true);
-                                setShowAddFieldBox(true);
-                              }}
-                            >
-                              <Feather name="plus" size={12} color="#0284C7" />
-                              <Text style={styles.emptySectionAddBtnText}>
-                                Add First Item to {sec}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                        {sectionItems.map((field) => (
-                          <View
-                            key={field.id}
-                            style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}
-                          >
-                            <View style={styles.typeBadge}>
-                              <Text style={styles.typeBadgeText}>{field.type}</Text>
-                            </View>
+                    {finalSections.length === 0 && (
+                      <View style={styles.emptyStateCard}>
+                        <Feather
+                          name="inbox"
+                          size={36}
+                          color="#94A3B8"
+                          style={{ marginBottom: 12 }}
+                        />
+                        <Text style={styles.emptyStateTitle}>No Sections or Fields Configured</Text>
+                        <Text style={styles.emptyStateSub}>
+                          Nothing has been added to this form yet. Add a section or question to
+                          start configuring your form template.
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.emptySectionAddBtn,
+                            { marginTop: 14, paddingHorizontal: 16, paddingVertical: 8 },
+                          ]}
+                          onPress={() => {
+                            if (selectedForm === 'Enrollment Wizard') {
+                              setNewInfoTypeName('');
+                              setShowAddInfoTypeModal(true);
+                            } else {
+                              setNewSkillTypeName('');
+                              setShowAddSkillTypeModal(true);
+                            }
+                          }}
+                        >
+                          <Feather name="plus" size={14} color="#0284C7" />
+                          <Text style={[styles.emptySectionAddBtnText, { fontSize: 13 }]}>
+                            {selectedForm === 'Enrollment Wizard'
+                              ? 'Add First Info Type'
+                              : selectedForm === 'ABLLS Assessment Form'
+                                ? 'Add First Skill Type'
+                                : 'Add First Section'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
 
-                            <View style={{ flex: 1 }}>
-                              <View
-                                style={{
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  flexWrap: 'wrap',
-                                }}
-                              >
-                                <Text style={styles.fieldLabelText}>
-                                  {field.label}{' '}
-                                  {field.required && <Text style={{ color: '#EF4444' }}>*</Text>}
-                                </Text>
-                                {field.level && (
-                                  <View style={styles.levelPill}>
-                                    <Text style={styles.levelPillText}>{field.level}</Text>
-                                  </View>
-                                )}
-                              </View>
-                              {field.options && field.options.length > 0 && (
-                                <Text style={styles.fieldOptionsText} numberOfLines={1}>
-                                  Options: {field.options.join(', ')}
-                                </Text>
-                              )}
-                            </View>
+                    {finalSections.map((sec) => {
+                      const nextId = getNextIdForSection(selectedForm, sec, fields);
+                      const sectionItems = grouped[sec] || [];
+                      const isCustomSection = customSections.includes(sec);
 
-                            <View style={styles.rowRightControls}>
-                              <TouchableOpacity
-                                onPress={() => moveFieldUp(field.id)}
-                                style={styles.iconBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Move field ${field.label} up`}
-                              >
-                                <Feather name="arrow-up" size={15} color="#475569" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() => moveFieldDown(field.id)}
-                                style={styles.iconBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Move field ${field.label} down`}
-                              >
-                                <Feather name="arrow-down" size={15} color="#475569" />
-                              </TouchableOpacity>
-                              <Text style={styles.controlLabel}>Required</Text>
-                              <Switch
-                                value={field.required}
-                                onValueChange={() => toggleRequired(field.id)}
-                                trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
-                                thumbColor="#FFFFFF"
-                                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                              />
-                              <TouchableOpacity
-                                onPress={() => openEditModal(field)}
-                                style={styles.iconBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Edit field ${field.label}`}
-                              >
-                                <Feather name="edit-2" size={15} color="#0284C7" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() => toggleVisible(field.id)}
-                                style={styles.iconBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Toggle visibility for field ${field.label}`}
-                              >
-                                <Feather
-                                  name={field.visible ? 'eye' : 'eye-off'}
-                                  size={16}
-                                  color={field.visible ? '#0284C7' : '#94A3B8'}
-                                />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() => handleDeleteField(field.id)}
-                                style={styles.iconBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Delete field ${field.label}`}
-                              >
-                                <Feather name="trash-2" size={16} color="#F87171" />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
-
-                        {/* Inline add form pinned to this section */}
-                        {showAddFieldBox && addingToSection === sec && (
-                          <View
-                            style={[
-                              styles.inlineAddContainer,
-                              { borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
-                            ]}
-                          >
+                      return (
+                        <View key={sec} style={styles.sectionContainer}>
+                          {/* Section Header with + Add button, Edit button, and Delete button */}
+                          <View style={styles.sectionHeader}>
                             <View
                               style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 gap: 6,
-                                marginBottom: 8,
+                                flex: 1,
                               }}
                             >
-                              <Feather name="folder" size={12} color="#0284C7" />
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
-                                Adding to: {sec}
+                              <Feather name="folder" size={13} color="#0369A1" />
+                              <Text style={styles.sectionHeaderText}>{sec}</Text>
+                              <Text style={styles.sectionHeaderCount}>
+                                {sectionItems.length} item{sectionItems.length !== 1 ? 's' : ''}
                               </Text>
-                              <View
-                                style={[
-                                  styles.levelPill,
-                                  { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' },
-                                ]}
-                              >
-                                <Text style={[styles.levelPillText, { color: '#1D4ED8' }]}>
-                                  Suggested ID: {nextId}
-                                </Text>
-                              </View>
                             </View>
-                            <View style={{ marginBottom: 10 }}>
-                              <Text style={styles.inlineFieldLabel}>Field Type</Text>
-                              <View style={styles.typeSelectorRow}>
-                                {FIELD_TYPES.map((type) => {
-                                  const isSelected = newFieldType === type;
-                                  return (
-                                    <TouchableOpacity
-                                      key={type}
-                                      style={[
-                                        styles.typeSelectPill,
-                                        isSelected && styles.typeSelectPillActive,
-                                      ]}
-                                      onPress={() => setNewFieldType(type)}
-                                    >
-                                      <Text
-                                        style={[
-                                          styles.typeSelectPillText,
-                                          isSelected && styles.typeSelectPillTextActive,
-                                        ]}
-                                      >
-                                        {type}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                            </View>
-
-                            <View style={styles.inlineAddRow}>
-                              <View style={[styles.inlineFieldCol, { flex: 2 }]}>
-                                <Text style={styles.inlineFieldLabel}>Label</Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder={`e.g. ${nextId}: description`}
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldLabel}
-                                  onChangeText={(val: string) => setNewFieldLabel(val)}
-                                />
-                              </View>
-                              <View style={styles.inlineToggleCol}>
-                                <Text style={styles.inlineFieldLabel}>Required</Text>
-                                <Switch
-                                  value={newFieldRequired}
-                                  onValueChange={(val: boolean) => setNewFieldRequired(val)}
-                                  trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
-                                  thumbColor="#FFFFFF"
-                                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                                />
-                              </View>
-                            </View>
-
-                            {/* Dropdown Input Specification */}
-                            {newFieldType === 'Dropdown' && (
-                              <View style={styles.inlineOptionsRow}>
-                                <View
-                                  style={{
-                                    flexDirection: 'row',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    What are the dropdown options going to be?
-                                  </Text>
-                                  <View style={styles.presetChipsRow}>
-                                    {getPresetsForForm(selectedForm).map((p) => (
-                                      <TouchableOpacity
-                                        key={p.short}
-                                        style={styles.presetChip}
-                                        onPress={() => setNewFieldOptions(p.options.join(', '))}
-                                      >
-                                        <Text style={styles.presetChipText}>{p.short}</Text>
-                                      </TouchableOpacity>
-                                    ))}
-                                  </View>
-                                </View>
-                                <Text style={styles.inlineFieldPromptHint}>
-                                  Enter choices separated by comma (e.g. Option 1, Option 2, Option
-                                  3)
-                                </Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder="e.g. Low, Medium, High or Option 1, Option 2, Option 3"
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldOptions}
-                                  onChangeText={(val: string) => setNewFieldOptions(val)}
-                                />
-                              </View>
-                            )}
-
-                            {/* Radio Input Specification */}
-                            {newFieldType === 'Radio' && (
-                              <View style={styles.inlineOptionsRow}>
-                                <View
-                                  style={{
-                                    flexDirection: 'row',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    What are the radio choices going to be?
-                                  </Text>
-                                  <View style={styles.presetChipsRow}>
-                                    {getPresetsForForm(selectedForm).map((p) => (
-                                      <TouchableOpacity
-                                        key={p.short}
-                                        style={styles.presetChip}
-                                        onPress={() => setNewFieldOptions(p.options.join(', '))}
-                                      >
-                                        <Text style={styles.presetChipText}>{p.short}</Text>
-                                      </TouchableOpacity>
-                                    ))}
-                                  </View>
-                                </View>
-                                <Text style={styles.inlineFieldPromptHint}>
-                                  Enter choices separated by comma (e.g. Yes, No, N/A)
-                                </Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldOptions}
-                                  onChangeText={(val: string) => setNewFieldOptions(val)}
-                                />
-                              </View>
-                            )}
-
-                            {/* Number Input Specification */}
-                            {newFieldType === 'Number' && (
-                              <View style={styles.inlineOptionsRow}>
-                                <Text style={styles.inlineFieldPromptTitle}>
-                                  What is the number input going to be?
-                                </Text>
-                                <Text style={styles.inlineFieldPromptHint}>
-                                  Specify expected format, range, or units (e.g. Score 0-100, Age in
-                                  years, Count of trials, Duration in min)
-                                </Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in min"
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldPlaceholder}
-                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                />
-                              </View>
-                            )}
-
-                            {/* Date Input Specification */}
-                            {newFieldType === 'Date' && (
-                              <View style={styles.inlineOptionsRow}>
-                                <Text style={styles.inlineFieldPromptTitle}>
-                                  What is the date input going to be?
-                                </Text>
-                                <Text style={styles.inlineFieldPromptHint}>
-                                  Specify date format or purpose (e.g. Assessment Date, Target
-                                  Completion Date, YYYY-MM-DD)
-                                </Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldPlaceholder}
-                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                />
-                              </View>
-                            )}
-
-                            {/* File Input Specification */}
-                            {newFieldType === 'File' && (
-                              <View style={styles.inlineOptionsRow}>
-                                <Text style={styles.inlineFieldPromptTitle}>
-                                  What is the file input going to be?
-                                </Text>
-                                <Text style={styles.inlineFieldPromptHint}>
-                                  Specify expected document or attachment (e.g. PDF Medical Report,
-                                  Consent Form, Evaluation Image)
-                                </Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldPlaceholder}
-                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                />
-                              </View>
-                            )}
-
-                            {/* Text Input Specification */}
-                            {newFieldType === 'Text' && (
-                              <View style={styles.inlineOptionsRow}>
-                                <Text style={styles.inlineFieldPromptTitle}>
-                                  Input placeholder / hint (optional)
-                                </Text>
-                                <Text style={styles.inlineFieldPromptHint}>
-                                  Guidance shown inside the text input
-                                </Text>
-                                <TextInput
-                                  style={styles.inlineTextInput}
-                                  placeholder="e.g. Enter notes, observations, or student details..."
-                                  placeholderTextColor="#94A3B8"
-                                  value={newFieldPlaceholder}
-                                  onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                />
-                              </View>
-                            )}
-                            <View style={styles.inlineButtonRow}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                               <TouchableOpacity
-                                style={styles.confirmAddBtn}
-                                onPress={handleConfirmAddField}
-                              >
-                                <Text style={styles.confirmAddBtnText}>Add Field</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.cancelAddBtn}
+                                style={styles.sectionAddBtn}
                                 onPress={() => {
-                                  setShowAddFieldBox(false);
-                                  setAddingToSection(null);
+                                  setAddingToSection(sec);
+                                  setNewFieldSection(sec);
+                                  const isAblls = selectedForm === 'ABLLS Assessment Form';
+                                  const isSocial = selectedForm === 'Social Skills Questionnaire';
+                                  setNewFieldType(
+                                    selectedForm === 'Behavioral Assessment' &&
+                                      sec === 'ABC Tracking'
+                                      ? 'Text'
+                                      : isAblls || isSocial
+                                        ? 'Radio'
+                                        : 'Text',
+                                  );
+                                  setNewFieldLabel('');
+                                  setNewFieldOptions(
+                                    isAblls
+                                      ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
+                                      : isSocial
+                                        ? '0 — Never, 1 — Sometimes, 2 — Often, 3 — Always'
+                                        : '',
+                                  );
+                                  setNewFieldPlaceholder(
+                                    isSocial ? `e.g. ${nextId}: Expresses empathy to peers` : '',
+                                  );
+                                  setNewFieldRequired(true);
+                                  setShowAddFieldBox(true);
                                 }}
                               >
-                                <Text style={styles.cancelAddBtnText}>Cancel</Text>
+                                <Feather name="plus" size={11} color="#0284C7" />
+                                <Text style={styles.sectionAddBtnText}>Add</Text>
+                              </TouchableOpacity>
+
+                              {/* Edit option for ALL sections (new custom + old presets) */}
+                              <TouchableOpacity
+                                style={styles.sectionEditBtn}
+                                onPress={() => handleOpenEditSkillType(sec)}
+                                accessibilityLabel={`Edit ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
+                              >
+                                <Feather name="edit-2" size={11} color="#0284C7" />
+                                <Text style={styles.sectionEditBtnText}>Edit</Text>
+                              </TouchableOpacity>
+
+                              {/* Delete option for ALL sections (new custom + old presets) */}
+                              <TouchableOpacity
+                                style={styles.sectionDeleteBtn}
+                                onPress={() => handleDeleteSkillType(sec)}
+                                accessibilityLabel={`Delete ${selectedForm === 'Enrollment Wizard' ? 'info type' : selectedForm === 'ABLLS Assessment Form' ? 'skill type' : 'section'} ${sec}`}
+                              >
+                                <Feather name="trash-2" size={13} color="#EF4444" />
                               </TouchableOpacity>
                             </View>
                           </View>
-                        )}
+
+                          {/* Empty state helper if folder has 0 items */}
+                          {sectionItems.length === 0 && addingToSection !== sec && (
+                            <View style={styles.emptySectionBox}>
+                              <Feather name="inbox" size={18} color="#94A3B8" />
+                              <Text style={styles.emptySectionText}>
+                                {selectedForm === 'Enrollment Wizard'
+                                  ? 'Empty info type folder (0 items).'
+                                  : selectedForm === 'ABLLS Assessment Form'
+                                    ? 'Empty skill type folder (0 items).'
+                                    : 'Empty folder (0 items).'}
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.emptySectionAddBtn}
+                                onPress={() => {
+                                  setAddingToSection(sec);
+                                  setNewFieldSection(sec);
+                                  const isAblls = selectedForm === 'ABLLS Assessment Form';
+                                  const isSocial = selectedForm === 'Social Skills Questionnaire';
+                                  setNewFieldType(
+                                    selectedForm === 'Behavioral Assessment' &&
+                                      sec === 'ABC Tracking'
+                                      ? 'Text'
+                                      : isAblls || isSocial
+                                        ? 'Radio'
+                                        : 'Text',
+                                  );
+                                  setNewFieldLabel('');
+                                  setNewFieldOptions(
+                                    isAblls
+                                      ? '0 — Not Demonstrated, 1 — Emerging, 2 — Mastered, N/A'
+                                      : isSocial
+                                        ? '0 — Never, 1 — Sometimes, 2 — Often, 3 — Always'
+                                        : '',
+                                  );
+                                  setNewFieldPlaceholder(
+                                    isSocial ? `e.g. ${nextId}: Expresses empathy to peers` : '',
+                                  );
+                                  setNewFieldRequired(true);
+                                  setShowAddFieldBox(true);
+                                }}
+                              >
+                                <Feather name="plus" size={12} color="#0284C7" />
+                                <Text style={styles.emptySectionAddBtnText}>
+                                  Add First Item to {sec}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                          {sectionItems.map((field) => {
+                            const badge = getTypeBadgeStyle(field.type);
+                            return (
+                              <View
+                                key={field.id}
+                                style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}
+                              >
+                                <View
+                                  style={[
+                                    styles.typeBadge,
+                                    { backgroundColor: badge.bg, borderColor: badge.border },
+                                  ]}
+                                >
+                                  <Text style={[styles.typeBadgeText, { color: badge.text }]}>
+                                    {badge.label}
+                                  </Text>
+                                </View>
+
+                                <View style={{ flex: 1 }}>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                      flexWrap: 'wrap',
+                                    }}
+                                  >
+                                    <Text style={styles.fieldLabelText}>
+                                      {field.label}{' '}
+                                      {field.required && (
+                                        <Text style={{ color: '#EF4444' }}>*</Text>
+                                      )}
+                                    </Text>
+                                    {field.level && (
+                                      <View style={styles.levelPill}>
+                                        <Text style={styles.levelPillText}>{field.level}</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  {field.options && field.options.length > 0 && (
+                                    <Text style={styles.fieldOptionsText} numberOfLines={1}>
+                                      Options: {field.options.join(', ')}
+                                    </Text>
+                                  )}
+                                </View>
+
+                                <View style={styles.rowRightControls}>
+                                  <TouchableOpacity
+                                    onPress={() => moveFieldUp(field.id)}
+                                    style={styles.iconBtn}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Move field ${field.label} up`}
+                                  >
+                                    <Feather name="arrow-up" size={15} color="#475569" />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => moveFieldDown(field.id)}
+                                    style={styles.iconBtn}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Move field ${field.label} down`}
+                                  >
+                                    <Feather name="arrow-down" size={15} color="#475569" />
+                                  </TouchableOpacity>
+                                  <Text style={styles.controlLabel}>Required</Text>
+                                  <Switch
+                                    value={field.required}
+                                    onValueChange={() => toggleRequired(field.id)}
+                                    trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                                    thumbColor="#FFFFFF"
+                                    style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                                  />
+                                  <TouchableOpacity
+                                    onPress={() => openEditModal(field)}
+                                    style={styles.iconBtn}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Edit field ${field.label}`}
+                                  >
+                                    <Feather name="edit-2" size={15} color="#0284C7" />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => toggleVisible(field.id)}
+                                    style={styles.iconBtn}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Toggle visibility for field ${field.label}`}
+                                  >
+                                    <Feather
+                                      name={field.visible ? 'eye' : 'eye-off'}
+                                      size={16}
+                                      color={field.visible ? '#0284C7' : '#94A3B8'}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => handleDeleteField(field.id)}
+                                    style={styles.iconBtn}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Delete field ${field.label}`}
+                                  >
+                                    <Feather name="trash-2" size={16} color="#F87171" />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            );
+                          })}
+
+                          {/* Inline add form pinned to this section */}
+                          {showAddFieldBox && addingToSection === sec && (
+                            <View
+                              style={[
+                                styles.inlineAddContainer,
+                                { borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
+                              ]}
+                            >
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                <Feather name="folder" size={12} color="#0284C7" />
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                                  Adding to: {sec}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.levelPill,
+                                    { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' },
+                                  ]}
+                                >
+                                  <Text style={[styles.levelPillText, { color: '#1D4ED8' }]}>
+                                    Suggested ID: {nextId}
+                                  </Text>
+                                </View>
+                              </View>
+                              <View style={{ marginBottom: 10 }}>
+                                <Text style={styles.inlineFieldLabel}>Field Type</Text>
+                                <View style={styles.typeSelectorRow}>
+                                  {FIELD_TYPES.map((type) => {
+                                    const isSelected = newFieldType === type;
+                                    return (
+                                      <TouchableOpacity
+                                        key={type}
+                                        style={[
+                                          styles.typeSelectPill,
+                                          isSelected && styles.typeSelectPillActive,
+                                        ]}
+                                        onPress={() => setNewFieldType(type)}
+                                      >
+                                        <Text
+                                          style={[
+                                            styles.typeSelectPillText,
+                                            isSelected && styles.typeSelectPillTextActive,
+                                          ]}
+                                        >
+                                          {type}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              </View>
+
+                              <View style={styles.inlineAddRow}>
+                                <View style={[styles.inlineFieldCol, { flex: 2 }]}>
+                                  <Text style={styles.inlineFieldLabel}>Label</Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder={`e.g. ${nextId}: description`}
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldLabel}
+                                    onChangeText={(val: string) => setNewFieldLabel(val)}
+                                  />
+                                </View>
+                                <View style={styles.inlineToggleCol}>
+                                  <Text style={styles.inlineFieldLabel}>Required</Text>
+                                  <Switch
+                                    value={newFieldRequired}
+                                    onValueChange={(val: boolean) => setNewFieldRequired(val)}
+                                    trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+                                    thumbColor="#FFFFFF"
+                                    style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                                  />
+                                </View>
+                              </View>
+
+                              {/* Dropdown Input Specification */}
+                              {newFieldType === 'Dropdown' && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      marginBottom: 4,
+                                    }}
+                                  >
+                                    <Text style={styles.inlineFieldPromptTitle}>
+                                      What are the dropdown options going to be?
+                                    </Text>
+                                    <View style={styles.presetChipsRow}>
+                                      {getPresetsForForm(selectedForm).map((p) => (
+                                        <TouchableOpacity
+                                          key={p.short}
+                                          style={styles.presetChip}
+                                          onPress={() => setNewFieldOptions(p.options.join(', '))}
+                                        >
+                                          <Text style={styles.presetChipText}>{p.short}</Text>
+                                        </TouchableOpacity>
+                                      ))}
+                                    </View>
+                                  </View>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Enter choices separated by comma (e.g. Option 1, Option 2,
+                                    Option 3)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Low, Medium, High or Option 1, Option 2, Option 3"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldOptions}
+                                    onChangeText={(val: string) => setNewFieldOptions(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* Radio Input Specification */}
+                              {newFieldType === 'Radio' && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      marginBottom: 4,
+                                    }}
+                                  >
+                                    <Text style={styles.inlineFieldPromptTitle}>
+                                      What are the radio choices going to be?
+                                    </Text>
+                                    <View style={styles.presetChipsRow}>
+                                      {getPresetsForForm(selectedForm).map((p) => (
+                                        <TouchableOpacity
+                                          key={p.short}
+                                          style={styles.presetChip}
+                                          onPress={() => setNewFieldOptions(p.options.join(', '))}
+                                        >
+                                          <Text style={styles.presetChipText}>{p.short}</Text>
+                                        </TouchableOpacity>
+                                      ))}
+                                    </View>
+                                  </View>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Enter choices separated by comma (e.g. Yes, No, N/A)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldOptions}
+                                    onChangeText={(val: string) => setNewFieldOptions(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* Number Input Specification */}
+                              {newFieldType === 'Number' && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    What is the number input going to be?
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Specify expected format, range, or units (e.g. Score 0-100, Age
+                                    in years, Count of trials, Duration in min)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in min"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* Date Input Specification */}
+                              {newFieldType === 'Date' && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    What is the date input going to be?
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Specify date format or purpose (e.g. Assessment Date, Target
+                                    Completion Date, YYYY-MM-DD)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* File Input Specification */}
+                              {newFieldType === 'File' && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    What is the file input going to be?
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Specify expected document or attachment (e.g. PDF Medical
+                                    Report, Consent Form, Evaluation Image)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* Text Input Specification */}
+                              {newFieldType === 'Text' && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    Input placeholder / hint (optional)
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Guidance shown inside the text input
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Enter notes, observations, or student details..."
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* TextArea Input Specification */}
+                              {(newFieldType === 'TextArea' || newFieldType === 'textarea') && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    Multiline Text Area Guidance
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Placeholder shown for expansive comments or observations
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Enter comprehensive clinical notes, observations..."
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* CheckboxGroup Input Specification */}
+                              {(newFieldType === 'CheckboxGroup' ||
+                                newFieldType === 'checkbox_group') && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    What are the checkbox options going to be?
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Enter choices separated by comma (e.g. Option 1, Option 2,
+                                    Option 3)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Tactile, Visual, Auditory, Movement"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldOptions}
+                                    onChangeText={(val: string) => setNewFieldOptions(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* Phone Input Specification */}
+                              {(newFieldType === 'Phone' || newFieldType === 'phone') && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    Phone Number Format Placeholder
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Guidance shown inside the phone input
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. (555) 000-0000 or +1 555-0199"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* ImagePicker Input Specification */}
+                              {(newFieldType === 'ImagePicker' ||
+                                newFieldType === 'image_picker') && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    Image / Photo Capture Specification
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Specify image requirements (e.g. Child Headshot, Clinical
+                                    Baseline Photo)
+                                  </Text>
+                                  <TextInput
+                                    style={styles.inlineTextInput}
+                                    placeholder="e.g. Child Identification Headshot Photo"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newFieldPlaceholder}
+                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                                  />
+                                </View>
+                              )}
+
+                              {/* Switch Input Specification */}
+                              {(newFieldType === 'Switch' || newFieldType === 'switch') && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    Boolean Switch Toggle (Yes/No)
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Renders an interactive mobile toggle switch
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* SectionHeader / Divider Specification */}
+                              {(newFieldType === 'SectionHeader' ||
+                                newFieldType === 'Divider' ||
+                                newFieldType === 'section_header' ||
+                                newFieldType === 'divider') && (
+                                <View style={styles.inlineOptionsRow}>
+                                  <Text style={styles.inlineFieldPromptTitle}>
+                                    Visual Layout Separator
+                                  </Text>
+                                  <Text style={styles.inlineFieldPromptHint}>
+                                    Renders a non-input heading or divider rule to organize criteria
+                                  </Text>
+                                </View>
+                              )}
+                              <View style={styles.inlineButtonRow}>
+                                <TouchableOpacity
+                                  style={styles.confirmAddBtn}
+                                  onPress={handleConfirmAddField}
+                                >
+                                  <Text style={styles.confirmAddBtnText}>Add Field</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.cancelAddBtn}
+                                  onPress={() => {
+                                    setShowAddFieldBox(false);
+                                    setAddingToSection(null);
+                                  }}
+                                >
+                                  <Text style={styles.cancelAddBtnText}>Cancel</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+
+                    {!viewAllPages && totalPages > 1 && (
+                      <View style={styles.canvasPageNavRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.canvasPageNavBtn,
+                            currentPage <= 1 && styles.canvasPageNavBtnDisabled,
+                          ]}
+                          disabled={currentPage <= 1}
+                          onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Go to previous page"
+                        >
+                          <Feather
+                            name="arrow-left"
+                            size={14}
+                            color={currentPage <= 1 ? '#94A3B8' : '#1E293B'}
+                          />
+                          <Text
+                            style={[
+                              styles.canvasPageNavBtnText,
+                              currentPage <= 1 && styles.canvasPageNavBtnTextDisabled,
+                            ]}
+                          >
+                            {currentPage > 1
+                              ? `Previous: ${formPagesList[currentPage - 2]}`
+                              : 'First Page'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.canvasPageNavCenterIndicator}>
+                          <Text style={styles.canvasPageNavIndicatorText}>
+                            Page {currentPage} of {totalPages}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.canvasPageNavBtn,
+                            currentPage >= totalPages && styles.canvasPageNavBtnDisabled,
+                          ]}
+                          disabled={currentPage >= totalPages}
+                          onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Go to next page"
+                        >
+                          <Text
+                            style={[
+                              styles.canvasPageNavBtnText,
+                              currentPage >= totalPages && styles.canvasPageNavBtnTextDisabled,
+                            ]}
+                          >
+                            {currentPage < totalPages
+                              ? `Next: ${formPagesList[currentPage]}`
+                              : 'Last Page'}
+                          </Text>
+                          <Feather
+                            name="arrow-right"
+                            size={14}
+                            color={currentPage >= totalPages ? '#94A3B8' : '#1E293B'}
+                          />
+                        </TouchableOpacity>
                       </View>
-                    );
-                  });
+                    )}
+                  </View>
+                );
               })()
             : fields.map((field) => (
                 <View
                   key={field.id}
                   style={[styles.fieldRow, !field.visible && styles.fieldRowHidden]}
                 >
-                  <View style={styles.typeBadge}>
-                    <Text style={styles.typeBadgeText}>{field.type}</Text>
+                  <View
+                    style={[
+                      styles.typeBadge,
+                      {
+                        backgroundColor: getTypeBadgeStyle(field.type).bg,
+                        borderColor: getTypeBadgeStyle(field.type).border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.typeBadgeText, { color: getTypeBadgeStyle(field.type).text }]}
+                    >
+                      {getTypeBadgeStyle(field.type).label}
+                    </Text>
                   </View>
 
                   <View style={{ flex: 1 }}>
@@ -2005,6 +2475,101 @@ export default function FormBuilderScreen({
                 </View>
               )}
 
+              {/* TextArea Input Specification */}
+              {(newFieldType === 'TextArea' || newFieldType === 'textarea') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>Multiline Text Area Guidance</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Placeholder shown for expansive comments or observations
+                  </Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Enter comprehensive clinical notes, observations..."
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                  />
+                </View>
+              )}
+
+              {/* CheckboxGroup Input Specification */}
+              {(newFieldType === 'CheckboxGroup' || newFieldType === 'checkbox_group') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    What are the checkbox options going to be?
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)
+                  </Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Tactile, Visual, Auditory, Movement"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldOptions}
+                    onChangeText={(val: string) => setNewFieldOptions(val)}
+                  />
+                </View>
+              )}
+
+              {/* Phone Input Specification */}
+              {(newFieldType === 'Phone' || newFieldType === 'phone') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>Phone Number Format Placeholder</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Guidance shown inside the phone input
+                  </Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. (555) 000-0000 or +1 555-0199"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                  />
+                </View>
+              )}
+
+              {/* ImagePicker Input Specification */}
+              {(newFieldType === 'ImagePicker' || newFieldType === 'image_picker') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>
+                    Image / Photo Capture Specification
+                  </Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Specify image requirements (e.g. Child Headshot, Clinical Baseline Photo)
+                  </Text>
+                  <TextInput
+                    style={styles.inlineTextInput}
+                    placeholder="e.g. Child Identification Headshot Photo"
+                    placeholderTextColor="#94A3B8"
+                    value={newFieldPlaceholder}
+                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
+                  />
+                </View>
+              )}
+
+              {/* Switch Input Specification */}
+              {(newFieldType === 'Switch' || newFieldType === 'switch') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>Boolean Switch Toggle (Yes/No)</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Renders an interactive mobile toggle switch
+                  </Text>
+                </View>
+              )}
+
+              {/* SectionHeader / Divider Specification */}
+              {(newFieldType === 'SectionHeader' ||
+                newFieldType === 'Divider' ||
+                newFieldType === 'section_header' ||
+                newFieldType === 'divider') && (
+                <View style={styles.inlineOptionsRow}>
+                  <Text style={styles.inlineFieldPromptTitle}>Visual Layout Separator</Text>
+                  <Text style={styles.inlineFieldPromptHint}>
+                    Renders a non-input heading or divider rule to organize criteria
+                  </Text>
+                </View>
+              )}
+
               <View style={styles.inlineButtonRow}>
                 <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
                   <Text style={styles.confirmAddBtnText}>Add Field</Text>
@@ -2145,47 +2710,17 @@ export default function FormBuilderScreen({
         </Pressable>
       </Modal>
 
-      {/* Form Preview Modal — Live Interactive Dynamic Form */}
-      <Modal
+      {/* Form Preview Modal — Live Authentic Interactive Experience */}
+      <PreviewFormModal
         visible={showPreviewModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPreviewModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Live Form Preview — {selectedForm}</Text>
-                <Text style={styles.modalSubtitle}>
-                  Interactive preview of active fields & toggles
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowPreviewModal(false)}>
-                <Feather name="x" size={18} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <DynamicFormFields
-                formName={selectedForm}
-                initialFields={fields}
-                values={previewFormValues}
-                onChange={(key, val) => setPreviewFormValues((prev) => ({ ...prev, [key]: val }))}
-              />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.closeModalBtn}
-                onPress={() => setShowPreviewModal(false)}
-              >
-                <Text style={styles.closeModalBtnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        selectedForm={selectedForm}
+        fields={fields}
+        values={previewFormValues}
+        customSections={customSections}
+        deletedSections={deletedSections}
+        onChangeValue={(key, val) => setPreviewFormValues((prev) => ({ ...prev, [key]: val }))}
+        onClose={() => setShowPreviewModal(false)}
+      />
 
       {/* Edit Form Metadata Modal */}
       <EditMetadataModal
@@ -2995,6 +3530,167 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#1E293B',
+  },
+  pageHeaderNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pageNavArrowBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pageNavArrowBtnDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  pageIndicatorPill: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  canvasPageStepperBar: {
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingVertical: 8,
+    marginHorizontal: -spacing.lg,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  canvasPageStepperScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  canvasPageStepPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  canvasPageStepPillActive: {
+    backgroundColor: '#0284C7',
+    borderColor: '#0284C7',
+  },
+  canvasStepBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  canvasStepBadgeActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  canvasStepBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  canvasStepBadgeTextActive: {
+    color: '#0284C7',
+  },
+  canvasPageStepPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  canvasPageStepPillTextActive: {
+    color: '#FFFFFF',
+  },
+  activePageBanner: {
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.md,
+    padding: 12,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  activePageBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  activePageNumBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0284C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activePageNumText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  activePageBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  activePageBannerSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  canvasPageNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  canvasPageNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  canvasPageNavBtnDisabled: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  canvasPageNavBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  canvasPageNavBtnTextDisabled: {
+    color: '#94A3B8',
+  },
+  canvasPageNavCenterIndicator: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
+    backgroundColor: '#F1F5F9',
+  },
+  canvasPageNavIndicatorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
   },
   formHeaderDivider: {
     height: 1,

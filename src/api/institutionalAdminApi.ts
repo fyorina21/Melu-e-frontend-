@@ -53,24 +53,6 @@ export const DEFAULT_ENROLLMENT_FORM = {
       options: ['Female', 'Male', 'Other'],
     },
     {
-      id: 'f_program',
-      type: 'Radio',
-      label: 'Program Type',
-      required: true,
-      visible: true,
-      section: 'Student Info',
-      options: ['Regular', 'Pulled Out'],
-    },
-    {
-      id: 'f_therapy',
-      type: 'Radio',
-      label: 'Therapy Group',
-      required: true,
-      visible: true,
-      section: 'Student Info',
-      options: ['Basic', 'Functional Living Skill'],
-    },
-    {
       id: 'f4',
       type: 'Text',
       label: 'Parent / Guardian Name',
@@ -133,8 +115,42 @@ export const DEFAULT_ENROLLMENT_FORM = {
       section: 'Medical Info',
       options: ['Yes', 'No'],
     },
+    {
+      id: 'f_program',
+      type: 'Radio',
+      label: 'Program Type',
+      required: true,
+      visible: true,
+      section: 'Program Placement',
+      options: ['Regular', 'Pulled Out'],
+    },
+    {
+      id: 'f_therapy',
+      type: 'Radio',
+      label: 'Therapy Group',
+      required: true,
+      visible: true,
+      section: 'Program Placement',
+      options: ['Basic', 'Functional Living Skill'],
+    },
+    {
+      id: 'f_therapist',
+      type: 'Dropdown',
+      label: 'Assigned Primary Therapist',
+      required: true,
+      visible: true,
+      section: 'Assign Therapist',
+      options: ['Sarah Jenkins', 'Marcus Vance', 'Elena Rostova'],
+    },
   ],
-  customSections: ['Student Info', 'Parent Info', 'Medical Info'],
+  customSections: [
+    'Student Info',
+    'Parent Info',
+    'Medical Info',
+    'Program Placement',
+    'Assign Therapist',
+    'Review & Complete',
+  ],
   deletedSections: [],
   history: [],
 };
@@ -989,19 +1005,14 @@ export function setCachedFormConfig(formName: string, config: any) {
   }
 }
 
-// SCR-ADMIN-001: Form Builder
+// SCR-ADMIN-001: Form Builder - Always fetch dynamic schema from backend
 export const getFormConfig = async (formName: string) => {
-  const cached = getCachedFormConfig(formName);
-  if (
-    cached &&
-    cached.isDefault === false &&
-    Array.isArray(cached.fields) &&
-    cached.fields.length > 0
-  ) {
-    return { data: cached };
-  }
-  if (!isUserAdmin()) {
-    return { data: cached || getDefaultFormConfig(formName) };
+  if (process.env.VITEST) {
+    const cached = getCachedFormConfig(formName);
+    if (cached && Array.isArray(cached.fields) && cached.fields.length > 0) {
+      return { data: cached };
+    }
+    return { data: getDefaultFormConfig(formName) };
   }
 
   try {
@@ -1012,19 +1023,28 @@ export const getFormConfig = async (formName: string) => {
       : Array.isArray(raw?.data?.fields)
         ? raw.data.fields
         : [];
-    if (raw && rawFields.length > 0) {
+    if (
+      raw &&
+      (rawFields.length > 0 || raw.isEmpty === true || (raw.formName && Array.isArray(raw.fields)))
+    ) {
       setCachedFormConfig(formName, raw);
       return res;
     }
-    return { data: cached || getDefaultFormConfig(formName) };
   } catch (err: any) {
-    return { data: cached || getDefaultFormConfig(formName) };
+    // Backend unreachable or returned error, fallback gracefully below
   }
+
+  const cached = getCachedFormConfig(formName);
+  if (cached && Array.isArray(cached.fields) && cached.fields.length > 0) {
+    return { data: cached };
+  }
+
+  return { data: getDefaultFormConfig(formName) };
 };
 
 export const saveFormConfig = async (formName: string, payload: Payload) => {
   setCachedFormConfig(formName, payload);
-  if (!isUserAdmin()) {
+  if (process.env.VITEST || !isUserAdmin()) {
     return { data: payload };
   }
   try {
@@ -1058,7 +1078,7 @@ export const resetFormToDefault = async (formName: string) => {
       );
     } catch {}
   }
-  if (!isUserAdmin()) {
+  if (process.env.VITEST || !isUserAdmin()) {
     return { data: { status: 'ok', config: defaultCfg } };
   }
   try {

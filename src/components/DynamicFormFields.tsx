@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Switch,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -16,7 +18,28 @@ import { getFormConfig } from '../api/institutionalAdminApi';
 export interface DynamicFormField {
   id: string;
   type:
-    'Text' | 'Number' | 'Date' | 'Dropdown' | 'Checkbox' | 'Radio' | 'TextArea' | 'File' | string;
+    | 'Text'
+    | 'Number'
+    | 'Date'
+    | 'Dropdown'
+    | 'Checkbox'
+    | 'Radio'
+    | 'TextArea'
+    | 'File'
+    | 'textarea'
+    | 'checkbox_group'
+    | 'CheckboxGroup'
+    | 'switch'
+    | 'Switch'
+    | 'phone'
+    | 'Phone'
+    | 'image_picker'
+    | 'ImagePicker'
+    | 'section_header'
+    | 'SectionHeader'
+    | 'divider'
+    | 'Divider'
+    | string;
   label: string;
   required: boolean;
   visible: boolean;
@@ -24,6 +47,11 @@ export interface DynamicFormField {
   section?: string;
   placeholder?: string;
   helpText?: string;
+  help_text?: string;
+  default_value?: any;
+  ui_props?: any;
+  validation?: any;
+  is_display_only?: boolean;
 }
 
 interface DynamicFormFieldsProps {
@@ -212,6 +240,27 @@ export default function DynamicFormFields({
     }
   };
 
+  const handlePickImage = async (fieldId: string, fieldLabel: string) => {
+    try {
+      const ImagePicker = require('expo-image-picker');
+      if (!ImagePicker) return;
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) return;
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        const uri = res.assets[0].uri;
+        onChange(fieldId, uri);
+        onChange(fieldLabel, uri);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <View style={styles.container}>
       {showSectionHeader && (
@@ -233,7 +282,26 @@ export default function DynamicFormFields({
                   .filter(Boolean)
               : ['Option 1', 'Option 2', 'Option 3'];
 
-        if (field.type === 'TextArea') {
+        const normType = (field.type || '').toLowerCase().replace(/[- ]/g, '_');
+
+        if (normType === 'section_header' || normType === 'divider') {
+          return (
+            <View key={field.id} style={styles.sectionHeaderContainer}>
+              <View style={styles.dividerLine} />
+              <View style={styles.sectionTitleRow}>
+                <Feather name="folder" size={15} color="#0284C7" />
+                <Text style={styles.sectionTitleText}>{field.label}</Text>
+              </View>
+              {Boolean(field.placeholder || field.helpText || field.help_text) && (
+                <Text style={styles.sectionDescText}>
+                  {field.placeholder || field.helpText || field.help_text}
+                </Text>
+              )}
+            </View>
+          );
+        }
+
+        if (normType === 'textarea') {
           return (
             <View key={field.id} style={styles.field}>
               <Text style={typography.label}>
@@ -241,7 +309,7 @@ export default function DynamicFormFields({
               </Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                value={String(val)}
+                value={String(val !== undefined && val !== null ? val : '')}
                 placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
                 placeholderTextColor={colors.mutedText}
                 accessibilityLabel={field.label}
@@ -251,8 +319,150 @@ export default function DynamicFormFields({
                   onChange(field.label, text);
                 }}
                 multiline
-                numberOfLines={3}
+                numberOfLines={4}
+                textAlignVertical="top"
               />
+            </View>
+          );
+        }
+
+        if (normType === 'checkbox_group') {
+          const selectedVals: string[] = Array.isArray(val) ? val : [];
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <View style={styles.checkboxGroupContainer}>
+                {fieldOptions.map((opt) => {
+                  const isChecked = selectedVals.includes(opt);
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[
+                        styles.checkboxGroupItem,
+                        isChecked && styles.checkboxGroupItemSelected,
+                      ]}
+                      activeOpacity={0.8}
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={opt}
+                      accessibilityState={{ checked: isChecked }}
+                      onPress={() => {
+                        const next = isChecked
+                          ? selectedVals.filter((v) => v !== opt)
+                          : [...selectedVals, opt];
+                        onChange(field.id, next);
+                        onChange(field.label, next);
+                      }}
+                    >
+                      <View style={[styles.checkboxBox, isChecked && styles.checkboxChecked]}>
+                        {isChecked && <Feather name="check" size={12} color={colors.navyText} />}
+                      </View>
+                      <Text
+                        style={[
+                          styles.checkboxLabel,
+                          isChecked && { fontWeight: '600', color: '#0369A1' },
+                        ]}
+                      >
+                        {opt}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        }
+
+        if (normType === 'switch') {
+          const isEnabled = Boolean(val);
+          return (
+            <View key={field.id} style={styles.switchWrapper}>
+              <View style={{ flex: 1 }}>
+                <Text style={typography.label}>
+                  {field.label} {field.required && <Text style={styles.required}>*</Text>}
+                </Text>
+                {Boolean(field.helpText || field.help_text || field.placeholder) && (
+                  <Text style={styles.fieldSpecText}>
+                    {field.helpText || field.help_text || field.placeholder}
+                  </Text>
+                )}
+              </View>
+              <Switch
+                value={isEnabled}
+                onValueChange={(next) => {
+                  onChange(field.id, next);
+                  onChange(field.label, next);
+                }}
+                trackColor={{ false: colors.border, true: '#0284C7' }}
+                thumbColor={isEnabled ? '#0369A1' : '#FFFFFF'}
+              />
+            </View>
+          );
+        }
+
+        if (normType === 'phone') {
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <View style={styles.phoneInputRow}>
+                <Feather
+                  name="phone"
+                  size={15}
+                  color={colors.mutedText}
+                  style={{ marginRight: 8 }}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1, borderWidth: 0, paddingHorizontal: 0 }]}
+                  value={String(val !== undefined && val !== null ? val : '')}
+                  placeholder={field.placeholder || '+1 (555) 000-0000'}
+                  placeholderTextColor={colors.mutedText}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  accessibilityLabel={field.label}
+                  aria-label={field.label}
+                  onChangeText={(text) => {
+                    const cleaned = text.replace(/[^0-9+() -]/g, '');
+                    onChange(field.id, cleaned);
+                    onChange(field.label, cleaned);
+                  }}
+                />
+              </View>
+            </View>
+          );
+        }
+
+        if (normType === 'image_picker') {
+          const imgUri = typeof val === 'string' && val.length > 0 ? val : null;
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              {imgUri ? (
+                <View style={styles.imgThumbnailWrapper}>
+                  <Image source={{ uri: imgUri }} style={styles.imgThumbnail} />
+                  <TouchableOpacity
+                    style={styles.imgRemoveBtn}
+                    onPress={() => {
+                      onChange(field.id, null);
+                      onChange(field.label, null);
+                    }}
+                  >
+                    <Feather name="trash-2" size={14} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.imagePickerBox}
+                  onPress={() => handlePickImage(field.id, field.label)}
+                >
+                  <Feather name="camera" size={16} color="#0284C7" />
+                  <Text style={styles.imagePickerBoxText}>Select / Capture Image</Text>
+                </TouchableOpacity>
+              )}
             </View>
           );
         }
@@ -701,5 +911,103 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  sectionHeaderContainer: {
+    marginVertical: spacing.sm,
+  },
+  dividerLine: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionTitleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  sectionDescText: {
+    fontSize: 11,
+    color: colors.mutedText,
+    marginTop: 2,
+  },
+  checkboxGroupContainer: {
+    gap: 8,
+    marginTop: 4,
+  },
+  checkboxGroupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  checkboxGroupItemSelected: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#0284C7',
+  },
+  switchWrapper: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 2,
+    backgroundColor: colors.bgCard,
+  },
+  imgThumbnailWrapper: {
+    position: 'relative',
+    width: 100,
+    height: 100,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  imgThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  imgRemoveBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.85)',
+    padding: 4,
+    borderRadius: 12,
+  },
+  imagePickerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: '#F0F9FF',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    marginTop: 4,
+  },
+  imagePickerBoxText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0284C7',
   },
 });
