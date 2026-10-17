@@ -1,4 +1,3 @@
-
 // screens/director/GoalMasteryApprovalScreen.tsx
 // SCR-DIR-003: Goal Mastery Approval (Director View)
 
@@ -22,7 +21,9 @@ import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB, PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import StatusPill from '../../components/StatusPill';
+import { usePermission } from '../../auth/usePermission';
 import { useAuth, ROLES } from '../../context/AuthContext';
+import { notify } from '../../utils/dialogs';
 import {
   getPendingMasteryApprovals,
   getMasteryApprovalDetail,
@@ -99,7 +100,12 @@ function ApprovalDetailModal({
   const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
-    if (visible && typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
+    if (
+      visible &&
+      typeof document !== 'undefined' &&
+      document.activeElement &&
+      'blur' in document.activeElement
+    ) {
       (document.activeElement as HTMLElement).blur();
     }
   }, [visible]);
@@ -107,7 +113,13 @@ function ApprovalDetailModal({
   if (!detail) return null;
 
   return (
-    <Modal visible={visible} aria-modal={true} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      aria-modal={true}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
           <View style={styles.modalHeaderRow}>
@@ -133,7 +145,9 @@ function ApprovalDetailModal({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.teacherRoleTitle}>Primary Therapist (Teacher A)</Text>
-                    <Text style={styles.teacherOutcome}>Initial 3-Consecutive Mastery Submission</Text>
+                    <Text style={styles.teacherOutcome}>
+                      Initial 3-Consecutive Mastery Submission
+                    </Text>
                   </View>
                   <StatusPill status="approved" label="Mastered (3x)" />
                 </View>
@@ -240,6 +254,7 @@ export default function GoalMasteryApprovalScreen({
   'GoalMasteryApproval'
 >) {
   const { session } = useAuth();
+  const canApprove = usePermission('iups', 'approve');
   const isProgramDirector = session?.role === ROLES.PROGRAM_DIRECTOR;
   const [list, setList] = useState<MasteryListItem[]>([]);
   const [search, setSearch] = useState('');
@@ -256,13 +271,16 @@ export default function GoalMasteryApprovalScreen({
           .map((m) => ({
             checkId: m.id,
             goalId: m.goalId || m.studentGoalId || m.id,
-            studentName: m.studentName || (m.requestedByName ? `Student ${m.requestedByName.split(' ')[0]}` : 'Student'),
-            goalName: m.goalName || (m.studentGoalId ? m.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
+            studentName:
+              m.studentName ||
+              (m.requestedByName ? `Student ${m.requestedByName.split(' ')[0]}` : 'Student'),
+            goalName:
+              m.goalName || (m.studentGoalId ? m.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
             teacherA: m.primaryTeacher?.name || m.requestedByName || 'Lead Teacher',
             teacherB: m.teacherB?.name || 'Teacher B',
             teacherC: m.teacherC?.name || 'Teacher C',
             dateSubmitted: formatDate(m.dateSubmitted || m.requestedAt),
-          }))
+          })),
       );
     } catch {
       setList([]);
@@ -286,8 +304,12 @@ export default function GoalMasteryApprovalScreen({
       setDetail({
         checkId,
         goalId: row.goalId || row.studentGoalId || checkId,
-        studentName: row.studentName || (row.requestedByName ? `Student ${row.requestedByName.split(' ')[0]}` : 'Student'),
-        goalName: row.goalName || (row.studentGoalId ? row.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
+        studentName:
+          row.studentName ||
+          (row.requestedByName ? `Student ${row.requestedByName.split(' ')[0]}` : 'Student'),
+        goalName:
+          row.goalName ||
+          (row.studentGoalId ? row.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
         teacherA: {
           summary:
             row.primaryTeacher?.summary ||
@@ -297,12 +319,12 @@ export default function GoalMasteryApprovalScreen({
               : 'Achieved 3 consecutive unprompted sessions (100% independence) under primary instruction.'),
         },
         teacherB: {
-          outcome: tBOutcome ? (OUTCOME_LABELS[tBOutcome] || tBOutcome) : 'Verified Independent',
+          outcome: tBOutcome ? OUTCOME_LABELS[tBOutcome] || tBOutcome : 'Verified Independent',
           promptUsed: row.teacherB?.promptUsed || null,
           notes: row.teacherB?.notes || '',
         },
         teacherC: {
-          outcome: tCOutcome ? (OUTCOME_LABELS[tCOutcome] || tCOutcome) : 'Verified Independent',
+          outcome: tCOutcome ? OUTCOME_LABELS[tCOutcome] || tCOutcome : 'Verified Independent',
           promptUsed: row.teacherC?.promptUsed || null,
           notes: row.teacherC?.notes || '',
         },
@@ -314,6 +336,14 @@ export default function GoalMasteryApprovalScreen({
   };
 
   const handleApprove = async (checkId: string, notes: string) => {
+    if (
+      !canApprove &&
+      session?.role !== ROLES.DIRECTOR &&
+      session?.role !== ROLES.PROGRAM_DIRECTOR
+    ) {
+      notify('Permission Denied', 'You do not have permission to approve goal mastery.');
+      return;
+    }
     Alert.alert('Approve Goal Mastery', 'Confirm approval and mark this goal as fully mastered?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -333,6 +363,10 @@ export default function GoalMasteryApprovalScreen({
   };
 
   const handleReject = async (checkId: string, reason: string, notes: string) => {
+    if (!canApprove) {
+      notify('Permission Denied', 'You do not have permission to reject goal mastery requests.');
+      return;
+    }
     try {
       await rejectMastery(checkId, { reason, notes });
       setDetail(null);
@@ -347,7 +381,7 @@ export default function GoalMasteryApprovalScreen({
     setExportContent(
       [
         '================================================================',
-        '      MELU\'E FOUNDATION — GOAL MASTERY APPROVAL RECORD          ',
+        "      MELU'E FOUNDATION — GOAL MASTERY APPROVAL RECORD          ",
         '================================================================',
         `GENERATED: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
         `TOTAL PENDING VERIFICATIONS: ${list.length}`,
@@ -355,20 +389,26 @@ export default function GoalMasteryApprovalScreen({
         '',
         ...list.map(
           (g, i) =>
-            `  ${i + 1}. ${g.studentName} — ${g.goalName}\n     Teacher A: ${g.teacherA} | Teacher B: ${g.teacherB} | Teacher C: ${g.teacherC}\n     Date Submitted: ${g.dateSubmitted}\n`
+            `  ${i + 1}. ${g.studentName} — ${g.goalName}\n     Teacher A: ${g.teacherA} | Teacher B: ${g.teacherB} | Teacher C: ${g.teacherC}\n     Date Submitted: ${g.dateSubmitted}\n`,
         ),
         list.length === 0 ? '  (No pending mastery approvals)' : '',
         '================================================================',
-      ].join('\n')
+      ].join('\n'),
     );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       {isProgramDirector ? (
-        <AppNavbar activeTab="Goal Mastery Approval" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar
+          activeTab="Goal Mastery Approval"
+          onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)}
+        />
       ) : (
-        <AppNavbar activeTab="Goal Mastery Approval" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t] as never)} />
+        <AppNavbar
+          activeTab="Goal Mastery Approval"
+          onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t] as never)}
+        />
       )}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -453,7 +493,9 @@ export default function GoalMasteryApprovalScreen({
             <View style={styles.emptyCard}>
               <Feather name="check-circle" size={32} color={colors.successGreen} />
               <Text style={styles.emptyTitle}>All Clear!</Text>
-              <Text style={styles.emptySub}>No pending goal mastery approvals awaiting review.</Text>
+              <Text style={styles.emptySub}>
+                No pending goal mastery approvals awaiting review.
+              </Text>
             </View>
           )}
         </View>
@@ -489,7 +531,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -551,7 +599,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   obsItem: { flexGrow: 1, minWidth: 140 },
-  obsLabel: { fontSize: 10, color: colors.mutedText, textTransform: 'uppercase', fontWeight: '600' },
+  obsLabel: {
+    fontSize: 10,
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+  },
   obsVal: { fontSize: 12, fontWeight: '700', color: colors.navyText, marginTop: 1 },
 
   cardBottomRow: {
@@ -588,9 +641,24 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 12, color: colors.mutedText },
 
   /* Modal */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '90%' },
-  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalSheet: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    maxHeight: '90%',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.navyText },
   modalSub: { fontSize: 13, color: colors.bodyText, marginTop: 2 },
   closeBtn: {
@@ -671,4 +739,3 @@ const styles = StyleSheet.create({
   },
   approveBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 13 },
 });
-

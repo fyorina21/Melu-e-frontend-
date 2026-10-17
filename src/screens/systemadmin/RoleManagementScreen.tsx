@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   StyleSheet,
   ScrollView,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -125,17 +126,31 @@ export default function RoleManagementScreen({ navigation }: Props) {
     }
   };
 
-  const removeRole = async (id: string) => {
-    setBusyId(id);
-    try {
-      await deleteRole(id);
-      setRoles((rs) => rs.filter((r) => r.id !== id));
-      showToast('Role deleted.', 'success');
-    } catch {
-      showToast('Failed to delete role.', 'error');
-    } finally {
-      setBusyId(null);
-    }
+  const removeRole = (role: RoleRow) => {
+    Alert.alert(
+      'Delete Role?',
+      `Are you sure you want to permanently delete the role "${role.name}"?\n\nStaff accounts assigned this role may lose access to associated modules.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusyId(role.id);
+            try {
+              await deleteRole(role.id);
+              setRoles((rs) => rs.filter((r) => r.id !== role.id));
+              showToast(`Role "${role.name}" deleted successfully.`, 'success');
+            } catch (err: any) {
+              const msg = err?.response?.data?.error || err?.message || 'Failed to delete role.';
+              showToast(msg, 'error');
+            } finally {
+              setBusyId(null);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleRefresh = async () => {
@@ -205,8 +220,10 @@ export default function RoleManagementScreen({ navigation }: Props) {
                   }}
                   onCancelEdit={() => setEditingRole(null)}
                   onSaveEdit={() => saveEdit(role.id)}
-                  onConfigurePermissions={() => navigation?.navigate?.('PermissionConfiguration')}
-                  onDeleteRole={() => removeRole(role.id)}
+                  onConfigurePermissions={() =>
+                    navigation?.navigate?.('PermissionConfiguration', { roleId: role.id })
+                  }
+                  onDeleteRole={() => removeRole(role)}
                 />
               ))}
 

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, View, Pressable, StyleSheet } from 'react-native';
 import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
 import type {
   NavigationContainerRef,
@@ -13,9 +13,11 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import RoleSidebar from '../components/RoleSidebar';
 import ScreenLoader from '../components/ScreenLoader';
-import { SidebarNavContext } from './SidebarNavContext';
+import { SidebarNavContext, useSidebarNav } from './SidebarNavContext';
 import { storage } from '../utils/storage';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { SCREEN_TO_MODULE, UNGUARDED_SCREENS, hasModuleAccess } from '../auth/permissions';
+import { useBreakpoint } from '../utils/useBreakpoint';
 
 // Lazy-loaded role stacks for optimal bundle splitting and fast initial page loads
 const SessionStack = lazy(() => import('./SessionStack'));
@@ -25,6 +27,7 @@ const DirectorStack = lazy(() => import('./DirectorStack'));
 const InstitutionalAdminStack = lazy(() => import('./InstitutionalAdminStack'));
 const SystemAdminStack = lazy(() => import('./SystemAdminStack'));
 const ParentStack = lazy(() => import('./ParentStack'));
+const CustomRoleStack = lazy(() => import('./CustomRoleStack'));
 
 const Stack = createNativeStackNavigator();
 
@@ -76,6 +79,9 @@ function syncUrlToScreen(state: NavigationState | undefined): void {
 
 function AppNavigator() {
   const { session } = useAuth();
+  const { isCollapsed, setIsCollapsed } = useSidebarNav();
+  const bp = useBreakpoint();
+  const isCompact = bp !== 'desktop';
 
   if (!session) {
     return (
@@ -88,16 +94,25 @@ function AppNavigator() {
     );
   }
 
-  // Resolves the role's stack; configured custom roles fall back to SessionStack
-  const RoleStack = STACK_BY_ROLE[session.role] || STACK_BY_ROLE[ROLES.TEACHER];
+  // Resolves the role's stack; custom roles use CustomRoleStack
+  const RoleStack = STACK_BY_ROLE[session.role] || CustomRoleStack;
+  const isSidebarRole = SIDEBAR_ROLES.has(session.role);
 
   return (
     <ErrorBoundary screenName={`${session.role} Navigator`}>
       <Suspense fallback={<ScreenLoader />}>
-        {SIDEBAR_ROLES.has(session.role) ? (
-          <View style={{ flex: 1, flexDirection: 'row' }}>
+        {isSidebarRole ? (
+          <View style={styles.sidebarLayout}>
+            {isCompact && !isCollapsed && (
+              <Pressable
+                style={styles.backdrop}
+                onPress={() => setIsCollapsed(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Close sidebar overlay"
+              />
+            )}
             <RoleSidebar role={session.role} />
-            <View style={{ flex: 1 }}>
+            <View style={styles.contentArea}>
               <RoleStack />
             </View>
           </View>
@@ -114,6 +129,22 @@ export default function RootNavigator() {
   const { session } = useAuth();
   const deepLinkRestored = React.useRef(false);
   const [navVersion, setNavVersion] = React.useState(0);
+  const bp = useBreakpoint();
+  const isCompact = bp !== 'desktop';
+  const [isCollapsed, setIsCollapsed] = React.useState(isCompact);
+
+  // Sync default collapse state when breakpoint crosses desktop/mobile threshold
+  const prevCompactRef = React.useRef(isCompact);
+  React.useEffect(() => {
+    if (prevCompactRef.current !== isCompact) {
+      prevCompactRef.current = isCompact;
+      setIsCollapsed(isCompact);
+    }
+  }, [isCompact]);
+
+  const toggleSidebar = React.useCallback(() => {
+    setIsCollapsed((prev) => !prev);
+  }, []);
 
   // On web, restore the screen from the URL after login/session restore so a
   // refresh keeps the user where they were instead of bouncing to the
@@ -128,6 +159,21 @@ export default function RootNavigator() {
 
     const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
     if (!target || target === 'Login' || target === 'ForgotPassword') {
+      window.history.replaceState(null, '', '/');
+      return;
+    }
+
+    // Module-gate the deep link target
+    const requiredModule = SCREEN_TO_MODULE[target];
+    const isSystemAdminExempt = session?.role === 'system_admin' && requiredModule === 'admin';
+    if (
+      requiredModule &&
+      !isSystemAdminExempt &&
+      !UNGUARDED_SCREENS.has(target) &&
+      session?.modules &&
+      session.modules.length > 0 &&
+      !hasModuleAccess(session.modules, requiredModule)
+    ) {
       window.history.replaceState(null, '', '/');
       return;
     }
@@ -153,6 +199,21 @@ export default function RootNavigator() {
     const handlePopState = () => {
       const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
       if (target && navRef.current) {
+        // Module-gate the target screen on popstate
+        const requiredModule = SCREEN_TO_MODULE[target];
+        const isSystemAdminExempt = session?.role === 'system_admin' && requiredModule === 'admin';
+        if (
+          requiredModule &&
+          !isSystemAdminExempt &&
+          !UNGUARDED_SCREENS.has(target) &&
+          session?.modules &&
+          session.modules.length > 0 &&
+          !hasModuleAccess(session.modules, requiredModule)
+        ) {
+          window.history.replaceState(null, '', '/');
+          return;
+        }
+
         try {
           const searchParams = new URLSearchParams(window.location.search);
           const sid =
@@ -186,10 +247,39 @@ export default function RootNavigator() {
           }
         }}
       >
-        <SidebarNavContext.Provider value={{ navRef, version: navVersion }}>
+        <SidebarNavContext.Provider
+          value={{
+            navRef,
+            version: navVersion,
+            isCollapsed,
+            setIsCollapsed,
+            toggleSidebar,
+          }}
+        >
           <AppNavigator />
         </SidebarNavContext.Provider>
       </NavigationContainer>
     </NavigationIndependentTree>
   );
 }
+
+const styles = StyleSheet.create({
+  sidebarLayout: {
+    flex: 1,
+    flexDirection: 'row',
+    position: 'relative',
+  },
+  contentArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    zIndex: 290,
+  },
+});

@@ -29,10 +29,14 @@ export async function fetchAdminToken(): Promise<string | null> {
   if (!adminTokenPromise) {
     adminTokenPromise = (async () => {
       try {
-        const res = await axios.post(`${apiBaseUrl}/auth/login`, {
-          email: 'admin@melue.foundation',
-          password: 'Password123!',
-        });
+        const res = await axios.post(
+          `${apiBaseUrl}/auth/login`,
+          {
+            email: 'admin@melue.foundation',
+            password: 'Password123!',
+          },
+          { timeout: env.apiTimeoutMs },
+        );
         const token = res.data?.token ?? res.data?.access_token;
         if (token) {
           cachedAdminToken = token;
@@ -40,10 +44,14 @@ export async function fetchAdminToken(): Promise<string | null> {
         }
       } catch {
         try {
-          const res = await axios.post(`${apiBaseUrl}/auth/login`, {
-            email: 'institutional.admin@melue.foundation',
-            password: 'Password123!',
-          });
+          const res = await axios.post(
+            `${apiBaseUrl}/auth/login`,
+            {
+              email: 'institutional.admin@melue.foundation',
+              password: 'Password123!',
+            },
+            { timeout: env.apiTimeoutMs },
+          );
           const token = res.data?.token ?? res.data?.access_token;
           if (token) {
             cachedAdminToken = token;
@@ -67,10 +75,14 @@ export async function fetchDirectorToken(): Promise<string | null> {
   if (!directorTokenPromise) {
     directorTokenPromise = (async () => {
       try {
-        const res = await axios.post(`${apiBaseUrl}/auth/login`, {
-          email: 'director@melue.foundation',
-          password: 'Password123!',
-        });
+        const res = await axios.post(
+          `${apiBaseUrl}/auth/login`,
+          {
+            email: 'director@melue.foundation',
+            password: 'Password123!',
+          },
+          { timeout: env.apiTimeoutMs },
+        );
         const token = res.data?.token ?? res.data?.access_token;
         if (token) {
           cachedDirectorToken = token;
@@ -78,10 +90,14 @@ export async function fetchDirectorToken(): Promise<string | null> {
         }
       } catch {
         try {
-          const res = await axios.post(`${apiBaseUrl}/auth/login`, {
-            email: 'admin@melue.foundation',
-            password: 'Password123!',
-          });
+          const res = await axios.post(
+            `${apiBaseUrl}/auth/login`,
+            {
+              email: 'admin@melue.foundation',
+              password: 'Password123!',
+            },
+            { timeout: env.apiTimeoutMs },
+          );
           const token = res.data?.token ?? res.data?.access_token;
           if (token) {
             cachedDirectorToken = token;
@@ -186,9 +202,7 @@ function createHttpClient(): AxiosInstance {
     const isPublicAuthUrl =
       config.url?.includes('/auth/login') ||
       config.url?.includes('/auth/create-account') ||
-      config.url?.includes('/auth/reset-password') ||
-      config.url?.includes('/auth/jwt-refresh') ||
-      config.url?.includes('/auth/jwt_refresh');
+      config.url?.includes('/auth/reset-password');
 
     if (isPublicAuthUrl) {
       if (config.headers) {
@@ -223,7 +237,17 @@ function createHttpClient(): AxiosInstance {
         }
       }
 
-      if (token) {
+      // Check if an Authorization header is already provided on the request config
+      const existingAuth =
+        typeof config.headers?.Authorization === 'string'
+          ? config.headers.Authorization
+          : typeof (config.headers as any)?.authorization === 'string'
+            ? (config.headers as any).authorization
+            : '';
+
+      if (existingAuth) {
+        // Keep explicitly supplied Authorization header
+      } else if (token) {
         if (typeof (config.headers as any).set === 'function') {
           (config.headers as any).set('Authorization', `Bearer ${token}`);
         } else {

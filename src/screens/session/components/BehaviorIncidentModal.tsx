@@ -14,6 +14,9 @@ import { Feather } from '@expo/vector-icons';
 import { getFormConfig } from '../../../api/institutionalAdminApi';
 import DynamicFormFields, { type DynamicFormField } from '../../../components/DynamicFormFields';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
+import { usePermission } from '../../../auth/usePermission';
+import AccessibleModal from '../../../components/AccessibleModal';
 import {
   getActiveAbcDropdownOptions,
   BASE_INCIDENT_FIELDS,
@@ -53,7 +56,9 @@ const getCurrentTime = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export { BASE_INCIDENT_FIELDS, applyAbcDropdownOptions };
-export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = applyAbcDropdownOptions(BASE_INCIDENT_FIELDS) as DynamicFormField[];
+export const DEFAULT_INCIDENT_FIELDS: DynamicFormField[] = applyAbcDropdownOptions(
+  BASE_INCIDENT_FIELDS,
+) as DynamicFormField[];
 
 export default function BehaviorIncidentModal({
   visible,
@@ -66,13 +71,17 @@ export default function BehaviorIncidentModal({
   onSave,
 }: BehaviorIncidentModalProps) {
   const { session: authSession } = useAuth();
+  const { showToast } = useToast();
+  const canCreateIncident = usePermission('behavior_incidents', 'create');
   const defaultTeacher = recordedBy || authSession?.userName || 'Rosa Delgado';
 
   const [date, setDate] = useState(getCurrentDate());
   const [time, setTime] = useState(getCurrentTime());
   const [teacher, setTeacher] = useState(defaultTeacher);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
-  const [fields, setFields] = useState<DynamicFormField[]>(() => applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
+  const [fields, setFields] = useState<DynamicFormField[]>(() =>
+    applyAbcDropdownOptions(BASE_INCIDENT_FIELDS),
+  );
   const [isValid, setIsValid] = useState(false);
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
 
@@ -81,7 +90,10 @@ export default function BehaviorIncidentModal({
       const { data } = await getFormConfig('Behavior Incident Form');
       if (Array.isArray(data?.fields) && data.fields.length > 0) {
         const loaded = data.fields.filter((f: DynamicFormField) => f.visible !== false);
-        const nonStandard = loaded.filter((f: DynamicFormField) => !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()));
+        const nonStandard = loaded.filter(
+          (f: DynamicFormField) =>
+            !['date', 'time', 'teacher'].includes((f.label || '').toLowerCase()),
+        );
         if (nonStandard.length === 0) {
           setFields(applyAbcDropdownOptions(BASE_INCIDENT_FIELDS));
         } else {
@@ -127,10 +139,9 @@ export default function BehaviorIncidentModal({
     };
   }, [visible, recordedBy, authSession?.userName, loadConfig]);
 
-  const isFormDirty =
-    Object.values(formValues).some(
-      (v) => v !== '' && v !== undefined && v !== null && (!Array.isArray(v) || v.length > 0)
-    );
+  const isFormDirty = Object.values(formValues).some(
+    (v) => v !== '' && v !== undefined && v !== null && (!Array.isArray(v) || v.length > 0),
+  );
 
   const resetForm = () => {
     setDate(getCurrentDate());
@@ -155,9 +166,17 @@ export default function BehaviorIncidentModal({
   };
 
   const handleSave = () => {
+    if (!canCreateIncident) {
+      showToast('You do not have permission to record behavior incidents.', 'error');
+      return;
+    }
     const findFieldValue = (keys: string[]) => {
       for (const k of keys) {
-        if (formValues[k] !== undefined && formValues[k] !== null && String(formValues[k]).trim() !== '') {
+        if (
+          formValues[k] !== undefined &&
+          formValues[k] !== null &&
+          String(formValues[k]).trim() !== ''
+        ) {
           return String(formValues[k]).trim();
         }
       }
@@ -166,18 +185,61 @@ export default function BehaviorIncidentModal({
 
     const location = findFieldValue(['Location', 'location', 'b_loc', 'b1']);
     const category = findFieldValue(['Category', 'category', 'b_cat', 'b2']);
-    const behavior = findFieldValue(['Behavior Type', 'Behavior', 'Observed Behavior', 'behavior', 'b_beh', 'b3']);
-    const frequency = findFieldValue(['Duration (mins)', 'Duration', 'Frequency', 'frequency', 'b_freq', 'b_dur', 'b4']);
+    const behavior = findFieldValue([
+      'Behavior Type',
+      'Behavior',
+      'Observed Behavior',
+      'behavior',
+      'b_beh',
+      'b3',
+    ]);
+    const frequency = findFieldValue([
+      'Duration (mins)',
+      'Duration',
+      'Frequency',
+      'frequency',
+      'b_freq',
+      'b_dur',
+      'b4',
+    ]);
     const intensity = findFieldValue(['Intensity', 'intensity', 'b_int', 'b5']);
-    const antecedent = findFieldValue(['Antecedent / Trigger', 'Antecedent', 'antecedent', 'b_ant', 'b6', 'Trigger', 'Trigger / Antecedent']);
-    const consequence = findFieldValue(['Consequence / Action Taken', 'Consequence', 'consequence', 'b_con', 'b7', 'Action Taken']);
-    const note = findFieldValue(['Notes & Observations', 'Note', 'note', 'Additional Notes', 'Incident Notes', 'Notes', 'notes', 'additionalNotes', 'b_notes', 'b8']);
+    const antecedent = findFieldValue([
+      'Antecedent / Trigger',
+      'Antecedent',
+      'antecedent',
+      'b_ant',
+      'b6',
+      'Trigger',
+      'Trigger / Antecedent',
+    ]);
+    const consequence = findFieldValue([
+      'Consequence / Action Taken',
+      'Consequence',
+      'consequence',
+      'b_con',
+      'b7',
+      'Action Taken',
+    ]);
+    const note = findFieldValue([
+      'Notes & Observations',
+      'Note',
+      'note',
+      'Additional Notes',
+      'Incident Notes',
+      'Notes',
+      'notes',
+      'additionalNotes',
+      'b_notes',
+      'b8',
+    ]);
 
     onSave({
       student_id: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),
       studentId: studentId || (formValues['student_id'] ?? formValues['studentId'] ?? ''),
-      student_goal_id: studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
-      studentGoalId: studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
+      student_goal_id:
+        studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
+      studentGoalId:
+        studentGoalId || (formValues['student_goal_id'] ?? formValues['studentGoalId'] ?? ''),
       date: date.trim() || getCurrentDate(),
       time: time.trim() || getCurrentTime(),
       teacher: teacher.trim() || recordedBy || authSession?.userName || 'Rosa Delgado',
@@ -189,9 +251,24 @@ export default function BehaviorIncidentModal({
       intensity: intensity || (formValues['Intensity'] ?? ''),
       antecedent: antecedent || (formValues['Antecedent'] ?? ''),
       consequence: consequence || (formValues['Consequence'] ?? ''),
-      note: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
-      notes: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
-      additionalNotes: note || (formValues['Note'] ?? formValues['Incident Notes'] ?? formValues['Additional Notes'] ?? ''),
+      note:
+        note ||
+        (formValues['Note'] ??
+          formValues['Incident Notes'] ??
+          formValues['Additional Notes'] ??
+          ''),
+      notes:
+        note ||
+        (formValues['Note'] ??
+          formValues['Incident Notes'] ??
+          formValues['Additional Notes'] ??
+          ''),
+      additionalNotes:
+        note ||
+        (formValues['Note'] ??
+          formValues['Incident Notes'] ??
+          formValues['Additional Notes'] ??
+          ''),
       customFields: formValues,
       ...formValues,
     });
@@ -293,12 +370,7 @@ export default function BehaviorIncidentModal({
               onPress={handleSave}
               activeOpacity={isValid ? 0.8 : 1}
             >
-              <Text
-                style={[
-                  styles.saveBtnText,
-                  isValid && styles.saveBtnTextActive,
-                ]}
-              >
+              <Text style={[styles.saveBtnText, isValid && styles.saveBtnTextActive]}>
                 Save Incident
               </Text>
             </TouchableOpacity>
@@ -319,10 +391,7 @@ export default function BehaviorIncidentModal({
                   >
                     <Text style={styles.keepEditingBtnText}>Keep Editing</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.discardBtn}
-                    onPress={handleConfirmDiscard}
-                  >
+                  <TouchableOpacity style={styles.discardBtn} onPress={handleConfirmDiscard}>
                     <Text style={styles.discardBtnText}>Discard</Text>
                   </TouchableOpacity>
                 </View>

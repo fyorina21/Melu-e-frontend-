@@ -8,6 +8,11 @@ import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScre
 import ParentNotificationsScreen from '../screens/notifications/ParentNotificationsScreen';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { withModuleGuard } from '../auth/withModuleGuard';
+
+const GuardedChildProgress = withModuleGuard(ChildProgressScreen, 'parent_portal');
+const GuardedHomeObservationLog = withModuleGuard(HomeObservationLogScreen, 'parent_portal');
+const GuardedParentCommunication = withModuleGuard(ParentCommunicationScreen, 'parent_portal');
 
 const Stack = createNativeStackNavigator<ParentStackParamList>();
 
@@ -16,9 +21,9 @@ export default function ParentStack() {
     <ErrorBoundary screenName="Parent Navigator">
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="ParentDashboard" component={ParentDashboardScreen} />
-        <Stack.Screen name="ChildProgress" component={ChildProgressScreen} />
-        <Stack.Screen name="HomeObservationLog" component={HomeObservationLogScreen} />
-        <Stack.Screen name="ParentCommunication" component={ParentCommunicationScreen} />
+        <Stack.Screen name="ChildProgress" component={GuardedChildProgress} />
+        <Stack.Screen name="HomeObservationLog" component={GuardedHomeObservationLog} />
+        <Stack.Screen name="ParentCommunication" component={GuardedParentCommunication} />
         <Stack.Screen name="Notifications" component={ParentNotificationsScreen} />
       </Stack.Navigator>
     </ErrorBoundary>

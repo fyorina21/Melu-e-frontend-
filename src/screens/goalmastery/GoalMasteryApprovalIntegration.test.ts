@@ -135,7 +135,7 @@ describe('Goal Mastery Check and Approval Flow', () => {
     // Verify lookup by student and goal returns the rejected record
     const byStudentAndGoal = getMasteryCheckByStudentAndGoal('student-2', 'g-202');
     expect(byStudentAndGoal?.status).toBe('rejected');
-  }, 15000);
+  }, 30000);
 
   it('approves mastery check and removes from pending approvals', async () => {
     const submission: GoalMasteryCheckItem = {

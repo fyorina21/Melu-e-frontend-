@@ -1,16 +1,18 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../types';
-import FormBuilderScreen from '../screens/institutionaladmin/FormBuilderScreen';
 import StaffAccountManagementScreen from '../screens/systemadmin/StaffAccountManagementScreen';
 import RoleManagementScreen from '../screens/systemadmin/RoleManagementScreen';
 import PermissionConfigurationScreen from '../screens/systemadmin/PermissionConfigurationScreen';
 import AuditLogScreen from '../screens/systemadmin/AuditLogScreen';
-import BehaviorAssessmentScreen from '../screens/assessments/BehaviorAssessmentScreen';
-import PreferenceAssessmentScreen from '../screens/assessments/PreferenceAssessmentScreen';
-import SensoryAssessmentScreen from '../screens/assessments/SensoryAssessmentScreen';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { withModuleGuard } from '../auth/withModuleGuard';
+
+const GuardedStaffAccountManagement = withModuleGuard(StaffAccountManagementScreen, 'admin');
+const GuardedRoleManagement = withModuleGuard(RoleManagementScreen, 'admin');
+const GuardedPermissionConfiguration = withModuleGuard(PermissionConfigurationScreen, 'admin');
+const GuardedAuditLog = withModuleGuard(AuditLogScreen, 'admin');
 
 const Stack = createNativeStackNavigator<SystemAdminStackParamList>();
 
@@ -21,14 +23,10 @@ export default function SystemAdminStack() {
         screenOptions={{ headerShown: false }}
         initialRouteName="StaffAccountManagement"
       >
-        <Stack.Screen name="FormBuilder" component={FormBuilderScreen} />
-        <Stack.Screen name="StaffAccountManagement" component={StaffAccountManagementScreen} />
-        <Stack.Screen name="RoleManagement" component={RoleManagementScreen} />
-        <Stack.Screen name="PermissionConfiguration" component={PermissionConfigurationScreen} />
-        <Stack.Screen name="AuditLog" component={AuditLogScreen} />
-        <Stack.Screen name="BehaviorAssessment" component={BehaviorAssessmentScreen as any} />
-        <Stack.Screen name="PreferenceAssessment" component={PreferenceAssessmentScreen as any} />
-        <Stack.Screen name="SensoryAssessment" component={SensoryAssessmentScreen as any} />
+        <Stack.Screen name="StaffAccountManagement" component={GuardedStaffAccountManagement} />
+        <Stack.Screen name="RoleManagement" component={GuardedRoleManagement} />
+        <Stack.Screen name="PermissionConfiguration" component={GuardedPermissionConfiguration} />
+        <Stack.Screen name="AuditLog" component={GuardedAuditLog} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

@@ -62,35 +62,43 @@ import {
   blankActions,
 } from './permissionConfigHelpers';
 
-const ROLE_FILTER_OPTIONS = [
-  'All',
-  'Director',
-  'Program Director',
-  'Therapy Coordinator',
-  'Teacher / Therapist',
-  'Institutional Admin',
-  'System Admin',
-  'Parent',
+const CATEGORY_FILTER_OPTIONS = [
+  'All Categories',
+  'Executive Oversight',
+  'Intake & Registration',
+  'Goal Management',
+  'Assessments',
+  'Clinical Verification',
+  'Operations & Scheduling',
+  'Clinical Supervision',
+  'Family & Messages',
+  'Administration',
 ];
 
-const ROLE_BADGE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  director: { bg: '#FAF5FF', text: '#7E22CE', border: '#E9D5FF' },
-  program_director: { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
-  coordinator: { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  teacher: { bg: '#F0F9FF', text: '#0284C7', border: '#BAE6FD' },
-  institutional_admin: { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
-  system_admin: { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
-  parent: { bg: '#FEFCE8', text: '#A16207', border: '#FEF08A' },
+const ADMIN_BADGE_COLORS: Record<
+  string,
+  { bg: string; text: string; border: string; label: string }
+> = {
+  system_admin: { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA', label: 'System Admin' },
+  institutional_admin: {
+    bg: '#F5F3FF',
+    text: '#6D28D9',
+    border: '#DDD6FE',
+    label: 'Institutional Admin',
+  },
 };
 
 export default function PermissionConfigurationScreen({
   navigation,
+  route,
 }: NativeStackScreenProps<SystemAdminStackParamList, 'PermissionConfiguration'>) {
   const { showToast } = useToast();
   const { session } = useAuth();
 
+  const routeRoleId = route?.params?.roleId;
+
   const [roles, setRoles] = useState<PermissionRole[]>([]);
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
+  const [selectedRoleId, setSelectedRoleId] = useState<string>(routeRoleId || '');
   const [matrix, setMatrix] = useState<PermissionMatrix>({});
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
   const [catalogPermissions, setCatalogPermissions] = useState<CatalogPermission[]>([]);
@@ -100,7 +108,7 @@ export default function PermissionConfigurationScreen({
 
   // Filter & Search Controls
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('All');
+  const [categoryFilter, setCategoryFilter] = useState<string>('All Categories');
   const [groupedView, setGroupedView] = useState(true);
 
   // Modals & Confirmation dialogs
@@ -114,13 +122,20 @@ export default function PermissionConfigurationScreen({
     reason: string;
   } | null>(null);
 
+  // Sync if route.params.roleId changes dynamically
+  useEffect(() => {
+    if (routeRoleId && routeRoleId !== selectedRoleId) {
+      setSelectedRoleId(routeRoleId);
+    }
+  }, [routeRoleId]);
+
   // Load available roles & catalog
   const loadRoles = useCallback(async () => {
     try {
       const { data } = await getRoles();
       const list = Array.isArray(data) ? data : [];
       setRoles(list);
-      setSelectedRoleId((prev) => prev || list[0]?.id || '');
+      setSelectedRoleId((prev) => prev || routeRoleId || list[0]?.id || '');
     } catch {
       setRoles([]);
     }
@@ -135,49 +150,56 @@ export default function PermissionConfigurationScreen({
     }
 
     setLoading(false);
-  }, []);
+  }, [routeRoleId]);
 
   useEffect(() => {
     loadRoles();
   }, [loadRoles]);
 
   // Load matrix for selected role with strict backend authority
-  const loadRolePermissions = useCallback(async (roleId: string, roleName: string) => {
-    if (!roleId) return;
+  const loadRolePermissions = useCallback(
+    async (roleId: string, roleName: string) => {
+      if (!roleId) return;
 
-    try {
-      const { data } = await getPermissionMatrix(roleId);
-      const backendPerms = data?.permissions;
-      // Strict backend authority: derive matrix from server response
-      const serverMatrix = mapBackendPermissionsToMatrix(backendPerms, roleName);
-      setMatrix(serverMatrix);
-      setDirty(false);
-    } catch (err) {
-      // If server request fails, load safe least-privilege defaults
-      setMatrix(getDefaultMatrixForRole(roleName));
-      setDirty(false);
-      showToast('Could not reach permissions server. Displaying role defaults.', 'info');
-    }
-
-    // Load audit trail
-    try {
-      const { data } = await getPermissionAuditTrail(roleId);
-      if (Array.isArray(data)) {
-        const formatted: AuditEntry[] = data.map((a: any) => ({
-          id: String(a.id || Math.random()),
-          date: a.created_at ? new Date(a.created_at).toLocaleString() : a.date || 'Recent',
-          user: a.changed_by || a.metadata?.updated_by || a.user || 'System Admin',
-          resource: a.resource_type || a.resource || 'Role Permissions',
-          action: (a.action || 'Updated permissions').replace(/_/g, ' '),
-          roleName: a.metadata?.role_name || a.roleName || roleName,
-          changeData: a.change_data,
-        }));
-        setAuditTrail(formatted);
+      try {
+        const { data } = await getPermissionMatrix(roleId);
+        if (data?.matrix && Object.keys(data.matrix).length > 0) {
+          setMatrix(data.matrix);
+          setDirty(false);
+        } else {
+          const backendPerms = data?.permissions;
+          const serverMatrix = mapBackendPermissionsToMatrix(backendPerms, roleName);
+          setMatrix(serverMatrix);
+          setDirty(false);
+        }
+      } catch (err) {
+        // If server request fails, load safe least-privilege defaults
+        setMatrix(getDefaultMatrixForRole(roleName));
+        setDirty(false);
+        showToast('Could not reach permissions server. Displaying role defaults.', 'info');
       }
-    } catch {
-      setAuditTrail([]);
-    }
-  }, [showToast]);
+
+      // Load audit trail
+      try {
+        const { data } = await getPermissionAuditTrail(roleId);
+        if (Array.isArray(data)) {
+          const formatted: AuditEntry[] = data.map((a: any) => ({
+            id: String(a.id || Math.random()),
+            date: a.created_at ? new Date(a.created_at).toLocaleString() : a.date || 'Recent',
+            user: a.changed_by || a.metadata?.updated_by || a.user || 'System Admin',
+            resource: a.resource_type || a.resource || 'Role Permissions',
+            action: (a.action || 'Updated permissions').replace(/_/g, ' '),
+            roleName: a.metadata?.role_name || a.roleName || roleName,
+            changeData: a.change_data,
+          }));
+          setAuditTrail(formatted);
+        }
+      } catch {
+        setAuditTrail([]);
+      }
+    },
+    [showToast],
+  );
 
   useEffect(() => {
     if (!selectedRoleId) return;
@@ -187,14 +209,15 @@ export default function PermissionConfigurationScreen({
   }, [selectedRoleId, roles, loadRolePermissions]);
 
   const selectedRole = useMemo(
-    () => roles.find((r) => r.id === selectedRoleId) || { id: selectedRoleId, name: selectedRoleId },
-    [roles, selectedRoleId]
+    () =>
+      roles.find((r) => r.id === selectedRoleId) || { id: selectedRoleId, name: selectedRoleId },
+    [roles, selectedRoleId],
   );
 
-  // Filtered pages based on search query and role filter
+  // Filtered pages based on search query and category filter
   const filteredPages = useMemo(() => {
-    return filterPageModules(ALL_PAGE_MODULES, searchQuery, roleFilter);
-  }, [searchQuery, roleFilter]);
+    return filterPageModules(ALL_PAGE_MODULES, searchQuery, categoryFilter);
+  }, [searchQuery, categoryFilter]);
 
   // Grouped pages by category
   const categorizedPages = useMemo(() => {
@@ -258,9 +281,7 @@ export default function PermissionConfigurationScreen({
 
   const toggleAllVisible = () => {
     setMatrix((prev) => {
-      const allChecked = filteredPages.every((p) =>
-        ACTIONS.every((a) => prev[p.id]?.[a])
-      );
+      const allChecked = filteredPages.every((p) => ACTIONS.every((a) => prev[p.id]?.[a]));
       const updated = { ...prev };
       filteredPages.forEach((p) => {
         updated[p.id] = allChecked
@@ -322,7 +343,7 @@ export default function PermissionConfigurationScreen({
       setCopyModalOpen(false);
       showToast(
         `Copied authoritative permissions from "${sourceRole.name}". Review and save to confirm.`,
-        'success'
+        'success',
       );
     } catch {
       setCopyModalOpen(false);
@@ -360,14 +381,11 @@ export default function PermissionConfigurationScreen({
               setAuditTrail((prev) => [resetAudit, ...prev]);
               showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
             } catch {
-              showToast(
-                'Failed to reset permissions on server. No changes were applied.',
-                'error'
-              );
+              showToast('Failed to reset permissions on server. No changes were applied.', 'error');
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -382,14 +400,19 @@ export default function PermissionConfigurationScreen({
 
       const res = await savePermissionMatrix(selectedRoleId, {
         matrix: payload.matrix,
+        page_matrix: matrix,
         permission_ids: payload.permission_ids,
       });
 
       // Update state with confirmed server response
-      const confirmedPerms = res?.data?.permissions;
-      if (Array.isArray(confirmedPerms)) {
-        const confirmedMatrix = mapBackendPermissionsToMatrix(confirmedPerms, selectedRole.name);
-        setMatrix(confirmedMatrix);
+      if (res?.data?.matrix) {
+        setMatrix(res.data.matrix);
+      } else {
+        const confirmedPerms = res?.data?.permissions;
+        if (Array.isArray(confirmedPerms)) {
+          const confirmedMatrix = mapBackendPermissionsToMatrix(confirmedPerms, selectedRole.name);
+          setMatrix(confirmedMatrix);
+        }
       }
 
       // Record confirmed audit entry
@@ -410,7 +433,7 @@ export default function PermissionConfigurationScreen({
       // Preserve unsaved changes, keep dirty = true, allow retries
       showToast(
         'Failed to save permissions to server. Your unsaved changes are preserved—please retry.',
-        'error'
+        'error',
       );
     } finally {
       setSaving(false);
@@ -427,14 +450,70 @@ export default function PermissionConfigurationScreen({
     };
   }, [matrix, catalogPermissions, selectedRole.name]);
 
+  const handleSelectRole = useCallback(
+    (id: string) => {
+      if (id === selectedRoleId) {
+        setDropdownOpen(false);
+        return;
+      }
+      if (dirty) {
+        Alert.alert(
+          'Unsaved Changes',
+          `You have unsaved changes for "${selectedRole.name}". Switching roles will discard these changes. Do you want to proceed?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Discard & Switch',
+              style: 'destructive',
+              onPress: () => {
+                setDirty(false);
+                setSelectedRoleId(id);
+                setDropdownOpen(false);
+              },
+            },
+          ],
+        );
+      } else {
+        setSelectedRoleId(id);
+        setDropdownOpen(false);
+      }
+    },
+    [dirty, selectedRoleId, selectedRole.name],
+  );
+
+  const handleTabPress = useCallback(
+    (t: string) => {
+      const targetRoute = SYS_ROUTE_BY_TAB[t];
+      if (!targetRoute) return;
+
+      if (dirty) {
+        Alert.alert(
+          'Unsaved Changes',
+          'You have unsaved permission changes. Navigating away will discard them. Do you want to proceed?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Discard & Leave',
+              style: 'destructive',
+              onPress: () => {
+                setDirty(false);
+                navigation?.navigate?.(targetRoute);
+              },
+            },
+          ],
+        );
+      } else {
+        navigation?.navigate?.(targetRoute);
+      }
+    },
+    [dirty, navigation],
+  );
+
   if (loading) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Permissions"
-        onTabPress={(t) => navigation?.navigate?.(SYS_ROUTE_BY_TAB[t])}
-      />
+      <AppNavbar activeTab="Permission Configuration" onTabPress={handleTabPress} />
 
       <View style={styles.subHeader}>
         <View style={styles.titleRow}>
@@ -459,7 +538,13 @@ export default function PermissionConfigurationScreen({
         {/* Top Control Bar: Role Selection & Quick Presets */}
         <View style={styles.controlsCard}>
           <View style={styles.roleSelectorBox}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
               <Text style={styles.fieldLabel}>ACTIVE ROLE TO CONFIGURE</Text>
               {dirty && (
                 <View style={[styles.unsavedBadge, { marginBottom: 6 }]}>
@@ -477,7 +562,11 @@ export default function PermissionConfigurationScreen({
                 <Feather name="user-check" size={16} color="#0284C7" />
                 <Text style={styles.dropdownBtnText}>{selectedRole.name}</Text>
               </View>
-              <Feather name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.navyText} />
+              <Feather
+                name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.navyText}
+              />
             </TouchableOpacity>
 
             {dropdownOpen && (
@@ -489,13 +578,15 @@ export default function PermissionConfigurationScreen({
                       <TouchableOpacity
                         key={r.id}
                         style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
-                        onPress={() => {
-                          setSelectedRoleId(r.id);
-                          setDropdownOpen(false);
-                        }}
+                        onPress={() => handleSelectRole(r.id)}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.dropdownItemTitle, isSelected && styles.dropdownItemTitleActive]}>
+                          <Text
+                            style={[
+                              styles.dropdownItemTitle,
+                              isSelected && styles.dropdownItemTitleActive,
+                            ]}
+                          >
                             {r.name}
                           </Text>
                           {Boolean(r.description) && (
@@ -568,15 +659,17 @@ export default function PermissionConfigurationScreen({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.roleFilterStrip}
           >
-            {ROLE_FILTER_OPTIONS.map((opt) => {
-              const active = roleFilter === opt;
+            {CATEGORY_FILTER_OPTIONS.map((opt) => {
+              const active = categoryFilter === opt;
               return (
                 <TouchableOpacity
                   key={opt}
                   style={[styles.roleFilterTab, active && styles.roleFilterTabActive]}
-                  onPress={() => setRoleFilter(opt)}
+                  onPress={() => setCategoryFilter(opt)}
                 >
-                  <Text style={[styles.roleFilterTabText, active && styles.roleFilterTabTextActive]}>
+                  <Text
+                    style={[styles.roleFilterTabText, active && styles.roleFilterTabTextActive]}
+                  >
                     {opt}
                   </Text>
                 </TouchableOpacity>
@@ -607,7 +700,9 @@ export default function PermissionConfigurationScreen({
               {/* Header */}
               <View style={styles.tableHeaderRow}>
                 <View style={{ width: 380, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.columnHeader}>APPLICATION PAGE MODULE ({filteredPages.length})</Text>
+                  <Text style={styles.columnHeader}>
+                    APPLICATION PAGE MODULE ({filteredPages.length})
+                  </Text>
                 </View>
 
                 {ACTIONS.map((act) => (
@@ -636,7 +731,9 @@ export default function PermissionConfigurationScreen({
               {filteredPages.length === 0 ? (
                 <View style={styles.emptyResultsBox}>
                   <Feather name="search" size={28} color="#94A3B8" />
-                  <Text style={styles.emptyResultsText}>No application pages match the current filter.</Text>
+                  <Text style={styles.emptyResultsText}>
+                    No application pages match the current filter.
+                  </Text>
                 </View>
               ) : groupedView ? (
                 Object.entries(categorizedPages).map(([categoryName, pages]) => (
@@ -651,13 +748,20 @@ export default function PermissionConfigurationScreen({
                     </View>
 
                     {pages.map((page, idx) =>
-                      renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow)
+                      renderTableRow(
+                        page,
+                        idx,
+                        matrix,
+                        selectedRole.name,
+                        handleCellPress,
+                        toggleRow,
+                      ),
                     )}
                   </View>
                 ))
               ) : (
                 filteredPages.map((page, idx) =>
-                  renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow)
+                  renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow),
                 )
               )}
             </View>
@@ -677,7 +781,12 @@ export default function PermissionConfigurationScreen({
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {highRiskCount > 0 && (
-                <View style={[styles.statCapsule, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+                <View
+                  style={[
+                    styles.statCapsule,
+                    { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+                  ]}
+                >
                   <Feather name="alert-triangle" size={12} color="#DC2626" />
                   <Text style={[styles.statCapsuleText, { color: '#DC2626' }]}>
                     {highRiskCount} Elevated
@@ -704,10 +813,7 @@ export default function PermissionConfigurationScreen({
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.auditTrailLink}
-            onPress={() => setShowAuditModal(true)}
-          >
+          <TouchableOpacity style={styles.auditTrailLink} onPress={() => setShowAuditModal(true)}>
             <Feather name="clock" size={14} color="#0284C7" />
             <Text style={styles.auditTrailLinkText}>View Audit Trail ({auditTrail.length})</Text>
           </TouchableOpacity>
@@ -724,12 +830,10 @@ export default function PermissionConfigurationScreen({
               </View>
               <Text style={typography.h2}>High-Risk Permission</Text>
             </View>
-            <Text style={styles.highRiskPromptText}>
-              {highRiskPrompt?.reason}
-            </Text>
+            <Text style={styles.highRiskPromptText}>{highRiskPrompt?.reason}</Text>
             <Text style={[styles.highRiskPromptText, { marginTop: 8, fontWeight: '600' }]}>
-              Page: {highRiskPrompt?.page.name} ({highRiskPrompt?.page.route})
-              {'\n'}Action: {highRiskPrompt?.action}
+              Page: {highRiskPrompt?.page.name} ({highRiskPrompt?.page.route}){'\n'}Action:{' '}
+              {highRiskPrompt?.action}
               {'\n'}Role: {selectedRole.name}
             </Text>
             <View style={styles.highRiskActionsRow}>
@@ -770,7 +874,8 @@ export default function PermissionConfigurationScreen({
             </View>
 
             <Text style={typography.caption}>
-              Confirm permission updates for <Text style={{ fontWeight: '700' }}>{selectedRole.name}</Text>:
+              Confirm permission updates for{' '}
+              <Text style={{ fontWeight: '700' }}>{selectedRole.name}</Text>:
             </Text>
 
             <View style={styles.reviewStatsRow}>
@@ -784,7 +889,9 @@ export default function PermissionConfigurationScreen({
               </View>
               <View style={styles.reviewStatCard}>
                 <Text style={styles.reviewStatLabel}>STATUS</Text>
-                <Text style={[styles.reviewStatValue, { color: '#059669', fontSize: 13 }]}>Ready</Text>
+                <Text style={[styles.reviewStatValue, { color: '#059669', fontSize: 13 }]}>
+                  Ready
+                </Text>
               </View>
             </View>
 
@@ -853,10 +960,7 @@ export default function PermissionConfigurationScreen({
                   </TouchableOpacity>
                 ))}
             </ScrollView>
-            <TouchableOpacity
-              style={styles.closeModalBtn}
-              onPress={() => setCopyModalOpen(false)}
-            >
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setCopyModalOpen(false)}>
               <Text style={styles.closeModalBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -878,7 +982,9 @@ export default function PermissionConfigurationScreen({
             </Text>
             <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator>
               {auditTrail.length === 0 ? (
-                <Text style={styles.summaryTextEmpty}>No recorded audit events for this role yet.</Text>
+                <Text style={styles.summaryTextEmpty}>
+                  No recorded audit events for this role yet.
+                </Text>
               ) : (
                 auditTrail.map((a, i) => (
                   <View key={a.id || i} style={styles.auditEntryRow}>
@@ -895,10 +1001,7 @@ export default function PermissionConfigurationScreen({
                 ))
               )}
             </ScrollView>
-            <TouchableOpacity
-              style={styles.closeModalBtn}
-              onPress={() => setShowAuditModal(false)}
-            >
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowAuditModal(false)}>
               <Text style={styles.closeModalBtnText}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -914,14 +1017,10 @@ function renderTableRow(
   matrix: PermissionMatrix,
   roleName: string,
   onCellPress: (page: AppPageModule, action: ActionType) => void,
-  onRowToggle: (pageId: string) => void
+  onRowToggle: (pageId: string) => void,
 ) {
   const rowAllChecked = ACTIONS.every((a) => matrix[page.id]?.[a]);
-  const badgeStyle = ROLE_BADGE_COLORS[page.roleKey] || {
-    bg: '#F1F5F9',
-    text: '#475569',
-    border: '#CBD5E1',
-  };
+  const adminBadge = ADMIN_BADGE_COLORS[page.roleKey];
 
   return (
     <View
@@ -936,25 +1035,31 @@ function renderTableRow(
       <View style={{ width: 380, paddingRight: spacing.sm }}>
         <View style={styles.pageTitleRow}>
           <Text style={styles.pageNameText}>{page.name}</Text>
-          <View
-            style={[
-              styles.roleBadgePill,
-              {
-                backgroundColor: badgeStyle.bg,
-                borderColor: badgeStyle.border,
-              },
-            ]}
-          >
-            <Text style={[styles.roleBadgePillText, { color: badgeStyle.text }]}>
-              {page.role}
-            </Text>
-          </View>
+          {adminBadge && (
+            <View
+              style={[
+                styles.roleBadgePill,
+                {
+                  backgroundColor: adminBadge.bg,
+                  borderColor: adminBadge.border,
+                },
+              ]}
+            >
+              <Text style={[styles.roleBadgePillText, { color: adminBadge.text }]}>
+                {adminBadge.label}
+              </Text>
+            </View>
+          )}
         </View>
         <Text style={styles.pageDescText} numberOfLines={1}>
           {page.description}
         </Text>
         <Text style={styles.pageRouteMeta}>
-          Route: <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }}>{page.route}</Text> · {page.category}
+          Route:{' '}
+          <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }}>
+            {page.route}
+          </Text>{' '}
+          · {page.category}
         </Text>
       </View>
 

@@ -1,53 +1,42 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { typography } from '../../../theme/typography';
 import StatusPill from '../../../components/StatusPill';
-import { type StaffMember } from '../types';
+import IconButton from '../../../components/IconButton';
+import { type StaffMember, getSafeStaffRoles } from '../types';
 
 interface StaffAccountRowProps {
   staff: StaffMember;
   isSelected: boolean;
-  isLinkingActive: boolean;
   onToggleSelect: (id: string) => void;
   onEdit: (staff: StaffMember) => void;
-  onLinkToggle: (staff: StaffMember) => void;
   onResetPassword: (staff: StaffMember) => void;
   onToggleActive: (staff: StaffMember) => void;
   onDelete: (staff: StaffMember) => void;
 }
 
 export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
-  ({
-    staff,
-    isSelected,
-    isLinkingActive,
-    onToggleSelect,
-    onEdit,
-    onLinkToggle,
-    onResetPassword,
-    onToggleActive,
-    onDelete,
-  }) => {
-    const isLinkable = staff.roles.includes('Teacher') || staff.roles.includes('Therapist');
+  ({ staff, isSelected, onToggleSelect, onEdit, onResetPassword, onToggleActive, onDelete }) => {
+    const safeRoles = getSafeStaffRoles(staff);
 
     return (
       <View style={styles.row}>
-        <TouchableOpacity
+        <IconButton
           onPress={() => onToggleSelect(staff.id)}
           style={styles.checkbox}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: isSelected }}
-          accessibilityLabel={`Select ${staff.name}`}
+          label={isSelected ? `Deselect ${staff.name}` : `Select ${staff.name}`}
         >
           <View style={[styles.checkboxInner, isSelected && styles.checkboxChecked]} />
-        </TouchableOpacity>
+        </IconButton>
 
         <View style={styles.infoCol}>
           <Text style={typography.bodyBold}>{staff.name}</Text>
           <Text style={typography.caption}>
-            {staff.email} · {staff.roles.join(', ')}
+            {staff.email} · {safeRoles.length > 0 ? safeRoles.join(', ') : 'No roles assigned'}
           </Text>
         </View>
 
@@ -57,35 +46,29 @@ export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
         />
 
         <View style={styles.rowActions}>
-          <TouchableOpacity
+          <IconButton
             style={styles.iconBtn}
-            accessibilityLabel={`Edit ${staff.name}`}
+            label={`Edit details and roles for ${staff.name}`}
             onPress={() => onEdit(staff)}
           >
             <Feather name="edit-2" size={14} color={colors.navyText} />
-          </TouchableOpacity>
+          </IconButton>
 
-          {isLinkable && (
-            <TouchableOpacity
-              style={[styles.iconBtn, isLinkingActive && styles.iconBtnActive]}
-              accessibilityLabel={`Link ${staff.name} to students`}
-              onPress={() => onLinkToggle(staff)}
-            >
-              <Feather name="link-2" size={14} color={colors.navyText} />
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
+          <IconButton
             style={styles.iconBtn}
-            accessibilityLabel={`Manage credentials for ${staff.name}`}
+            label={`Manage credentials & reset password for ${staff.name}`}
             onPress={() => onResetPassword(staff)}
           >
             <Ionicons name="key" size={14} color="#D97706" />
-          </TouchableOpacity>
+          </IconButton>
 
-          <TouchableOpacity
+          <IconButton
             style={styles.iconBtn}
-            accessibilityLabel={`Toggle active status for ${staff.name}`}
+            label={
+              staff.active
+                ? `Deactivate account for ${staff.name}`
+                : `Activate account for ${staff.name}`
+            }
             onPress={() => onToggleActive(staff)}
           >
             <Feather
@@ -93,15 +76,15 @@ export const StaffAccountRow: React.FC<StaffAccountRowProps> = React.memo(
               size={18}
               color={staff.active ? '#10B981' : '#EF4444'}
             />
-          </TouchableOpacity>
+          </IconButton>
 
-          <TouchableOpacity
+          <IconButton
             style={styles.iconBtn}
-            accessibilityLabel={`Delete ${staff.name}`}
+            label={`Delete staff account for ${staff.name}`}
             onPress={() => onDelete(staff)}
           >
             <Feather name="trash-2" size={14} color={colors.statusRevisionText} />
-          </TouchableOpacity>
+          </IconButton>
         </View>
       </View>
     );

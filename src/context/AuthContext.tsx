@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   useMemo,
   useCallback,
   type ReactNode,
@@ -19,6 +20,8 @@ import {
 } from '../api/token';
 import { setTokenRefreshHandler, setSessionExpiredHandler } from '../api/http/client';
 import { useToast } from './ToastContext';
+import { parsePermissions } from '../auth/permissions';
+import { storage } from '../utils/storage';
 
 export const ROLES = {
   TEACHER: 'teacher',
@@ -85,6 +88,43 @@ function resolveRoles(rawRoles?: string[], primary?: string, fallback?: string):
   return roles.length ? roles : [ROLES.TEACHER];
 }
 
+/**
+ * Resolves active modules and permissions for a role, fetching stored permissions
+ * if not returned in auth response (critical for dynamic / newly created roles).
+ */
+export function resolveSessionPermissionsAndModules(
+  role: string,
+  userModules?: string[],
+  userPermissions?: string[],
+): { modules?: string[]; permissions?: string[] } {
+  let permissions = userPermissions && userPermissions.length > 0 ? userPermissions : undefined;
+  let modules = userModules && userModules.length > 0 ? userModules : undefined;
+
+  if (!permissions) {
+    const saved =
+      storage.getJSONSync<string[]>(`sysadmin_perm_${role}`) ||
+      storage.getJSONSync<string[]>(`sysadmin_perm_${role.toLowerCase()}`);
+    if (saved && Array.isArray(saved) && saved.length > 0) {
+      permissions = saved;
+    }
+  }
+
+  if (!modules && permissions) {
+    const modSet = new Set<string>();
+    for (const p of permissions) {
+      if (typeof p === 'string' && p.includes(':')) {
+        const mod = p.split(':')[0]?.trim().toLowerCase();
+        if (mod) modSet.add(mod);
+      }
+    }
+    if (modSet.size > 0) {
+      modules = Array.from(modSet);
+    }
+  }
+
+  return { modules, permissions };
+}
+
 interface AuthContextValue {
   session: AuthSession | null;
   loginWithCredentials: (
@@ -102,6 +142,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+  const lastActivityRef = useRef<number>(Date.now());
+  const lastRefreshRef = useRef<number>(Date.now());
 
   useEffect(() => {
     setTokenRefreshHandler(authApi.refreshToken);
@@ -119,17 +161,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (token) {
           try {
             const user = await authApi.me();
-            const roles = resolveRoles(user.roles, user.role);
-            setActiveRole(roles[0]);
+            const storedRole = getActiveRole();
+            const roles = resolveRoles(user.roles, storedRole || user.role);
+            const activeRoleCandidate =
+              storedRole && roles.includes(storedRole as Role) ? (storedRole as Role) : roles[0];
+            setActiveRole(activeRoleCandidate);
             setUserRoles(roles);
+            const permsAndMods = resolveSessionPermissionsAndModules(
+              activeRoleCandidate,
+              user.modules,
+              user.permissions,
+            );
             setSession({
               userId: user.id,
-              role: roles[0],
+              role: activeRoleCandidate,
               roles,
               userName: user.name,
               email: user.email,
-              modules: user.modules,
-              permissions: user.permissions,
+              modules: permsAndMods.modules,
+              permissions: permsAndMods.permissions,
+              permissionMap: parsePermissions(permsAndMods.permissions),
             });
           } catch (meErr) {
             // Attempt token refresh before discarding session
@@ -137,15 +188,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (freshToken) {
               try {
                 const user = await authApi.me();
-                const roles = resolveRoles(user.roles, user.role);
-                setActiveRole(roles[0]);
+                const storedRole = getActiveRole();
+                const roles = resolveRoles(user.roles, storedRole || user.role);
+                const activeRoleCandidate =
+                  storedRole && roles.includes(storedRole as Role)
+                    ? (storedRole as Role)
+                    : roles[0];
+                setActiveRole(activeRoleCandidate);
                 setUserRoles(roles);
+                const permsAndMods = resolveSessionPermissionsAndModules(
+                  activeRoleCandidate,
+                  user.modules,
+                  user.permissions,
+                );
                 setSession({
                   userId: user.id,
-                  role: roles[0],
+                  role: activeRoleCandidate,
                   roles,
                   userName: user.name,
                   email: user.email,
+                  modules: permsAndMods.modules,
+                  permissions: permsAndMods.permissions,
+                  permissionMap: parsePermissions(permsAndMods.permissions),
                 });
               } catch {
                 await clearAuthTokens();
@@ -171,6 +235,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [showToast]);
 
+  // Inactivity tracking & proactive token renewal (NFR-015)
+  useEffect(() => {
+    if (!session) return;
+
+    lastActivityRef.current = Date.now();
+    lastRefreshRef.current = Date.now();
+
+    let lastThrottledRecord = 0;
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastThrottledRecord > 5000) {
+        lastThrottledRecord = now;
+        lastActivityRef.current = now;
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mousedown', handleUserActivity, { passive: true });
+      window.addEventListener('keydown', handleUserActivity, { passive: true });
+      window.addEventListener('touchstart', handleUserActivity, { passive: true });
+      window.addEventListener('scroll', handleUserActivity, { passive: true });
+    }
+
+    // Periodic check for inactivity timeout and proactive token renewal
+    const interval = setInterval(async () => {
+      const now = Date.now();
+      const idleMs = now - lastActivityRef.current;
+      // Staff sessions timeout after 15 minutes of inactivity; parent sessions after 30 minutes (NFR-015)
+      const timeoutMs = session.role === 'parent' ? 30 * 60 * 1000 : 15 * 60 * 1000;
+
+      if (idleMs >= timeoutMs) {
+        setSession(null);
+        await clearAuthTokens();
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(null, '', '/');
+        }
+        showToast('Your session has expired due to inactivity. Please sign in again.', 'info');
+        return;
+      }
+
+      // Proactively refresh JWT every 5 minutes while user is active to prevent sudden 401s
+      if (now - lastRefreshRef.current >= 5 * 60 * 1000) {
+        lastRefreshRef.current = now;
+        try {
+          await authApi.refreshToken();
+        } catch (err) {
+          console.warn('Proactive token refresh attempt failed:', err);
+        }
+      }
+    }, 60 * 1000);
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('mousedown', handleUserActivity);
+        window.removeEventListener('keydown', handleUserActivity);
+        window.removeEventListener('touchstart', handleUserActivity);
+        window.removeEventListener('scroll', handleUserActivity);
+      }
+      clearInterval(interval);
+    };
+  }, [session?.userId, session?.role, showToast]);
+
   const loginWithCredentials = async (
     email: string,
     password: string,
@@ -187,14 +313,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const roles = resolveRoles(user.roles, result.role, user.role);
       setActiveRole(roles[0]);
       setUserRoles(roles);
+      const permsAndMods = resolveSessionPermissionsAndModules(
+        roles[0],
+        user.modules,
+        user.permissions,
+      );
       setSession({
         userId: user.id,
         role: roles[0],
         roles,
         userName: user.name,
         email: user.email,
-        modules: user.modules,
-        permissions: user.permissions,
+        modules: permsAndMods.modules,
+        permissions: permsAndMods.permissions,
+        permissionMap: parsePermissions(permsAndMods.permissions),
       });
       showToast(`Welcome back, ${user.name}!`, 'success');
       return true;
@@ -220,7 +352,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nextRoles = roles.includes(role) ? roles : [...roles, role];
       setActiveRole(role);
       setUserRoles(nextRoles);
-      return { ...prev, role, roles: nextRoles };
+      const permsAndMods = resolveSessionPermissionsAndModules(role, undefined, undefined);
+      return {
+        ...prev,
+        role,
+        roles: nextRoles,
+        modules: permsAndMods.modules ?? prev.modules,
+        permissions: permsAndMods.permissions ?? prev.permissions,
+        permissionMap: parsePermissions(permsAndMods.permissions ?? prev.permissions),
+      };
     });
 
     const seedAccounts: Record<string, { email: string; pass: string; name: string }> = {
@@ -235,11 +375,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const targetSeed = seedAccounts[role];
     if (targetSeed) {
       authApi
-        .login({ email: targetSeed.email, password: targetSeed.pass })
+        .login({ email: targetSeed.email, password: targetSeed.pass, rememberDevice: true })
         .then((res) => {
           const token = res.token || res.access_token;
           if (token) {
-            setAccessToken(token);
+            setAccessToken(token, true);
             setActiveRole(role);
             setUserRoles([role]);
             setSession((prev) =>

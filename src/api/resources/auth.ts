@@ -7,11 +7,13 @@
 import { http } from '../http/client';
 import {
   setAccessToken,
+  getAccessToken,
   loadToken,
   getRefreshToken,
   setRefreshToken,
   loadRefreshToken,
   clearAuthTokens,
+  isTokenPersisted,
 } from '../token';
 
 export interface LoginRequest {
@@ -65,13 +67,18 @@ export const authApi = {
       remember_device: payload.rememberDevice,
     });
     const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
-    const refreshToken = (data as any).refresh_token ?? (data as any).refreshToken;
-    // Persist only when "remember this device" was ticked. Unchecked means the
-    // session lives for this app run only and is gone after a restart. The
-    // refresh token follows the same rule so an unremembered session cannot
-    // be resurrected from storage.
-    if (token) await setAccessToken(token, !!payload.rememberDevice);
-    if (refreshToken && payload.rememberDevice) await setRefreshToken(refreshToken);
+    const refreshToken =
+      (data as any).refresh_token ??
+      (data as any)['refresh-token'] ??
+      (data as any).refreshToken ??
+      (headers as any)?.['x-refresh-token'] ??
+      (headers as any)?.['refresh-token'];
+    // Persist session tokens across browser reloads.
+    // When rememberDevice is true or omitted, persists in localStorage.
+    // When rememberDevice is explicitly false, stores in sessionStorage so refresh survives in the tab.
+    const shouldPersist = payload.rememberDevice ?? true;
+    if (token) await setAccessToken(token, shouldPersist);
+    if (refreshToken) await setRefreshToken(refreshToken, shouldPersist);
     return {
       ...data,
       token: token || '',
@@ -83,22 +90,37 @@ export const authApi = {
   async refreshToken(): Promise<string | null> {
     const currentRefreshToken = getRefreshToken() || (await loadRefreshToken());
     if (!currentRefreshToken) return null;
+    const currentAccessToken = getAccessToken() || (await loadToken());
 
     try {
-      const { data, headers } = await http.post<LoginResponse>('/auth/jwt-refresh', {
-        refresh_token: currentRefreshToken,
-        'refresh-token': currentRefreshToken,
-      });
+      const { data, headers } = await http.post<LoginResponse>(
+        '/auth/jwt-refresh',
+        {
+          refresh_token: currentRefreshToken,
+          'refresh-token': currentRefreshToken,
+        },
+        currentAccessToken
+          ? {
+              headers: {
+                Authorization: `Bearer ${currentAccessToken}`,
+              },
+            }
+          : undefined,
+      );
       const token =
         data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
       const newRefreshToken =
-        (data as any).refresh_token ?? (data as any).refreshToken ?? currentRefreshToken;
+        (data as any).refresh_token ??
+        (data as any)['refresh-token'] ??
+        (data as any).refreshToken ??
+        currentRefreshToken;
 
+      const isPersisted = isTokenPersisted();
       if (token) {
-        await setAccessToken(token);
+        await setAccessToken(token, isPersisted);
       }
       if (newRefreshToken) {
-        await setRefreshToken(newRefreshToken);
+        await setRefreshToken(newRefreshToken, isPersisted);
       }
 
       return token || null;

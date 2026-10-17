@@ -1,7 +1,16 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Platform,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../../theme/colors';
+import Tooltip from '../../../components/Tooltip';
 
 interface StaffFilterBarProps {
   search: string;
@@ -28,7 +37,7 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
     onStatusFilterChange,
   }) => {
     return (
-      <View style={[styles.filtersRow, { zIndex: 100 }]}>
+      <View style={[styles.filtersRow, { zIndex: roleFilterOpen ? 1000 : 10 }]}>
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name or email..."
@@ -40,45 +49,52 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
           autoComplete="off"
           textContentType="none"
           importantForAutofill="no"
+          accessibilityLabel="Search staff by name or email"
         />
 
-        <View style={styles.filterControlsRow}>
+        <View style={[styles.filterControlsRow, { zIndex: roleFilterOpen ? 1000 : 1 }]}>
           {/* Role Filter Dropdown */}
-          <View style={styles.filterDropdownContainer}>
-            <TouchableOpacity
-              style={[
-                styles.filterDropdownTrigger,
-                roleFilter !== 'All' && styles.filterDropdownTriggerActive,
-              ]}
-              onPress={onToggleRoleFilter}
-              accessibilityRole="combobox"
-              accessibilityLabel="Filter by role"
-            >
-              <Feather
-                name="shield"
-                size={14}
-                color={roleFilter !== 'All' ? colors.navyText : colors.mutedText}
-              />
-              <Text
+          <View style={[styles.filterDropdownContainer, { zIndex: roleFilterOpen ? 1001 : 1 }]}>
+            <Tooltip label="Click to filter staff accounts by role">
+              <TouchableOpacity
                 style={[
-                  styles.filterDropdownTriggerText,
-                  roleFilter !== 'All' && styles.filterDropdownTriggerTextActive,
+                  styles.filterDropdownTrigger,
+                  roleFilter !== 'All' && styles.filterDropdownTriggerActive,
                 ]}
+                onPress={onToggleRoleFilter}
+                accessibilityRole="combobox"
+                accessibilityLabel="Filter by role"
+                {...(Platform.OS === 'web'
+                  ? { title: 'Click to filter staff accounts by role' }
+                  : {})}
               >
-                {roleFilter === 'All' ? 'Role: All' : `Role: ${roleFilter}`}
-              </Text>
-              <Feather
-                name={roleFilterOpen ? 'chevron-up' : 'chevron-down'}
-                size={14}
-                color={colors.navyText}
-              />
-            </TouchableOpacity>
+                <Feather
+                  name="shield"
+                  size={14}
+                  color={roleFilter !== 'All' ? colors.navyText : colors.mutedText}
+                />
+                <Text
+                  style={[
+                    styles.filterDropdownTriggerText,
+                    roleFilter !== 'All' && styles.filterDropdownTriggerTextActive,
+                  ]}
+                >
+                  {roleFilter === 'All' ? 'Role: All' : `Role: ${roleFilter}`}
+                </Text>
+                <Feather
+                  name={roleFilterOpen ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color={colors.navyText}
+                />
+              </TouchableOpacity>
+            </Tooltip>
 
             {roleFilterOpen && (
               <View style={styles.filterDropdownMenu}>
                 <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
                   {['All', ...availableRoles].map((r) => {
                     const isSelected = roleFilter === r;
+                    const itemLabel = r === 'All' ? 'All Roles' : r;
                     return (
                       <TouchableOpacity
                         key={r}
@@ -89,6 +105,9 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
                         onPress={() => onRoleFilterChange(r)}
                         accessibilityRole="button"
                         accessibilityLabel={`Select role ${r}`}
+                        {...(Platform.OS === 'web'
+                          ? { title: `Filter staff list by role: ${itemLabel}` }
+                          : {})}
                       >
                         <Text
                           style={[
@@ -96,7 +115,7 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
                             isSelected && styles.filterDropdownItemTextActive,
                           ]}
                         >
-                          {r === 'All' ? 'All Roles' : r}
+                          {itemLabel}
                         </Text>
                         {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
                       </TouchableOpacity>
@@ -108,23 +127,34 @@ export const StaffFilterBar: React.FC<StaffFilterBarProps> = React.memo(
           </View>
 
           {/* Status Filter Chips */}
-          <View style={styles.statusChipsContainer}>
+          <View style={[styles.statusChipsContainer, { zIndex: 1 }]}>
             <Text style={styles.filterLabel}>Status:</Text>
             {['All', 'Active', 'Inactive'].map((s) => (
-              <TouchableOpacity
+              <Tooltip
                 key={s}
-                style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
-                onPress={() => onStatusFilterChange(s)}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter status ${s}`}
-                accessibilityState={{ selected: statusFilter === s }}
+                label={`Filter staff accounts by ${s.toLowerCase()} status`}
+                placement="bottom"
               >
-                <Text
-                  style={[styles.filterChipText, statusFilter === s && styles.filterChipTextActive]}
+                <TouchableOpacity
+                  style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
+                  onPress={() => onStatusFilterChange(s)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter status ${s}`}
+                  accessibilityState={{ selected: statusFilter === s }}
+                  {...(Platform.OS === 'web'
+                    ? { title: `Filter staff accounts by ${s.toLowerCase()} status` }
+                    : {})}
                 >
-                  {s}
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      statusFilter === s && styles.filterChipTextActive,
+                    ]}
+                  >
+                    {s}
+                  </Text>
+                </TouchableOpacity>
+              </Tooltip>
             ))}
           </View>
         </View>
@@ -140,6 +170,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    position: 'relative',
   },
   searchInput: {
     borderWidth: 1,
@@ -156,6 +187,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: spacing.sm,
+    position: 'relative',
   },
   filterDropdownContainer: {
     position: 'relative',
@@ -189,18 +221,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '100%',
     left: 0,
-    right: 0,
+    minWidth: 220,
     marginTop: 4,
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
-    zIndex: 200,
+    ...makeShadow(4, 14, 0.18, '0, 0, 0', 10),
+    zIndex: 1002,
   },
   dropdownScroll: {
     maxHeight: 220,
@@ -229,6 +257,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    position: 'relative',
   },
   filterLabel: {
     fontSize: 12,

@@ -215,6 +215,10 @@ export const deleteStaffAccount = async (staffId: string) => {
   const currentList = storage.getJSONSync<any[]>('sysadmin_staff_accounts') || DEFAULT_STAFF;
   const filtered = currentList.filter((s) => s.id !== staffId);
   storage.setJSONSync('sysadmin_staff_accounts', filtered);
+  addAuditLogEntry({
+    action: 'deleted',
+    resource: `Staff Account: ${staffId}`,
+  });
 
   return { data: { ok: true, id: staffId } };
 };
@@ -261,14 +265,27 @@ export const getRoles = async () => {
     const res = await client.get('/sysadmin/roles');
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
       storage.setJSONSync('sysadmin_roles', res.data);
-      return res;
+      const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
+      const combined = [...res.data];
+      for (const c of custom) {
+        if (!combined.some((r) => r.id === c.id || r.name.toLowerCase() === c.name.toLowerCase())) {
+          combined.push(c);
+        }
+      }
+      return { data: combined };
     }
   } catch {}
 
   const cached = storage.getJSONSync<any[]>('sysadmin_roles');
   const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-  const list = cached && cached.length > 0 ? cached : [...DEFAULT_ROLES, ...custom];
-  return { data: list };
+  const base = cached && cached.length > 0 ? cached : DEFAULT_ROLES;
+  const combined = [...base];
+  for (const c of custom) {
+    if (!combined.some((r) => r.id === c.id || r.name.toLowerCase() === c.name.toLowerCase())) {
+      combined.push(c);
+    }
+  }
+  return { data: combined };
 };
 
 export const createRole = async (payload: Payload) => {
@@ -288,6 +305,11 @@ export const createRole = async (payload: Payload) => {
 
   const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
   storage.setJSONSync('sysadmin_custom_roles', [...custom, roleRecord]);
+  addAuditLogEntry({
+    action: 'created',
+    resource: `Role: ${roleRecord.name}`,
+    newValue: roleRecord.description || 'Custom role created',
+  });
 
   return { data: roleRecord };
 };
@@ -302,6 +324,11 @@ export const updateRole = async (roleId: string, payload: Payload) => {
   const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
   const nextCustom = custom.map((r) => (r.id === roleId ? { ...r, ...payload } : r));
   storage.setJSONSync('sysadmin_custom_roles', nextCustom);
+  addAuditLogEntry({
+    action: 'updated',
+    resource: `Role: ${payload.name || roleId}`,
+    newValue: payload.description || 'Role details updated',
+  });
 
   return { data: updated || { id: roleId, ...payload } };
 };
@@ -312,10 +339,15 @@ export const deleteRole = async (roleId: string) => {
   } catch {}
 
   const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
+  const deleted = custom.find((r) => r.id === roleId);
   storage.setJSONSync(
     'sysadmin_custom_roles',
     custom.filter((r) => r.id !== roleId),
   );
+  addAuditLogEntry({
+    action: 'deleted',
+    resource: `Role: ${deleted?.name || roleId}`,
+  });
 
   return { data: { ok: true, id: roleId } };
 };
@@ -341,9 +373,36 @@ export const getPermissionMatrix = async (roleId: string) => {
     if (res?.data) return res;
   } catch {}
 
-  const saved = storage.getJSONSync<string[]>(`sysadmin_perm_${roleId}`);
-  if (saved) {
-    return { data: { permissions: saved } };
+  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
+  const allKnown = [...DEFAULT_ROLES, ...custom];
+  const foundRole = allKnown.find(
+    (r) => r.id === roleId || r.name?.toLowerCase() === roleId.toLowerCase(),
+  );
+
+  const savedPerms =
+    storage.getJSONSync<string[]>(`sysadmin_perm_${roleId}`) ||
+    (foundRole ? storage.getJSONSync<string[]>(`sysadmin_perm_${foundRole.name}`) : null) ||
+    (foundRole
+      ? storage.getJSONSync<string[]>(`sysadmin_perm_${foundRole.name.toLowerCase()}`)
+      : null);
+
+  const savedMatrix =
+    storage.getJSONSync<Record<string, Record<string, boolean>>>(
+      `sysadmin_perm_matrix_${roleId}`,
+    ) ||
+    (foundRole
+      ? storage.getJSONSync<Record<string, Record<string, boolean>>>(
+          `sysadmin_perm_matrix_${foundRole.name}`,
+        )
+      : null) ||
+    (foundRole
+      ? storage.getJSONSync<Record<string, Record<string, boolean>>>(
+          `sysadmin_perm_matrix_${foundRole.name.toLowerCase()}`,
+        )
+      : null);
+
+  if (savedPerms || savedMatrix) {
+    return { data: { permissions: savedPerms || [], matrix: savedMatrix || undefined } };
   }
 
   return { data: { permissions: [] } };
@@ -352,16 +411,62 @@ export const getPermissionMatrix = async (roleId: string) => {
 export const savePermissionMatrix = async (
   roleId: string,
   payload:
-    { permission_ids?: string[]; matrix?: Record<string, Record<string, boolean>> } | string[],
+    | {
+        permission_ids?: string[];
+        matrix?: Record<string, Record<string, boolean>>;
+        page_matrix?: Record<string, Record<string, boolean>>;
+      }
+    | string[],
 ) => {
   const permissionIds = Array.isArray(payload) ? payload : payload.permission_ids || [];
+  const pageMatrix =
+    !Array.isArray(payload) && typeof payload === 'object'
+      ? payload.page_matrix || payload.matrix
+      : undefined;
   const body = Array.isArray(payload) ? { permission_ids: payload } : payload;
   try {
     await client.post(`/sysadmin/roles/${roleId}/permissions`, body);
   } catch {}
 
+  // Direct ID sync
   storage.setJSONSync(`sysadmin_perm_${roleId}`, permissionIds);
+  if (pageMatrix) {
+    storage.setJSONSync(`sysadmin_perm_matrix_${roleId}`, pageMatrix);
+  }
 
+  // Cross-reference all standard and custom roles to sync by role name
+  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
+  const allKnown = [...DEFAULT_ROLES, ...custom];
+  const foundRole = allKnown.find(
+    (r) => r.id === roleId || r.name?.toLowerCase() === roleId.toLowerCase(),
+  );
+  const roleName = foundRole?.name || roleId;
+
+  if (foundRole?.name) {
+    storage.setJSONSync(`sysadmin_perm_${foundRole.name}`, permissionIds);
+    storage.setJSONSync(`sysadmin_perm_${foundRole.name.toLowerCase()}`, permissionIds);
+    if (pageMatrix) {
+      storage.setJSONSync(`sysadmin_perm_matrix_${foundRole.name}`, pageMatrix);
+      storage.setJSONSync(`sysadmin_perm_matrix_${foundRole.name.toLowerCase()}`, pageMatrix);
+    }
+  }
+
+  // Update role metadata (has_permissions and permission_count)
+  const updatedCustom = custom.map((r) =>
+    r.id === roleId || r.name === roleId || r.name?.toLowerCase() === roleId.toLowerCase()
+      ? { ...r, has_permissions: permissionIds.length > 0, permission_count: permissionIds.length }
+      : r,
+  );
+  storage.setJSONSync('sysadmin_custom_roles', updatedCustom);
+
+  // Central audit log entry
+  addAuditLogEntry({
+    action: 'updated',
+    resource: `Role Permissions: ${roleName}`,
+    newValue: `${permissionIds.length} permissions configured`,
+  });
+
+  // Role-specific audit trail
   const logs = storage.getJSONSync<any[]>(`sysadmin_perm_audit_${roleId}`) || [];
   const newLog = {
     id: `log-${Date.now()}`,
@@ -373,7 +478,7 @@ export const savePermissionMatrix = async (
   };
   storage.setJSONSync(`sysadmin_perm_audit_${roleId}`, [newLog, ...logs]);
 
-  return { data: { ok: true, permissions: permissionIds } };
+  return { data: { ok: true, permissions: permissionIds, matrix: pageMatrix } };
 };
 
 export const resetDefaultPermissions = async (roleId: string) => {
@@ -388,6 +493,7 @@ export const resetDefaultPermissions = async (roleId: string) => {
   }
 
   storage.removeSync(`sysadmin_perm_${roleId}`);
+  storage.removeSync(`sysadmin_perm_matrix_${roleId}`);
   return { data: { ok: true, permissions: [] } };
 };
 
@@ -407,9 +513,13 @@ export const copyPermissionsFromRole = async (roleId: string, sourceRoleId: stri
   }
 
   const sourcePerms = storage.getJSONSync<string[]>(`sysadmin_perm_${sourceRoleId}`) || [];
+  const sourceMatrix = storage.getJSONSync<any>(`sysadmin_perm_matrix_${sourceRoleId}`);
   storage.setJSONSync(`sysadmin_perm_${roleId}`, sourcePerms);
+  if (sourceMatrix) {
+    storage.setJSONSync(`sysadmin_perm_matrix_${roleId}`, sourceMatrix);
+  }
 
-  return { data: { ok: true, permissions: sourcePerms } };
+  return { data: { ok: true, permissions: sourcePerms, matrix: sourceMatrix } };
 };
 
 export const getPermissionAuditTrail = async (roleId: string) => {
@@ -437,7 +547,23 @@ export const getPermissionAuditTrail = async (roleId: string) => {
 };
 
 // MR-8: Audit Logging (System Admin view)
-export const getAuditLogs = async (params: QueryParams) => {
+export const addAuditLogEntry = (entry: Record<string, any>) => {
+  const existing = storage.getJSONSync<any[]>('sysadmin_audit_logs') || [];
+  const now = new Date();
+  const newEntry = {
+    id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    date: now.toISOString().slice(0, 10),
+    time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    user: 'System Admin',
+    action: 'updated' as const,
+    ip: '192.168.1.10',
+    ...entry,
+  };
+  storage.setJSONSync('sysadmin_audit_logs', [newEntry, ...existing]);
+  return newEntry;
+};
+
+export const getAuditLogs = async (params?: QueryParams) => {
   try {
     const res = await client.get('/sysadmin/audit-logs', { params });
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
@@ -445,5 +571,28 @@ export const getAuditLogs = async (params: QueryParams) => {
     }
   } catch {}
 
-  return { data: DEFAULT_AUDIT_LOGS };
+  const dynamic = storage.getJSONSync<any[]>('sysadmin_audit_logs') || [];
+  const allLogs = [...dynamic, ...DEFAULT_AUDIT_LOGS];
+
+  if (!params) return { data: allLogs };
+
+  let filtered = allLogs;
+  if (typeof params.user === 'string' && params.user !== 'All') {
+    filtered = filtered.filter((l) => l.user === params.user);
+  }
+  if (typeof params.action === 'string' && params.action !== 'All') {
+    const act = params.action.toLowerCase();
+    filtered = filtered.filter((l) => l.action?.toLowerCase() === act);
+  }
+  if (params.search && typeof params.search === 'string' && params.search.trim()) {
+    const term = params.search.trim().toLowerCase();
+    filtered = filtered.filter(
+      (l) =>
+        (l.resource || '').toLowerCase().includes(term) ||
+        (l.user || '').toLowerCase().includes(term) ||
+        (l.ip || '').toLowerCase().includes(term),
+    );
+  }
+
+  return { data: filtered };
 };

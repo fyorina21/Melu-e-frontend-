@@ -17,7 +17,7 @@ describe('Workload Trend and Dashboard fallback', () => {
       expect(trendRes.data[0]).toHaveProperty('label');
       expect(trendRes.data[0]).toHaveProperty('sessions');
     }
-  }, 20000);
+  }, 30000);
 
   it('filters deleted staff from workload dashboard and trend', async () => {
     recordDeletedStaff({

@@ -53,4 +53,20 @@ describe('token store', () => {
     expect(localStorage.getItem('melue.auth.token')).toBeNull();
     expect(localStorage.getItem('melue.auth.refresh_token')).toBeNull();
   });
+
+  it('handles non-persisted tokens in sessionStorage without clearing in-memory value on reload', async () => {
+    await setAccessToken('session-only-tok', false);
+    await setRefreshToken('session-only-ref', false);
+
+    expect(getAccessToken()).toBe('session-only-tok');
+    expect(getRefreshToken()).toBe('session-only-ref');
+    expect(localStorage.getItem('melue.auth.token')).toBeNull();
+    expect(localStorage.getItem('melue.auth.refresh_token')).toBeNull();
+    expect(sessionStorage.getItem('melue.auth.token')).toBe('session-only-tok');
+    expect(sessionStorage.getItem('melue.auth.refresh_token')).toBe('session-only-ref');
+
+    // Simulate reading stored token back
+    expect(await loadToken()).toBe('session-only-tok');
+    expect(await loadRefreshToken()).toBe('session-only-ref');
+  });
 });

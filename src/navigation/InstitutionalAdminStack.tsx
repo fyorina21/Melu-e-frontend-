@@ -7,39 +7,34 @@ import AbcDropdownListsScreen from '../screens/institutionaladmin/AbcDropdownLis
 import ScheduleCapacityConfigScreen from '../screens/institutionaladmin/ScheduleCapacityConfigScreen';
 import GoalDomainDefinitionsScreen from '../screens/institutionaladmin/GoalDomainDefinitionsScreen';
 import TaskAnalysisTemplatesScreen from '../screens/institutionaladmin/TaskAnalysisTemplatesScreen';
-import BehaviorAssessmentScreen from '../screens/assessments/BehaviorAssessmentScreen';
-import PreferenceAssessmentScreen from '../screens/assessments/PreferenceAssessmentScreen';
-import SensoryAssessmentScreen from '../screens/assessments/SensoryAssessmentScreen';
 import { ErrorBoundary, withErrorBoundary } from '../components/ErrorBoundary';
+import { withModuleGuard } from '../auth/withModuleGuard';
 
 const Stack = createNativeStackNavigator<InstitutionalAdminStackParamList>();
 
-const SafeFormBuilder = withErrorBoundary(FormBuilderScreen, 'Form Builder');
-const SafeTrialLoggingFormat = withErrorBoundary(TrialLoggingFormatScreen, 'Trial Logging Format');
-const SafeAbcDropdownLists = withErrorBoundary(AbcDropdownListsScreen, 'ABC Dropdown Lists');
-const SafeScheduleCapacityConfig = withErrorBoundary(
-  ScheduleCapacityConfigScreen,
-  'Session Schedule & Capacity',
+const SafeFormBuilder = withModuleGuard(
+  withErrorBoundary(FormBuilderScreen, 'Form Builder'),
+  'admin',
 );
-const SafeGoalDomainDefinitions = withErrorBoundary(
-  GoalDomainDefinitionsScreen,
-  'Goal Domains & Task Analysis',
+const SafeTrialLoggingFormat = withModuleGuard(
+  withErrorBoundary(TrialLoggingFormatScreen, 'Trial Logging Format'),
+  'sessions',
 );
-const SafeTaskAnalysisTemplates = withErrorBoundary(
-  TaskAnalysisTemplatesScreen,
-  'Task Analysis Templates',
+const SafeAbcDropdownLists = withModuleGuard(
+  withErrorBoundary(AbcDropdownListsScreen, 'ABC Dropdown Lists'),
+  'behavior_incidents',
 );
-const SafeBehaviorAssessment = withErrorBoundary(
-  BehaviorAssessmentScreen as any,
-  'Behavior Assessment',
+const SafeScheduleCapacityConfig = withModuleGuard(
+  withErrorBoundary(ScheduleCapacityConfigScreen, 'Session Schedule & Capacity'),
+  'staff',
 );
-const SafePreferenceAssessment = withErrorBoundary(
-  PreferenceAssessmentScreen as any,
-  'Preference Assessment',
+const SafeGoalDomainDefinitions = withModuleGuard(
+  withErrorBoundary(GoalDomainDefinitionsScreen, 'Goal Domains & Task Analysis'),
+  'iups',
 );
-const SafeSensoryAssessment = withErrorBoundary(
-  SensoryAssessmentScreen as any,
-  'Sensory Assessment',
+const SafeTaskAnalysisTemplates = withModuleGuard(
+  withErrorBoundary(TaskAnalysisTemplatesScreen, 'Task Analysis Templates'),
+  'iups',
 );
 
 export default function InstitutionalAdminStack() {
@@ -52,9 +47,6 @@ export default function InstitutionalAdminStack() {
         <Stack.Screen name="ScheduleCapacityConfig" component={SafeScheduleCapacityConfig} />
         <Stack.Screen name="GoalDomainDefinitions" component={SafeGoalDomainDefinitions} />
         <Stack.Screen name="TaskAnalysisTemplates" component={SafeTaskAnalysisTemplates} />
-        <Stack.Screen name="BehaviorAssessment" component={SafeBehaviorAssessment} />
-        <Stack.Screen name="PreferenceAssessment" component={SafePreferenceAssessment} />
-        <Stack.Screen name="SensoryAssessment" component={SafeSensoryAssessment} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

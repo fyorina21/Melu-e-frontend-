@@ -25,7 +25,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
   const passwordInputRef = React.useRef<TextInput>(null);
   const [submitting, setSubmitting] = useState(false);
 

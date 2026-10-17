@@ -21,7 +21,9 @@ import { getStudentOptions, type StudentOption } from '../../api/optionsApi';
 import { openPrintWindow, downloadTextFile } from '../../utils/webExport';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../auth/usePermission';
 import { getStoredAbcIncidents, removeStoredAbcIncident } from '../../stores/trialsStore';
+import { AbcIncidentDetailModal } from './components/AbcIncidentDetailModal';
 import type { SessionStackParamList } from '../../types';
 import {
   type AbcIncident,
@@ -90,7 +92,7 @@ export default function AbcLogScreen({ navigation }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
-  const isSysadmin = session?.role === ROLES.SYSTEM_ADMIN;
+  const canDelete = usePermission('behavior_incidents', 'delete');
   const currentStudent = studentOptions.find((s) => s.id === studentId);
 
   useEffect(() => {
@@ -100,7 +102,7 @@ export default function AbcLogScreen({ navigation }: Props) {
         if (!active) return;
         const list = Array.isArray(opts) ? opts : [];
         const activeStudents = list.filter(
-          (s: StudentOption) => !s.phase || s.phase.toLowerCase() === 'active'
+          (s: StudentOption) => !s.phase || s.phase.toLowerCase() === 'active',
         );
         const finalList = activeStudents.length > 0 ? activeStudents : list;
         setStudentOptions(finalList);
@@ -180,12 +182,32 @@ export default function AbcLogScreen({ navigation }: Props) {
       .then(({ data: res }) => {
         const rows: AbcIncident[] = res?.incidents ?? res?.rows ?? [];
         const allRows = [...stored, ...rows];
-        setBehaviorOptions(['All', ...Array.from(new Set(allRows.map((r) => r.behavior?.trim()).filter(Boolean) as string[])).sort()]);
-        setCategoryOptions(['All', ...Array.from(new Set(allRows.map((r) => r.category?.trim()).filter(Boolean) as string[])).sort()]);
+        setBehaviorOptions([
+          'All',
+          ...Array.from(
+            new Set(allRows.map((r) => r.behavior?.trim()).filter(Boolean) as string[]),
+          ).sort(),
+        ]);
+        setCategoryOptions([
+          'All',
+          ...Array.from(
+            new Set(allRows.map((r) => r.category?.trim()).filter(Boolean) as string[]),
+          ).sort(),
+        ]);
       })
       .catch(() => {
-        setBehaviorOptions(['All', ...Array.from(new Set(stored.map((r) => r.behavior?.trim()).filter(Boolean) as string[])).sort()]);
-        setCategoryOptions(['All', ...Array.from(new Set(stored.map((r) => r.category?.trim()).filter(Boolean) as string[])).sort()]);
+        setBehaviorOptions([
+          'All',
+          ...Array.from(
+            new Set(stored.map((r) => r.behavior?.trim()).filter(Boolean) as string[]),
+          ).sort(),
+        ]);
+        setCategoryOptions([
+          'All',
+          ...Array.from(
+            new Set(stored.map((r) => r.category?.trim()).filter(Boolean) as string[]),
+          ).sort(),
+        ]);
       });
   }, [studentId, currentStudent?.name]);
 
@@ -215,13 +237,19 @@ export default function AbcLogScreen({ navigation }: Props) {
 
   const handleDeleteIncident = async () => {
     if (!selectedIncident) return;
+    if (!canDelete) {
+      showToast('You do not have permission to delete incidents.', 'error');
+      return;
+    }
     try {
       await deleteAbcIncident(selectedIncident.id);
       removeStoredAbcIncident(selectedIncident.id);
       showToast('Incident deleted successfully', 'success');
       setSelectedIncident(null);
       setDeleteConfirm(false);
-      setIncidents((prev) => prev.filter((item) => String(item.id) !== String(selectedIncident.id)));
+      setIncidents((prev) =>
+        prev.filter((item) => String(item.id) !== String(selectedIncident.id)),
+      );
       await load();
       refreshFilterOptions();
     } catch (err: any) {
@@ -231,7 +259,9 @@ export default function AbcLogScreen({ navigation }: Props) {
         showToast('Incident deleted successfully', 'success');
         setSelectedIncident(null);
         setDeleteConfirm(false);
-        setIncidents((prev) => prev.filter((item) => String(item.id) !== String(selectedIncident.id)));
+        setIncidents((prev) =>
+          prev.filter((item) => String(item.id) !== String(selectedIncident.id)),
+        );
         await load();
         refreshFilterOptions();
         return;
@@ -274,7 +304,10 @@ export default function AbcLogScreen({ navigation }: Props) {
         stats,
         columns: TABLE_COLUMNS,
       });
-      openPrintWindow(reportHtml, title, { formId: 'SCR-003A', revisionNumber: 'Rev: August 2025' });
+      openPrintWindow(reportHtml, title, {
+        formId: 'SCR-003A',
+        revisionNumber: 'Rev: August 2025',
+      });
       showToast('PDF print preview opened', 'success');
     }
   };
@@ -292,7 +325,11 @@ export default function AbcLogScreen({ navigation }: Props) {
             <StudentAvatar
               name={currentStudent?.name}
               studentId={currentStudent?.id}
-              photoUrl={(currentStudent as any)?.photoUrl || (currentStudent as any)?.headshotUrl || (currentStudent as any)?.photo}
+              photoUrl={
+                (currentStudent as any)?.photoUrl ||
+                (currentStudent as any)?.headshotUrl ||
+                (currentStudent as any)?.photo
+              }
               size={44}
               style={{ marginRight: 10 }}
             />
@@ -315,7 +352,10 @@ export default function AbcLogScreen({ navigation }: Props) {
                   {studentOptions.map((s) => (
                     <TouchableOpacity
                       key={s.id}
-                      style={[styles.dropdownItem, s.id === studentId && styles.dropdownItemSelected]}
+                      style={[
+                        styles.dropdownItem,
+                        s.id === studentId && styles.dropdownItemSelected,
+                      ]}
                       onPress={() => {
                         setStudentId(s.id);
                         setPage(1);
@@ -325,7 +365,9 @@ export default function AbcLogScreen({ navigation }: Props) {
                       <StudentAvatar
                         name={s.name}
                         studentId={s.id}
-                        photoUrl={(s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo}
+                        photoUrl={
+                          (s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo
+                        }
                         size={26}
                         style={{ marginRight: 8 }}
                       />
@@ -452,7 +494,10 @@ export default function AbcLogScreen({ navigation }: Props) {
 
             {/* Export */}
             <View style={styles.exportWrap}>
-              <TouchableOpacity style={styles.exportBtn} onPress={() => setExportMenuOpen((v) => !v)}>
+              <TouchableOpacity
+                style={styles.exportBtn}
+                onPress={() => setExportMenuOpen((v) => !v)}
+              >
                 <Text style={styles.exportBtnText}>Export</Text>
                 <Feather name="chevron-down" size={14} color="#1E293B" />
               </TouchableOpacity>
@@ -474,7 +519,9 @@ export default function AbcLogScreen({ navigation }: Props) {
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statCaption}>Total Incidents</Text>
-            <Text style={[styles.statValueLg, { color: '#0EA5E9' }]}>{stats?.totalIncidents ?? 0}</Text>
+            <Text style={[styles.statValueLg, { color: '#0EA5E9' }]}>
+              {stats?.totalIncidents ?? 0}
+            </Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statCaption}>Most Common Behavior</Text>
@@ -554,8 +601,7 @@ export default function AbcLogScreen({ navigation }: Props) {
 
           <View style={styles.paginationBar}>
             <Text style={styles.paginationInfo}>
-              Showing{' '}
-              {incidents.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+              Showing {incidents.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
               {Math.min(safePage * PAGE_SIZE, incidents.length)} of {incidents.length} incidents
             </Text>
             {totalPages > 1 && (
@@ -584,81 +630,20 @@ export default function AbcLogScreen({ navigation }: Props) {
       </ScrollView>
 
       {/* Incident Detail Modal */}
-      <Modal visible={selectedIncident !== null} transparent animationType="fade" onRequestClose={() => setSelectedIncident(null)}>
-        <View style={styles.overlay}>
-          <View style={styles.modalPanel}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Incident Details</Text>
-              <TouchableOpacity
-                hitSlop={8}
-                onPress={() => {
-                  setSelectedIncident(null);
-                  setDeleteConfirm(false);
-                }}
-              >
-                <Feather name="x" size={20} color="#94A3B8" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
-              <View style={styles.detailGrid}>
-                {(
-                  [
-                    ['Date', selectedIncident?.date],
-                    ['Time', selectedIncident?.time],
-                    ['Location', selectedIncident?.location],
-                    ['Teacher', selectedIncident?.teacher],
-                    ['Behavior', selectedIncident?.behavior],
-                    ['Frequency', selectedIncident?.frequency],
-                    ['Intensity', selectedIncident?.intensity],
-                    ['Category', selectedIncident?.category],
-                    ['Antecedent', selectedIncident?.antecedent],
-                    ['Consequence', selectedIncident?.consequence],
-                  ] as Array<[string, string | undefined]>
-                ).map(([label, value]) => (
-                  <View key={label} style={styles.detailField}>
-                    <Text style={styles.statCaption}>{label}</Text>
-                    <Text style={styles.detailFieldValue}>{value || '—'}</Text>
-                  </View>
-                ))}
-                <View style={styles.detailNotes}>
-                  <Text style={styles.statCaption}>Notes</Text>
-                  <View style={styles.notesBox}>
-                    <Text style={styles.notesText}>{selectedIncident?.notes || 'No notes recorded.'}</Text>
-                  </View>
-                </View>
-              </View>
-
-              {isSysadmin && (
-                <View style={styles.deleteSection}>
-                  {!deleteConfirm ? (
-                    <TouchableOpacity style={styles.deleteBtn} onPress={() => setDeleteConfirm(true)}>
-                      <Text style={styles.deleteBtnText}>Delete Incident</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.confirmBox}>
-                      <Text style={styles.confirmText}>
-                        Are you sure you want to delete this incident? This action cannot be undone.
-                      </Text>
-                      <View style={styles.confirmRow}>
-                        <TouchableOpacity style={styles.confirmDeleteBtn} onPress={handleDeleteIncident}>
-                          <Text style={styles.deleteBtnText}>Yes, Delete</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.cancelDeleteBtn}
-                          onPress={() => setDeleteConfirm(false)}
-                        >
-                          <Text style={styles.cancelDeleteText}>Cancel</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <AbcIncidentDetailModal
+        incident={selectedIncident}
+        canDelete={
+          canDelete || session?.role === ROLES.SYSTEM_ADMIN || session?.role === 'system_admin'
+        }
+        isSysadmin={session?.role === ROLES.SYSTEM_ADMIN || session?.role === 'system_admin'}
+        deleteConfirm={deleteConfirm}
+        onSetDeleteConfirm={setDeleteConfirm}
+        onDeleteIncident={handleDeleteIncident}
+        onClose={() => {
+          setSelectedIncident(null);
+          setDeleteConfirm(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -677,7 +662,13 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.md },
 
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  studentBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, position: 'relative', zIndex: 100 },
+  studentBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    position: 'relative',
+    zIndex: 100,
+  },
   avatar: {
     width: 56,
     height: 56,
@@ -822,7 +813,12 @@ const styles = StyleSheet.create({
   cellText: { fontSize: 12, color: '#475569' },
   cellTextDate: { fontSize: 12, color: '#334155' },
   cellTextStrong: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  intensityBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  intensityBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   intensityBadgeText: { fontSize: 11, fontWeight: '600' },
   emptyText: { textAlign: 'center', color: '#94A3B8', paddingVertical: 40 },
 

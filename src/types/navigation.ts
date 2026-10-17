@@ -79,32 +79,19 @@ export type ProgramDirectorStackParamList = {
 };
 
 export type InstitutionalAdminStackParamList = {
-  AdminPanelOverview: { panel?: 'clinical' | 'system' } | undefined;
   FormBuilder: undefined;
   TrialLoggingFormat: undefined;
   AbcDropdownLists: undefined;
   ScheduleCapacityConfig: undefined;
   GoalDomainDefinitions: undefined;
   TaskAnalysisTemplates: undefined;
-  ClinicInfoConfig: undefined;
-  WorkingHoursConfig: undefined;
-  SchoolSettingsConfig: undefined;
-  ClinicalCategoriesConfig: undefined;
-  BehaviorAssessment?: { studentId?: string };
-  PreferenceAssessment?: { studentId?: string };
-  SensoryAssessment?: { studentId?: string };
 };
 
 export type SystemAdminStackParamList = {
-  AdminPanelOverview: { panel?: 'clinical' | 'system' } | undefined;
-  FormBuilder: undefined;
   StaffAccountManagement: undefined;
   RoleManagement: undefined;
-  PermissionConfiguration: undefined;
+  PermissionConfiguration: { roleId?: string } | undefined;
   AuditLog: undefined;
-  BehaviorAssessment?: { studentId?: string };
-  PreferenceAssessment?: { studentId?: string };
-  SensoryAssessment?: { studentId?: string };
 };
 
 export type ParentStackParamList = {

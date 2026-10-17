@@ -6,7 +6,8 @@ import type { AbcIncident } from '../types';
 
 interface AbcIncidentDetailModalProps {
   incident: AbcIncident | null;
-  isSysadmin: boolean;
+  canDelete?: boolean;
+  isSysadmin?: boolean;
   deleteConfirm: boolean;
   onSetDeleteConfirm: (val: boolean) => void;
   onDeleteIncident: () => void;
@@ -14,7 +15,16 @@ interface AbcIncidentDetailModalProps {
 }
 
 export const AbcIncidentDetailModal: React.FC<AbcIncidentDetailModalProps> = React.memo(
-  ({ incident, isSysadmin, deleteConfirm, onSetDeleteConfirm, onDeleteIncident, onClose }) => {
+  ({
+    incident,
+    canDelete,
+    isSysadmin,
+    deleteConfirm,
+    onSetDeleteConfirm,
+    onDeleteIncident,
+    onClose,
+  }) => {
+    const allowDelete = canDelete ?? isSysadmin ?? false;
     return (
       <Modal visible={incident !== null} transparent animationType="fade" onRequestClose={onClose}>
         <View style={styles.overlay}>
@@ -63,7 +73,7 @@ export const AbcIncidentDetailModal: React.FC<AbcIncidentDetailModalProps> = Rea
                 </View>
               </View>
 
-              {isSysadmin && (
+              {allowDelete && (
                 <View style={styles.deleteSection}>
                   {!deleteConfirm ? (
                     <TouchableOpacity

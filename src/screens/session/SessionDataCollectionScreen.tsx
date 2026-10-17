@@ -18,6 +18,7 @@ import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../auth/usePermission';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import StudentSessionCard from './components/StudentSessionCard';
 import BehaviorIncidentModal from './components/BehaviorIncidentModal';
@@ -51,12 +52,7 @@ import {
   filterOutDeletedStaff,
   onDeletedStaffChanged,
 } from '../../utils/deletedStaffHelper';
-import type {
-  SessionStackParamList,
-  SessionRoster,
-  Payload,
-  Trial,
-} from '../../types';
+import type { SessionStackParamList, SessionRoster, Payload, Trial } from '../../types';
 import {
   startSessionTimer,
   resumeSessionTimer,
@@ -80,10 +76,7 @@ import {
   incrementOfflineSyncRetry,
 } from '../../stores/trialsStore';
 
-type Props = NativeStackScreenProps<
-  SessionStackParamList,
-  'SessionDataCollection'
->;
+type Props = NativeStackScreenProps<SessionStackParamList, 'SessionDataCollection'>;
 
 interface IncidentModalState {
   studentId: string;
@@ -168,13 +161,12 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 5000, fallback: T): Pro
   });
 }
 
-export default function SessionDataCollectionScreen({
-  route,
-  navigation,
-}: Props) {
+export default function SessionDataCollectionScreen({ route, navigation }: Props) {
   const sessionId = route.params?.sessionId ?? 'active';
   const { session: authSession } = useAuth();
   const { showToast } = useToast();
+  const canCreateTrial = usePermission('sessions', 'create');
+  const canEditSession = usePermission('sessions', 'edit');
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -226,25 +218,23 @@ export default function SessionDataCollectionScreen({
               item.sessionId,
               item.studentId || '',
               item.goalId || '',
-              item.payload
+              item.payload,
             );
             const serverTrialId = (res as any)?.data?.trial?.id || (res as any)?.data?.id;
             if (serverTrialId && item.trialId && serverTrialId !== item.trialId && item.studentId) {
-              updateTrialIdInStore(item.sessionId, item.studentId, item.trialId, String(serverTrialId));
+              updateTrialIdInStore(
+                item.sessionId,
+                item.studentId,
+                item.trialId,
+                String(serverTrialId),
+              );
             }
             removeOfflineSyncItem(item.id);
           } else if (item.type === 'undo_trial' || item.type === 'undoTrial') {
-            await undoLastTrial(
-              item.sessionId,
-              item.studentId || '',
-              item.goalId || ''
-            );
+            await undoLastTrial(item.sessionId, item.studentId || '', item.goalId || '');
             removeOfflineSyncItem(item.id);
           } else if (item.type === 'behavior_incident' || item.type === 'recordIncident') {
-            await recordBehaviorIncident(
-              item.sessionId,
-              item.payload as Payload
-            );
+            await recordBehaviorIncident(item.sessionId, item.payload as Payload);
             removeOfflineSyncItem(item.id);
           }
         } catch {
@@ -292,11 +282,19 @@ export default function SessionDataCollectionScreen({
         startSession(sessionId).catch(() => {});
 
         // Fetch teachers list if not already cached
-        let currentTeachers = filterOutDeletedStaff(teachersRef.current.length > 0 ? teachersRef.current : teachers);
+        let currentTeachers = filterOutDeletedStaff(
+          teachersRef.current.length > 0 ? teachersRef.current : teachers,
+        );
         if (currentTeachers.length === 0) {
           try {
-            const staffRes = await withTimeout<any>(getStaffOptions().catch(() => null), 4000, null);
-            const teacherRows: Array<{ id: string; name: string }> = (filterOutDeletedStaff(staffRes?.data || []) as any[]).filter((s: any) => s.role === 'teacher');
+            const staffRes = await withTimeout<any>(
+              getStaffOptions().catch(() => null),
+              4000,
+              null,
+            );
+            const teacherRows: Array<{ id: string; name: string }> = (
+              filterOutDeletedStaff(staffRes?.data || []) as any[]
+            ).filter((s: any) => s.role === 'teacher');
             if (teacherRows.length > 0) {
               currentTeachers = teacherRows;
               teachersRef.current = teacherRows;
@@ -314,7 +312,11 @@ export default function SessionDataCollectionScreen({
           const matched = findLoggedInTeacher(authSession, currentTeachers);
           if (matched && !isStaffDeleted(matched)) targetTeacherId = matched.id;
         }
-        if (!targetTeacherId && selectedTeacherIdRef.current && !isStaffDeleted(selectedTeacherIdRef.current)) {
+        if (
+          !targetTeacherId &&
+          selectedTeacherIdRef.current &&
+          !isStaffDeleted(selectedTeacherIdRef.current)
+        ) {
           targetTeacherId = selectedTeacherIdRef.current;
         }
         if (!targetTeacherId && currentTeachers.length > 0) {
@@ -331,13 +333,36 @@ export default function SessionDataCollectionScreen({
         }
 
         // Parallel fetch with 5000ms timeout: director schedule for target teacher, all director schedule blocks, student options, dashboard, and session roster
-        const [schedRes, allSchedRes, studentOptsRes, dashRes, sessionRosterRes] = await Promise.all([
-          targetTeacherId ? withTimeout(getDirectorSchedule({ teacherId: targetTeacherId }).catch(() => null), 5000, null) : null,
-          withTimeout(getDirectorSchedule({}).catch(() => null), 5000, null),
-          withTimeout(getStudentOptions().catch(() => null), 5000, null),
-          withTimeout(getTeacherDashboard().catch(() => null), 5000, null),
-          withTimeout(getSessionRoster(sessionId).catch(() => null), 5000, null),
-        ]);
+        const [schedRes, allSchedRes, studentOptsRes, dashRes, sessionRosterRes] =
+          await Promise.all([
+            targetTeacherId
+              ? withTimeout(
+                  getDirectorSchedule({ teacherId: targetTeacherId }).catch(() => null),
+                  5000,
+                  null,
+                )
+              : null,
+            withTimeout(
+              getDirectorSchedule({}).catch(() => null),
+              5000,
+              null,
+            ),
+            withTimeout(
+              getStudentOptions().catch(() => null),
+              5000,
+              null,
+            ),
+            withTimeout(
+              getTeacherDashboard().catch(() => null),
+              5000,
+              null,
+            ),
+            withTimeout(
+              getSessionRoster(sessionId).catch(() => null),
+              5000,
+              null,
+            ),
+          ]);
 
         if (requestId !== fetchRequestIdRef.current) return;
 
@@ -359,27 +384,39 @@ export default function SessionDataCollectionScreen({
 
         const blocks: any[] = Array.isArray(schedRes?.data) ? schedRes.data : [];
         const allBlocks: any[] = Array.isArray(allSchedRes?.data) ? allSchedRes.data : blocks;
-        const currentTeacherObj = currentTeachers.find((t) => String(t.id) === String(targetTeacherId));
-
-        // 1. Resolve assigned student IDs strictly belonging to this teacher
-        const { assignedStudentIds: strictlyAssignedIds, activeBlock } = resolveTeacherAssignedStudentIds(
-          currentTeacherObj || null,
-          blocks.length > 0 ? blocks : allBlocks
+        const currentTeacherObj = currentTeachers.find(
+          (t) => String(t.id) === String(targetTeacherId),
         );
 
+        // 1. Resolve assigned student IDs strictly belonging to this teacher
+        const { assignedStudentIds: strictlyAssignedIds, activeBlock } =
+          resolveTeacherAssignedStudentIds(
+            currentTeacherObj || null,
+            blocks.length > 0 ? blocks : allBlocks,
+          );
+
         // Check if director has explicit assignments for this teacher
-        const directorAssignedIds = targetTeacherId ? getDirectorAssignmentsForTeacher(targetTeacherId) : null;
+        const directorAssignedIds = targetTeacherId
+          ? getDirectorAssignmentsForTeacher(targetTeacherId)
+          : null;
 
         // 2. Check if students were explicitly assigned or passed for this specific teacher
         let assignedStudentIds = strictlyAssignedIds;
 
         if (directorAssignedIds !== null) {
           assignedStudentIds = directorAssignedIds.slice(0, 2);
-        } else if (route.params?.students && Array.isArray(route.params.students) && route.params.students.length > 0) {
+        } else if (
+          route.params?.students &&
+          Array.isArray(route.params.students) &&
+          route.params.students.length > 0
+        ) {
           const passedTeacherId = (route.params as any)?.teacherId;
           if (!passedTeacherId || String(passedTeacherId) === String(targetTeacherId)) {
             const passedIds = route.params.students.map((s: any) => String(s.id));
-            if (assignedStudentIds.length === 0 || passedIds.some((pid) => assignedStudentIds.includes(pid))) {
+            if (
+              assignedStudentIds.length === 0 ||
+              passedIds.some((pid) => assignedStudentIds.includes(pid))
+            ) {
               assignedStudentIds = Array.from(new Set(passedIds)).slice(0, 2);
             }
           }
@@ -391,7 +428,10 @@ export default function SessionDataCollectionScreen({
           const stored = getStoredSessionStudents(sessionId, targetTeacherId);
           if (Array.isArray(stored)) {
             if (assignedStudentIds.length === 0 && stored.length > 0) {
-              assignedStudentIds = Array.from(new Set(stored.map((s: any) => String(s.id)))).slice(0, 2);
+              assignedStudentIds = Array.from(new Set(stored.map((s: any) => String(s.id)))).slice(
+                0,
+                2,
+              );
             }
             if (stored.length > 0) {
               storedOrder = stored.map((s: any) => String(s.id));
@@ -408,10 +448,15 @@ export default function SessionDataCollectionScreen({
 
         const fallbackBlock = allBlocks.find((b: any) => b?.teacherName || b?.stationName) || null;
         const currentTeacherName =
-          currentTeacherObj?.name || activeBlock?.teacherName || (authSession?.userName ?? 'Teacher');
-        const currentStationName = activeBlock?.stationName || fallbackBlock?.stationName || 'Station 1';
+          currentTeacherObj?.name ||
+          activeBlock?.teacherName ||
+          (authSession?.userName ?? 'Teacher');
+        const currentStationName =
+          activeBlock?.stationName || fallbackBlock?.stationName || 'Station 1';
         const currentRoomName = activeBlock?.roomName || fallbackBlock?.roomName || 'Room 101';
-        const currentDurationMinutes = Number(activeBlock?.blockDurationMinutes || fallbackBlock?.blockDurationMinutes || 90);
+        const currentDurationMinutes = Number(
+          activeBlock?.blockDurationMinutes || fallbackBlock?.blockDurationMinutes || 90,
+        );
 
         // Filter assigned students strictly by session eligibility
         const eligibleStudents: any[] = [];
@@ -444,7 +489,11 @@ export default function SessionDataCollectionScreen({
           cappedStudents.map(async (ds: any) => {
             const sid = String(ds.id);
             try {
-              const detailRes = await withTimeout(studentsApi.show(sid).catch(() => null), 3000, null);
+              const detailRes = await withTimeout(
+                studentsApi.show(sid).catch(() => null),
+                3000,
+                null,
+              );
               const sData = (detailRes as any)?.data || detailRes;
               if (sData) {
                 studentProfileMap.set(sid, sData);
@@ -473,7 +522,7 @@ export default function SessionDataCollectionScreen({
                 }
               }
             } catch {}
-          })
+          }),
         );
 
         if (requestId !== fetchRequestIdRef.current) return;
@@ -482,9 +531,13 @@ export default function SessionDataCollectionScreen({
         let finalStudents: any[] = cappedStudents.map((ds: any) => {
           const sid = String(ds.id);
           const profile = studentProfileMap.get(sid);
-          const sName = String(profile?.full_name || profile?.name || ds.name || ds.fullName || 'Student').trim();
+          const sName = String(
+            profile?.full_name || profile?.name || ds.name || ds.fullName || 'Student',
+          ).trim();
           const initial = String(ds.initial || (sName.slice(0, 2) || 'ST').toUpperCase());
-          const program = String(profile?.program_type || profile?.program || ds.program || 'Regular');
+          const program = String(
+            profile?.program_type || profile?.program || ds.program || 'Regular',
+          );
 
           const rawGoals = studentGoalsMap.get(sid) || ds.goals || [];
           const assignedGoals = getStudentAssignedGoals(sid, rawGoals);
@@ -558,22 +611,17 @@ export default function SessionDataCollectionScreen({
 
             const mergedGoals = s.goals.map((g) => {
               const prevGoal = prevStudent?.goals.find((pg) => pg.id === g.id);
-              const goalTrials = trialsToUse.filter(
-                (t) => t.studentGoalId === g.id
-              );
+              const goalTrials = trialsToUse.filter((t) => t.studentGoalId === g.id);
               const trialLog =
-                prevGoal?.trialLog && prevGoal.trialLog.length > 0
-                  ? prevGoal.trialLog
-                  : goalTrials;
-              const totalTrials =
-                prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
+                prevGoal?.trialLog && prevGoal.trialLog.length > 0 ? prevGoal.trialLog : goalTrials;
+              const totalTrials = prevGoal?.totalTrials || trialLog.length || g.totalTrials || 0;
               const indCount = trialLog.filter(
-                (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+                (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+',
               ).length;
               const independencePercent =
                 totalTrials > 0
                   ? Math.round((indCount / totalTrials) * 100)
-                  : (prevGoal?.independencePercent || g.independencePercent || 0);
+                  : prevGoal?.independencePercent || g.independencePercent || 0;
 
               return {
                 ...g,
@@ -605,10 +653,7 @@ export default function SessionDataCollectionScreen({
         });
 
         // Start session timer safely (no-op if already running or paused for this sessionId)
-        startSessionTimer(
-          sessionId,
-          (parsedRoster.blockDurationMinutes || 90) * 60
-        );
+        startSessionTimer(sessionId, (parsedRoster.blockDurationMinutes || 90) * 60);
 
         if (requestId !== fetchRequestIdRef.current) return;
         setSecondsRemaining(remainingSeconds());
@@ -628,13 +673,19 @@ export default function SessionDataCollectionScreen({
         }
       }
     },
-    [sessionId, authSession, flushOfflineSyncQueue]
+    [sessionId, authSession, flushOfflineSyncQueue],
   );
 
   const fetchTeachersAndRoster = useCallback(async () => {
     try {
-      const staffRes = await withTimeout<any>(getStaffOptions().catch(() => null), 4000, null);
-      const teacherRows: Array<{ id: string; name: string }> = (filterOutDeletedStaff(staffRes?.data || []) as any[]).filter((s: any) => s.role === 'teacher');
+      const staffRes = await withTimeout<any>(
+        getStaffOptions().catch(() => null),
+        4000,
+        null,
+      );
+      const teacherRows: Array<{ id: string; name: string }> = (
+        filterOutDeletedStaff(staffRes?.data || []) as any[]
+      ).filter((s: any) => s.role === 'teacher');
       setTeachers(teacherRows);
       teachersRef.current = teacherRows;
 
@@ -706,8 +757,12 @@ export default function SessionDataCollectionScreen({
     studentId: string,
     goalId: string | undefined,
     level: string,
-    stepId?: string
+    stepId?: string,
   ) => {
+    if (!canCreateTrial) {
+      showToast('You do not have permission to record trials.', 'error');
+      return;
+    }
     const targetStudent = session?.students.find((s) => s.id === studentId);
     if (!targetStudent) {
       showToast('Student is not in this session', 'error');
@@ -725,7 +780,11 @@ export default function SessionDataCollectionScreen({
 
     const resolvedGoalId = activeGoal.id;
     const trialId = `trial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timeStr = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
 
     const newTrial: Trial = {
       id: trialId,
@@ -750,7 +809,7 @@ export default function SessionDataCollectionScreen({
           const updatedTrialLog = [...(g.trialLog || []), newTrial];
           const newTotalTrials = (g.totalTrials || 0) + 1;
           const currentIndCount = updatedTrialLog.filter(
-            (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+            (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+',
           ).length;
           const newIndependencePercent = Math.round((currentIndCount / newTotalTrials) * 100);
 
@@ -812,10 +871,14 @@ export default function SessionDataCollectionScreen({
             if (stu.id !== studentId) return stu;
             return {
               ...stu,
-              trials: stu.trials?.map((t) => (t.id === trialId ? { ...t, id: String(serverTrialId) } : t)),
+              trials: stu.trials?.map((t) =>
+                t.id === trialId ? { ...t, id: String(serverTrialId) } : t,
+              ),
               goals: stu.goals.map((g) => ({
                 ...g,
-                trialLog: g.trialLog?.map((t) => (t.id === trialId ? { ...t, id: String(serverTrialId) } : t)),
+                trialLog: g.trialLog?.map((t) =>
+                  t.id === trialId ? { ...t, id: String(serverTrialId) } : t,
+                ),
               })),
             };
           });
@@ -841,16 +904,15 @@ export default function SessionDataCollectionScreen({
     }
   };
 
-  const handleUndoTrial = async (
-    studentId: string,
-    goalId: string | undefined
-  ) => {
+  const handleUndoTrial = async (studentId: string, goalId: string | undefined) => {
+    if (!canEditSession) {
+      showToast('You do not have permission to modify trial records.', 'error');
+      return;
+    }
     const student = session?.students.find((s) => s.id === studentId);
     if (!student) return;
 
-    const activeGoal = goalId
-      ? student.goals.find((g) => g.id === goalId)
-      : student.goals[0];
+    const activeGoal = goalId ? student.goals.find((g) => g.id === goalId) : student.goals[0];
 
     if (!activeGoal || !activeGoal.id) {
       showToast('No active goal assigned', 'info');
@@ -858,9 +920,10 @@ export default function SessionDataCollectionScreen({
     }
 
     const resolvedGoalId = activeGoal.id;
-    const goalTrials = Array.isArray(activeGoal.trialLog) && activeGoal.trialLog.length > 0
-      ? activeGoal.trialLog
-      : (student.trials || []).filter((t) => t.studentGoalId === resolvedGoalId);
+    const goalTrials =
+      Array.isArray(activeGoal.trialLog) && activeGoal.trialLog.length > 0
+        ? activeGoal.trialLog
+        : (student.trials || []).filter((t) => t.studentGoalId === resolvedGoalId);
 
     if (!goalTrials || goalTrials.length === 0) {
       showToast('No trials to undo', 'info');
@@ -901,12 +964,10 @@ export default function SessionDataCollectionScreen({
 
           const newTotalTrials = Math.max(0, (g.totalTrials || 0) - 1);
           const remainingIndCount = updatedTrialLog.filter(
-            (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+'
+            (t) => t.promptLevel === 'INDEPENDENT' || t.promptLevel === '+',
           ).length;
           const newIndependencePercent =
-            newTotalTrials > 0
-              ? Math.round((remainingIndCount / newTotalTrials) * 100)
-              : 0;
+            newTotalTrials > 0 ? Math.round((remainingIndCount / newTotalTrials) * 100) : 0;
 
           return {
             ...g,
@@ -948,21 +1009,14 @@ export default function SessionDataCollectionScreen({
     }
   };
 
-  const handleOpenIncidentModal = (
-    studentId: string,
-    goalId: string | undefined
-  ) => {
-    const student = session?.students.find(
-      (s) => s.id === studentId
-    );
+  const handleOpenIncidentModal = (studentId: string, goalId: string | undefined) => {
+    const student = session?.students.find((s) => s.id === studentId);
     if (!student) {
       showToast('Student is not in session', 'error');
       return;
     }
 
-    const goal = student.goals?.find(
-      (g) => g.id === goalId
-    ) || student.goals?.[0];
+    const goal = student.goals?.find((g) => g.id === goalId) || student.goals?.[0];
 
     setIncidentModal({
       studentId,
@@ -974,33 +1028,24 @@ export default function SessionDataCollectionScreen({
 
   const handleCancelIncident = (hadChanges: boolean) => {
     if (hadChanges) {
-      Alert.alert(
-        'Discard incident?',
-        'Any entered data will be lost.',
-        [
-          {
-            text: 'Keep editing',
-            style: 'cancel',
-          },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => setIncidentModal(null),
-          },
-        ]
-      );
+      Alert.alert('Discard incident?', 'Any entered data will be lost.', [
+        {
+          text: 'Keep editing',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => setIncidentModal(null),
+        },
+      ]);
     } else {
       setIncidentModal(null);
     }
   };
 
-  const handleSaveIncident = async (
-    incidentData: IncidentPayload
-  ) => {
-    const studentId =
-      incidentModal?.studentId ||
-      incidentData.studentId ||
-      incidentData.student_id;
+  const handleSaveIncident = async (incidentData: IncidentPayload) => {
+    const studentId = incidentModal?.studentId || incidentData.studentId || incidentData.student_id;
 
     const student = session?.students.find((s) => s.id === studentId);
     if (!studentId || !student) {
@@ -1015,8 +1060,7 @@ export default function SessionDataCollectionScreen({
       '';
 
     const incidentId =
-      incidentData.id ||
-      `inc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      incidentData.id || `inc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const fullIncident: IncidentPayload = {
       ...incidentData,
@@ -1028,7 +1072,9 @@ export default function SessionDataCollectionScreen({
       student_goal_id: studentGoalId,
       goalName: incidentModal?.goalName || incidentData.goalName,
       date: incidentData.date || new Date().toISOString().split('T')[0],
-      time: incidentData.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time:
+        incidentData.time ||
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       teacher: incidentData.teacher || authSession?.userName || session?.teacherName || 'Teacher',
     };
 
@@ -1052,10 +1098,7 @@ export default function SessionDataCollectionScreen({
 
     // 4. Background sync with backend
     try {
-      await recordBehaviorIncident(
-        sessionId,
-        fullIncident as unknown as Payload
-      );
+      await recordBehaviorIncident(sessionId, fullIncident as unknown as Payload);
     } catch (err) {
       console.warn('Backend recordBehaviorIncident failed, safely preserved locally:', err);
       enqueueOfflineSync({
@@ -1086,10 +1129,7 @@ export default function SessionDataCollectionScreen({
     showToast('Incident record removed', 'info');
   };
 
-  const handleMasteryCheck = (
-    studentId: string,
-    goalId: string | undefined
-  ) => {
+  const handleMasteryCheck = (studentId: string, goalId: string | undefined) => {
     navigation?.navigate?.('GoalMasteryCheck', {
       studentId,
       goalId: goalId ?? '',
@@ -1133,14 +1173,11 @@ export default function SessionDataCollectionScreen({
               active: s.id === studentId,
             })),
           }
-        : prev
+        : prev,
     );
   };
 
-  const handleViewGoalProgress = (
-    studentId: string,
-    goalId: string
-  ) => {
+  const handleViewGoalProgress = (studentId: string, goalId: string) => {
     navigation?.navigate?.('GoalProgress', {
       studentId,
       goalId,
@@ -1185,17 +1222,14 @@ export default function SessionDataCollectionScreen({
   const timerRem = remainingSeconds();
   const safeSeconds = Math.max(
     0,
-    secondsRemaining ?? (timerRem > 0 ? timerRem : ((session?.blockDurationMinutes || 90) * 60))
+    secondsRemaining ?? (timerRem > 0 ? timerRem : (session?.blockDurationMinutes || 90) * 60),
   );
   const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
   const seconds = String(safeSeconds % 60).padStart(2, '0');
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Session"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-      />
+      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
@@ -1226,11 +1260,7 @@ export default function SessionDataCollectionScreen({
             onPress={handleToggleTimer}
             accessibilityLabel={isRunning ? 'Pause timer' : 'Resume timer'}
           >
-            <Feather
-              name={isRunning ? 'pause' : 'play'}
-              size={16}
-              color={colors.white}
-            />
+            <Feather name={isRunning ? 'pause' : 'play'} size={16} color={colors.white} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1243,7 +1273,8 @@ export default function SessionDataCollectionScreen({
             </View>
             <Text style={styles.emptyTitle}>No Students Assigned</Text>
             <Text style={styles.emptyText}>
-              No eligible students are currently scheduled or assigned to this station for {session.teacherName}.
+              No eligible students are currently scheduled or assigned to this station for{' '}
+              {session.teacherName}.
             </Text>
           </View>
         ) : (
@@ -1273,30 +1304,19 @@ export default function SessionDataCollectionScreen({
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[
-            styles.secondaryBtn,
-            session.students.length < 2 && styles.btnDisabled,
-          ]}
+          style={[styles.secondaryBtn, session.students.length < 2 && styles.btnDisabled]}
           disabled={session.students.length < 2}
           onPress={handleSwapStudents}
         >
           <Text
-            style={[
-              styles.secondaryBtnText,
-              session.students.length < 2 && styles.btnTextDisabled,
-            ]}
+            style={[styles.secondaryBtnText, session.students.length < 2 && styles.btnTextDisabled]}
           >
             ⇄ Swap Students
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={handleSessionSummary}
-        >
-          <Text style={styles.primaryBtnText}>
-            📄 Session Summary
-          </Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleSessionSummary}>
+          <Text style={styles.primaryBtnText}>📄 Session Summary</Text>
         </TouchableOpacity>
       </View>
 

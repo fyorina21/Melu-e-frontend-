@@ -45,13 +45,38 @@ function createWebStorage(): KeyValueStorage | null {
 
   return {
     async getItem(key) {
-      return localStorage.getItem(key);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const fromLocal = localStorage.getItem(key);
+          if (fromLocal) return fromLocal;
+        } catch {}
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          const fromSession = sessionStorage.getItem(key);
+          if (fromSession) return fromSession;
+        } catch {}
+      }
+      return null;
     },
     async setItem(key, value) {
-      localStorage.setItem(key, value);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(key, value);
+        } catch {}
+      }
     },
     async removeItem(key) {
-      localStorage.removeItem(key);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.removeItem(key);
+        } catch {}
+      }
     },
   };
 }
@@ -114,9 +139,20 @@ function resolveStorage(): KeyValueStorage {
   return createWebStorage() ?? nativeBackend ?? secureStoreStorage ?? memoryStorage;
 }
 
+let isPersistedSession = true;
+
+export function isTokenPersisted(): boolean {
+  return isPersistedSession;
+}
+
 export function getAccessToken(): string | null {
-  if (!accessToken && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-    accessToken = localStorage.getItem(TOKEN_KEY);
+  if (!accessToken && Platform.OS === 'web') {
+    if (typeof localStorage !== 'undefined') {
+      accessToken = localStorage.getItem(TOKEN_KEY);
+    }
+    if (!accessToken && typeof sessionStorage !== 'undefined') {
+      accessToken = sessionStorage.getItem(TOKEN_KEY);
+    }
   }
 
   if (
@@ -137,7 +173,10 @@ export function getAccessToken(): string | null {
 
 export async function loadToken(): Promise<string | null> {
   try {
-    accessToken = await resolveStorage().getItem(TOKEN_KEY);
+    const stored = await resolveStorage().getItem(TOKEN_KEY);
+    if (stored) {
+      accessToken = stored;
+    }
   } catch (err) {
     console.warn('Failed to read stored auth token:', err);
   }
@@ -151,6 +190,9 @@ export async function setAccessToken(token: string | null, persist = true): Prom
 
     try {
       await resolveStorage().removeItem(TOKEN_KEY);
+      if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(TOKEN_KEY);
+      }
     } catch (err) {
       console.warn('Failed to remove stored auth token:', err);
     }
@@ -161,14 +203,16 @@ export async function setAccessToken(token: string | null, persist = true): Prom
   const cleanToken = token.startsWith('Bearer ') ? token.replace(/^Bearer\s+/i, '') : token.trim();
 
   accessToken = cleanToken;
+  isPersistedSession = persist;
 
   if (!persist) {
-    // A non-remembered login must not survive the running session. Drop
-    // anything a previous persisted login left behind, otherwise that stale
-    // token could resurrect the account after a restart. The in-memory value
-    // above keeps the current session logged in.
+    // Non-remembered login: drop from persistent localStorage so restart does not resurrect it.
+    // On web, keep in sessionStorage so browser reload doesn't prematurely kill the running session.
     try {
       await resolveStorage().removeItem(TOKEN_KEY);
+      if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(TOKEN_KEY, cleanToken);
+      }
     } catch (err) {
       console.warn('Failed to clear stored auth token:', err);
     }
@@ -176,6 +220,9 @@ export async function setAccessToken(token: string | null, persist = true): Prom
   }
 
   try {
+    if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
     await resolveStorage().setItem(TOKEN_KEY, cleanToken);
   } catch (err) {
     console.warn('Failed to persist auth token:', err);
@@ -183,8 +230,13 @@ export async function setAccessToken(token: string | null, persist = true): Prom
 }
 
 export function getRefreshToken(): string | null {
-  if (!refreshToken && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-    refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!refreshToken && Platform.OS === 'web') {
+    if (typeof localStorage !== 'undefined') {
+      refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    }
+    if (!refreshToken && typeof sessionStorage !== 'undefined') {
+      refreshToken = sessionStorage.getItem(REFRESH_TOKEN_KEY);
+    }
   }
 
   if (
@@ -201,7 +253,10 @@ export function getRefreshToken(): string | null {
 
 export async function loadRefreshToken(): Promise<string | null> {
   try {
-    refreshToken = await resolveStorage().getItem(REFRESH_TOKEN_KEY);
+    const stored = await resolveStorage().getItem(REFRESH_TOKEN_KEY);
+    if (stored) {
+      refreshToken = stored;
+    }
   } catch (err) {
     console.warn('Failed to read stored refresh token:', err);
   }
@@ -209,12 +264,15 @@ export async function loadRefreshToken(): Promise<string | null> {
   return getRefreshToken();
 }
 
-export async function setRefreshToken(token: string | null): Promise<void> {
+export async function setRefreshToken(token: string | null, persist = true): Promise<void> {
   if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
     refreshToken = null;
 
     try {
       await resolveStorage().removeItem(REFRESH_TOKEN_KEY);
+      if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      }
     } catch (err) {
       console.warn('Failed to remove stored refresh token:', err);
     }
@@ -224,8 +282,24 @@ export async function setRefreshToken(token: string | null): Promise<void> {
 
   const cleanToken = token.trim();
   refreshToken = cleanToken;
+  isPersistedSession = persist;
+
+  if (!persist) {
+    try {
+      await resolveStorage().removeItem(REFRESH_TOKEN_KEY);
+      if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(REFRESH_TOKEN_KEY, cleanToken);
+      }
+    } catch (err) {
+      console.warn('Failed to clear stored refresh token:', err);
+    }
+    return;
+  }
 
   try {
+    if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+    }
     await resolveStorage().setItem(REFRESH_TOKEN_KEY, cleanToken);
   } catch (err) {
     console.warn('Failed to persist refresh token:', err);
@@ -233,8 +307,17 @@ export async function setRefreshToken(token: string | null): Promise<void> {
 }
 
 export async function clearAuthTokens(): Promise<void> {
+  isPersistedSession = true;
   await setAccessToken(null);
   await setRefreshToken(null);
+  if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(ACTIVE_ROLE_KEY);
+      sessionStorage.removeItem(ROLES_KEY);
+    } catch {}
+  }
   setActiveRole(null);
   setUserRoles([]);
 }
@@ -247,40 +330,61 @@ let userRoles: string[] = [];
 
 export function setActiveRole(role: string | null): void {
   activeRole = role ? role.trim() : null;
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+  if (Platform.OS === 'web') {
     try {
-      if (activeRole) localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
-      else localStorage.removeItem(ACTIVE_ROLE_KEY);
+      if (typeof localStorage !== 'undefined') {
+        if (activeRole) localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+        else localStorage.removeItem(ACTIVE_ROLE_KEY);
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        if (activeRole) sessionStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+        else sessionStorage.removeItem(ACTIVE_ROLE_KEY);
+      }
     } catch {}
   }
 }
 
 export function getActiveRole(): string | null {
-  if (!activeRole && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-    activeRole = localStorage.getItem(ACTIVE_ROLE_KEY);
+  if (!activeRole && Platform.OS === 'web') {
+    if (typeof localStorage !== 'undefined') {
+      activeRole = localStorage.getItem(ACTIVE_ROLE_KEY);
+    }
+    if (!activeRole && typeof sessionStorage !== 'undefined') {
+      activeRole = sessionStorage.getItem(ACTIVE_ROLE_KEY);
+    }
   }
   return activeRole;
 }
 
 export function setUserRoles(roles: string[]): void {
   userRoles = Array.isArray(roles) ? roles : [];
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+  if (Platform.OS === 'web') {
     try {
-      localStorage.setItem(ROLES_KEY, JSON.stringify(userRoles));
+      const val = JSON.stringify(userRoles);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(ROLES_KEY, val);
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(ROLES_KEY, val);
+      }
     } catch {}
   }
 }
 
 export function getUserRoles(): string[] {
-  if (
-    (!userRoles || userRoles.length === 0) &&
-    Platform.OS === 'web' &&
-    typeof localStorage !== 'undefined'
-  ) {
-    try {
-      const stored = localStorage.getItem(ROLES_KEY);
-      if (stored) userRoles = JSON.parse(stored);
-    } catch {}
+  if ((!userRoles || userRoles.length === 0) && Platform.OS === 'web') {
+    let stored: string | null = null;
+    if (typeof localStorage !== 'undefined') {
+      stored = localStorage.getItem(ROLES_KEY);
+    }
+    if (!stored && typeof sessionStorage !== 'undefined') {
+      stored = sessionStorage.getItem(ROLES_KEY);
+    }
+    if (stored) {
+      try {
+        userRoles = JSON.parse(stored);
+      } catch {}
+    }
   }
   return userRoles || [];
 }

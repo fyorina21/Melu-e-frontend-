@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth, ROLES } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
+import { usePermission } from '../../../auth/usePermission';
 import { getActiveRole } from '../../../api/token';
 import {
   assignGoalToSlot,
@@ -83,6 +84,9 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
   const { data: contextData } = useIupContextQuery(selectedStudentId);
   const saveDraftMutation = useSaveIupDraftMutation();
   const finalizeMutation = useFinalizeIupMutation();
+
+  const canEdit = usePermission('iups', 'edit');
+  const canApprove = usePermission('iups', 'approve');
 
   const candidates: IupCandidate[] = useMemo(() => {
     return Array.isArray(candidatesData) ? candidatesData : [];
@@ -229,6 +233,10 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
 
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
+    if (!canEdit) {
+      showToast('You do not have permission to edit or save IUP drafts.', 'error');
+      return;
+    }
     try {
       const targetIupId =
         selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
@@ -259,6 +267,10 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
 
   const handleFinalize = async () => {
     if (!selectedStudentId) return;
+    if (!canApprove) {
+      showToast('You do not have permission to finalize or approve IUPs.', 'error');
+      return;
+    }
     const allAssigned = [...slots.station1, ...slots.station2].filter(Boolean);
     if (allAssigned.length === 0) {
       if (typeof window !== 'undefined') {

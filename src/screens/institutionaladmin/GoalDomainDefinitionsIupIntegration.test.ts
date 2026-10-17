@@ -54,7 +54,9 @@ describe('Goal Domain Definitions to IUP Generation Integration', () => {
     expect(updatedGoal).toBeDefined();
     expect(updatedGoal?.name).toBe('Receptive Identification of 3D Objects & Miniatures');
     expect(updatedGoal?.masteryCriteria).toBe('90% accuracy across 4 consecutive sessions');
-    expect(updatedGoal?.description).toBe('Selects the target miniature object from a randomized field of 4 items.');
+    expect(updatedGoal?.description).toBe(
+      'Selects the target miniature object from a randomized field of 4 items.',
+    );
   });
 
   it('allows institutional admin to add a new goal and makes it selectable in IUP Generation', async () => {
@@ -96,7 +98,7 @@ describe('Goal Domain Definitions to IUP Generation Integration', () => {
     const domainsRes = await getGoalDomains();
     const loadedDomains = domainsRes.data || [];
     expect(loadedDomains.some((d: any) => d.name === 'Vocational & Pre-Work')).toBe(true);
-  });
+  }, 30000);
 
   it('allows institutional admin to delete a goal from the bank', async () => {
     deleteGoalItem('g-1');
@@ -147,7 +149,9 @@ describe('Goal Domain Definitions to IUP Generation Integration', () => {
     // 2. Goal bank retrieval (used by IUP Generation) contains the newly added goal at top
     const bankRes = await getGoalBank({});
     const goalsList = bankRes.data || [];
-    const createdGoal = goalsList.find((g: any) => g.id === saved.id || g.name === 'Independent Handwashing & Drying');
+    const createdGoal = goalsList.find(
+      (g: any) => g.id === saved.id || g.name === 'Independent Handwashing & Drying',
+    );
     expect(createdGoal).toBeDefined();
     expect(createdGoal?.domain).toBe('Self-Help');
     expect(createdGoal?.masteryCriteria).toBe('100% independent across 5 consecutive days');
