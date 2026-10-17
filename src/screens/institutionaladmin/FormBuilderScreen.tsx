@@ -892,7 +892,12 @@ export default function FormBuilderScreen({
 
         {/* Top Control Row */}
         <View style={styles.topControlRow}>
-          <TouchableOpacity style={styles.selectDropdown} onPress={() => setShowFormModal(true)}>
+          <TouchableOpacity
+            style={styles.selectDropdown}
+            onPress={() => setShowFormModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Select Form Template. Current: ${selectedForm}`}
+          >
             <Text style={styles.selectDropdownText}>{selectedForm}</Text>
             <Feather name="chevron-down" size={16} color="#475569" />
           </TouchableOpacity>
@@ -900,6 +905,8 @@ export default function FormBuilderScreen({
           {ASSESSMENT_DIRECT_ROUTES[selectedForm] && (
             <TouchableOpacity
               style={styles.openAssessmentBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Live ${selectedForm === 'Social Skills Questionnaire' ? 'Questionnaire' : 'Assessment'}`}
               onPress={() => {
                 const target = ASSESSMENT_DIRECT_ROUTES[selectedForm];
                 if (!target) return;
@@ -1248,14 +1255,18 @@ export default function FormBuilderScreen({
                               <TouchableOpacity
                                 onPress={() => moveFieldUp(field.id)}
                                 style={styles.iconBtn}
-                                accessibilityLabel="Move Up"
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Move field ${field.label} up`}
                               >
                                 <Feather name="arrow-up" size={15} color="#475569" />
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => moveFieldDown(field.id)}
                                 style={styles.iconBtn}
-                                accessibilityLabel="Move Down"
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Move field ${field.label} down`}
                               >
                                 <Feather name="arrow-down" size={15} color="#475569" />
                               </TouchableOpacity>
@@ -1270,12 +1281,18 @@ export default function FormBuilderScreen({
                               <TouchableOpacity
                                 onPress={() => openEditModal(field)}
                                 style={styles.iconBtn}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Edit field ${field.label}`}
                               >
                                 <Feather name="edit-2" size={15} color="#0284C7" />
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => toggleVisible(field.id)}
                                 style={styles.iconBtn}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Toggle visibility for field ${field.label}`}
                               >
                                 <Feather
                                   name={field.visible ? 'eye' : 'eye-off'}
@@ -1286,6 +1303,9 @@ export default function FormBuilderScreen({
                               <TouchableOpacity
                                 onPress={() => handleDeleteField(field.id)}
                                 style={styles.iconBtn}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Delete field ${field.label}`}
                               >
                                 <Feather name="trash-2" size={16} color="#F87171" />
                               </TouchableOpacity>
@@ -1623,13 +1643,22 @@ export default function FormBuilderScreen({
                       style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
                     />
 
-                    <TouchableOpacity onPress={() => openEditModal(field)} style={styles.iconBtn}>
+                    <TouchableOpacity
+                      onPress={() => openEditModal(field)}
+                      style={styles.iconBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit field ${field.label}`}
+                    >
                       <Feather name="edit-2" size={15} color="#0284C7" />
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       onPress={() => toggleVisible(field.id)}
                       style={styles.iconBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Toggle visibility for field ${field.label}`}
                     >
                       <Feather
                         name={field.visible ? 'eye' : 'eye-off'}
@@ -1641,12 +1670,26 @@ export default function FormBuilderScreen({
                     <TouchableOpacity
                       onPress={() => handleDeleteField(field.id)}
                       style={styles.iconBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete field ${field.label}`}
                     >
                       <Feather name="trash-2" size={16} color="#F87171" />
                     </TouchableOpacity>
                   </View>
                 </View>
               ))}
+
+          {fields.length === 0 && !showAddFieldBox && (
+            <View style={styles.emptyStateCard}>
+              <Feather name="file-text" size={32} color="#94A3B8" style={{ marginBottom: 8 }} />
+              <Text style={styles.emptyStateTitle}>No form fields configured</Text>
+              <Text style={styles.emptyStateSub}>
+                Click &quot;Add New Field&quot; below or select a template to populate fields for
+                this form.
+              </Text>
+            </View>
+          )}
 
           {/* Inline Add Field Box */}
           {!showAddFieldBox ? (
@@ -1660,6 +1703,8 @@ export default function FormBuilderScreen({
                   setAddingToSection(null);
                   setShowAddFieldBox(true);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Add New Field"
               >
                 <Feather name="plus" size={16} color="#0284C7" />
                 <Text style={styles.addBtnText}>Add New Field</Text>
@@ -3471,4 +3516,25 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   closeModalBtnText: { fontSize: 12, fontWeight: '600', color: '#334155' },
+  emptyStateCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 4,
+  },
+  emptyStateSub: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+  },
 });

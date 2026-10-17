@@ -357,7 +357,13 @@ export default function AbcDropdownListsScreen({
         {/* Sub Header / Breadcrumb */}
         <View style={styles.topHeader}>
           <View style={styles.titleRow}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => navigation?.goBack?.()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
               <Feather name="arrow-left" size={16} color="#334155" />
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
@@ -387,6 +393,8 @@ export default function AbcDropdownListsScreen({
                 setActiveTab(tab);
                 setIsAddingBehavior(false);
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`${tab} tab`}
             >
               <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
             </TouchableOpacity>
@@ -501,6 +509,8 @@ export default function AbcDropdownListsScreen({
                             : styles.statusInactiveBadge
                         }
                         onPress={() => toggleItemStatus('Behaviors', item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Status: ${item.status}. Click to toggle for ${item.name}`}
                       >
                         <Text
                           style={
@@ -517,7 +527,9 @@ export default function AbcDropdownListsScreen({
                       <TouchableOpacity
                         style={{ marginRight: 10 }}
                         onPress={() => toggleItemStatus('Behaviors', item.id)}
-                        accessibilityLabel="Toggle Active Status"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Toggle active status for ${item.name}`}
                       >
                         <Feather
                           name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
@@ -525,15 +537,37 @@ export default function AbcDropdownListsScreen({
                           color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
                         />
                       </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => startEdit(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit behavior ${item.name}`}
+                      >
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteBehavior(item.id)}>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteBehavior(item.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete behavior ${item.name}`}
+                      >
                         <Feather name="trash-2" size={15} color="#F87171" />
                       </TouchableOpacity>
                     </View>
                   </View>
                 ),
+              )}
+
+              {behaviors.length === 0 && !isAddingBehavior && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="activity" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>No behaviors configured yet.</Text>
+                  <Text style={styles.emptyTableSubText}>
+                    Click &quot;+ Add Behavior&quot; below to define target or interfering
+                    behaviors.
+                  </Text>
+                </View>
               )}
 
               {/* Inline Add Row */}
@@ -593,10 +627,21 @@ export default function AbcDropdownListsScreen({
                     </View>
                   </View>
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={handleSaveNewBehavior}>
+                    <TouchableOpacity
+                      style={{ marginRight: 10 }}
+                      onPress={handleSaveNewBehavior}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm add behavior"
+                    >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setIsAddingBehavior(false)}>
+                    <TouchableOpacity
+                      onPress={() => setIsAddingBehavior(false)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel add behavior"
+                    >
                       <Feather name="x" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
@@ -680,6 +725,8 @@ export default function AbcDropdownListsScreen({
                             : styles.statusInactiveBadge
                         }
                         onPress={() => toggleItemStatus('Antecedents', item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Status: ${item.status}. Click to toggle for ${item.name}`}
                       >
                         <Text
                           style={
@@ -696,7 +743,9 @@ export default function AbcDropdownListsScreen({
                       <TouchableOpacity
                         style={{ marginRight: 10 }}
                         onPress={() => toggleItemStatus('Antecedents', item.id)}
-                        accessibilityLabel="Toggle Active Status"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Toggle active status for ${item.name}`}
                       >
                         <Feather
                           name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
@@ -704,16 +753,38 @@ export default function AbcDropdownListsScreen({
                           color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
                         />
                       </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => startEdit(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit antecedent ${item.name}`}
+                      >
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteAntecedent(item.id)}>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteAntecedent(item.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete antecedent ${item.name}`}
+                      >
                         <Feather name="trash-2" size={15} color="#F87171" />
                       </TouchableOpacity>
                     </View>
                   </View>
                 ),
               )}
+
+              {antecedents.length === 0 && addingTab !== 'Antecedents' && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="zap" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>No antecedents configured yet.</Text>
+                  <Text style={styles.emptyTableSubText}>
+                    Click &quot;+ Add Antecedent&quot; below to define trigger events.
+                  </Text>
+                </View>
+              )}
+
               {addingTab === 'Antecedents' && (
                 <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
                   <View style={{ flex: 4, paddingRight: 8 }}>
@@ -740,10 +811,18 @@ export default function AbcDropdownListsScreen({
                     <TouchableOpacity
                       style={{ marginRight: 10 }}
                       onPress={() => commitAdd(antecedents, setAntecedents, true)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm add antecedent"
                     >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelAdd}>
+                    <TouchableOpacity
+                      onPress={cancelAdd}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel add antecedent"
+                    >
                       <Feather name="x" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
@@ -827,6 +906,8 @@ export default function AbcDropdownListsScreen({
                             : styles.statusInactiveBadge
                         }
                         onPress={() => toggleItemStatus('Consequences', item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Status: ${item.status}. Click to toggle for ${item.name}`}
                       >
                         <Text
                           style={
@@ -843,7 +924,9 @@ export default function AbcDropdownListsScreen({
                       <TouchableOpacity
                         style={{ marginRight: 10 }}
                         onPress={() => toggleItemStatus('Consequences', item.id)}
-                        accessibilityLabel="Toggle Active Status"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Toggle active status for ${item.name}`}
                       >
                         <Feather
                           name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
@@ -851,16 +934,38 @@ export default function AbcDropdownListsScreen({
                           color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
                         />
                       </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => startEdit(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit consequence ${item.name}`}
+                      >
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteConsequence(item.id)}>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteConsequence(item.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete consequence ${item.name}`}
+                      >
                         <Feather name="trash-2" size={15} color="#F87171" />
                       </TouchableOpacity>
                     </View>
                   </View>
                 ),
               )}
+
+              {consequences.length === 0 && addingTab !== 'Consequences' && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="shield" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>No consequences configured yet.</Text>
+                  <Text style={styles.emptyTableSubText}>
+                    Click &quot;+ Add Consequence&quot; below to define response interventions.
+                  </Text>
+                </View>
+              )}
+
               {addingTab === 'Consequences' && (
                 <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
                   <View style={{ flex: 4, paddingRight: 8 }}>
@@ -887,10 +992,18 @@ export default function AbcDropdownListsScreen({
                     <TouchableOpacity
                       style={{ marginRight: 10 }}
                       onPress={() => commitAdd(consequences, setConsequences, true)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm add consequence"
                     >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelAdd}>
+                    <TouchableOpacity
+                      onPress={cancelAdd}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel add consequence"
+                    >
                       <Feather name="x" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
@@ -963,6 +1076,8 @@ export default function AbcDropdownListsScreen({
                             : styles.statusInactiveBadge
                         }
                         onPress={() => toggleItemStatus('Locations', item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Status: ${item.status}. Click to toggle for ${item.name}`}
                       >
                         <Text
                           style={
@@ -979,7 +1094,9 @@ export default function AbcDropdownListsScreen({
                       <TouchableOpacity
                         style={{ marginRight: 10 }}
                         onPress={() => toggleItemStatus('Locations', item.id)}
-                        accessibilityLabel="Toggle Active Status"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Toggle active status for ${item.name}`}
                       >
                         <Feather
                           name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
@@ -987,16 +1104,38 @@ export default function AbcDropdownListsScreen({
                           color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
                         />
                       </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
+                      <TouchableOpacity
+                        style={{ marginRight: 10 }}
+                        onPress={() => startEdit(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit location ${item.name}`}
+                      >
                         <Feather name="edit-2" size={15} color="#0284C7" />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteLocation(item.id)}>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteLocation(item.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete location ${item.name}`}
+                      >
                         <Feather name="trash-2" size={15} color="#F87171" />
                       </TouchableOpacity>
                     </View>
                   </View>
                 ),
               )}
+
+              {locations.length === 0 && addingTab !== 'Locations' && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="map-pin" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>No locations configured yet.</Text>
+                  <Text style={styles.emptyTableSubText}>
+                    Click &quot;+ Add Location&quot; below to define classroom or clinic settings.
+                  </Text>
+                </View>
+              )}
+
               {addingTab === 'Locations' && (
                 <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
                   <View style={{ flex: 5, paddingRight: 8 }}>
@@ -1014,10 +1153,18 @@ export default function AbcDropdownListsScreen({
                     <TouchableOpacity
                       style={{ marginRight: 10 }}
                       onPress={() => commitAdd(locations, setLocations, false)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm add location"
                     >
                       <Feather name="check" size={16} color="#22C55E" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelAdd}>
+                    <TouchableOpacity
+                      onPress={cancelAdd}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel add location"
+                    >
                       <Feather name="x" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
@@ -1029,7 +1176,12 @@ export default function AbcDropdownListsScreen({
 
         {/* Add Behavior Link Button */}
         {activeTab === 'Behaviors' && !isAddingBehavior && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => setIsAddingBehavior(true)}>
+          <TouchableOpacity
+            style={styles.addInlineBtn}
+            onPress={() => setIsAddingBehavior(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add Behavior"
+          >
             <Feather name="plus" size={14} color="#0284C7" />
             <Text style={styles.addInlineBtnText}>Add Behavior</Text>
           </TouchableOpacity>
@@ -1037,19 +1189,34 @@ export default function AbcDropdownListsScreen({
 
         {/* Add links for the other tabs */}
         {activeTab === 'Antecedents' && addingTab !== 'Antecedents' && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => startAdd('Antecedents')}>
+          <TouchableOpacity
+            style={styles.addInlineBtn}
+            onPress={() => startAdd('Antecedents')}
+            accessibilityRole="button"
+            accessibilityLabel="Add Antecedent"
+          >
             <Feather name="plus" size={14} color="#0284C7" />
             <Text style={styles.addInlineBtnText}>Add Antecedent</Text>
           </TouchableOpacity>
         )}
         {activeTab === 'Consequences' && addingTab !== 'Consequences' && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => startAdd('Consequences')}>
+          <TouchableOpacity
+            style={styles.addInlineBtn}
+            onPress={() => startAdd('Consequences')}
+            accessibilityRole="button"
+            accessibilityLabel="Add Consequence"
+          >
             <Feather name="plus" size={14} color="#0284C7" />
             <Text style={styles.addInlineBtnText}>Add Consequence</Text>
           </TouchableOpacity>
         )}
         {activeTab === 'Locations' && addingTab !== 'Locations' && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => startAdd('Locations')}>
+          <TouchableOpacity
+            style={styles.addInlineBtn}
+            onPress={() => startAdd('Locations')}
+            accessibilityRole="button"
+            accessibilityLabel="Add Location"
+          >
             <Feather name="plus" size={14} color="#0284C7" />
             <Text style={styles.addInlineBtnText}>Add Location</Text>
           </TouchableOpacity>
@@ -1061,6 +1228,8 @@ export default function AbcDropdownListsScreen({
             style={[styles.saveConfigBtn, saving && styles.saveBtnDisabled]}
             onPress={handleSaveConfiguration}
             disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Save ABC configuration"
           >
             <Feather name="save" size={14} color="#0F172A" />
             <Text style={styles.saveConfigBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
@@ -1070,6 +1239,8 @@ export default function AbcDropdownListsScreen({
             style={[styles.resetBtn, saving && { opacity: 0.5 }]}
             onPress={handleResetToDefault}
             disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Reset ABC dropdown lists to defaults"
           >
             <Feather name="refresh-cw" size={14} color="#EF4444" />
             <Text style={styles.resetBtnText}>Reset to Default</Text>
@@ -1296,4 +1467,22 @@ const styles = StyleSheet.create({
     color: '#EF4444',
   },
   saveBtnDisabled: { opacity: 0.6 },
+  emptyTableState: {
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTableText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  emptyTableSubText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 4,
+    textAlign: 'center',
+  },
 });

@@ -283,10 +283,22 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       return (
         <View style={styles.deleteConfirmRow}>
           <Text style={styles.deleteConfirmText}>Delete?</Text>
-          <TouchableOpacity onPress={() => deleteLevel(id)} style={styles.deleteBtn}>
+          <TouchableOpacity
+            onPress={() => deleteLevel(id)}
+            style={styles.deleteBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Confirm delete prompt level"
+          >
             <Feather name="check" size={14} color={colors.white} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDeleteConfirmId(null)} style={styles.cancelBtn}>
+          <TouchableOpacity
+            onPress={() => setDeleteConfirmId(null)}
+            style={styles.cancelBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel delete prompt level"
+          >
             <Feather name="x" size={14} color={colors.white} />
           </TouchableOpacity>
         </View>
@@ -297,12 +309,18 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
         <TouchableOpacity
           onPress={() => startEdit(levels.find((l) => l.id === id)!)}
           style={styles.actionBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Edit prompt level"
         >
           <Feather name="edit-3" size={14} color={colors.navyText} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setDeleteConfirmId(id)}
           style={[styles.actionBtn, styles.deleteBtn]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Delete prompt level"
         >
           <Feather name="trash-2" size={14} color={colors.white} />
         </TouchableOpacity>
@@ -319,7 +337,13 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation?.goBack?.()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Feather name="arrow-left" size={16} color="#334155" />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
@@ -338,7 +362,12 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
               <Text style={styles.tableHeaderText}>Prompt Levels</Text>
               {loading && <ActivityIndicator size="small" color="#0284C7" />}
             </View>
-            <TouchableOpacity onPress={() => setAddingLevel(true)} style={styles.addBtn}>
+            <TouchableOpacity
+              onPress={() => setAddingLevel(true)}
+              style={styles.addBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Add Prompt Level"
+            >
               <Feather name="plus" size={14} color="#0284C7" />
               <Text style={styles.addBtnText}>Add Prompt Level</Text>
             </TouchableOpacity>
@@ -385,12 +414,18 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                         <TouchableOpacity
                           onPress={() => saveEdit(lv.id)}
                           style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Save edit prompt level"
                         >
                           <Feather name="check" size={14} color={colors.white} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => setEditingId(null)}
                           style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Cancel edit prompt level"
                         >
                           <Feather name="x" size={14} color={colors.white} />
                         </TouchableOpacity>
@@ -421,6 +456,17 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
               )}
             </View>
           ))}
+
+          {levels.length === 0 && !addingLevel && (
+            <View style={styles.emptyTableState}>
+              <Feather name="sliders" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+              <Text style={styles.emptyTableText}>No prompt levels configured yet.</Text>
+              <Text style={styles.emptyTableSubText}>
+                Click &quot;Add Prompt Level&quot; above to define prompting hierarchy.
+              </Text>
+            </View>
+          )}
+
           {addingLevel && (
             <View style={[styles.tableRow, styles.addingRow]}>
               <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -455,12 +501,18 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     <TouchableOpacity
                       onPress={addLevel}
                       style={[styles.actionBtn, { backgroundColor: '#22C55E' }]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save new prompt level"
                     >
                       <Feather name="check" size={14} color={colors.white} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setAddingLevel(false)}
                       style={[styles.actionBtn, { backgroundColor: colors.mutedText }]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel adding prompt level"
                     >
                       <Feather name="x" size={14} color={colors.white} />
                     </TouchableOpacity>
@@ -794,4 +846,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   saveBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  emptyTableState: {
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTableText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  emptyTableSubText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 4,
+    textAlign: 'center',
+  },
 });

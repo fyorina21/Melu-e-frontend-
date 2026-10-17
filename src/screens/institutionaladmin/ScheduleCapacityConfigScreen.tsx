@@ -179,7 +179,13 @@ export default function ScheduleCapacityConfigScreen({
 
   // Time Selector Component for tabular inline display
   const TimePickerSelector = ({ value, onPress }: { value: TimeValue; onPress: () => void }) => (
-    <TouchableOpacity style={styles.timeInputContainer} onPress={onPress}>
+    <TouchableOpacity
+      style={styles.timeInputContainer}
+      onPress={onPress}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={`Select time, current value is ${value.hour}:${value.minute} ${value.period}`}
+    >
       <Text style={styles.timeValueText}>
         {value.hour}:{value.minute} {value.period}
       </Text>
@@ -305,6 +311,13 @@ export default function ScheduleCapacityConfigScreen({
                 </View>
               </View>
             ))}
+
+            {blocks.length === 0 && (
+              <View style={styles.emptyTableState}>
+                <Feather name="calendar" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+                <Text style={styles.emptyTableText}>No session blocks defined yet.</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -313,6 +326,8 @@ export default function ScheduleCapacityConfigScreen({
           style={[styles.saveConfigBtn, isSaving && { opacity: 0.7 }]}
           onPress={handleSave}
           disabled={isSaving}
+          accessibilityRole="button"
+          accessibilityLabel="Save Schedule and Capacity Configuration"
         >
           <Feather name="save" size={14} color="#0F172A" />
           <Text style={styles.saveConfigBtnText}>
@@ -712,5 +727,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  emptyTableState: {
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTableText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
   },
 });

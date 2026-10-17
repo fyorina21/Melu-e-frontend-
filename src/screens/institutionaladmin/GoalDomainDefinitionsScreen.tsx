@@ -393,6 +393,8 @@ export default function GoalDomainDefinitionsScreen({
           <TouchableOpacity
             style={[styles.switcherBtn, activeSection === 'domains' && styles.switcherBtnActive]}
             onPress={() => setActiveSection('domains')}
+            accessibilityRole="button"
+            accessibilityLabel={`Goal Domains, ${domains.length} items`}
           >
             <Feather
               name="target"
@@ -412,6 +414,8 @@ export default function GoalDomainDefinitionsScreen({
           <TouchableOpacity
             style={[styles.switcherBtn, activeSection === 'goals' && styles.switcherBtnActive]}
             onPress={() => setActiveSection('goals')}
+            accessibilityRole="button"
+            accessibilityLabel={`Target Goals, ${goals.length} items`}
           >
             <Feather
               name="flag"
@@ -431,6 +435,8 @@ export default function GoalDomainDefinitionsScreen({
           <TouchableOpacity
             style={[styles.switcherBtn, activeSection === 'templates' && styles.switcherBtnActive]}
             onPress={() => setActiveSection('templates')}
+            accessibilityRole="button"
+            accessibilityLabel={`Task Analysis Templates, ${templates.length} items`}
           >
             <Feather
               name="list"
@@ -469,6 +475,9 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => handleMoveDomainUp(index)}
                         disabled={index === 0}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Move domain ${item.name} up`}
                       >
                         <Feather
                           name="chevron-up"
@@ -480,6 +489,9 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => handleMoveDomainDown(index)}
                         disabled={index === domains.length - 1}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Move domain ${item.name} down`}
                       >
                         <Feather
                           name="chevron-down"
@@ -527,6 +539,11 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => setEditingDomainId(isEditing ? null : item.id)}
                         style={{ padding: 4 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          isEditing ? `Save domain ${item.name}` : `Edit domain ${item.name}`
+                        }
                       >
                         <Feather
                           name={isEditing ? 'check' : 'edit-2'}
@@ -537,6 +554,9 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => handleDeleteDomain(item.id)}
                         style={{ padding: 4 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete domain ${item.name}`}
                       >
                         <Feather name="trash-2" size={15} color="#EF4444" />
                       </TouchableOpacity>
@@ -544,6 +564,16 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
                 );
               })}
+
+              {domains.length === 0 && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="layers" size={26} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>No goal domains configured yet.</Text>
+                  <Text style={[styles.emptyTableText, { fontSize: 12, color: '#94A3B8' }]}>
+                    Click &quot;Add Goal Domain&quot; below to establish domain categories.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Add Domain Form or Button */}
@@ -614,7 +644,12 @@ export default function GoalDomainDefinitionsScreen({
                     Logging
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.headerAddBtn} onPress={() => openGoalEditor()}>
+                <TouchableOpacity
+                  style={styles.headerAddBtn}
+                  onPress={() => openGoalEditor()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add Target Goal"
+                >
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add Target Goal</Text>
                 </TouchableOpacity>
@@ -632,7 +667,12 @@ export default function GoalDomainDefinitionsScreen({
                     onChangeText={setGoalSearch}
                   />
                   {Boolean(goalSearch) && (
-                    <TouchableOpacity onPress={() => setGoalSearch('')}>
+                    <TouchableOpacity
+                      onPress={() => setGoalSearch('')}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear goal search"
+                    >
                       <Feather name="x" size={14} color={colors.mutedText} />
                     </TouchableOpacity>
                   )}
@@ -652,6 +692,8 @@ export default function GoalDomainDefinitionsScreen({
                           selectedGoalDomain === d && styles.domainFilterChipActive,
                         ]}
                         onPress={() => setSelectedGoalDomain(d)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Filter by domain ${d}`}
                       >
                         <Text
                           style={[
@@ -709,6 +751,8 @@ export default function GoalDomainDefinitionsScreen({
                     <TouchableOpacity
                       style={g.active !== false ? styles.activePill : styles.inactivePill}
                       onPress={() => handleToggleGoalActive(g)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Status: ${g.active !== false ? 'Active' : 'Inactive'}. Click to toggle for ${g.name}`}
                     >
                       <Text
                         style={g.active !== false ? styles.activePillText : styles.inactivePillText}
@@ -719,10 +763,22 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
 
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity onPress={() => openGoalEditor(g)} style={{ padding: 4 }}>
+                    <TouchableOpacity
+                      onPress={() => openGoalEditor(g)}
+                      style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit goal ${g.name}`}
+                    >
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteGoal(g)} style={{ padding: 4 }}>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteGoal(g)}
+                      style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete goal ${g.name}`}
+                    >
                       <Feather name="trash-2" size={15} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
@@ -731,8 +787,13 @@ export default function GoalDomainDefinitionsScreen({
 
               {filteredGoals.length === 0 && (
                 <View style={styles.emptyTableState}>
+                  <Feather name="flag" size={26} color="#94A3B8" style={{ marginBottom: 6 }} />
                   <Text style={styles.emptyTableText}>
                     No target goals match the selected filter.
+                  </Text>
+                  <Text style={[styles.emptyTableText, { fontSize: 12, color: '#94A3B8' }]}>
+                    Try adjusting your search or domain filter, or click &quot;Add Target Goal&quot;
+                    above.
                   </Text>
                 </View>
               )}
@@ -755,7 +816,12 @@ export default function GoalDomainDefinitionsScreen({
             <View style={styles.tableCard}>
               <View style={styles.tableCardHeader}>
                 <Text style={styles.cardHeaderTitle}>Step-by-Step Task Analysis Routines</Text>
-                <TouchableOpacity style={styles.headerAddBtn} onPress={() => openTemplateEditor()}>
+                <TouchableOpacity
+                  style={styles.headerAddBtn}
+                  onPress={() => openTemplateEditor()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add New Template"
+                >
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add New Template</Text>
                 </TouchableOpacity>
@@ -788,18 +854,40 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
 
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity onPress={() => openTemplateEditor(t)} style={{ padding: 4 }}>
+                    <TouchableOpacity
+                      onPress={() => openTemplateEditor(t)}
+                      style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit template ${t.name}`}
+                    >
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDeleteTemplate(t)}
                       style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete template ${t.name}`}
                     >
                       <Feather name="trash-2" size={15} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
                 </View>
               ))}
+
+              {templates.length === 0 && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="list" size={26} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>
+                    No task analysis templates configured yet.
+                  </Text>
+                  <Text style={[styles.emptyTableText, { fontSize: 12, color: '#94A3B8' }]}>
+                    Click &quot;Add New Template&quot; above to define step-by-step chaining
+                    routines.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Template Editor Modal / Inline Card */}
@@ -849,6 +937,9 @@ export default function GoalDomainDefinitionsScreen({
                         <TouchableOpacity
                           onPress={() => moveTemplateStep(index, 'up')}
                           disabled={index === 0}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Move step ${index + 1} up`}
                         >
                           <Feather
                             name="arrow-up"
@@ -859,6 +950,9 @@ export default function GoalDomainDefinitionsScreen({
                         <TouchableOpacity
                           onPress={() => moveTemplateStep(index, 'down')}
                           disabled={index === formSteps.length - 1}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Move step ${index + 1} down`}
                         >
                           <Feather
                             name="arrow-down"
@@ -866,14 +960,24 @@ export default function GoalDomainDefinitionsScreen({
                             color={index === formSteps.length - 1 ? '#CBD5E1' : colors.navyText}
                           />
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => deleteTemplateStep(step.id)}>
+                        <TouchableOpacity
+                          onPress={() => deleteTemplateStep(step.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete step ${index + 1}`}
+                        >
                           <Feather name="trash-2" size={14} color="#EF4444" />
                         </TouchableOpacity>
                       </View>
                     </View>
                   ))}
 
-                  <TouchableOpacity style={styles.addStepBtn} onPress={addTemplateStep}>
+                  <TouchableOpacity
+                    style={styles.addStepBtn}
+                    onPress={addTemplateStep}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add Step"
+                  >
                     <Feather name="plus" size={14} color={colors.navyText} />
                     <Text style={styles.addStepBtnText}>Add Step</Text>
                   </TouchableOpacity>

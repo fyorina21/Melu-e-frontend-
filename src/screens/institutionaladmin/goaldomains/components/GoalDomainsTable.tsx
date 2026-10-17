@@ -35,6 +35,7 @@ export const GoalDomainsTable: React.FC<GoalDomainsTableProps> = React.memo(
                 <TouchableOpacity
                   onPress={() => onMoveUp(index)}
                   disabled={index === 0}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Move domain ${item.name} up`}
                 >
@@ -48,6 +49,7 @@ export const GoalDomainsTable: React.FC<GoalDomainsTableProps> = React.memo(
                 <TouchableOpacity
                   onPress={() => onMoveDown(index)}
                   disabled={index === domains.length - 1}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Move domain ${item.name} down`}
                 >
@@ -97,6 +99,7 @@ export const GoalDomainsTable: React.FC<GoalDomainsTableProps> = React.memo(
                 <TouchableOpacity
                   onPress={() => onToggleEdit(item.id)}
                   style={{ padding: 4 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={isEditing ? 'Save domain inline' : 'Edit domain inline'}
                 >
@@ -109,6 +112,7 @@ export const GoalDomainsTable: React.FC<GoalDomainsTableProps> = React.memo(
                 <TouchableOpacity
                   onPress={() => onDelete(item.id)}
                   style={{ padding: 4 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Delete domain ${item.name}`}
                 >
@@ -118,6 +122,13 @@ export const GoalDomainsTable: React.FC<GoalDomainsTableProps> = React.memo(
             </View>
           );
         })}
+
+        {domains.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Feather name="layers" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+            <Text style={styles.emptyText}>No goal domains configured yet.</Text>
+          </View>
+        )}
       </View>
     );
   },
@@ -201,5 +212,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 8,
+  },
+  emptyContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 13,
+    color: colors.mutedText,
+    fontWeight: '500',
   },
 });
