@@ -26,6 +26,7 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   'Permission Configuration': 'lock',
   'Audit Log': 'activity',
   'Goal Domains': 'target',
+  'Task Analysis': 'check-square',
   'Schedule & Capacity': 'calendar',
   'ABC Dropdown Lists': 'list',
   'Trial Logging Format': 'check-circle',

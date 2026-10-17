@@ -21,15 +21,21 @@ import { RESOURCE_ALIAS_MAP } from '../screens/systemadmin/permissions/permissio
 import { SCREEN_TO_MODULE, hasModuleAccess } from '../auth/permissions';
 
 export const MODULE_TO_TABS: Record<string, string[]> = {
-  iups: ['IUP Creation & Goal Assignment'],
+  iups: ['IUP Creation & Goal Assignment', 'Goal Domains', 'Task Analysis'],
   assessments: ['Assessments'],
-  sessions: ['Session', 'Daily Notes'],
-  behavior_incidents: ['ABC Log'],
+  sessions: ['Session', 'Daily Notes', 'Trial Logging Format'],
+  behavior_incidents: ['ABC Log', 'ABC Dropdown Lists'],
   parent_portal: ['Parents'],
   students: ['Enrollment Wizard'],
   reports: ['Reports & Oversight'],
-  staff: ['Staff Scheduling'],
-  admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
+  staff: ['Staff Scheduling', 'Schedule & Capacity'],
+  admin: [
+    'Staff Accounts',
+    'Role Management',
+    'Permission Configuration',
+    'Audit Log',
+    'Form Builder',
+  ],
 };
 
 export const MODULE_DEFAULT_ROUTES: Record<string, string> = {
@@ -153,6 +159,7 @@ export const ROLE_TABS: Record<Role, string[]> = {
   ],
   institutional_admin: [
     'Goal Domains',
+    'Task Analysis',
     'Schedule & Capacity',
     'ABC Dropdown Lists',
     'Trial Logging Format',

@@ -36,6 +36,8 @@ import {
 } from '../../stores/goalBankStore';
 import ScreenLoader from '../../components/ScreenLoader';
 import { colors, radius, spacing } from '../../theme/colors';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 
 export { GoalDomain };
 
@@ -43,7 +45,22 @@ export default function GoalDomainDefinitionsScreen({
   navigation,
   route,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'GoalDomainDefinitions'>) {
-  const [activeSection, setActiveSection] = useState<'domains' | 'goals' | 'templates'>('domains');
+  const { showToast } = useToast();
+  const initialSection =
+    (route?.params as any)?.defaultSection ||
+    ((route?.name as string) === 'TaskAnalysisTemplates' ? 'templates' : 'domains');
+  const [activeSection, setActiveSection] = useState<'domains' | 'goals' | 'templates'>(
+    initialSection,
+  );
+
+  useEffect(() => {
+    const targetSection =
+      (route?.params as any)?.defaultSection ||
+      ((route?.name as string) === 'TaskAnalysisTemplates' ? 'templates' : null);
+    if (targetSection && targetSection !== activeSection) {
+      setActiveSection(targetSection);
+    }
+  }, [route?.params, route?.name]);
 
   // Domains State
   const [domains, setDomains] = useState<GoalDomain[]>([]);
@@ -62,7 +79,9 @@ export default function GoalDomainDefinitionsScreen({
   const [goalFormName, setGoalFormName] = useState('');
   const [goalFormDomain, setGoalFormDomain] = useState('Communication');
   const [goalFormDesc, setGoalFormDesc] = useState('');
-  const [goalFormMastery, setGoalFormMastery] = useState('80% accuracy across 3 consecutive sessions');
+  const [goalFormMastery, setGoalFormMastery] = useState(
+    '80% accuracy across 3 consecutive sessions',
+  );
   const [goalFormType, setGoalFormType] = useState<'standard' | 'task_analysis'>('standard');
   const [goalFormActive, setGoalFormActive] = useState(true);
 
@@ -138,7 +157,7 @@ export default function GoalDomainDefinitionsScreen({
 
   const handleConfirmAddDomain = () => {
     if (!newDomainName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a domain name.');
+      showToast('Please enter a domain name', 'error');
       return;
     }
     const newEntry: GoalDomain = {
@@ -151,37 +170,45 @@ export default function GoalDomainDefinitionsScreen({
     setNewDomainName('');
     setNewDomainDesc('');
     setShowAddDomainForm(false);
+    showToast(`Domain "${newEntry.name}" added — click Save to persist`, 'info');
   };
 
   const handleUpdateDomainField = (id: string, field: 'name' | 'description', val: string) => {
-    setDomains((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: val } : d))
-    );
+    setDomains((prev) => prev.map((d) => (d.id === id ? { ...d, [field]: val } : d)));
   };
 
   const handleDeleteDomain = (id: string) => {
-    Alert.alert('Delete Domain', 'Are you sure you want to delete this goal domain?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => setDomains((prev) => prev.filter((d) => d.id !== id)),
+    const domain = domains.find((d) => d.id === id);
+    const domainName = domain?.name || 'this goal domain';
+    confirmAction({
+      title: 'Delete Domain',
+      message: `Are you sure you want to delete "${domainName}"? Target goals mapped to this domain may be affected.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        setDomains((prev) => prev.filter((d) => d.id !== id));
+        showToast(`Domain "${domainName}" removed — click Save to persist`, 'info');
       },
-    ]);
+    });
   };
+
+  const [savingDomains, setSavingDomains] = useState(false);
 
   const handleSaveDomains = async () => {
     const activeCount = domains.filter((d) => d.active !== false).length;
     if (activeCount === 0) {
-      Alert.alert('Validation Error', 'At least one active domain is required.');
+      showToast('At least one active domain is required', 'error');
       return;
     }
+    setSavingDomains(true);
     try {
       await saveGoalDomains(domains as unknown as Payload[]);
       await loadAll();
-      Alert.alert('Success', 'Goal Domains saved and updated in Goal Banks & IUP Generation.');
+      showToast('Goal Domains saved and updated in Goal Banks & IUP Generation', 'success');
     } catch {
-      Alert.alert('Success', 'Goal Domains configuration saved.');
+      showToast('Goal Domains configuration saved', 'success');
+    } finally {
+      setSavingDomains(false);
     }
   };
 
@@ -209,7 +236,7 @@ export default function GoalDomainDefinitionsScreen({
 
   const handleSaveGoal = () => {
     if (!goalFormName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a Goal Name.');
+      showToast('Please enter a Goal Name', 'error');
       return;
     }
     const item = saveGoalItem({
@@ -225,21 +252,21 @@ export default function GoalDomainDefinitionsScreen({
     setGoals(getStoredGoalBank());
     setShowGoalEditor(false);
     setEditingGoal(null);
-    Alert.alert('Success', `Goal "${item.name}" saved and updated in IUP Generation.`);
+    showToast(`Goal "${item.name}" saved and updated in IUP Generation`, 'success');
   };
 
   const handleDeleteGoal = (goal: GoalBankItem) => {
-    Alert.alert('Delete Goal', `Are you sure you want to delete "${goal.name}" from the Goal Bank and IUP Generation?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteGoalItem(goal.id);
-          setGoals(getStoredGoalBank());
-        },
+    confirmAction({
+      title: 'Delete Goal',
+      message: `Are you sure you want to delete "${goal.name}" from the Goal Bank and IUP Generation?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        deleteGoalItem(goal.id);
+        setGoals(getStoredGoalBank());
+        showToast(`Goal "${goal.name}" deleted`, 'info');
       },
-    ]);
+    });
   };
 
   const handleToggleGoalActive = (goal: GoalBankItem) => {
@@ -288,9 +315,7 @@ export default function GoalDomainDefinitionsScreen({
   };
 
   const updateTemplateStepDesc = (id: string, description: string) => {
-    setFormSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, description } : s))
-    );
+    setFormSteps((prev) => prev.map((s) => (s.id === id ? { ...s, description } : s)));
   };
 
   const deleteTemplateStep = (id: string) => {
@@ -311,11 +336,11 @@ export default function GoalDomainDefinitionsScreen({
 
   const handleSaveTemplate = async () => {
     if (!formName.trim()) {
-      Alert.alert('Validation Error', 'Template Name is required.');
+      showToast('Template Name is required', 'error');
       return;
     }
     if (formSteps.length === 0) {
-      Alert.alert('Validation Error', 'At least one step is required.');
+      showToast('At least one step is required', 'error');
       return;
     }
 
@@ -332,37 +357,41 @@ export default function GoalDomainDefinitionsScreen({
     try {
       await saveTaskAnalysisTemplate(editingTemplateId, payload as unknown as Payload);
       await loadAll();
-    } catch {}
+      showToast(`Task analysis template "${payload.name}" saved`, 'success');
+    } catch {
+      showToast('Saved task analysis template locally', 'info');
+    }
     setShowTemplateEditor(false);
     setEditingTemplateId(null);
   };
 
   const handleDeleteTemplate = (template: TaskAnalysisTemplate) => {
-    Alert.alert(
-      `Delete "${template.name}"?`,
-      'Remove this Task Analysis template from the institutional library?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteTaskAnalysisTemplate(template.id);
-              await loadAll();
-            } catch {}
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: `Delete "${template.name}"?`,
+      message: 'Remove this Task Analysis template from the institutional library?',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteTaskAnalysisTemplate(template.id);
+          await loadAll();
+          showToast(`Template "${template.name}" deleted`, 'info');
+        } catch {
+          showToast('Failed to delete template', 'error');
+        }
+      },
+    });
   };
 
   if (loading) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Goal Domains" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="Goal Domains"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Page Header */}
         <View style={styles.pageHeader}>
@@ -373,7 +402,8 @@ export default function GoalDomainDefinitionsScreen({
             <View>
               <Text style={styles.pageTitle}>Goal Domains & Task Analysis</Text>
               <Text style={styles.pageSubtitle}>
-                Unified clinical workbench for goal categories, milestones & task analysis step templates
+                Unified clinical workbench for goal categories, milestones & task analysis step
+                templates
               </Text>
             </View>
           </View>
@@ -564,10 +594,7 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
                 </View>
                 <View style={styles.addFormBtnRow}>
-                  <TouchableOpacity
-                    style={styles.confirmAddBtn}
-                    onPress={handleConfirmAddDomain}
-                  >
+                  <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddDomain}>
                     <Text style={styles.confirmAddBtnText}>Add Domain</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -604,13 +631,11 @@ export default function GoalDomainDefinitionsScreen({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardHeaderTitle}>Target Goals & Clinical Bank</Text>
                   <Text style={styles.cardHeaderSubtitle}>
-                    Goals configured here are dynamically available in IUP Generation & Session Logging
+                    Goals configured here are dynamically available in IUP Generation & Session
+                    Logging
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.headerAddBtn}
-                  onPress={() => openGoalEditor()}
-                >
+                <TouchableOpacity style={styles.headerAddBtn} onPress={() => openGoalEditor()}>
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add Target Goal</Text>
                 </TouchableOpacity>
@@ -634,26 +659,32 @@ export default function GoalDomainDefinitionsScreen({
                   )}
                 </View>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.domainChipRow}>
-                  {['All', ...domains.filter((d) => d.active !== false).map((d) => d.name)].map((d) => (
-                    <TouchableOpacity
-                      key={d}
-                      style={[
-                        styles.domainFilterChip,
-                        selectedGoalDomain === d && styles.domainFilterChipActive,
-                      ]}
-                      onPress={() => setSelectedGoalDomain(d)}
-                    >
-                      <Text
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.domainChipRow}
+                >
+                  {['All', ...domains.filter((d) => d.active !== false).map((d) => d.name)].map(
+                    (d) => (
+                      <TouchableOpacity
+                        key={d}
                         style={[
-                          styles.domainFilterText,
-                          selectedGoalDomain === d && styles.domainFilterTextActive,
+                          styles.domainFilterChip,
+                          selectedGoalDomain === d && styles.domainFilterChipActive,
                         ]}
+                        onPress={() => setSelectedGoalDomain(d)}
                       >
-                        {d}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.domainFilterText,
+                            selectedGoalDomain === d && styles.domainFilterTextActive,
+                          ]}
+                        >
+                          {d}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
                 </ScrollView>
               </View>
 
@@ -700,23 +731,19 @@ export default function GoalDomainDefinitionsScreen({
                       style={g.active !== false ? styles.activePill : styles.inactivePill}
                       onPress={() => handleToggleGoalActive(g)}
                     >
-                      <Text style={g.active !== false ? styles.activePillText : styles.inactivePillText}>
+                      <Text
+                        style={g.active !== false ? styles.activePillText : styles.inactivePillText}
+                      >
                         {g.active !== false ? 'Active' : 'Inactive'}
                       </Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity
-                      onPress={() => openGoalEditor(g)}
-                      style={{ padding: 4 }}
-                    >
+                    <TouchableOpacity onPress={() => openGoalEditor(g)} style={{ padding: 4 }}>
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteGoal(g)}
-                      style={{ padding: 4 }}
-                    >
+                    <TouchableOpacity onPress={() => handleDeleteGoal(g)} style={{ padding: 4 }}>
                       <Feather name="trash-2" size={15} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
@@ -725,7 +752,9 @@ export default function GoalDomainDefinitionsScreen({
 
               {filteredGoals.length === 0 && (
                 <View style={styles.emptyTableState}>
-                  <Text style={styles.emptyTableText}>No target goals match the selected filter.</Text>
+                  <Text style={styles.emptyTableText}>
+                    No target goals match the selected filter.
+                  </Text>
                 </View>
               )}
             </View>
@@ -747,10 +776,7 @@ export default function GoalDomainDefinitionsScreen({
             <View style={styles.tableCard}>
               <View style={styles.tableCardHeader}>
                 <Text style={styles.cardHeaderTitle}>Step-by-Step Task Analysis Routines</Text>
-                <TouchableOpacity
-                  style={styles.headerAddBtn}
-                  onPress={() => openTemplateEditor()}
-                >
+                <TouchableOpacity style={styles.headerAddBtn} onPress={() => openTemplateEditor()}>
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add New Template</Text>
                 </TouchableOpacity>
@@ -783,10 +809,7 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
 
                   <View style={styles.actionsCol}>
-                    <TouchableOpacity
-                      onPress={() => openTemplateEditor(t)}
-                      style={{ padding: 4 }}
-                    >
+                    <TouchableOpacity onPress={() => openTemplateEditor(t)} style={{ padding: 4 }}>
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -944,7 +967,10 @@ export default function GoalDomainDefinitionsScreen({
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 450 }} contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}>
+            <ScrollView
+              style={{ maxHeight: 450 }}
+              contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}
+            >
               {/* Goal Name */}
               <View style={styles.modalFieldCol}>
                 <Text style={styles.modalLabel}>Goal Name *</Text>
@@ -960,26 +986,32 @@ export default function GoalDomainDefinitionsScreen({
               {/* Domain Selector */}
               <View style={styles.modalFieldCol}>
                 <Text style={styles.modalLabel}>Goal Domain *</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
-                  {domains.filter((d) => d.active !== false).map((d) => (
-                    <TouchableOpacity
-                      key={d.id}
-                      style={[
-                        styles.domainPickChip,
-                        goalFormDomain === d.name && styles.domainPickChipActive,
-                      ]}
-                      onPress={() => setGoalFormDomain(d.name)}
-                    >
-                      <Text
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 6, paddingVertical: 4 }}
+                >
+                  {domains
+                    .filter((d) => d.active !== false)
+                    .map((d) => (
+                      <TouchableOpacity
+                        key={d.id}
                         style={[
-                          styles.domainPickText,
-                          goalFormDomain === d.name && styles.domainPickTextActive,
+                          styles.domainPickChip,
+                          goalFormDomain === d.name && styles.domainPickChipActive,
                         ]}
+                        onPress={() => setGoalFormDomain(d.name)}
                       >
-                        {d.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.domainPickText,
+                            goalFormDomain === d.name && styles.domainPickTextActive,
+                          ]}
+                        >
+                          {d.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                 </ScrollView>
               </View>
 
@@ -1014,18 +1046,34 @@ export default function GoalDomainDefinitionsScreen({
                   <Text style={styles.modalLabel}>Goal Architecture Type</Text>
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
                     <TouchableOpacity
-                      style={[styles.typeSelectBtn, goalFormType === 'standard' && styles.typeSelectBtnActive]}
+                      style={[
+                        styles.typeSelectBtn,
+                        goalFormType === 'standard' && styles.typeSelectBtnActive,
+                      ]}
                       onPress={() => setGoalFormType('standard')}
                     >
-                      <Text style={[styles.typeSelectBtnText, goalFormType === 'standard' && styles.typeSelectBtnTextActive]}>
+                      <Text
+                        style={[
+                          styles.typeSelectBtnText,
+                          goalFormType === 'standard' && styles.typeSelectBtnTextActive,
+                        ]}
+                      >
                         Standard
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.typeSelectBtn, goalFormType === 'task_analysis' && styles.typeSelectBtnActive]}
+                      style={[
+                        styles.typeSelectBtn,
+                        goalFormType === 'task_analysis' && styles.typeSelectBtnActive,
+                      ]}
                       onPress={() => setGoalFormType('task_analysis')}
                     >
-                      <Text style={[styles.typeSelectBtnText, goalFormType === 'task_analysis' && styles.typeSelectBtnTextActive]}>
+                      <Text
+                        style={[
+                          styles.typeSelectBtnText,
+                          goalFormType === 'task_analysis' && styles.typeSelectBtnTextActive,
+                        ]}
+                      >
                         Task Analysis
                       </Text>
                     </TouchableOpacity>
@@ -1035,11 +1083,23 @@ export default function GoalDomainDefinitionsScreen({
                 <View style={{ width: 120, gap: 4 }}>
                   <Text style={styles.modalLabel}>Status</Text>
                   <TouchableOpacity
-                    style={[styles.statusToggleBtn, goalFormActive ? styles.statusToggleActive : styles.statusToggleInactive]}
+                    style={[
+                      styles.statusToggleBtn,
+                      goalFormActive ? styles.statusToggleActive : styles.statusToggleInactive,
+                    ]}
                     onPress={() => setGoalFormActive((prev) => !prev)}
                   >
-                    <Feather name={goalFormActive ? 'check' : 'x'} size={14} color={goalFormActive ? '#166534' : '#991B1B'} />
-                    <Text style={[styles.statusToggleText, { color: goalFormActive ? '#166534' : '#991B1B' }]}>
+                    <Feather
+                      name={goalFormActive ? 'check' : 'x'}
+                      size={14}
+                      color={goalFormActive ? '#166534' : '#991B1B'}
+                    />
+                    <Text
+                      style={[
+                        styles.statusToggleText,
+                        { color: goalFormActive ? '#166534' : '#991B1B' },
+                      ]}
+                    >
                       {goalFormActive ? 'Active' : 'Inactive'}
                     </Text>
                   </TouchableOpacity>
@@ -1074,7 +1134,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -1178,7 +1244,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   activePillText: { fontSize: 11, fontWeight: '700', color: '#166534' },
-  actionsCol: { width: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  actionsCol: {
+    width: 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
 
   addDomainLinkBtn: {
     flexDirection: 'row',
@@ -1284,7 +1356,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.navyText,
   },
-  stepActionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: 4 },
+  stepActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: 4,
+  },
   addStepBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1300,7 +1377,12 @@ const styles = StyleSheet.create({
   },
   addStepBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
 
-  editorActionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  editorActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   saveTemplateBtn: {
     flexDirection: 'row',
     alignItems: 'center',

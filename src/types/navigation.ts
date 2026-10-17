@@ -83,8 +83,8 @@ export type InstitutionalAdminStackParamList = {
   TrialLoggingFormat: undefined;
   AbcDropdownLists: undefined;
   ScheduleCapacityConfig: undefined;
-  GoalDomainDefinitions: undefined;
-  TaskAnalysisTemplates: undefined;
+  GoalDomainDefinitions: { defaultSection?: 'domains' | 'goals' | 'templates' } | undefined;
+  TaskAnalysisTemplates: { defaultSection?: 'domains' | 'goals' | 'templates' } | undefined;
 };
 
 export type SystemAdminStackParamList = {
