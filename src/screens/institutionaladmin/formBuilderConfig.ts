@@ -35,7 +35,7 @@ export const SOCIAL_SKILLS_SECTIONS = [
   'Play & Leisure',
   'General',
 ];
-export const BEHAVIORAL_SECTIONS = ['MASS', 'FAST', 'ABC Tracking', 'General'];
+export const BEHAVIORAL_SECTIONS = ['Incident Details', 'ABC Tracking', 'MASS', 'FAST', 'General'];
 export const PREFERENCE_SECTIONS = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement', 'General'];
 export const SENSORY_SECTIONS = [
   'Tactile',
@@ -43,7 +43,7 @@ export const SENSORY_SECTIONS = [
   'Proprioception & Vestibular',
   'General',
 ];
-export const BEHAVIOR_INCIDENT_SECTIONS = ['Incident Details', 'ABC Tracking', 'General'];
+export const BEHAVIOR_INCIDENT_SECTIONS = ['ABC Tracking', 'General'];
 
 export const getSectionsForForm = (formName: string): string[] => {
   if (formName === 'Enrollment Wizard') return ENROLLMENT_SECTIONS;
@@ -104,12 +104,26 @@ export const SCORE_SCALE_PRESETS = [
 
 export const BEHAVIORAL_PRESETS = [
   {
-    label: 'Likert 6-Pt',
+    label: 'Likert 6-Pt (MASS)',
     short: 'Likert (6)',
     options: ['Never', 'Almost Never', 'Half the Time', 'Usually', 'Almost Always', 'Always'],
   },
-  { label: 'Yes/No', short: 'Yes/No', options: ['Yes', 'No'] },
+  { label: 'Yes/No (FAST)', short: 'Yes/No', options: ['Yes', 'No'] },
   { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
+  {
+    label: 'Location Presets',
+    short: 'Locations',
+    options: [
+      'Room 1A',
+      'Room 1B',
+      'Room 2A',
+      'Room 2B',
+      'Sensory Station',
+      'Hallway / Transit',
+      'Playground',
+      'Restroom',
+    ],
+  },
   {
     label: 'ABC Behaviors',
     short: 'Behaviors',
@@ -140,26 +154,7 @@ export const SENSORY_PRESETS = [
 
 export const BEHAVIOR_INCIDENT_PRESETS = [
   {
-    label: 'Location Presets',
-    short: 'Locations',
-    options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
-  },
-  {
-    label: 'Behavior Types',
-    short: 'Behaviors',
-    options: [
-      'Aggression',
-      'Self-injury',
-      'Tantrum',
-      'Elopement',
-      'Non-compliance',
-      'Property destruction',
-      'Repetitive behaviors',
-    ],
-  },
-  { label: 'Intensity (Low/Med/High)', short: 'Intensity', options: ['Low', 'Medium', 'High'] },
-  {
-    label: 'Antecedents',
+    label: 'Antecedents (A)',
     short: 'Antecedents',
     options: [
       'Demand / Task',
@@ -172,7 +167,20 @@ export const BEHAVIOR_INCIDENT_PRESETS = [
     ],
   },
   {
-    label: 'Consequences',
+    label: 'Behaviors (B)',
+    short: 'Behaviors',
+    options: [
+      'Aggression',
+      'Self-injury',
+      'Tantrum',
+      'Elopement',
+      'Non-compliance',
+      'Property destruction',
+      'Repetitive behaviors',
+    ],
+  },
+  {
+    label: 'Consequences (C)',
     short: 'Consequences',
     options: [
       'Redirection',

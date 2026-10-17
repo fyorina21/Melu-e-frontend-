@@ -297,6 +297,55 @@ export const DEFAULT_BEHAVIORAL_FORM = {
   revisionNumber: 1,
   isDefault: true,
   fields: [
+    // Incident Details (Location, Timer/Duration, Frequency, Intensity)
+    {
+      id: 'b_loc',
+      type: 'Dropdown',
+      label: 'Session Room / Physical Location',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: [
+        'Room 1A',
+        'Room 1B',
+        'Room 1C',
+        'Room 1D',
+        'Room 2A',
+        'Room 2B',
+        'Room 2C',
+        'Room 2D',
+        'Sensory Station',
+        'Hallway / Transit',
+        'Playground',
+        'Restroom',
+      ],
+    },
+    {
+      id: 'b_dur',
+      type: 'Number',
+      label: 'Duration / Timer (mins)',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+    },
+    {
+      id: 'b_freq',
+      type: 'Number',
+      label: 'Episode Frequency / Count',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+    },
+    {
+      id: 'b_int',
+      type: 'Dropdown',
+      label: 'Behavior Severity Intensity',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: ['Low', 'Medium', 'High'],
+    },
+
     // MASS Items
     {
       id: 'M1',
@@ -548,7 +597,7 @@ export const DEFAULT_BEHAVIORAL_FORM = {
       placeholder: 'What was the immediate response?',
     },
   ],
-  customSections: ['MASS', 'FAST', 'ABC Tracking', 'General'],
+  customSections: ['Incident Details', 'MASS', 'FAST', 'ABC Tracking', 'General'],
   deletedSections: [],
   history: [],
 };
@@ -769,26 +818,35 @@ export const DEFAULT_SENSORY_FORM = {
 
 export const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
   formName: 'Behavior Incident Form',
-  formType: 'behavior_incident',
+  formType: 'abc_data_sheet',
   revisionNumber: 1,
   isDefault: true,
   fields: [
     {
-      id: 'b_loc',
+      id: 'b_ant',
       type: 'Dropdown',
-      label: 'Location',
+      label: 'Antecedent (A)',
       required: true,
       visible: true,
-      section: 'Incident Details',
-      options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
+      section: 'ABC Tracking',
+      options: [
+        'Demand / Task',
+        'Transition',
+        'Denied Access',
+        'Attention Diverted',
+        'Sensory Overload',
+        'Loud Noise',
+        'Peer Interaction',
+        'Unstructured Time',
+      ],
     },
     {
       id: 'b_beh',
       type: 'Dropdown',
-      label: 'Behavior Type',
+      label: 'Behavior (B)',
       required: true,
       visible: true,
-      section: 'Incident Details',
+      section: 'ABC Tracking',
       options: [
         'Aggression',
         'Self-injury',
@@ -800,44 +858,10 @@ export const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
       ],
     },
     {
-      id: 'b_int',
-      type: 'Dropdown',
-      label: 'Intensity',
-      required: true,
-      visible: true,
-      section: 'Incident Details',
-      options: ['Low', 'Medium', 'High'],
-    },
-    {
-      id: 'b_dur',
-      type: 'Number',
-      label: 'Duration (mins)',
-      required: true,
-      visible: true,
-      section: 'Incident Details',
-    },
-    {
-      id: 'b_ant',
-      type: 'Dropdown',
-      label: 'Antecedent / Trigger',
-      required: false,
-      visible: true,
-      section: 'ABC Tracking',
-      options: [
-        'Demand / Task',
-        'Transition',
-        'Denied Access',
-        'Attention Diverted',
-        'Sensory Overload',
-        'Loud Noise',
-        'Peer Interaction',
-      ],
-    },
-    {
       id: 'b_con',
       type: 'Dropdown',
-      label: 'Consequence / Action Taken',
-      required: false,
+      label: 'Consequence (C)',
+      required: true,
       visible: true,
       section: 'ABC Tracking',
       options: [
@@ -847,19 +871,11 @@ export const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
         'Sensory Break',
         'Physical Prompt',
         'Planned Ignoring',
+        'Differential Reinforcement (DRA)',
       ],
     },
-    {
-      id: 'b_notes',
-      type: 'TextArea',
-      label: 'Notes & Observations',
-      required: false,
-      visible: true,
-      section: 'General',
-      placeholder: 'Enter additional notes or observations...',
-    },
   ],
-  customSections: ['Incident Details', 'ABC Tracking', 'General'],
+  customSections: ['ABC Tracking'],
   deletedSections: [],
   history: [],
 };
@@ -872,7 +888,6 @@ export function getDefaultFormConfig(formName: string) {
   if (name.includes('ablls') || name.includes('skill')) return DEFAULT_ABLLS_FORM;
   if (name.includes('incident')) {
     const abc = getStoredAbcLists();
-    const activeLocations = abc.locations.filter((i) => i.status === 'Active').map((i) => i.name);
     const activeBehaviors = abc.behaviors.filter((i) => i.status === 'Active').map((i) => i.name);
     const activeAntecedents = abc.antecedents
       .filter((i) => i.status === 'Active')
@@ -884,8 +899,6 @@ export function getDefaultFormConfig(formName: string) {
     return {
       ...DEFAULT_BEHAVIOR_INCIDENT_FORM,
       fields: DEFAULT_BEHAVIOR_INCIDENT_FORM.fields.map((f: any) => {
-        if (f.id === 'b_loc')
-          return { ...f, options: activeLocations.length > 0 ? activeLocations : f.options };
         if (f.id === 'b_beh')
           return { ...f, options: activeBehaviors.length > 0 ? activeBehaviors : f.options };
         if (f.id === 'b_ant')
@@ -921,6 +934,20 @@ export function getCachedFormConfig(formName: string) {
           // If cached config has 0 fields or old truncated stub fields, upgrade to defaults
           const normName = formName.toLowerCase().trim();
           if (parsed.fields.length === 0) return null;
+
+          // Purge stale cache bleed from old enrollment fallback
+          if (
+            !normName.includes('enrollment') &&
+            parsed.fields.some(
+              (f: any) =>
+                f.label?.includes('Parent') ||
+                f.label?.includes('Student Full Name') ||
+                f.id === 'f1',
+            )
+          ) {
+            return null;
+          }
+
           if (normName.includes('ablls') && parsed.fields.length <= 4 && parsed.isDefault !== false)
             return null;
           if (
