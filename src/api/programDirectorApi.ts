@@ -9,6 +9,10 @@ import {
 } from '../stores/goalBankStore';
 import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
+import {
+  getRegisteredStudentStatus,
+  getStudentAssessmentSubmission,
+} from '../utils/studentLifecycleHelper';
 
 // ============================================================================
 // Storage Keys
@@ -2074,12 +2078,20 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     };
   }
 
+  const registeredInfo = getRegisteredStudentStatus(targetId);
+  const submissionInfo = getStudentAssessmentSubmission(targetId);
   const selectedStudentObj = studentsList.find((s) => s.id === targetId) || {
     id: targetId,
-    name: 'Student',
+    name: registeredInfo?.name || submissionInfo?.studentName || 'Student',
     age: 6,
     program: 'Comprehensive ABA',
+    status: 'Active',
+    photoUrl: '',
   };
+
+  if (targetId && !studentsList.some((s) => s.id === targetId)) {
+    studentsList.unshift(selectedStudentObj);
+  }
 
   let summaryRes: any = null;
   try {

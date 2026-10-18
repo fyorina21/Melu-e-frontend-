@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
@@ -12,12 +12,17 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
+import storage from '../../utils/storage';
 import {
   isStudentInSession,
-  isStudentAssessment100PercentCompleted,
-  markStudentAssessmentCompleted,
+  isStudentAssessmentSubmitted,
+  saveStudentAssessmentSubmission,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
+  getStudentPreferenceProgress,
+  getStudentSensoryProgress,
+  checkStudentAllAssessmentsCompleted,
+  normalizeStudentId,
 } from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList } from '../../types';
 
@@ -31,8 +36,16 @@ interface AssessmentStatusStyle {
 
 const STATUS_STYLE: Record<string, AssessmentStatusStyle> = {
   Completed: { bg: colors.statusApprovedBg, text: colors.statusApprovedText, barColor: '#22C55E' },
-  'In Progress': { bg: colors.statusInProgressBg, text: colors.statusInProgressText, barColor: colors.statusInProgressText },
-  'Not Started': { bg: colors.statusNotStartedBg, text: colors.mutedText, barColor: colors.mutedText },
+  'In Progress': {
+    bg: colors.statusInProgressBg,
+    text: colors.statusInProgressText,
+    barColor: colors.statusInProgressText,
+  },
+  'Not Started': {
+    bg: colors.statusNotStartedBg,
+    text: colors.mutedText,
+    barColor: colors.mutedText,
+  },
 };
 
 function StatusPillLocal({ status }: { status: string }) {
@@ -44,8 +57,17 @@ function StatusPillLocal({ status }: { status: string }) {
   );
 }
 
-function AssessmentRow({ label, status, progress }: { label: string; status: string; progress: number }) {
+function AssessmentRow({
+  label,
+  status,
+  progress,
+}: {
+  label: string;
+  status: string;
+  progress: number;
+}) {
   const s = STATUS_STYLE[status] || STATUS_STYLE['Not Started'];
+  const clampedProgress = Math.min(100, Math.max(0, isNaN(progress) ? 0 : Math.round(progress)));
   return (
     <View style={styles.assessmentBlock}>
       <View style={styles.assessmentHeaderRow}>
@@ -54,10 +76,15 @@ function AssessmentRow({ label, status, progress }: { label: string; status: str
       </View>
       <View style={styles.progressRow}>
         <Text style={typography.caption}>Progress</Text>
-        <Text style={typography.caption}>{progress}%</Text>
+        <Text style={typography.caption}>{clampedProgress}%</Text>
       </View>
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: s.barColor }]} />
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${clampedProgress}%`, backgroundColor: s.barColor },
+          ]}
+        />
       </View>
     </View>
   );
@@ -82,38 +109,75 @@ interface AssessmentData {
 }
 
 export default function AssessmentDashboardScreen({ navigation }: Props) {
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const [data, setData] = useState<AssessmentData | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [submittedIds, setSubmittedIds] = useState<Set<string>>(() => new Set());
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
 
-  const load = useCallback(async () => {
+  // Refresh submission status from storage
+  const refreshSubmissionStatus = useCallback(
+    (studentsList?: any[]) => {
+      const list = studentsList ?? data?.students ?? [];
+      const set = new Set<string>();
+      list.forEach((s: any) => {
+        if (s?.id && isStudentAssessmentSubmitted(s.id)) {
+          set.add(String(s.id).trim());
+          set.add(normalizeStudentId(s.id));
+        }
+      });
+      setSubmittedIds(set);
+    },
+    [data?.students],
+  );
+
+  const load = useCallback(async (force = false) => {
+    const now = Date.now();
+    // Prevent redundant rapid duplicate API requests within 800ms unless forced
+    if (isFetchingRef.current || (!force && now - lastFetchTimeRef.current < 800)) {
+      return;
+    }
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = now;
     try {
       const { data: res } = await getAssessmentDashboard();
       setData(res);
       setLoadError(false);
-    } catch (err) {
+      if (Array.isArray(res?.students)) {
+        const set = new Set<string>();
+        res.students.forEach((s: any) => {
+          if (s?.id && isStudentAssessmentSubmitted(s.id)) {
+            set.add(String(s.id).trim());
+            set.add(normalizeStudentId(s.id));
+          }
+        });
+        setSubmittedIds(set);
+      }
+    } catch {
       setLoadError(true);
+    } finally {
+      isFetchingRef.current = false;
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-
+  // useFocusEffect runs on initial mount AND refreshes every time screen regains focus (e.g. returning from assessment screens)
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   useEffect(() => {
-    const handleSync = () => { load(); };
+    const handleSync = () => {
+      load();
+    };
     if (typeof window !== 'undefined') {
-      window.addEventListener('storage', handleSync);
-      window.addEventListener('focus', handleSync);
-      window.addEventListener('melue_assessment_updated' as any, handleSync);
+      window.addEventListener?.('storage', handleSync);
+      window.addEventListener?.('melue_assessment_updated' as any, handleSync);
       return () => {
-        window.removeEventListener('storage', handleSync);
-        window.removeEventListener('focus', handleSync);
-        window.removeEventListener('melue_assessment_updated' as any, handleSync);
+        window.removeEventListener?.('storage', handleSync);
+        window.removeEventListener?.('melue_assessment_updated' as any, handleSync);
       };
     }
   }, [load]);
@@ -121,21 +185,159 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   const isTeacher = session?.role === 'teacher';
   const currentTherapistName = session?.userName || (session as any)?.user?.name;
 
-  // Filter students to strictly show only students who are in assessment and exclude active therapy/in-session students
-  const filteredStudents = (data?.students ?? []).filter((s: any) => {
-    // Mutual exclusivity: Students in active therapy / in session or completed must NOT appear on the assessment dashboard
-    if (isStudentInSession(s) || isStudentAssessment100PercentCompleted(s)) {
-      return false;
+  // Memoize filteredStudents using useMemo to avoid repeated executions
+  const filteredStudents = useMemo(() => {
+    return (data?.students ?? []).filter((s: any) => !isStudentInSession(s));
+  }, [data?.students]);
+
+  // Sync submission status whenever students change
+  useEffect(() => {
+    refreshSubmissionStatus(filteredStudents);
+  }, [filteredStudents, refreshSubmissionStatus]);
+
+  const handleSubmitAssessment = async (student: any) => {
+    if (!student?.id) return;
+    const sid = String(student.id).trim();
+
+    // Guard against repeated submissions
+    if (submittedIds.has(sid) || isStudentAssessmentSubmitted(sid)) {
+      return;
     }
-    return true;
-  });
+
+    // Guard: Only allow submitting when all assessments (Skills, Behavior, Preference, Sensory) are genuinely 100% complete
+    const isCompleted = checkStudentAllAssessmentsCompleted(
+      sid,
+      student.ablls,
+      student.behavior,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { requireAllFour: true },
+    );
+    if (!isCompleted) return;
+
+    try {
+      const success = await saveStudentAssessmentSubmission(sid, {
+        studentName: student.name,
+        therapist: currentTherapistName || student.therapist,
+      });
+
+      if (!success) {
+        return;
+      }
+
+      // Immediately reflect the updated status in local state
+      setSubmittedIds((prev) => {
+        const next = new Set(prev);
+        next.add(sid);
+        next.add(normalizeStudentId(sid));
+        return next;
+      });
+
+      (navigation as any)?.navigate?.('AssessmentSummaryReport', { studentId: sid });
+    } catch (error) {
+      console.error('Failed to submit assessment:', error);
+    }
+  };
+
+  // Standardized dashboard statistics calculation matching student card completion rule
+  const dashboardStats = useMemo(() => {
+    let completedCount = 0;
+    let notStartedCount = 0;
+    let inProgressCount = 0;
+
+    filteredStudents.forEach((s) => {
+      const sid = String(s.id);
+      const skillsData = getStudentSkillsProgress(
+        sid,
+        Number(s.ablls?.progress || 0),
+        s.ablls?.status || 'Not Started',
+      );
+      const behaviorData = getStudentBehaviorProgress(
+        sid,
+        Number(s.behavior?.progress || 0),
+        s.behavior?.status || 'Not Started',
+      );
+      const preferenceData = getStudentPreferenceProgress(sid);
+      const sensoryData = getStudentSensoryProgress(sid);
+      const isComp = checkStudentAllAssessmentsCompleted(
+        sid,
+        s.ablls,
+        s.behavior,
+        skillsData,
+        behaviorData,
+        preferenceData,
+        sensoryData,
+        { requireAllFour: true },
+      );
+      if (isComp) {
+        completedCount++;
+        return;
+      }
+
+      const skProg = Math.min(
+        100,
+        Math.max(
+          0,
+          isNaN(Number(skillsData.progress)) ? 0 : Math.round(Number(skillsData.progress)),
+        ),
+      );
+      const bhProg = Math.min(
+        100,
+        Math.max(
+          0,
+          isNaN(Number(behaviorData.progress)) ? 0 : Math.round(Number(behaviorData.progress)),
+        ),
+      );
+      const prProg = Math.min(
+        100,
+        Math.max(
+          0,
+          isNaN(Number(preferenceData.progress)) ? 0 : Math.round(Number(preferenceData.progress)),
+        ),
+      );
+      const snProg = Math.min(
+        100,
+        Math.max(
+          0,
+          isNaN(Number(sensoryData.progress)) ? 0 : Math.round(Number(sensoryData.progress)),
+        ),
+      );
+
+      if (
+        skProg === 0 &&
+        bhProg === 0 &&
+        prProg === 0 &&
+        snProg === 0 &&
+        skillsData.status === 'Not Started' &&
+        behaviorData.status === 'Not Started' &&
+        preferenceData.status === 'Not Started' &&
+        sensoryData.status === 'Not Started'
+      ) {
+        notStartedCount++;
+      } else {
+        inProgressCount++;
+      }
+    });
+
+    return {
+      total: filteredStudents.length,
+      completed: completedCount,
+      inProgress: inProgressCount,
+      notStarted: notStartedCount,
+    };
+  }, [filteredStudents]);
 
   if (loadError) return <ScreenError onRetry={load} />;
   if (!data) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -159,143 +361,270 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Feather name="users" size={16} color={colors.mutedText} />
-            <Text style={styles.statValue}>{filteredStudents.length}</Text>
+            <Text style={styles.statValue}>{dashboardStats.total}</Text>
             <Text style={typography.caption}>Assigned Students</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="check-circle" size={16} color="#22C55E" />
-            <Text style={styles.statValue}>
-              {
-                filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
-                  return sk.status === 'Completed' && bh.status === 'Completed';
-                }).length
-              }
-            </Text>
+            <Text style={styles.statValue}>{dashboardStats.completed}</Text>
             <Text style={typography.caption}>Completed</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="clock" size={16} color={colors.statusInProgressText} />
-            <Text style={styles.statValue}>
-              {
-                filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
-                  return (sk.status === 'In Progress' || bh.status === 'In Progress') && !(sk.status === 'Completed' && bh.status === 'Completed');
-                }).length
-              }
-            </Text>
+            <Text style={styles.statValue}>{dashboardStats.inProgress}</Text>
             <Text style={typography.caption}>In Progress</Text>
           </View>
           <View style={styles.statCard}>
             <Feather name="alert-circle" size={16} color={colors.mutedText} />
-            <Text style={styles.statValue}>
-              {
-                filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
-                  return sk.status === 'Not Started' && bh.status === 'Not Started';
-                }).length
-              }
-            </Text>
+            <Text style={styles.statValue}>{dashboardStats.notStarted}</Text>
             <Text style={typography.caption}>Not Started</Text>
           </View>
         </View>
 
         <Text style={typography.h3}>Student Assessments</Text>
-        <View style={styles.studentsGrid}>
-          {filteredStudents.map((s) => {
-            const skillsData = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-            const behaviorData = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
 
-            const skillsProg = skillsData.progress;
-            const skillsStat = skillsData.status;
+        {filteredStudents.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Feather name="clipboard" size={36} color={colors.mutedText} />
+            <Text style={styles.emptyStateTitle}>No Students in Assessment</Text>
+            <Text style={styles.emptyStateText}>
+              There are currently no students assigned to the 6-week assessment phase.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.studentsGrid}>
+            {filteredStudents.map((s) => {
+              const sid = String(s.id);
+              const skillsData = getStudentSkillsProgress(
+                sid,
+                Number(s.ablls?.progress || 0),
+                s.ablls?.status || 'Not Started',
+              );
+              const behaviorData = getStudentBehaviorProgress(
+                sid,
+                Number(s.behavior?.progress || 0),
+                s.behavior?.status || 'Not Started',
+              );
+              const preferenceData = getStudentPreferenceProgress(sid);
+              const sensoryData = getStudentSensoryProgress(sid);
 
-            const behaviorProg = behaviorData.progress;
-            const behaviorStat = behaviorData.status;
-            
-            const isCompleted =
-              s.score === 100 ||
-              (skillsStat === 'Completed' && behaviorStat === 'Completed') ||
-              (skillsProg === 100 && behaviorProg === 100);
+              const rawSkillsProg = Number(skillsData?.progress ?? 0);
+              const rawBehaviorProg = Number(behaviorData?.progress ?? 0);
+              const rawPrefProg = Number(preferenceData?.progress ?? 0);
+              const rawSensoryProg = Number(sensoryData?.progress ?? 0);
 
-            const displayScore = isCompleted
-              ? 100
-              : (skillsProg === 0 && behaviorProg === 0)
-              ? 0
-              : Math.min(Math.max(Number(s.score ?? Math.round((skillsProg + behaviorProg) / 2)), 0), 100);
+              const skillsProg = Math.min(
+                100,
+                Math.max(0, isNaN(rawSkillsProg) ? 0 : Math.round(rawSkillsProg)),
+              );
+              const behaviorProg = Math.min(
+                100,
+                Math.max(0, isNaN(rawBehaviorProg) ? 0 : Math.round(rawBehaviorProg)),
+              );
+              const prefProg = Math.min(
+                100,
+                Math.max(0, isNaN(rawPrefProg) ? 0 : Math.round(rawPrefProg)),
+              );
+              const sensoryProg = Math.min(
+                100,
+                Math.max(0, isNaN(rawSensoryProg) ? 0 : Math.round(rawSensoryProg)),
+              );
 
-            return (
-              <View key={s.id} style={styles.studentCard}>
-                <View style={styles.studentHeaderRow}>
-                  <StudentAvatar
-                    name={s.name}
-                    studentId={s.id}
-                    photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
-                    size={40}
-                    style={{ marginRight: 10 }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.bodyBold}>{s.name}</Text>
-                    <Text style={typography.caption}>Age {s.age} · {s.program}</Text>
-                    <Text style={typography.caption}>Therapist: {s.therapist} · Last assessment: {s.lastAssessment}</Text>
-                  </View>
-                  <View style={styles.scoreBadge}>
-                    <Text style={styles.scoreBadgeValue}>{displayScore}%</Text>
-                    <Text style={styles.scoreBadgeLabel}>Overall</Text>
-                  </View>
-                </View>
+              const skillsStat =
+                skillsProg === 100
+                  ? 'Completed'
+                  : skillsProg > 0
+                    ? 'In Progress'
+                    : skillsData.status || 'Not Started';
+              const behaviorStat =
+                behaviorProg === 100
+                  ? 'Completed'
+                  : behaviorProg > 0
+                    ? 'In Progress'
+                    : behaviorData.status || 'Not Started';
+              const prefStat =
+                prefProg === 100
+                  ? 'Completed'
+                  : prefProg > 0
+                    ? 'In Progress'
+                    : preferenceData.status || 'Not Started';
+              const sensoryStat =
+                sensoryProg === 100
+                  ? 'Completed'
+                  : sensoryProg > 0
+                    ? 'In Progress'
+                    : sensoryData.status || 'Not Started';
 
-                <AssessmentRow label="Skills Assessment" status={skillsStat} progress={skillsProg} />
-                <AssessmentRow label="Behavior Assessment" status={behaviorStat} progress={behaviorProg} />
+              // Standardized completion rule: ALL assessments (Skills, Behavior, Preference, Sensory) must be 100% complete.
+              // Neither an overall score of 100% nor a single assessment reaching 100% can override an incomplete assessment.
+              const isAllCompleted = checkStudentAllAssessmentsCompleted(
+                sid,
+                s.ablls,
+                s.behavior,
+                skillsData,
+                behaviorData,
+                preferenceData,
+                sensoryData,
+                { requireAllFour: true },
+              );
 
-                {/* Prominent IUP Generation Button to Assign Goals (Only when assessment is completed) */}
-                {isCompleted && (
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 }]}
-                    onPress={() => {
-                      markStudentAssessmentCompleted(s.id);
-                      (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      <Feather name="check-circle" size={15} color="#FFFFFF" />
-                      <Text style={[styles.launchBtnTextLight, { fontSize: 12 }]}>100% Complete — Proceed to IUP Generation to Assign Goals →</Text>
+              // Accurately calculate overall score from actual assessment progress across all 4 assessments
+              const displayScore = isAllCompleted
+                ? 100
+                : skillsProg === 0 && behaviorProg === 0 && prefProg === 0 && sensoryProg === 0
+                  ? 0
+                  : Math.min(
+                      100,
+                      Math.max(
+                        0,
+                        Math.round((skillsProg + behaviorProg + prefProg + sensoryProg) / 4),
+                      ),
+                    );
+
+              const isSubmitted =
+                submittedIds.has(sid) ||
+                submittedIds.has(normalizeStudentId(sid)) ||
+                isStudentAssessmentSubmitted(sid);
+
+              return (
+                <View key={s.id} style={styles.studentCard}>
+                  <View style={styles.studentHeaderRow}>
+                    <StudentAvatar
+                      name={s.name}
+                      studentId={s.id}
+                      photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
+                      size={40}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.bodyBold}>{s.name}</Text>
+                      <Text style={typography.caption}>
+                        Age {s.age} · {s.program}
+                      </Text>
+                      <Text style={typography.caption}>
+                        Therapist: {s.therapist} · Last assessment: {s.lastAssessment}
+                      </Text>
                     </View>
-                  </TouchableOpacity>
-                )}
+                    <View style={styles.scoreBadge}>
+                      <Text style={styles.scoreBadgeValue}>{displayScore}%</Text>
+                      <Text style={styles.scoreBadgeLabel}>Overall</Text>
+                    </View>
+                  </View>
 
-                <View style={styles.studentBtnRow}>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]} onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}>
-                    <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#EF4444' }]} onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })}>
-                    <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
-                  </TouchableOpacity>
+                  <AssessmentRow
+                    label="Skills Assessment"
+                    status={skillsStat}
+                    progress={skillsProg}
+                  />
+                  <AssessmentRow
+                    label="Behavior Assessment"
+                    status={behaviorStat}
+                    progress={behaviorProg}
+                  />
+                  <AssessmentRow
+                    label="Preference Assessment"
+                    status={prefStat}
+                    progress={prefProg}
+                  />
+                  <AssessmentRow
+                    label="Sensory Assessment"
+                    status={sensoryStat}
+                    progress={sensoryProg}
+                  />
+
+                  <View style={styles.studentBtnRow}>
+                    <TouchableOpacity
+                      style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]}
+                      onPress={() => {
+                        storage.setSync('last_assessment_student_id', s.id);
+                        navigation?.navigate?.('SkillsAssessment', { studentId: s.id });
+                      }}
+                    >
+                      <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.launchBtn, { backgroundColor: '#EF4444' }]}
+                      onPress={() => {
+                        storage.setSync('last_assessment_student_id', s.id);
+                        navigation?.navigate?.('BehaviorAssessment', { studentId: s.id });
+                      }}
+                    >
+                      <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.studentBtnRow}>
+                    <TouchableOpacity
+                      style={[styles.launchBtn, { backgroundColor: '#22C55E' }]}
+                      onPress={() => {
+                        storage.setSync('last_assessment_student_id', s.id);
+                        navigation?.navigate?.('PreferenceAssessment', { studentId: s.id });
+                      }}
+                    >
+                      <Text style={styles.launchBtnTextLight}>Preference →</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.launchBtn, { backgroundColor: '#A855F7' }]}
+                      onPress={() => {
+                        storage.setSync('last_assessment_student_id', s.id);
+                        navigation?.navigate?.('SensoryAssessment', { studentId: s.id });
+                      }}
+                    >
+                      <Text style={styles.launchBtnTextLight}>Sensory →</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.studentBtnRow}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      testID={`submit-assessment-btn-${s.id}`}
+                      style={[
+                        styles.launchBtn,
+                        isAllCompleted
+                          ? isSubmitted
+                            ? styles.submittedBtn
+                            : styles.submitAssessmentBtn
+                          : styles.disabledBtn,
+                      ]}
+                      disabled={!isAllCompleted || isSubmitted}
+                      onPress={() => handleSubmitAssessment(s)}
+                    >
+                      <View style={styles.btnContentRow}>
+                        {isSubmitted ? (
+                          <>
+                            <Feather name="check-circle" size={13} color="#FFFFFF" />
+                            <Text style={styles.launchBtnTextLight}>Assessment Submitted ✓</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Feather
+                              name={isAllCompleted ? 'check-circle' : 'lock'}
+                              size={13}
+                              color={isAllCompleted ? '#FFFFFF' : '#CBD5E1'}
+                            />
+                            <Text
+                              style={[
+                                styles.launchBtnTextLight,
+                                !isAllCompleted && styles.disabledBtnText,
+                              ]}
+                            >
+                              Submit Assessment {isAllCompleted ? '→' : `(${displayScore}%)`}
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.studentBtnRow}>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#22C55E' }]} onPress={() => navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })}>
-                    <Text style={styles.launchBtnTextLight}>Preference →</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#A855F7' }]} onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}>
-                    <Text style={styles.launchBtnTextLight}>Sensory →</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.studentBtnRow}>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#D97706' }]} onPress={() => navigation?.navigate?.('SocialSkillsAssessment', { studentId: s.id })}>
-                    <Text style={styles.launchBtnTextLight}>Social Skills Questionnaire →</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        )}
 
         <View style={styles.guidelinesBox}>
           <Feather name="info" size={16} color={colors.primaryYellowDark} />
           <Text style={styles.guidelinesText}>
-            All students must complete the Skills and Behavior assessments within the 6-week window. Once assessments reach 100% completion, proceed to IUP Generation to assign targets from the Goal Bank.
+            All students must complete the Skills and Behavior assessments within the 6-week window.
+            Once assessments reach 100% completion, proceed to IUP Generation to assign targets from
+            the Goal Bank.
           </Text>
         </View>
       </ScrollView>
@@ -305,32 +634,141 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, flexWrap: 'wrap', gap: spacing.sm },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  periodPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: '#FEF3C7', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
+  periodPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
   periodPillText: { fontSize: 12, fontWeight: '700', color: colors.primaryYellowDark },
   content: { padding: spacing.lg, gap: spacing.lg },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statCard: { flexGrow: 1, minWidth: '22%', backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  statCard: {
+    flexGrow: 1,
+    minWidth: '22%',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+  },
   statValue: { fontSize: 24, fontWeight: '700', color: colors.navyText },
   studentsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  studentCard: { flexGrow: 1, minWidth: '45%', backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
+  studentCard: {
+    flexGrow: 1,
+    minWidth: '45%',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
   studentHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  studentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.promptG, alignItems: 'center', justifyContent: 'center' },
-  studentAvatarText: { color: colors.white, fontWeight: '700' },
-  scoreBadge: { alignItems: 'center', backgroundColor: colors.bgApp, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderWidth: 1, borderColor: colors.border },
+  scoreBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.bgApp,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   scoreBadgeValue: { fontSize: 14, fontWeight: '700', color: colors.navyText },
-  scoreBadgeLabel: { fontSize: 9, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase' },
+  scoreBadgeLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+  },
   assessmentBlock: { gap: spacing.xs },
-  assessmentHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  assessmentHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
   statusPillText: { fontSize: 10, fontWeight: '700' },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressTrack: { height: 6, borderRadius: radius.pill, backgroundColor: colors.bgApp, overflow: 'hidden' },
+  progressTrack: {
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bgApp,
+    overflow: 'hidden',
+  },
   progressFill: { height: '100%' },
   studentBtnRow: { flexDirection: 'row', gap: spacing.sm },
-  launchBtn: { flex: 1, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  launchBtn: {
+    flex: 1,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
   launchBtnTextLight: { fontWeight: '700', color: colors.white, fontSize: 11 },
-  guidelinesBox: { flexDirection: 'row', gap: spacing.sm, backgroundColor: '#FEF3C7', borderRadius: radius.md, padding: spacing.lg },
+  submitAssessmentBtn: {
+    backgroundColor: '#059669',
+  },
+  submittedBtn: {
+    backgroundColor: '#10B981',
+  },
+  disabledBtn: {
+    backgroundColor: '#94A3B8',
+    opacity: 0.65,
+  },
+  disabledBtnText: {
+    color: '#E2E8F0',
+  },
+  btnContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  emptyState: {
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+    marginVertical: spacing.md,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navyText,
+    marginTop: spacing.xs,
+  },
+  emptyStateText: {
+    fontSize: 13,
+    color: colors.mutedText,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  guidelinesBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: '#FEF3C7',
+    borderRadius: radius.md,
+    padding: spacing.lg,
+  },
   guidelinesText: { flex: 1, fontSize: 13, color: '#92400E' },
 });

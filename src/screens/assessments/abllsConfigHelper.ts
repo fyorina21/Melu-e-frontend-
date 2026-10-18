@@ -389,7 +389,7 @@ const STORAGE_PREFIX = 'melue_skills_assessment_';
 export function saveStorageAssessment(
   studentId: string,
   payload: {
-    scores: Record<string, Score>;
+    scores?: Record<string, Score>;
     notes?: Record<string, string>;
     customFields?: Record<string, any>;
     progress?: number;
