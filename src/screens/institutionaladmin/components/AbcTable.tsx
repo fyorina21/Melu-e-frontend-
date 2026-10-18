@@ -129,6 +129,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
                   style={styles.tableInput}
                   value={editName}
                   onChangeText={setEditName}
+                  onSubmitEditing={commitEdit}
                   autoFocus
                   placeholder="Name"
                   placeholderTextColor={colors.mutedText}
@@ -141,6 +142,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
                     style={styles.tableInput}
                     value={editDefinition}
                     onChangeText={setEditDefinition}
+                    onSubmitEditing={commitEdit}
                     placeholder="Definition"
                     placeholderTextColor={colors.mutedText}
                   />
@@ -158,7 +160,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
                   </TouchableOpacity>
                   {categoryDropdownOpen && (
                     <View style={styles.dropdownMenu}>
-                      {CATEGORY_OPTIONS.map((cat) => (
+                      {CATEGORY_OPTIONS.map((cat: string) => (
                         <TouchableOpacity
                           key={cat}
                           style={[
@@ -184,6 +186,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
                     style={styles.tableInput}
                     value={editType}
                     onChangeText={setEditType}
+                    onSubmitEditing={commitEdit}
                     placeholder="Type"
                     placeholderTextColor={colors.mutedText}
                   />
@@ -279,6 +282,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
               style={styles.tableInput}
               value={newName}
               onChangeText={setNewName}
+              onSubmitEditing={handleSaveAdd}
               placeholder="Name *"
               placeholderTextColor={colors.mutedText}
               autoFocus
@@ -291,6 +295,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
                 style={styles.tableInput}
                 value={newDefinition}
                 onChangeText={setNewDefinition}
+                onSubmitEditing={handleSaveAdd}
                 placeholder="Definition"
                 placeholderTextColor={colors.mutedText}
               />
@@ -308,7 +313,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
               </TouchableOpacity>
               {newCategoryDropdownOpen && (
                 <View style={styles.dropdownMenu}>
-                  {CATEGORY_OPTIONS.map((cat) => (
+                  {CATEGORY_OPTIONS.map((cat: string) => (
                     <TouchableOpacity
                       key={cat}
                       style={[
@@ -334,6 +339,7 @@ export function AbcTable({ tab, items, onUpdate, onDeleteItem, onStatusToggle }:
                 style={styles.tableInput}
                 value={newType}
                 onChangeText={setNewType}
+                onSubmitEditing={handleSaveAdd}
                 placeholder="Type (e.g. Social)"
                 placeholderTextColor={colors.mutedText}
               />

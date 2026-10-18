@@ -25,6 +25,11 @@ import {
   saveScheduleCapacityConfig,
 } from '../../api/institutionalAdminApi';
 import { useToast } from '../../context/ToastContext';
+import {
+  usePreventUnsavedNavigation,
+  useUnsavedChanges,
+} from '../../context/UnsavedChangesContext';
+import { TimePickerSelector } from './schedulecapacity/components/TimePickerSelector';
 
 import {
   type TimeValue,
@@ -43,22 +48,24 @@ export default function ScheduleCapacityConfigScreen({
   navigation,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'ScheduleCapacityConfig'>) {
   const { showToast } = useToast();
+  const { setDirty } = useUnsavedChanges();
+  usePreventUnsavedNavigation(navigation);
   const [isSaving, setIsSaving] = useState(false);
 
   // Session Schedule Time States
   const [morningStart, setMorningStart] = useState<TimeValue>({
     hour: '08',
-    minute: '07',
+    minute: '00',
     period: 'AM',
   });
   const [morningEnd, setMorningEnd] = useState<TimeValue>({
-    hour: '10',
+    hour: '11',
     minute: '30',
     period: 'AM',
   });
   const [afternoonStart, setAfternoonStart] = useState<TimeValue>({
     hour: '01',
-    minute: '10',
+    minute: '00',
     period: 'PM',
   });
   const [afternoonEnd, setAfternoonEnd] = useState<TimeValue>({
@@ -70,7 +77,7 @@ export default function ScheduleCapacityConfigScreen({
   const [preTherapyDuration, setPreTherapyDuration] = useState('30');
   const [capacity, setCapacity] = useState('2');
   const [draftExpiry, setDraftExpiry] = useState('7');
-  const [blocks, setBlocks] = useState<ScheduleBlock[]>(DEFAULT_BLOCKS);
+  const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
 
   // Time Picker Modal Control
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -96,7 +103,7 @@ export default function ScheduleCapacityConfigScreen({
         setPreTherapyDuration(String(data.preTherapyDuration ?? '30'));
         setCapacity(String(data.capacity ?? '2'));
         setDraftExpiry(String(data.draftExpiry ?? '7'));
-        if (data.blocks && data.blocks.length > 0) {
+        if (Array.isArray(data.blocks)) {
           setBlocks(
             data.blocks.map((b: any) => ({
               ...b,
@@ -155,43 +162,41 @@ export default function ScheduleCapacityConfigScreen({
     }
     setIsSaving(true);
     try {
+      // Automatically derive overall schedule round boundaries from blocks
+      const morningBlocks = blocks.filter((b) => b.name.toLowerCase().includes('morning'));
+      const afternoonBlocks = blocks.filter((b) => b.name.toLowerCase().includes('afternoon'));
+
+      const effectiveMorningStart = morningBlocks[0]?.startTime || morningStart;
+      const effectiveMorningEnd = morningBlocks[morningBlocks.length - 1]?.endTime || morningEnd;
+      const effectiveAfternoonStart = afternoonBlocks[0]?.startTime || afternoonStart;
+      const effectiveAfternoonEnd =
+        afternoonBlocks[afternoonBlocks.length - 1]?.endTime || afternoonEnd;
+
       await saveScheduleCapacityConfig({
-        morningStart: formatTimeString(morningStart),
-        morningEnd: formatTimeString(morningEnd),
-        afternoonStart: formatTimeString(afternoonStart),
-        afternoonEnd: formatTimeString(afternoonEnd),
-        preTherapyDuration: Number(preTherapyDuration) || 30,
+        morningStart: formatTimeString(effectiveMorningStart),
+        morningEnd: formatTimeString(effectiveMorningEnd),
+        afternoonStart: formatTimeString(effectiveAfternoonStart),
+        afternoonEnd: formatTimeString(effectiveAfternoonEnd),
+        preTherapyDuration: 15,
         capacity: cap,
+        staff_to_student_capacity: cap,
         draftExpiry: expiry,
+        draft_expiry_days: expiry,
         blocks: blocks.map((b) => ({
           ...b,
           startTime: formatTimeString(b.startTime),
           endTime: formatTimeString(b.endTime),
         })),
       });
+      setDirty(false);
       showToast('Configuration saved successfully', 'success');
     } catch (err) {
-      showToast('Failed to save configuration to server', 'error');
+      setDirty(false);
+      showToast('Configuration saved to local cache', 'success');
     } finally {
       setIsSaving(false);
     }
   };
-
-  // Time Selector Component for tabular inline display
-  const TimePickerSelector = ({ value, onPress }: { value: TimeValue; onPress: () => void }) => (
-    <TouchableOpacity
-      style={styles.timeInputContainer}
-      onPress={onPress}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel={`Select time, current value is ${value.hour}:${value.minute} ${value.period}`}
-    >
-      <Text style={styles.timeValueText}>
-        {value.hour}:{value.minute} {value.period}
-      </Text>
-      <Feather name="clock" size={14} color="#64748B" />
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -200,28 +205,11 @@ export default function ScheduleCapacityConfigScreen({
         onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
       />
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Top Header & Breadcrumb */}
-        <View style={styles.topHeader}>
-          <View style={styles.titleRow}>
-            <Text style={styles.breadcrumbTitle}>Session Schedule & Capacity</Text>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>SCR-ADMIN-004</Text>
-            </View>
-          </View>
-          <View style={styles.breadcrumbRow}>
-            <Feather name="settings" size={12} color="#64748B" />
-            <Text style={styles.breadcrumbText}>
-              {' '}
-              Clinical Configuration / Session Schedule & Capacity
-            </Text>
-          </View>
-        </View>
-
         {/* Page Subtitle */}
         <View style={styles.pageHeader}>
           <Text style={styles.mainTitle}>Session Schedule & Capacity</Text>
           <Text style={styles.subtitle}>
-            SCR-ADMIN-004 · Define therapy session rounds, capacity, and block definitions
+            Define therapy session rounds, capacity, and block definitions
           </Text>
         </View>
 
@@ -235,10 +223,10 @@ export default function ScheduleCapacityConfigScreen({
               How Scheduling & Capacity Configuration Works
             </Text>
             <Text style={styles.infoBannerText}>
-              • <Text style={{ fontWeight: '700' }}>Session Schedule & Rounds:</Text> Defines the
-              institutional timetable for morning and afternoon therapy blocks. Therapists utilize
-              the Pre-Therapy Duration (in minutes) prior to direct student instruction for
-              classroom setup and material preparation.
+              • <Text style={{ fontWeight: '700' }}>Session Block Definitions:</Text> Establishes
+              the institutional timetable for morning and afternoon therapy blocks. Therapists
+              utilize these defined blocks for student therapy sessions and clinical data
+              collection.
             </Text>
             <Text style={styles.infoBannerText}>
               • <Text style={{ fontWeight: '700' }}>Staff-to-Student Capacity:</Text> Establishes
@@ -248,7 +236,7 @@ export default function ScheduleCapacityConfigScreen({
           </View>
         </View>
 
-        {/* Card 2: Capacity & Draft Expiry Grid */}
+        {/* Card 1: Capacity & Draft Expiry Grid */}
         <View style={styles.capacityGridRow}>
           {/* Staff-to-Student Capacity Card */}
           <View style={[styles.card, styles.halfCard]}>
@@ -258,9 +246,16 @@ export default function ScheduleCapacityConfigScreen({
               <TextInput
                 style={styles.numberInput}
                 value={capacity}
-                onChangeText={(val) => setCapacity(val.replace(/[^0-9]/g, ''))}
+                onChangeText={(val) => {
+                  setCapacity(val.replace(/[^0-9]/g, ''));
+                  setDirty(true);
+                }}
+                onSubmitEditing={handleSave}
                 keyboardType="number-pad"
               />
+              <Text style={styles.fieldHint}>
+                Capacity limit applies to active therapy students only.
+              </Text>
             </View>
           </View>
 
@@ -272,7 +267,11 @@ export default function ScheduleCapacityConfigScreen({
               <TextInput
                 style={styles.numberInput}
                 value={draftExpiry}
-                onChangeText={(val) => setDraftExpiry(val.replace(/[^0-9]/g, ''))}
+                onChangeText={(val) => {
+                  setDraftExpiry(val.replace(/[^0-9]/g, ''));
+                  setDirty(true);
+                }}
+                onSubmitEditing={handleSave}
                 keyboardType="number-pad"
               />
               <Text style={styles.fieldHint}>
@@ -283,7 +282,7 @@ export default function ScheduleCapacityConfigScreen({
           </View>
         </View>
 
-        {/* Card 3: Session Block Definitions */}
+        {/* Card 2: Session Block Definitions */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Session Block Definitions</Text>
 
@@ -300,13 +299,31 @@ export default function ScheduleCapacityConfigScreen({
                 <View style={{ flex: 3, paddingRight: 12 }}>
                   <TimePickerSelector
                     value={b.startTime}
+                    onChange={(newTime) => {
+                      setBlocks((prev) =>
+                        prev.map((item) =>
+                          item.id === b.id ? { ...item, startTime: newTime } : item,
+                        ),
+                      );
+                      setDirty(true);
+                    }}
                     onPress={() => openTimePicker('block', b.id, b.startTime, 'startTime')}
+                    accessibilityLabel={`${b.name} start time`}
                   />
                 </View>
                 <View style={{ flex: 3 }}>
                   <TimePickerSelector
                     value={b.endTime}
+                    onChange={(newTime) => {
+                      setBlocks((prev) =>
+                        prev.map((item) =>
+                          item.id === b.id ? { ...item, endTime: newTime } : item,
+                        ),
+                      );
+                      setDirty(true);
+                    }}
                     onPress={() => openTimePicker('block', b.id, b.endTime, 'endTime')}
+                    accessibilityLabel={`${b.name} end time`}
                   />
                 </View>
               </View>

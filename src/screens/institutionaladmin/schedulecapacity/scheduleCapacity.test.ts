@@ -47,10 +47,12 @@ describe('scheduleCapacity logic and time helpers', () => {
       expect(PERIODS).toEqual(['AM', 'PM']);
     });
 
-    it('contains default morning and afternoon blocks', () => {
-      expect(DEFAULT_BLOCKS.length).toBe(2);
-      expect(DEFAULT_BLOCKS[0].name).toBe('Morning Block');
-      expect(DEFAULT_BLOCKS[1].name).toBe('Afternoon Block');
+    it('contains default morning and afternoon sub-blocks', () => {
+      expect(DEFAULT_BLOCKS.length).toBe(4);
+      expect(DEFAULT_BLOCKS[0].name).toBe('Morning Block A');
+      expect(DEFAULT_BLOCKS[1].name).toBe('Morning Block B');
+      expect(DEFAULT_BLOCKS[2].name).toBe('Afternoon Block A');
+      expect(DEFAULT_BLOCKS[3].name).toBe('Afternoon Block B');
     });
   });
 
