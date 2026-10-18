@@ -19,6 +19,10 @@ import AppNavbar from '../../components/AppNavbar';
 import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
 import {
+  usePreventUnsavedNavigation,
+  useUnsavedChanges,
+} from '../../context/UnsavedChangesContext';
+import {
   getPromptLevels,
   setPromptLevels,
   getTrialConfig,
@@ -32,6 +36,7 @@ import {
   deletePromptLevelApi,
   reorderPromptLevelsApi,
   saveTrialLoggingConfig,
+  getTrialLoggingConfig,
 } from '../../api/institutionalAdminApi';
 
 type Props = NativeStackScreenProps<InstitutionalAdminStackParamList, 'TrialLoggingFormat'>;
@@ -40,6 +45,7 @@ import {
   type LevelItem,
   type TrialLayout,
   COLOR_SWATCHES,
+  COLOR_SWATCH_LABELS,
   sortPromptLevels,
   validatePromptLevel,
 } from './triallogging/types';
@@ -48,45 +54,102 @@ export type { LevelItem, TrialLayout };
 
 export default function TrialLoggingFormatScreen({ navigation }: Props) {
   const { showToast } = useToast();
+  const { setDirty } = useUnsavedChanges();
   const configInit = getTrialConfig();
   const [levels, setLevels] = useState<LevelItem[]>(() => getPromptLevels());
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // In-app navigation guard for unsaved changes
+  usePreventUnsavedNavigation(navigation, isDirty);
+
+  useEffect(() => {
+    setDirty(isDirty);
+    return () => setDirty(false);
+  }, [isDirty, setDirty]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBuf, setEditBuf] = useState({ name: '', color: '', order: 0 });
   const [addingLevel, setAddingLevel] = useState(false);
   const [newLevel, setNewLevel] = useState({ name: '', color: '#6366F1', order: 5 });
-  const [layout, setLayout] = useState<'Horizontal' | 'Vertical' | 'Card Grid'>('Horizontal');
+  const [layout, setLayout] = useState<'Horizontal' | 'Vertical' | 'Card Grid'>(
+    configInit.layout || 'Horizontal',
+  );
   const [streamCount, setStreamCount] = useState(configInit.streamCount);
   const [consecutive, setConsecutive] = useState(configInit.consecutive);
-  const [independence, setIndependence] = useState(80);
-  const [autoSuggest, setAutoSuggest] = useState(true);
+  const [independence, setIndependence] = useState(configInit.independence ?? 80);
+  const [autoSuggest, setAutoSuggest] = useState(configInit.autoSuggest ?? true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const loadPromptLevels = async () => {
     try {
       setLoading(true);
-      const res = await getPromptLevelsApi();
-      const rawData = Array.isArray(res.data) ? res.data : (res.data?.prompt_levels ?? []);
-      const mapped: LevelItem[] = rawData
-        .map((item: any, idx: number) => ({
-          id: String(item.id),
-          name: String(item.name ?? item.label ?? ''),
-          color: String(item.color ?? '#64748B'),
-          order:
-            typeof item.order === 'number'
-              ? item.order
-              : typeof item.display_order === 'number'
-                ? item.display_order
-                : idx + 1,
-          status: 'Active',
-        }))
-        .sort((a: LevelItem, b: LevelItem) => a.order - b.order);
+      const [res, configRes] = await Promise.allSettled([
+        getPromptLevelsApi(),
+        getTrialLoggingConfig(),
+      ]);
 
-      setLevels(mapped);
-      syncPromptLevelsFromApi(mapped, consecutive, streamCount);
+      let currentConsecutive = consecutive;
+      let currentStream = streamCount;
+      let currentLayout = layout;
+      let currentIndependence = independence;
+      let currentAutoSuggest = autoSuggest;
+
+      if (configRes.status === 'fulfilled' && configRes.value?.data) {
+        const cData = configRes.value.data;
+        if (cData.layout || cData.trialStreamLayout) {
+          currentLayout = cData.layout || cData.trialStreamLayout;
+          setLayout(currentLayout);
+        }
+        if (cData.streamCount || cData.trialStreamCount) {
+          currentStream = Number(cData.streamCount || cData.trialStreamCount);
+          setStreamCount(currentStream);
+        }
+        if (cData.consecutive || cData.masteryConsecutiveTrials) {
+          currentConsecutive = Number(cData.consecutive || cData.masteryConsecutiveTrials);
+          setConsecutive(currentConsecutive);
+        }
+        if (cData.independence !== undefined || cData.independenceThreshold !== undefined) {
+          currentIndependence = Number(cData.independence ?? cData.independenceThreshold);
+          setIndependence(currentIndependence);
+        }
+        if (cData.autoSuggest !== undefined) {
+          currentAutoSuggest = Boolean(cData.autoSuggest);
+          setAutoSuggest(currentAutoSuggest);
+        }
+      }
+
+      if (res.status === 'fulfilled') {
+        const rawData = Array.isArray(res.value.data)
+          ? res.value.data
+          : (res.value.data?.prompt_levels ?? []);
+        const mapped: LevelItem[] = rawData
+          .map((item: any, idx: number) => ({
+            id: String(item.id),
+            name: String(item.name ?? item.label ?? ''),
+            color: String(item.color ?? '#64748B'),
+            order:
+              typeof item.order === 'number'
+                ? item.order
+                : typeof item.display_order === 'number'
+                  ? item.display_order
+                  : idx + 1,
+            status: 'Active',
+          }))
+          .sort((a: LevelItem, b: LevelItem) => a.order - b.order);
+
+        setLevels(mapped);
+        syncPromptLevelsFromApi(
+          mapped,
+          currentConsecutive,
+          currentStream,
+          currentLayout,
+          currentIndependence,
+          currentAutoSuggest,
+        );
+      }
     } catch (err: any) {
       console.error('Failed to load prompt levels', err);
       showToast(err?.response?.data?.error || 'Failed to load prompt levels from server', 'error');
@@ -139,8 +202,9 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
         ),
       );
       setLevels(next);
-      syncPromptLevelsFromApi(next, consecutive, streamCount);
+      syncPromptLevelsFromApi(next, consecutive, streamCount, layout, independence, autoSuggest);
       setEditingId(null);
+      setIsDirty(true);
       showToast('Prompt level updated successfully', 'success');
     } catch (err: any) {
       console.error('Failed to update prompt level', err);
@@ -160,8 +224,9 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       await deletePromptLevelApi(id);
       const next = levels.filter((l) => l.id !== id);
       setLevels(next);
-      syncPromptLevelsFromApi(next, consecutive, streamCount);
+      syncPromptLevelsFromApi(next, consecutive, streamCount, layout, independence, autoSuggest);
       setDeleteConfirmId(null);
+      setIsDirty(true);
       showToast('Prompt level deleted successfully', 'success');
     } catch (err: any) {
       console.error('Failed to delete prompt level', err);
@@ -203,9 +268,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       };
       const next: LevelItem[] = [...levels, createdItem].sort((a, b) => a.order - b.order);
       setLevels(next);
-      syncPromptLevelsFromApi(next, consecutive, streamCount);
+      syncPromptLevelsFromApi(next, consecutive, streamCount, layout, independence, autoSuggest);
       setNewLevel({ name: '', color: '#6366F1', order: next.length + 1 });
       setAddingLevel(false);
+      setIsDirty(true);
       showToast('Prompt level created successfully', 'success');
     } catch (err: any) {
       console.error('Failed to create prompt level', err);
@@ -236,16 +302,30 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       try {
         await saveTrialLoggingConfig({
           streamCount: numStream,
+          trialStreamCount: numStream,
           consecutive: numConsecutive,
+          masteryConsecutiveTrials: numConsecutive,
           independence: numIndependence,
+          independenceThreshold: numIndependence,
           autoSuggest,
           layout,
+          trialStreamLayout: layout,
+          prompt_levels: levels,
+          promptLevels: levels,
         });
-      } catch {
-        // Fallback gracefully if separate trial logging config endpoint is not configured
+      } catch (saveErr) {
+        console.warn('API save warning:', saveErr);
       }
-      setPromptLevels(levels, numConsecutive, numStream);
-      syncPromptLevelsFromApi(levels, numConsecutive, numStream);
+      setPromptLevels(levels, numConsecutive, numStream, layout, numIndependence, autoSuggest);
+      syncPromptLevelsFromApi(
+        levels,
+        numConsecutive,
+        numStream,
+        layout,
+        numIndependence,
+        autoSuggest,
+      );
+      setIsDirty(false);
       showToast('Trial logging format saved successfully', 'success');
     } catch (err: any) {
       console.error('Failed to save configuration', err);
@@ -257,17 +337,35 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
 
   const renderSwatches = (selected: string, onSelect: (c: string) => void) => (
     <View style={styles.swatchRow}>
-      {COLOR_SWATCHES.map((c) => (
-        <TouchableOpacity
-          key={c}
-          onPress={() => onSelect(c)}
-          style={[
-            styles.swatch,
-            { backgroundColor: c },
-            selected === c ? styles.swatchSelected : styles.swatchUnselected,
-          ]}
-        />
-      ))}
+      {COLOR_SWATCHES.map((c) => {
+        const isSelected = selected.toLowerCase() === c.toLowerCase();
+        const label = COLOR_SWATCH_LABELS[c] || c;
+        return (
+          <TouchableOpacity
+            key={c}
+            onPress={() => {
+              onSelect(c);
+              setIsDirty(true);
+            }}
+            style={[
+              styles.swatch,
+              { backgroundColor: c },
+              isSelected ? styles.swatchSelected : styles.swatchUnselected,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Select color ${label}${isSelected ? ' (Selected)' : ''}`}
+            accessibilityState={{ selected: isSelected }}
+          >
+            {isSelected && (
+              <Feather
+                name="check"
+                size={12}
+                color={c === '#F59E0B' || c === '#EAB308' ? '#0F172A' : '#FFFFFF'}
+              />
+            )}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 
@@ -337,20 +435,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation?.goBack?.()}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Feather name="arrow-left" size={16} color="#334155" />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Trial Logging Format</Text>
             <Text style={styles.subtitle}>
-              SCR-ADMIN-002 · Configure prompt levels, trial layout, and mastery criteria
+              Configure prompt levels, trial layout, and mastery criteria
             </Text>
           </View>
         </View>
@@ -387,6 +475,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     <TextInput
                       value={editBuf.name}
                       onChangeText={(e) => setEditBuf((b) => ({ ...b, name: e }))}
+                      onSubmitEditing={() => saveEdit(lv.id)}
                       style={styles.inlineInput}
                     />
                   </View>
@@ -397,6 +486,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     <TextInput
                       value={String(editBuf.order)}
                       onChangeText={(e) => setEditBuf((b) => ({ ...b, order: Number(e) }))}
+                      onSubmitEditing={() => saveEdit(lv.id)}
                       style={[styles.inlineInput, { width: 60 }]}
                       keyboardType="numeric"
                     />
@@ -473,6 +563,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 <TextInput
                   value={newLevel.name}
                   onChangeText={(e) => setNewLevel((n) => ({ ...n, name: e }))}
+                  onSubmitEditing={addLevel}
                   placeholder="Name"
                   style={styles.inlineInput}
                 />
@@ -484,6 +575,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 <TextInput
                   value={String(newLevel.order)}
                   onChangeText={(e) => setNewLevel((n) => ({ ...n, order: Number(e) }))}
+                  onSubmitEditing={addLevel}
                   style={[styles.inlineInput, { width: 60 }]}
                   keyboardType="numeric"
                 />
@@ -548,7 +640,14 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
             <Text style={styles.cardTitle}>Trial Stream Layout</Text>
             <View style={{ flexDirection: 'column', gap: 8 }}>
               {(['Horizontal', 'Vertical', 'Card Grid'] as const).map((opt) => (
-                <TouchableOpacity key={opt} style={styles.radioRow} onPress={() => setLayout(opt)}>
+                <TouchableOpacity
+                  key={opt}
+                  style={styles.radioRow}
+                  onPress={() => {
+                    setLayout(opt);
+                    setIsDirty(true);
+                  }}
+                >
                   <View style={[styles.radioOuter, layout === opt && styles.radioOuterActive]}>
                     {layout === opt && <View style={styles.radioInner} />}
                   </View>
@@ -563,6 +662,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 placeholder="5"
                 placeholderTextColor="#94A3B8"
                 onChangeText={(e) => {
+                  setIsDirty(true);
                   const cleaned = e.replace(/[^0-9]/g, '');
                   if (!cleaned) {
                     setStreamCount(0);
@@ -575,6 +675,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                   const clamped = Math.min(Math.max(Number(streamCount) || 5, 3), 20);
                   setStreamCount(clamped);
                 }}
+                onSubmitEditing={handleSaveConfiguration}
                 style={styles.numberInput}
                 keyboardType="numeric"
               />
@@ -592,6 +693,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                   placeholder="5"
                   placeholderTextColor="#94A3B8"
                   onChangeText={(e) => {
+                    setIsDirty(true);
                     const cleaned = e.replace(/[^0-9]/g, '');
                     if (!cleaned) {
                       setConsecutive(0);
@@ -601,14 +703,15 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     const val = isNaN(parsed) ? 0 : parsed;
                     setConsecutive(val);
                     if (val > 0) {
-                      setPromptLevels(levels, val, streamCount);
+                      setPromptLevels(levels, val, streamCount, layout, independence, autoSuggest);
                     }
                   }}
                   onBlur={() => {
                     const val = Math.min(Math.max(Number(consecutive) || 5, 1), 50);
                     setConsecutive(val);
-                    setPromptLevels(levels, val, streamCount);
+                    setPromptLevels(levels, val, streamCount, layout, independence, autoSuggest);
                   }}
+                  onSubmitEditing={handleSaveConfiguration}
                   style={styles.numberInput}
                   keyboardType="numeric"
                 />
@@ -620,6 +723,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                   placeholder="80"
                   placeholderTextColor="#94A3B8"
                   onChangeText={(e) => {
+                    setIsDirty(true);
                     const cleaned = e.replace(/[^0-9]/g, '');
                     if (!cleaned) {
                       setIndependence(0);
@@ -632,6 +736,7 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                     const clamped = Math.min(Math.max(Number(independence) || 0, 0), 100);
                     setIndependence(clamped);
                   }}
+                  onSubmitEditing={handleSaveConfiguration}
                   style={styles.numberInput}
                   keyboardType="numeric"
                 />
@@ -640,7 +745,10 @@ export default function TrialLoggingFormatScreen({ navigation }: Props) {
                 <Text style={styles.fieldLabel}>Auto-Suggestion</Text>
                 <Switch
                   value={autoSuggest}
-                  onValueChange={() => setAutoSuggest((v) => !v)}
+                  onValueChange={() => {
+                    setAutoSuggest((v) => !v);
+                    setIsDirty(true);
+                  }}
                   trackColor={{ true: '#0284C7', false: '#CBD5E1' }}
                 />
                 <Text style={styles.fieldHint}>{autoSuggest ? 'On' : 'Off'}</Text>
@@ -735,10 +843,17 @@ const styles = StyleSheet.create({
   },
 
   /* Swatches */
-  swatchRow: { flexDirection: 'row', gap: 6 },
-  swatch: { width: 20, height: 20, borderRadius: 10, borderWidth: 2 },
-  swatchSelected: { borderColor: '#1A2233', transform: [{ scale: 1.1 }] },
-  swatchUnselected: { borderColor: 'transparent' },
+  swatchRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'center' },
+  swatch: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchSelected: { borderColor: '#0F172A', transform: [{ scale: 1.15 }] },
+  swatchUnselected: { borderColor: 'rgba(255,255,255,0.7)' },
 
   /* Badge */
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'center' },

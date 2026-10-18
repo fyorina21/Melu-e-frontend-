@@ -947,6 +947,10 @@ export function getCachedFormConfig(formName: string) {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && Array.isArray(parsed.fields)) {
+          // If explicitly marked as not default (user-saved or edited config), always trust it!
+          if (parsed.isDefault === false) {
+            return parsed;
+          }
           // If cached config has 0 fields or old truncated stub fields, upgrade to defaults
           const normName = formName.toLowerCase().trim();
           if (parsed.fields.length === 0) return null;
@@ -1044,11 +1048,12 @@ export const getFormConfig = async (formName: string) => {
 
 export const saveFormConfig = async (formName: string, payload: Payload) => {
   setCachedFormConfig(formName, payload);
-  if (process.env.VITEST || !isUserAdmin()) {
+  if (process.env.VITEST) {
     return { data: payload };
   }
   try {
-    return await client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+    const res = await client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+    return res;
   } catch (err: any) {
     if (
       err?.status === 403 ||
@@ -1078,11 +1083,11 @@ export const resetFormToDefault = async (formName: string) => {
       );
     } catch {}
   }
-  if (process.env.VITEST || !isUserAdmin()) {
+  if (process.env.VITEST) {
     return { data: { status: 'ok', config: defaultCfg } };
   }
   try {
-    return await client.delete(`/admin/forms/${encodeURIComponent(formName)}`);
+    return await client.post(`/admin/forms/${encodeURIComponent(formName)}/reset`);
   } catch {
     return { data: { status: 'ok', config: defaultCfg } };
   }
@@ -1174,40 +1179,41 @@ export const resetAbcListsToDefault = async () => {
 
 const DEFAULT_SCHEDULE_CAPACITY_CONFIG = {
   morningStart: '08:00 AM',
-  morningEnd: '10:30 AM',
-  afternoonStart: '01:00 PM',
-  afternoonEnd: '03:30 PM',
-  preTherapyDuration: 30,
+  morningEnd: '11:30 AM',
+  afternoonStart: '12:30 PM',
+  afternoonEnd: '04:00 PM',
+  preTherapyDuration: 15,
   capacity: 2,
   staff_to_student_capacity: 2,
-  draftExpiry: 7,
+  draftExpiry: 14,
+  draft_expiry_days: 14,
   blocks: [
     {
       id: 'b1',
-      name: 'Morning Block 1',
+      name: 'Morning Block A',
       startTime: '08:00 AM',
-      endTime: '09:15 AM',
+      endTime: '09:30 AM',
       type: 'Therapy',
     },
     {
       id: 'b2',
-      name: 'Morning Block 2',
-      startTime: '09:15 AM',
-      endTime: '10:30 AM',
+      name: 'Morning Block B',
+      startTime: '09:45 AM',
+      endTime: '11:15 AM',
       type: 'Therapy',
     },
     {
       id: 'b3',
-      name: 'Afternoon Block 1',
-      startTime: '01:00 PM',
-      endTime: '02:15 PM',
+      name: 'Afternoon Block A',
+      startTime: '12:30 PM',
+      endTime: '02:00 PM',
       type: 'Therapy',
     },
     {
       id: 'b4',
-      name: 'Afternoon Block 2',
+      name: 'Afternoon Block B',
       startTime: '02:15 PM',
-      endTime: '03:30 PM',
+      endTime: '03:45 PM',
       type: 'Therapy',
     },
   ],
@@ -1224,10 +1230,6 @@ export const getScheduleCapacityConfig = async () => {
       return DEFAULT_SCHEDULE_CAPACITY_CONFIG;
     }
   };
-
-  if (!isUserAdmin()) {
-    return { data: readCached() };
-  }
 
   try {
     const res = await client.get('/admin/schedule-capacity-config');
@@ -1259,24 +1261,14 @@ export const saveScheduleCapacityConfig = async (payload: Payload) => {
 
 // SCR-ADMIN-005: Goal Domain Definitions
 export const getGoalDomains = async () => {
-  const local = getStoredGoalDomains();
   try {
     const res = await client.get('/admin/goal_domains');
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-      const merged = [...local];
-      res.data.forEach((bg: any) => {
-        const idx = merged.findIndex((m) => m.id === bg.id || m.name === bg.name);
-        if (idx === -1) {
-          merged.push(bg);
-        } else {
-          merged[idx] = { ...bg, ...merged[idx] };
-        }
-      });
-      setStoredGoalDomains(merged);
-      return { ...res, data: merged };
+      setStoredGoalDomains(res.data);
+      return res;
     }
   } catch {}
-  return { data: local };
+  return { data: getStoredGoalDomains() };
 };
 
 export const saveGoalDomains = async (domains: Payload[]) => {
@@ -1285,6 +1277,37 @@ export const saveGoalDomains = async (domains: Payload[]) => {
     return await client.post('/admin/goal_domains', { domains });
   } catch {
     return { data: { success: true, domains } };
+  }
+};
+
+export const deleteGoalDomainApi = async (idOrName: string | number, cascade = false) => {
+  const current = getStoredGoalDomains();
+  const next = current.filter((d) => d.id !== String(idOrName) && d.name !== String(idOrName));
+  setStoredGoalDomains(next);
+
+  try {
+    const url = `/admin/goal_domains/${encodeURIComponent(String(idOrName))}${cascade ? '?cascade=true' : ''}`;
+    return await client.delete(url);
+  } catch {
+    return { data: { success: true, id: idOrName } };
+  }
+};
+
+export const getGoalsApi = async () => {
+  try {
+    const res = await client.get('/goals?per_page=100');
+    if (res?.data?.goals && Array.isArray(res.data.goals)) {
+      return res.data.goals;
+    }
+  } catch {}
+  return [];
+};
+
+export const deleteGoalApi = async (goalId: string | number) => {
+  try {
+    return await client.delete(`/goals/${goalId}`);
+  } catch {
+    return { success: true };
   }
 };
 

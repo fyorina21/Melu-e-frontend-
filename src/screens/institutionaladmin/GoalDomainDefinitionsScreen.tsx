@@ -20,6 +20,9 @@ import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getGoalDomains,
   saveGoalDomains,
+  deleteGoalDomainApi,
+  getGoalsApi,
+  deleteGoalApi,
   getTaskAnalysisTemplates,
   saveTaskAnalysisTemplate,
   deleteTaskAnalysisTemplate,
@@ -29,7 +32,10 @@ import {
   type TaskAnalysisStep,
   type TaskAnalysisTemplate,
   type GoalBankItem,
+  getStoredGoalDomains,
   getStoredGoalBank,
+  setStoredGoalBank,
+  getDeletedGoalIds,
   saveGoalItem,
   deleteGoalItem,
 } from '../../stores/goalBankStore';
@@ -38,6 +44,10 @@ import { colors, radius, spacing } from '../../theme/colors';
 import { useToast } from '../../context/ToastContext';
 import { confirmAction } from '../../utils/dialogs';
 import {
+  usePreventUnsavedNavigation,
+  useUnsavedChanges,
+} from '../../context/UnsavedChangesContext';
+import {
   moveItemInList,
   validateDomainSubmission,
   validateTemplateSubmission,
@@ -45,11 +55,41 @@ import {
 
 export { GoalDomain };
 
+export function formatMasteryCriteria(criteria: any): string {
+  if (!criteria) return '80% accuracy across 3 consecutive sessions';
+  if (typeof criteria === 'string') {
+    const trimmed = criteria.trim();
+    return trimmed ? trimmed : '80% accuracy across 3 consecutive sessions';
+  }
+  if (typeof criteria === 'object') {
+    if (criteria.description && typeof criteria.description === 'string')
+      return criteria.description;
+    if (criteria.text && typeof criteria.text === 'string') return criteria.text;
+    if (criteria.accuracy !== undefined && criteria.sessions !== undefined) {
+      return `${criteria.accuracy}% accuracy across ${criteria.sessions} consecutive sessions`;
+    }
+    if (criteria.accuracy !== undefined) {
+      return `${criteria.accuracy}% accuracy`;
+    }
+    return '80% accuracy across 3 consecutive sessions';
+  }
+  return String(criteria);
+}
+
 export default function GoalDomainDefinitionsScreen({
   navigation,
   route,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'GoalDomainDefinitions'>) {
   const { showToast } = useToast();
+  const { setDirty } = useUnsavedChanges();
+  const [isDirty, setIsDirty] = useState(false);
+  usePreventUnsavedNavigation(navigation, isDirty);
+
+  useEffect(() => {
+    setDirty(isDirty);
+    return () => setDirty(false);
+  }, [isDirty, setDirty]);
+
   const initialSection =
     (route?.params as any)?.defaultSection ||
     ((route?.name as string) === 'TaskAnalysisTemplates' ? 'templates' : 'domains');
@@ -73,6 +113,12 @@ export default function GoalDomainDefinitionsScreen({
   const [showAddDomainForm, setShowAddDomainForm] = useState(false);
   const [newDomainName, setNewDomainName] = useState('');
   const [newDomainDesc, setNewDomainDesc] = useState('');
+
+  // Cascade Delete Domain State
+  const [cascadeDomain, setCascadeDomain] = useState<GoalDomain | null>(null);
+  const [cascadeGoals, setCascadeGoals] = useState<GoalBankItem[]>([]);
+  const [showCascadeModal, setShowCascadeModal] = useState<boolean>(false);
+  const [showCascadeGoalList, setShowCascadeGoalList] = useState<boolean>(false);
 
   // Target Goals State
   const [goals, setGoals] = useState<GoalBankItem[]>([]);
@@ -101,15 +147,25 @@ export default function GoalDomainDefinitionsScreen({
 
   const loadAll = useCallback(async () => {
     // Settle endpoints independently
-    const [domainRes, templateRes] = await Promise.allSettled([
+    const [domainRes, templateRes, goalsRes] = await Promise.allSettled([
       getGoalDomains(),
       getTaskAnalysisTemplates(),
+      getGoalsApi(),
     ]);
 
     if (domainRes.status === 'fulfilled') {
-      setDomains(Array.isArray(domainRes.value.data) ? domainRes.value.data : []);
+      const rawDomains = Array.isArray(domainRes.value.data) ? domainRes.value.data : [];
+      setDomains(
+        rawDomains.map((d: any) => ({
+          id: String(d.id),
+          name: typeof d.name === 'string' ? d.name : String(d.name || ''),
+          description:
+            typeof d.description === 'string' ? d.description : d.description?.text || '',
+          active: d.active !== false && d.is_active !== false,
+        })),
+      );
     } else {
-      setDomains([]);
+      setDomains(getStoredGoalDomains());
     }
 
     if (templateRes.status === 'fulfilled') {
@@ -118,8 +174,47 @@ export default function GoalDomainDefinitionsScreen({
       setTemplates([]);
     }
 
-    setGoals(getStoredGoalBank());
+    const localGoals = getStoredGoalBank().map((lg) => ({
+      ...lg,
+      masteryCriteria: formatMasteryCriteria(lg.masteryCriteria),
+    }));
+    if (goalsRes.status === 'fulfilled' && Array.isArray(goalsRes.value)) {
+      const deletedIds = getDeletedGoalIds();
+      const backendGoals: GoalBankItem[] = goalsRes.value
+        .map((bg: any) => ({
+          id: String(bg.id),
+          name:
+            typeof bg.name === 'string'
+              ? bg.name
+              : bg.name?.name || String(bg.name || 'Untitled Goal'),
+          domain:
+            typeof bg.domain === 'string' && bg.domain
+              ? bg.domain
+              : typeof bg.goal_domain?.name === 'string'
+                ? bg.goal_domain.name
+                : typeof bg.goal_domain === 'string'
+                  ? bg.goal_domain
+                  : 'Communication',
+          description:
+            typeof bg.description === 'string'
+              ? bg.description
+              : bg.description?.text || bg.description?.description || '',
+          goalType: (bg.goal_type === 'task_analysis' ? 'task_analysis' : 'standard') as
+            'task_analysis' | 'standard',
+          masteryCriteria: formatMasteryCriteria(bg.mastery_criteria),
+          active: bg.is_active !== false,
+          status: (bg.is_active !== false ? 'active' : 'inactive') as 'active' | 'inactive',
+          usageCount: bg.usage_count || 0,
+        }))
+        .filter((g) => !deletedIds.includes(g.id));
+
+      setGoals(backendGoals);
+      setStoredGoalBank(backendGoals);
+    } else {
+      setGoals(localGoals);
+    }
     setLoading(false);
+    setIsDirty(false);
   }, []);
 
   useEffect(() => {
@@ -139,10 +234,12 @@ export default function GoalDomainDefinitionsScreen({
   // Domain Handlers
   const handleMoveDomainUp = (index: number) => {
     setDomains((prev) => moveItemInList(prev, index, 'up'));
+    setIsDirty(true);
   };
 
   const handleMoveDomainDown = (index: number) => {
     setDomains((prev) => moveItemInList(prev, index, 'down'));
+    setIsDirty(true);
   };
 
   const handleConfirmAddDomain = () => {
@@ -160,26 +257,88 @@ export default function GoalDomainDefinitionsScreen({
     setNewDomainName('');
     setNewDomainDesc('');
     setShowAddDomainForm(false);
+    setIsDirty(true);
     showToast(`Domain "${newEntry.name}" added — click Save to persist`, 'info');
   };
 
   const handleUpdateDomainField = (id: string, field: 'name' | 'description', val: string) => {
     setDomains((prev) => prev.map((d) => (d.id === id ? { ...d, [field]: val } : d)));
+    setIsDirty(true);
   };
 
   const handleDeleteDomain = (id: string) => {
     const domain = domains.find((d) => d.id === id);
-    const domainName = domain?.name || 'this goal domain';
+    if (!domain) return;
+    const domainName = domain.name;
+
+    // Check for associated target goals under this domain
+    const associated = goals.filter(
+      (g) =>
+        (g as any).domainId === id ||
+        (g as any).domain_id === id ||
+        (g as any).domainName?.toLowerCase() === domainName.toLowerCase() ||
+        g.domain?.toLowerCase() === domainName.toLowerCase(),
+    );
+
+    if (associated.length > 0) {
+      setCascadeDomain(domain);
+      setCascadeGoals(associated);
+      setShowCascadeGoalList(true); // Always display target goals preview list in cascade modal
+      setShowCascadeModal(true);
+      return;
+    }
+
+    // Standard delete if no target goals exist under this domain
     confirmAction({
       title: 'Delete Domain',
-      message: `Are you sure you want to delete "${domainName}"? Target goals mapped to this domain may be affected.`,
+      message: `Are you sure you want to delete "${domainName}"?`,
       confirmLabel: 'Delete',
       destructive: true,
-      onConfirm: () => {
-        setDomains((prev) => prev.filter((d) => d.id !== id));
-        showToast(`Domain "${domainName}" removed — click Save to persist`, 'info');
+      onConfirm: async () => {
+        const next = domains.filter((d) => d.id !== id);
+        setDomains(next);
+        setIsDirty(true);
+        try {
+          await deleteGoalDomainApi(id);
+        } catch {
+          // Local state already updated
+        }
+        showToast(`Domain "${domainName}" removed`, 'success');
       },
     });
+  };
+
+  const handleConfirmCascadeDelete = async () => {
+    if (!cascadeDomain) return;
+    const domainId = cascadeDomain.id;
+    const domainName = cascadeDomain.name;
+
+    // 1. Delete all associated target goals from Goal Bank and storage + backend
+    cascadeGoals.forEach((g) => {
+      deleteGoalItem(g.id);
+      deleteGoalApi(g.id).catch(() => {});
+    });
+    setGoals(getStoredGoalBank());
+
+    // 2. Remove domain from local state
+    const nextDomains = domains.filter((d) => d.id !== domainId);
+    setDomains(nextDomains);
+    setIsDirty(true);
+
+    // 3. Persist deletion to API with cascade=true
+    try {
+      await deleteGoalDomainApi(domainId, true);
+    } catch {
+      // Local state is already updated
+    }
+
+    setShowCascadeModal(false);
+    setCascadeDomain(null);
+    setCascadeGoals([]);
+    showToast(
+      `Domain "${domainName}" and ${cascadeGoals.length} associated target goal(s) deleted`,
+      'success',
+    );
   };
 
   const [savingDomains, setSavingDomains] = useState(false);
@@ -194,8 +353,10 @@ export default function GoalDomainDefinitionsScreen({
     try {
       await saveGoalDomains(domains as unknown as Payload[]);
       await loadAll();
+      setIsDirty(false);
       showToast('Goal Domains saved and updated in Goal Banks & IUP Generation', 'success');
     } catch {
+      setIsDirty(false);
       showToast('Goal Domains configuration saved', 'success');
     } finally {
       setSavingDomains(false);
@@ -209,7 +370,7 @@ export default function GoalDomainDefinitionsScreen({
       setGoalFormName(goal.name);
       setGoalFormDomain(goal.domain || domains[0]?.name || 'Communication');
       setGoalFormDesc(goal.description);
-      setGoalFormMastery(goal.masteryCriteria || '80% accuracy across 3 consecutive sessions');
+      setGoalFormMastery(formatMasteryCriteria(goal.masteryCriteria));
       setGoalFormType(goal.goalType || 'standard');
       setGoalFormActive(goal.active !== false);
     } else {
@@ -251,9 +412,14 @@ export default function GoalDomainDefinitionsScreen({
       message: `Are you sure you want to delete "${goal.name}" from the Goal Bank and IUP Generation?`,
       confirmLabel: 'Delete',
       destructive: true,
-      onConfirm: () => {
+      onConfirm: async () => {
         deleteGoalItem(goal.id);
         setGoals(getStoredGoalBank());
+        try {
+          await deleteGoalApi(goal.id);
+        } catch {
+          // Local deletion already completed
+        }
         showToast(`Goal "${goal.name}" deleted`, 'info');
       },
     });
@@ -273,7 +439,8 @@ export default function GoalDomainDefinitionsScreen({
     return goals.filter((g) => {
       if (selectedGoalDomain !== 'All' && g.domain !== selectedGoalDomain) return false;
       if (term) {
-        const match = `${g.name} ${g.description} ${g.masteryCriteria} ${g.domain}`.toLowerCase();
+        const match =
+          `${g.name || ''} ${g.description || ''} ${formatMasteryCriteria(g.masteryCriteria)} ${g.domain || ''}`.toLowerCase();
         if (!match.includes(term)) return false;
       }
       return true;
@@ -302,18 +469,22 @@ export default function GoalDomainDefinitionsScreen({
 
   const addTemplateStep = () => {
     setFormSteps((prev) => [...prev, { id: `s-${Date.now()}`, description: '' }]);
+    setIsDirty(true);
   };
 
   const updateTemplateStepDesc = (id: string, description: string) => {
     setFormSteps((prev) => prev.map((s) => (s.id === id ? { ...s, description } : s)));
+    setIsDirty(true);
   };
 
   const deleteTemplateStep = (id: string) => {
     setFormSteps((prev) => prev.filter((s) => s.id !== id));
+    setIsDirty(true);
   };
 
   const moveTemplateStep = (index: number, direction: 'up' | 'down') => {
     setFormSteps((prev) => moveItemInList(prev, index, direction));
+    setIsDirty(true);
   };
 
   const handleSaveTemplate = async () => {
@@ -336,8 +507,10 @@ export default function GoalDomainDefinitionsScreen({
     try {
       await saveTaskAnalysisTemplate(editingTemplateId, payload as unknown as Payload);
       await loadAll();
+      setIsDirty(false);
       showToast(`Task analysis template "${payload.name}" saved`, 'success');
     } catch {
+      setIsDirty(false);
       showToast('Saved task analysis template locally', 'info');
     }
     setShowTemplateEditor(false);
@@ -354,6 +527,7 @@ export default function GoalDomainDefinitionsScreen({
         try {
           await deleteTaskAnalysisTemplate(template.id);
           await loadAll();
+          setIsDirty(false);
           showToast(`Template "${template.name}" deleted`, 'info');
         } catch {
           showToast('Failed to delete template', 'error');
@@ -486,6 +660,7 @@ export default function GoalDomainDefinitionsScreen({
                           style={styles.inlineInput}
                           value={item.name}
                           onChangeText={(v) => handleUpdateDomainField(item.id, 'name', v)}
+                          onSubmitEditing={() => setEditingDomainId(null)}
                         />
                       ) : (
                         <Text style={styles.domainNameText}>{item.name}</Text>
@@ -499,6 +674,7 @@ export default function GoalDomainDefinitionsScreen({
                           style={styles.inlineInput}
                           value={item.description}
                           onChangeText={(v) => handleUpdateDomainField(item.id, 'description', v)}
+                          onSubmitEditing={() => setEditingDomainId(null)}
                         />
                       ) : (
                         <Text style={styles.domainDescText}>{item.description}</Text>
@@ -567,6 +743,7 @@ export default function GoalDomainDefinitionsScreen({
                       placeholderTextColor={colors.mutedText}
                       value={newDomainName}
                       onChangeText={setNewDomainName}
+                      onSubmitEditing={handleConfirmAddDomain}
                     />
                   </View>
                   <View style={[styles.addFormFieldCol, { flex: 2 }]}>
@@ -577,6 +754,7 @@ export default function GoalDomainDefinitionsScreen({
                       placeholderTextColor={colors.mutedText}
                       value={newDomainDesc}
                       onChangeText={setNewDomainDesc}
+                      onSubmitEditing={handleConfirmAddDomain}
                     />
                   </View>
                 </View>
@@ -716,7 +894,7 @@ export default function GoalDomainDefinitionsScreen({
 
                   <View style={{ flex: 2.2, paddingRight: 8 }}>
                     <Text style={styles.goalMasteryPillText}>
-                      {g.masteryCriteria || '80% across 3 sessions'}
+                      {formatMasteryCriteria(g.masteryCriteria)}
                     </Text>
                   </View>
 
@@ -771,15 +949,6 @@ export default function GoalDomainDefinitionsScreen({
                 </View>
               )}
             </View>
-
-            {/* Quick Navigation to IUP Generation */}
-            <TouchableOpacity
-              style={styles.addDomainLinkBtn}
-              onPress={() => navigation?.navigate?.('IupGeneration' as never)}
-            >
-              <Feather name="external-link" size={14} color={colors.navyText} />
-              <Text style={styles.addDomainLinkText}>View Goals in IUP Generation</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -1036,6 +1205,7 @@ export default function GoalDomainDefinitionsScreen({
                   placeholderTextColor={colors.mutedText}
                   value={goalFormName}
                   onChangeText={setGoalFormName}
+                  onSubmitEditing={handleSaveGoal}
                 />
               </View>
 
@@ -1093,6 +1263,7 @@ export default function GoalDomainDefinitionsScreen({
                   placeholderTextColor={colors.mutedText}
                   value={goalFormMastery}
                   onChangeText={setGoalFormMastery}
+                  onSubmitEditing={handleSaveGoal}
                 />
               </View>
 
@@ -1132,6 +1303,117 @@ export default function GoalDomainDefinitionsScreen({
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowGoalEditor(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cascade Delete Confirmation & Preview Modal */}
+      <Modal
+        visible={showCascadeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCascadeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { maxWidth: 540 }]}>
+            <View style={styles.cascadeModalHeader}>
+              <View style={styles.cascadeWarningIconCircle}>
+                <Feather name="alert-triangle" size={24} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cascadeModalTitle}>
+                  Cascade Delete Domain: &quot;{cascadeDomain?.name}&quot;
+                </Text>
+                <Text style={styles.cascadeModalSubtitle}>
+                  This domain has {cascadeGoals.length} associated target goal(s).
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCascadeModal(false)}>
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.cascadeWarningBanner}>
+              <Feather name="alert-circle" size={16} color="#B91C1C" />
+              <Text style={styles.cascadeWarningText}>
+                Warning: Deleting &quot;{cascadeDomain?.name}&quot; will permanently cascade delete
+                the domain and all {cascadeGoals.length} associated target goal(s) from the Goal
+                Bank and IUP Generation. This action cannot be undone.
+              </Text>
+            </View>
+
+            {/* Collapsible View Target Goals Toggle Button */}
+            <TouchableOpacity
+              style={styles.cascadeViewToggleBtn}
+              onPress={() => setShowCascadeGoalList((prev) => !prev)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="list" size={15} color="#0369A1" />
+                <Text style={styles.cascadeViewToggleText}>
+                  View Target Goals under &quot;{cascadeDomain?.name}&quot; ({cascadeGoals.length})
+                </Text>
+              </View>
+              <Feather
+                name={showCascadeGoalList ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color="#0369A1"
+              />
+            </TouchableOpacity>
+
+            {/* Collapsible Target Goals Preview List */}
+            {showCascadeGoalList && (
+              <ScrollView style={styles.cascadeGoalsList} nestedScrollEnabled>
+                {cascadeGoals.map((g, idx) => (
+                  <View key={g.id || idx} style={styles.cascadeGoalItem}>
+                    <View style={styles.cascadeGoalBullet}>
+                      <Text style={styles.cascadeGoalBulletText}>{idx + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cascadeGoalName}>{g.name}</Text>
+                      <Text style={styles.cascadeGoalMastery}>
+                        Mastery: {formatMasteryCriteria(g.masteryCriteria)}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.cascadeStatusBadge,
+                        g.active ? styles.cascadeStatusActive : styles.cascadeStatusInactive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.cascadeStatusText,
+                          { color: g.active ? '#15803D' : '#991B1B' },
+                        ]}
+                      >
+                        {g.active ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Modal Actions */}
+            <View style={styles.cascadeActionsRow}>
+              <TouchableOpacity
+                style={styles.cascadeCancelBtn}
+                onPress={() => {
+                  setShowCascadeModal(false);
+                  setCascadeDomain(null);
+                  setCascadeGoals([]);
+                }}
+              >
+                <Text style={styles.cascadeCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cascadeConfirmBtn}
+                onPress={handleConfirmCascadeDelete}
+              >
+                <Feather name="trash-2" size={14} color="#FFFFFF" />
+                <Text style={styles.cascadeConfirmBtnText}>Confirm Delete (Cascade)</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1662,5 +1944,159 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+
+  /* Cascade Delete Modal Styles */
+  cascadeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: spacing.md,
+  },
+  cascadeWarningIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cascadeModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cascadeModalSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  cascadeWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: radius.md,
+    padding: 12,
+    marginBottom: spacing.md,
+  },
+  cascadeWarningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#991B1B',
+    fontWeight: '500',
+  },
+  cascadeViewToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: spacing.sm,
+  },
+  cascadeViewToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0369A1',
+  },
+  cascadeGoalsList: {
+    maxHeight: 180,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md,
+    padding: 8,
+    marginBottom: spacing.md,
+  },
+  cascadeGoalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  cascadeGoalBullet: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cascadeGoalBulletText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  cascadeGoalName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  cascadeGoalMastery: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  cascadeStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  cascadeStatusActive: {
+    backgroundColor: '#DCFCE7',
+  },
+  cascadeStatusInactive: {
+    backgroundColor: '#FEE2E2',
+  },
+  cascadeStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  cascadeActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  cascadeCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  cascadeCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  cascadeConfirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radius.md,
+    backgroundColor: '#DC2626',
+  },
+  cascadeConfirmBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

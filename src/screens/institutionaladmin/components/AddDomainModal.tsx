@@ -54,6 +54,7 @@ export const AddDomainModal: React.FC<AddDomainModalProps> = React.memo(
                   style={styles.textInput}
                   value={value}
                   onChangeText={onChangeText}
+                  onSubmitEditing={() => value.trim() && onConfirm()}
                   placeholder={placeholder}
                   placeholderTextColor="#94A3B8"
                   autoFocus

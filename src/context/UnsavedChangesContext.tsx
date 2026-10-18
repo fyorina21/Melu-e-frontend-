@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
+import { confirmAction } from '../utils/dialogs';
 
 interface UnsavedChangesContextValue {
   isDirty: boolean;
@@ -77,4 +78,40 @@ export function useUnsavedChanges() {
     };
   }
   return ctx;
+}
+
+/**
+ * React Navigation event interceptor hook (`beforeRemove`).
+ * Prevents accidental internal screen/tab transitions whenever form state is dirty,
+ * displaying the in-app confirmation modal instead of browser popups.
+ */
+export function usePreventUnsavedNavigation(navigation: any, customIsDirty?: boolean) {
+  const { isDirty, setDirty } = useUnsavedChanges();
+  const dirty = customIsDirty !== undefined ? customIsDirty : isDirty;
+
+  useEffect(() => {
+    if (!navigation || typeof navigation.addListener !== 'function') return;
+
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (!dirty) return;
+
+      // Prevent internal route change
+      e.preventDefault();
+
+      // Trigger custom in-app confirmation modal
+      confirmAction({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Are you sure you want to leave this page?',
+        confirmLabel: 'Leave without saving',
+        cancelLabel: 'Keep Editing',
+        destructive: true,
+        onConfirm: () => {
+          setDirty(false);
+          navigation.dispatch(e.data.action);
+        },
+      });
+    });
+
+    return unsubscribe;
+  }, [navigation, dirty, setDirty]);
 }
