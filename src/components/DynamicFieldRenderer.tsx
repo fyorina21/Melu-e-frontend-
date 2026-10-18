@@ -162,8 +162,8 @@ export const DynamicFieldRenderer: React.FC<DynamicFieldRendererProps> = ({
     );
   }
 
-  // 3. CHECKBOX GROUP (Multi-Select)
-  if (normType === 'checkbox_group') {
+  // 3. CHECKBOX (Multi-Select)
+  if (normType === 'checkbox_group' || normType === 'checkbox') {
     const selectedValues: string[] = Array.isArray(value) ? value : [];
 
     const toggleOption = (optVal: string) => {
@@ -273,8 +273,8 @@ export const DynamicFieldRenderer: React.FC<DynamicFieldRendererProps> = ({
     );
   }
 
-  // 6. IMAGE PICKER (Camera Capture + Gallery Upload)
-  if (normType === 'image_picker') {
+  // 6. IMAGE (Camera Capture + Gallery Upload)
+  if (normType === 'image_picker' || normType === 'image') {
     const imageUri = typeof value === 'string' ? value : value?.uri || null;
 
     const handlePickGallery = async () => {
@@ -363,7 +363,224 @@ export const DynamicFieldRenderer: React.FC<DynamicFieldRendererProps> = ({
     );
   }
 
+  // 12. COUNTER (+ / -)
+  if (normType === 'counter') {
+    const minVal = field.validation?.min_length ?? 0;
+    const maxVal = field.validation?.max_length ?? 9999;
+    const currentNum = typeof value === 'number' ? value : parseInt(value, 10) || minVal || 0;
+
+    const handleUpdate = (next: number) => {
+      const clamped = Math.min(maxVal, Math.max(minVal, next));
+      onChange(field.id, clamped);
+    };
+
+    return (
+      <View style={styles.fieldContainer}>
+        <FieldLabel field={field} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
+          <TouchableOpacity
+            style={[
+              {
+                width: 36,
+                height: 36,
+                borderRadius: 6,
+                backgroundColor: '#F0F9FF',
+                borderWidth: 1,
+                borderColor: '#BAE6FD',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+              currentNum <= minVal && { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' },
+            ]}
+            disabled={disabled || currentNum <= minVal}
+            onPress={() => handleUpdate(currentNum - 1)}
+          >
+            <Feather name="minus" size={18} color={currentNum <= minVal ? '#94A3B8' : '#0284C7'} />
+          </TouchableOpacity>
+          <View
+            style={{
+              minWidth: 54,
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1.5,
+              borderColor: '#0284C7',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>{currentNum}</Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              {
+                width: 36,
+                height: 36,
+                borderRadius: 6,
+                backgroundColor: '#F0F9FF',
+                borderWidth: 1,
+                borderColor: '#BAE6FD',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+              currentNum >= maxVal && { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' },
+            ]}
+            disabled={disabled || currentNum >= maxVal}
+            onPress={() => handleUpdate(currentNum + 1)}
+          >
+            <Feather name="plus" size={18} color={currentNum >= maxVal ? '#94A3B8' : '#0284C7'} />
+          </TouchableOpacity>
+        </View>
+        {error && <Text style={styles.errorText}>{error}</Text>}
+      </View>
+    );
+  }
+
+  // 13. TIMER (Start / Pause / Stop)
+  if (normType === 'timer') {
+    return (
+      <View style={styles.fieldContainer}>
+        <FieldLabel field={field} />
+        <DynamicTimerControl
+          value={value}
+          disabled={disabled}
+          onChange={(val) => onChange(field.id, val)}
+        />
+        {error && <Text style={styles.errorText}>{error}</Text>}
+      </View>
+    );
+  }
+
   return null;
+};
+
+const DynamicTimerControl: React.FC<{
+  value: any;
+  disabled?: boolean;
+  onChange: (val: string) => void;
+}> = ({ value, disabled, onChange }) => {
+  const [seconds, setSeconds] = React.useState<number>(() => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string' && value.includes(':')) {
+      const parts = value.split(':').map((p) => parseInt(p, 10) || 0);
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+  });
+  const [isRunning, setIsRunning] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    let timer: any = null;
+    if (isRunning) {
+      timer = setInterval(() => {
+        setSeconds((prev) => {
+          const next = prev + 1;
+          const mins = String(Math.floor(next / 60)).padStart(2, '0');
+          const secs = String(next % 60).padStart(2, '0');
+          const formatted = `${mins}:${secs}`;
+          onChange(formatted);
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isRunning, onChange]);
+
+  const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const secs = String(seconds % 60).padStart(2, '0');
+  const displayFormatted = `${mins}:${secs}`;
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        marginTop: 4,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Feather name="clock" size={16} color="#0284C7" />
+        <Text
+          style={{
+            fontSize: 16,
+            fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+            fontWeight: '700',
+            color: '#0284C7',
+          }}
+        >
+          {displayFormatted}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {!isRunning ? (
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: '#0284C7',
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 6,
+            }}
+            disabled={disabled}
+            onPress={() => setIsRunning(true)}
+          >
+            <Feather name="play" size={12} color="#FFFFFF" />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Start</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: '#F59E0B',
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 6,
+            }}
+            disabled={disabled}
+            onPress={() => setIsRunning(false)}
+          >
+            <Feather name="pause" size={12} color="#FFFFFF" />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Pause</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            backgroundColor: '#EF4444',
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 6,
+          }}
+          disabled={disabled}
+          onPress={() => {
+            setIsRunning(false);
+            setSeconds(0);
+            onChange('00:00');
+          }}
+        >
+          <Feather name="square" size={12} color="#FFFFFF" />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Stop</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 };
 
 // Reusable Label Helper

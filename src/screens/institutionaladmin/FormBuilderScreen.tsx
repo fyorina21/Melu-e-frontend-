@@ -30,7 +30,10 @@ import { useToast } from '../../context/ToastContext';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import type { InstitutionalAdminStackParamList } from '../../types';
 import { confirmAction } from '../../utils/dialogs';
-import { useUnsavedChanges } from '../../context/UnsavedChangesContext';
+import {
+  useUnsavedChanges,
+  usePreventUnsavedNavigation,
+} from '../../context/UnsavedChangesContext';
 import { EditMetadataModal, TemplateVersionModal, PreviewFormModal } from './components';
 
 import {
@@ -70,6 +73,15 @@ interface FormField {
   placeholder?: string;
   helpText?: string;
   defaultValue?: string;
+  minValue?: number | string;
+  maxValue?: number | string;
+  dataModel?: string;
+  activeLabel?: string;
+  inactiveLabel?: string;
+  phoneCountryCode?: string;
+  allowCamera?: boolean;
+  allowGallery?: boolean;
+  allowedExtensions?: string;
 }
 
 interface HistoryEntry {
@@ -107,11 +119,963 @@ export const getTypeBadgeStyle = (rawType: string) => {
   if (t === 'radio') return { bg: '#E0E7FF', border: '#C7D2FE', text: '#4338CA', label: 'Radio' };
   if (t === 'dropdown')
     return { bg: '#FEF9C3', border: '#FEF08A', text: '#A16207', label: 'Dropdown' };
+  if (t === 'counter')
+    return { bg: '#E0F2FE', border: '#7DD3FC', text: '#0369A1', label: 'Counter' };
+  if (t === 'timer') return { bg: '#FEE2E2', border: '#FCA5A5', text: '#B91C1C', label: 'Timer' };
   return { bg: '#E0F2FE', border: '#BAE6FD', text: '#0369A1', label: rawType || 'Text' };
 };
 
 import { FORM_METADATA } from './formBuilderConfig';
 export { FORM_METADATA };
+
+interface FieldPropertyEditorProps {
+  fieldType: string;
+  selectedForm: string;
+  placeholder: string;
+  onChangePlaceholder: (val: string) => void;
+  minValue: string;
+  onChangeMinValue: (val: string) => void;
+  maxValue: string;
+  onChangeMaxValue: (val: string) => void;
+  dataModel: string;
+  onChangeDataModel: (val: string) => void;
+  options: string;
+  onChangeOptions: (val: string) => void;
+  optionList: string[];
+  onChangeOptionList: (val: string[]) => void;
+  activeLabel: string;
+  onChangeActiveLabel: (val: string) => void;
+  inactiveLabel: string;
+  onChangeInactiveLabel: (val: string) => void;
+  phoneCountryCode: string;
+  onChangePhoneCountryCode: (val: string) => void;
+  allowCamera: boolean;
+  onChangeAllowCamera: (val: boolean) => void;
+  allowGallery: boolean;
+  onChangeAllowGallery: (val: boolean) => void;
+  allowedExtensions: string;
+  onChangeAllowedExtensions: (val: string) => void;
+}
+
+const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
+  fieldType,
+  selectedForm,
+  placeholder,
+  onChangePlaceholder,
+  minValue,
+  onChangeMinValue,
+  maxValue,
+  onChangeMaxValue,
+  dataModel,
+  onChangeDataModel,
+  options,
+  onChangeOptions,
+  optionList,
+  onChangeOptionList,
+  activeLabel,
+  onChangeActiveLabel,
+  inactiveLabel,
+  onChangeInactiveLabel,
+  phoneCountryCode,
+  onChangePhoneCountryCode,
+  allowCamera,
+  onChangeAllowCamera,
+  allowGallery,
+  onChangeAllowGallery,
+  allowedExtensions,
+  onChangeAllowedExtensions,
+}) => {
+  const normType = (fieldType || '').toLowerCase().replace(/[\s_-]+/g, '');
+
+  if (normType === 'text') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Input Placeholder / Hint (Optional)</Text>
+        <Text style={styles.inlineFieldPromptHint}>Guidance shown inside the text input</Text>
+        <TextInput
+          style={styles.inlineTextInput}
+          placeholder="e.g. Enter notes, observations, or student details..."
+          placeholderTextColor="#94A3B8"
+          value={placeholder}
+          onChangeText={onChangePlaceholder}
+        />
+      </View>
+    );
+  }
+
+  if (normType === 'date') {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Date Input & Date Picker Configuration</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Enable interactive calendar date picker and configure date display format
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 6, marginVertical: 6, flexWrap: 'wrap' }}>
+          {['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'].map((fmt) => {
+            const isFmt = (placeholder || 'YYYY-MM-DD') === fmt;
+            return (
+              <TouchableOpacity
+                key={fmt}
+                style={[
+                  styles.presetChip,
+                  isFmt && { backgroundColor: '#E0F2FE', borderColor: '#0284C7' },
+                ]}
+                onPress={() => onChangePlaceholder(fmt)}
+              >
+                <Text
+                  style={[styles.presetChipText, isFmt && { color: '#0369A1', fontWeight: '700' }]}
+                >
+                  {fmt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.inlineFieldLabel}>Custom Format / Placeholder</Text>
+        <TextInput
+          style={styles.inlineTextInput}
+          placeholder="e.g. YYYY-MM-DD"
+          placeholderTextColor="#94A3B8"
+          value={placeholder}
+          onChangeText={onChangePlaceholder}
+        />
+        <View style={styles.propertyPreviewBox}>
+          <Text style={styles.propertyPreviewHeader}>INTERACTIVE DATE PICKER PREVIEW</Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              marginTop: 4,
+            }}
+          >
+            <Text style={{ fontSize: 13, color: '#1E293B' }}>
+              {todayStr} ({placeholder || 'YYYY-MM-DD'})
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: '#E0F2FE',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 4,
+              }}
+            >
+              <Feather name="calendar" size={14} color="#0284C7" />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#0369A1' }}>Pick Date</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'textarea') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Multiline Text Area Guidance</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Placeholder shown for expansive comments or observations
+        </Text>
+        <TextInput
+          style={styles.inlineTextInput}
+          placeholder="e.g. Enter comprehensive clinical notes, observations..."
+          placeholderTextColor="#94A3B8"
+          value={placeholder}
+          onChangeText={onChangePlaceholder}
+        />
+        <View style={styles.propertyPreviewBox}>
+          <Text style={styles.propertyPreviewHeader}>MULTILINE INPUT PREVIEW</Text>
+          <View style={styles.textareaPreviewBox}>
+            <Text
+              style={[
+                styles.textareaPreviewText,
+                !placeholder && { color: '#94A3B8', fontStyle: 'italic' },
+              ]}
+            >
+              {placeholder || 'Preview of multiline text entry area for expansive observations...'}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'number') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Numeric Validation & Constraints</Text>
+        <View style={styles.numericValidationNotice}>
+          <Feather name="info" size={13} color="#0284C7" />
+          <Text style={styles.numericValidationNoticeText}>
+            Numeric-only validation enforced (accepts only integers or decimal figures)
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Min Constraint</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. 0"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={minValue}
+              onChangeText={onChangeMinValue}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Max Constraint</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. 100"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={maxValue}
+              onChangeText={onChangeMaxValue}
+            />
+          </View>
+        </View>
+        <View style={{ marginTop: 6 }}>
+          <Text style={styles.inlineFieldLabel}>Placeholder Guidance (Optional)</Text>
+          <TextInput
+            style={styles.inlineTextInput}
+            placeholder="e.g. Score (0-100), Count of trials, Duration in minutes"
+            placeholderTextColor="#94A3B8"
+            value={placeholder}
+            onChangeText={onChangePlaceholder}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'dropdown') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Dropdown Data Source Binding</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Bind to an existing institutional data model or define custom static choices
+        </Text>
+        <View style={styles.dataModelSelectorRow}>
+          {[
+            'Custom Options',
+            'ABC Antecedents',
+            'ABC Behaviors',
+            'ABC Consequences',
+            'ABC Locations',
+            'Goal Domains',
+            'Task Analysis Templates',
+            'Students',
+            'Teachers',
+            'Therapists',
+            'Rooms',
+          ].map((model) => {
+            const isSelected =
+              (model === 'Custom Options' && (!dataModel || dataModel === 'custom')) ||
+              dataModel === model;
+            return (
+              <TouchableOpacity
+                key={model}
+                style={[styles.skillPresetChip, isSelected && styles.skillPresetChipActive]}
+                onPress={() => onChangeDataModel(model === 'Custom Options' ? 'custom' : model)}
+              >
+                <Text
+                  style={[
+                    styles.skillPresetChipText,
+                    isSelected && styles.skillPresetChipTextActive,
+                  ]}
+                >
+                  {model}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {dataModel && dataModel !== 'custom' ? (
+          <View style={styles.dataModelActiveNotice}>
+            <Feather name="database" size={14} color="#0284C7" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dataModelActiveNoticeTitle}>
+                Bound to Data Model: {dataModel}
+              </Text>
+              <Text style={styles.dataModelActiveNoticeSub}>
+                Options will populate dynamically from the active {dataModel.toLowerCase()} database
+                at runtime.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ marginTop: 4 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 4,
+              }}
+            >
+              <Text style={styles.inlineFieldLabel}>Custom Options List</Text>
+              <TouchableOpacity
+                style={styles.addOptionRowBtn}
+                onPress={() => {
+                  const next = [...optionList, `Option ${optionList.length + 1}`];
+                  onChangeOptionList(next);
+                  onChangeOptions(next.join(', '));
+                }}
+              >
+                <Feather name="plus" size={12} color="#0284C7" />
+                <Text style={styles.addOptionRowBtnText}>Add Option</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.presetChipsRow, { marginBottom: 6 }]}>
+              {getPresetsForForm(selectedForm).map((p) => (
+                <TouchableOpacity
+                  key={p.short}
+                  style={styles.presetChip}
+                  onPress={() => {
+                    onChangeOptionList(p.options);
+                    onChangeOptions(p.options.join(', '));
+                  }}
+                >
+                  <Text style={styles.presetChipText}>{p.short}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {optionList.map((opt, idx) => (
+              <View key={idx} style={styles.dynamicOptionRow}>
+                <View style={styles.dynamicOptionIndexBadge}>
+                  <Text style={styles.dynamicOptionIndexText}>{idx + 1}</Text>
+                </View>
+                <TextInput
+                  style={[styles.inlineTextInput, { flex: 1, height: 36 }]}
+                  value={opt}
+                  onChangeText={(val) => {
+                    const next = [...optionList];
+                    next[idx] = val;
+                    onChangeOptionList(next);
+                    onChangeOptions(next.join(', '));
+                  }}
+                  placeholder={`Option ${idx + 1}`}
+                  placeholderTextColor="#94A3B8"
+                />
+                {optionList.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.deleteOptionBtn}
+                    onPress={() => {
+                      const next = optionList.filter((_, i) => i !== idx);
+                      onChangeOptionList(next);
+                      onChangeOptions(next.join(', '));
+                    }}
+                  >
+                    <Feather name="trash-2" size={14} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  if (normType === 'checkbox' || normType === 'checkboxgroup') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 4,
+          }}
+        >
+          <Text style={styles.inlineFieldPromptTitle}>Checkbox Options List</Text>
+          <TouchableOpacity
+            style={styles.addOptionRowBtn}
+            onPress={() => {
+              const next = [...optionList, `Choice ${optionList.length + 1}`];
+              onChangeOptionList(next);
+              onChangeOptions(next.join(', '));
+            }}
+          >
+            <Feather name="plus" size={12} color="#0284C7" />
+            <Text style={styles.addOptionRowBtnText}>Add Option</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.inlineFieldPromptHint}>Define multiple-choice checkbox options</Text>
+
+        <View style={[styles.presetChipsRow, { marginBottom: 6, marginTop: 2 }]}>
+          {getPresetsForForm(selectedForm).map((p) => (
+            <TouchableOpacity
+              key={p.short}
+              style={styles.presetChip}
+              onPress={() => {
+                onChangeOptionList(p.options);
+                onChangeOptions(p.options.join(', '));
+              }}
+            >
+              <Text style={styles.presetChipText}>{p.short}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {optionList.map((opt, idx) => (
+          <View key={idx} style={styles.dynamicOptionRow}>
+            <View style={styles.checkboxMockBox}>
+              <Feather name="check" size={11} color="#0284C7" />
+            </View>
+            <TextInput
+              style={[styles.inlineTextInput, { flex: 1, height: 36 }]}
+              value={opt}
+              onChangeText={(val) => {
+                const next = [...optionList];
+                next[idx] = val;
+                onChangeOptionList(next);
+                onChangeOptions(next.join(', '));
+              }}
+              placeholder={`Choice ${idx + 1}`}
+              placeholderTextColor="#94A3B8"
+            />
+            {optionList.length > 1 && (
+              <TouchableOpacity
+                style={styles.deleteOptionBtn}
+                onPress={() => {
+                  const next = optionList.filter((_, i) => i !== idx);
+                  onChangeOptionList(next);
+                  onChangeOptions(next.join(', '));
+                }}
+              >
+                <Feather name="trash-2" size={14} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  if (normType === 'radio') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 4,
+          }}
+        >
+          <Text style={styles.inlineFieldPromptTitle}>Radio Options List & Preview</Text>
+          <TouchableOpacity
+            style={styles.addOptionRowBtn}
+            onPress={() => {
+              const next = [...optionList, `Choice ${optionList.length + 1}`];
+              onChangeOptionList(next);
+              onChangeOptions(next.join(', '));
+            }}
+          >
+            <Feather name="plus" size={12} color="#0284C7" />
+            <Text style={styles.addOptionRowBtnText}>Add Option</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.inlineFieldPromptHint}>Define single-select radio options</Text>
+
+        <View style={[styles.presetChipsRow, { marginBottom: 6, marginTop: 2 }]}>
+          {getPresetsForForm(selectedForm).map((p) => (
+            <TouchableOpacity
+              key={p.short}
+              style={styles.presetChip}
+              onPress={() => {
+                onChangeOptionList(p.options);
+                onChangeOptions(p.options.join(', '));
+              }}
+            >
+              <Text style={styles.presetChipText}>{p.short}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {optionList.map((opt, idx) => (
+          <View key={idx} style={styles.dynamicOptionRow}>
+            <View style={[styles.radioMockCircle, idx === 0 && { borderColor: '#0284C7' }]}>
+              {idx === 0 && <View style={styles.radioMockInnerDot} />}
+            </View>
+            <TextInput
+              style={[styles.inlineTextInput, { flex: 1, height: 36 }]}
+              value={opt}
+              onChangeText={(val) => {
+                const next = [...optionList];
+                next[idx] = val;
+                onChangeOptionList(next);
+                onChangeOptions(next.join(', '));
+              }}
+              placeholder={`Choice ${idx + 1}`}
+              placeholderTextColor="#94A3B8"
+            />
+            {optionList.length > 1 && (
+              <TouchableOpacity
+                style={styles.deleteOptionBtn}
+                onPress={() => {
+                  const next = optionList.filter((_, i) => i !== idx);
+                  onChangeOptionList(next);
+                  onChangeOptions(next.join(', '));
+                }}
+              >
+                <Feather name="trash-2" size={14} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+
+        <View style={styles.propertyPreviewBox}>
+          <Text style={styles.propertyPreviewHeader}>RADIO TOGGLE PREVIEW</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
+            {optionList.filter(Boolean).map((choice, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={[styles.radioMockCircle, i === 0 && { borderColor: '#0284C7' }]}>
+                  {i === 0 && <View style={styles.radioMockInnerDot} />}
+                </View>
+                <Text style={{ fontSize: 12, color: '#334155' }}>{choice}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'switch') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Two-State Switch Labels</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Configure custom labels for active and inactive toggle states
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Active State Label</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. Yes / Present / Enabled"
+              placeholderTextColor="#94A3B8"
+              value={activeLabel}
+              onChangeText={onChangeActiveLabel}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Inactive State Label</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. No / Absent / Disabled"
+              placeholderTextColor="#94A3B8"
+              value={inactiveLabel}
+              onChangeText={onChangeInactiveLabel}
+            />
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.propertyPreviewBox,
+            {
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 8,
+            },
+          ]}
+        >
+          <View>
+            <Text style={styles.propertyPreviewHeader}>TWO-STATE TOGGLE PREVIEW</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B', marginTop: 2 }}>
+              <Text style={{ color: '#0284C7' }}>{activeLabel || 'Yes'}</Text> /{' '}
+              <Text style={{ color: '#64748B' }}>{inactiveLabel || 'No'}</Text>
+            </Text>
+          </View>
+          <Switch
+            value={true}
+            trackColor={{ false: '#CBD5E1', true: '#38BDF8' }}
+            thumbColor="#FFFFFF"
+            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'phone') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Phone Country & Area Code Pairing</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Fixed Ethiopian country code (+251) paired with phone number text field
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+          <View style={{ width: 140 }}>
+            <Text style={styles.inlineFieldLabel}>Country Code</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+              {['+251'].map((code) => (
+                <TouchableOpacity
+                  key={code}
+                  style={[
+                    styles.presetChip,
+                    {
+                      backgroundColor: '#E0F2FE',
+                      borderColor: '#0284C7',
+                    },
+                  ]}
+                  onPress={() => onChangePhoneCountryCode(code)}
+                >
+                  <Text style={[styles.presetChipText, { color: '#0369A1', fontWeight: '700' }]}>
+                    {code} (Ethiopia)
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Number Placeholder</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. 91 234 5678"
+              placeholderTextColor="#94A3B8"
+              value={placeholder}
+              onChangeText={onChangePlaceholder}
+            />
+          </View>
+        </View>
+        <View style={styles.propertyPreviewBox}>
+          <Text style={styles.propertyPreviewHeader}>PHONE INPUT PREVIEW</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <View
+              style={{
+                backgroundColor: '#E0F2FE',
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                borderRadius: 4,
+                borderWidth: 1,
+                borderColor: '#BAE6FD',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>+251</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: placeholder ? '#334155' : '#94A3B8' }}>
+              {placeholder || '91 234 5678'}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'image' || normType === 'imagepicker') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Image Upload & Camera Capture Controls</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Allow direct camera capture, file upload, or both
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginVertical: 6 }}>
+          <TouchableOpacity
+            style={[styles.captureToggleBtn, allowCamera && styles.captureToggleBtnActive]}
+            onPress={() => onChangeAllowCamera(!allowCamera)}
+          >
+            <Feather name="camera" size={14} color={allowCamera ? '#0284C7' : '#64748B'} />
+            <Text
+              style={[
+                styles.captureToggleBtnText,
+                allowCamera && styles.captureToggleBtnTextActive,
+              ]}
+            >
+              Device Camera {allowCamera ? '✓' : ''}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.captureToggleBtn, allowGallery && styles.captureToggleBtnActive]}
+            onPress={() => onChangeAllowGallery(!allowGallery)}
+          >
+            <Feather name="image" size={14} color={allowGallery ? '#0284C7' : '#64748B'} />
+            <Text
+              style={[
+                styles.captureToggleBtnText,
+                allowGallery && styles.captureToggleBtnTextActive,
+              ]}
+            >
+              Photo Gallery / File {allowGallery ? '✓' : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.inlineFieldLabel}>Specification Guidance (Optional)</Text>
+        <TextInput
+          style={styles.inlineTextInput}
+          placeholder="e.g. Student ID Headshot, Baseline Clinical Photo"
+          placeholderTextColor="#94A3B8"
+          value={placeholder}
+          onChangeText={onChangePlaceholder}
+        />
+      </View>
+    );
+  }
+
+  if (normType === 'file' || normType === 'fileupload') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>File Upload & MIME Type Descriptor</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Drag-and-drop / file browser upload control specification
+        </Text>
+        <TextInput
+          style={styles.inlineTextInput}
+          placeholder="e.g. .pdf, .docx, .png, .jpg"
+          placeholderTextColor="#94A3B8"
+          value={allowedExtensions}
+          onChangeText={onChangeAllowedExtensions}
+        />
+        <View style={[styles.presetChipsRow, { marginTop: 4 }]}>
+          {[
+            { label: 'PDF Only', exts: '.pdf' },
+            { label: 'Documents (.pdf, .docx)', exts: '.pdf, .docx' },
+            { label: 'Docs & Images (.pdf, .png, .jpg)', exts: '.pdf, .docx, .png, .jpg' },
+          ].map((preset) => (
+            <TouchableOpacity
+              key={preset.label}
+              style={[
+                styles.presetChip,
+                allowedExtensions === preset.exts && {
+                  backgroundColor: '#E0F2FE',
+                  borderColor: '#0284C7',
+                },
+              ]}
+              onPress={() => onChangeAllowedExtensions(preset.exts)}
+            >
+              <Text
+                style={[
+                  styles.presetChipText,
+                  allowedExtensions === preset.exts && { color: '#0369A1', fontWeight: '700' },
+                ]}
+              >
+                {preset.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.fileDropPreviewBox}>
+          <Feather name="upload-cloud" size={18} color="#0284C7" />
+          <Text style={styles.fileDropPreviewText}>
+            Drag & drop or browse files ({allowedExtensions || '.pdf, .docx'})
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'date') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Date Field Specification</Text>
+        <Text style={styles.inlineFieldPromptHint}>Expected date format or purpose</Text>
+        <TextInput
+          style={styles.inlineTextInput}
+          placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
+          placeholderTextColor="#94A3B8"
+          value={placeholder}
+          onChangeText={onChangePlaceholder}
+        />
+      </View>
+    );
+  }
+
+  if (normType === 'counter') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Counter Configuration & Constraints</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Numeric counter with interactive + and − increment/decrement controls
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Min Constraint</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. 0"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={minValue}
+              onChangeText={onChangeMinValue}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineFieldLabel}>Max Constraint</Text>
+            <TextInput
+              style={styles.inlineTextInput}
+              placeholder="e.g. 100"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={maxValue}
+              onChangeText={onChangeMaxValue}
+            />
+          </View>
+        </View>
+        <View style={{ marginTop: 6 }}>
+          <Text style={styles.inlineFieldLabel}>Default Starting Value / Placeholder</Text>
+          <TextInput
+            style={styles.inlineTextInput}
+            placeholder="e.g. 0"
+            placeholderTextColor="#94A3B8"
+            keyboardType="numeric"
+            value={placeholder}
+            onChangeText={onChangePlaceholder}
+          />
+        </View>
+        <View style={styles.propertyPreviewBox}>
+          <Text style={styles.propertyPreviewHeader}>INTERACTIVE COUNTER PREVIEW</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 }}>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 6,
+                backgroundColor: '#F1F5F9',
+                borderWidth: 1,
+                borderColor: '#CBD5E1',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#334155' }}>−</Text>
+            </View>
+            <View
+              style={{
+                minWidth: 54,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 6,
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: '#0284C7',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>
+                {placeholder || minValue || '0'}
+              </Text>
+            </View>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 6,
+                backgroundColor: '#0284C7',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF' }}>+</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (normType === 'timer') {
+    return (
+      <View style={styles.inlineOptionsRow}>
+        <Text style={styles.inlineFieldPromptTitle}>Timer Configuration & Controls</Text>
+        <Text style={styles.inlineFieldPromptHint}>
+          Interactive duration timer with Start, Pause, and Stop controls
+        </Text>
+        <View style={{ marginTop: 4 }}>
+          <Text style={styles.inlineFieldLabel}>Timer Display Format / Placeholder</Text>
+          <TextInput
+            style={styles.inlineTextInput}
+            placeholder="e.g. MM:SS or Duration"
+            placeholderTextColor="#94A3B8"
+            value={placeholder}
+            onChangeText={onChangePlaceholder}
+          />
+        </View>
+        <View style={styles.propertyPreviewBox}>
+          <Text style={styles.propertyPreviewHeader}>INTERACTIVE TIMER PREVIEW</Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginTop: 6,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="clock" size={16} color="#0284C7" />
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+                  fontWeight: '700',
+                  color: '#0F172A',
+                }}
+              >
+                00:00
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <View
+                style={{
+                  backgroundColor: '#0284C7',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Start</Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#F59E0B',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Pause</Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#EF4444',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Stop</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  return null;
+};
 
 export default function FormBuilderScreen({
   navigation,
@@ -141,6 +1105,13 @@ export default function FormBuilderScreen({
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const { setDirty } = useUnsavedChanges();
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  usePreventUnsavedNavigation(navigation, isDirty);
+
+  useEffect(() => {
+    setDirty(isDirty);
+    return () => setDirty(false);
+  }, [isDirty, setDirty]);
 
   // Form Metadata State (Editable in accordance with backend configuration)
   const [formId, setFormId] = useState<string>(FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001');
@@ -186,6 +1157,21 @@ export default function FormBuilderScreen({
   const [newFieldRequired, setNewFieldRequired] = useState<boolean>(false);
   const [newFieldSection, setNewFieldSection] = useState<string>('Student Info');
   const [addingToSection, setAddingToSection] = useState<string | null>(null);
+  const [newFieldMinValue, setNewFieldMinValue] = useState<string>('');
+  const [newFieldMaxValue, setNewFieldMaxValue] = useState<string>('');
+  const [newDataModel, setNewDataModel] = useState<string>('custom');
+  const [newOptionList, setNewOptionList] = useState<string[]>([
+    'Option 1',
+    'Option 2',
+    'Option 3',
+  ]);
+  const [newActiveLabel, setNewActiveLabel] = useState<string>('Yes');
+  const [newInactiveLabel, setNewInactiveLabel] = useState<string>('No');
+  const [newPhoneCountryCode, setNewPhoneCountryCode] = useState<string>('+251');
+  const [newAllowCamera, setNewAllowCamera] = useState<boolean>(true);
+  const [newAllowGallery, setNewAllowGallery] = useState<boolean>(true);
+  const [newAllowedExtensions, setNewAllowedExtensions] =
+    useState<string>('.pdf, .docx, .png, .jpg');
 
   // Skill Type / Info Type / Section State
   const [customSections, setCustomSections] = useState<string[]>([]);
@@ -193,7 +1179,7 @@ export default function FormBuilderScreen({
 
   // Multi-Page Navigation State
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [viewAllPages, setViewAllPages] = useState<boolean>(false);
+  const [viewAllPages, setViewAllPages] = useState<boolean>(true);
 
   // Compute canonical pages for active form
   const formPagesList = useMemo(() => {
@@ -202,10 +1188,10 @@ export default function FormBuilderScreen({
 
   const totalPages = Math.max(1, formPagesList.length);
 
-  // Reset to page 1 whenever switching forms
+  // Default to All Pages whenever switching forms
   useEffect(() => {
     setCurrentPage(1);
-    setViewAllPages(false);
+    setViewAllPages(true);
   }, [selectedForm]);
 
   // Keep formPages header string in sync
@@ -230,12 +1216,23 @@ export default function FormBuilderScreen({
   const [editType, setEditType] = useState<string>('Text');
   const [showEditTypeModal, setShowEditTypeModal] = useState<boolean>(false);
   const [editOptions, setEditOptions] = useState<string>('');
+  const [editOptionList, setEditOptionList] = useState<string[]>([]);
   const [editRequired, setEditRequired] = useState<boolean>(false);
   const [editSection, setEditSection] = useState<string>('General');
   const [editLevel, setEditLevel] = useState<string>('');
   const [editPlaceholder, setEditPlaceholder] = useState<string>('');
   const [editHelpText, setEditHelpText] = useState<string>('');
   const [editDefaultValue, setEditDefaultValue] = useState<string>('');
+  const [editMinValue, setEditMinValue] = useState<string>('');
+  const [editMaxValue, setEditMaxValue] = useState<string>('');
+  const [editDataModel, setEditDataModel] = useState<string>('custom');
+  const [editActiveLabel, setEditActiveLabel] = useState<string>('Yes');
+  const [editInactiveLabel, setEditInactiveLabel] = useState<string>('No');
+  const [editPhoneCountryCode, setEditPhoneCountryCode] = useState<string>('+251');
+  const [editAllowCamera, setEditAllowCamera] = useState<boolean>(true);
+  const [editAllowGallery, setEditAllowGallery] = useState<boolean>(true);
+  const [editAllowedExtensions, setEditAllowedExtensions] =
+    useState<string>('.pdf, .docx, .png, .jpg');
 
   // Preview Modal State
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
@@ -641,6 +1638,7 @@ export default function FormBuilderScreen({
     const updatedFields = fields.filter((f) => f.id !== id);
     setFields(updatedFields);
     setIsDefault(false);
+    setIsDirty(true);
     saveFormConfig(selectedForm, {
       fields: updatedFields,
       customSections,
@@ -696,6 +1694,7 @@ export default function FormBuilderScreen({
       }),
     );
     setIsDefault(false);
+    setIsDirty(true);
     showToast('Domain / Target section updated — click Save to persist', 'info');
   };
 
@@ -721,6 +1720,7 @@ export default function FormBuilderScreen({
 
     setFields(updated);
     setIsDefault(false);
+    setIsDirty(true);
     showToast('Field moved up — click Save to persist', 'info');
   };
 
@@ -746,6 +1746,7 @@ export default function FormBuilderScreen({
 
     setFields(updated);
     setIsDefault(false);
+    setIsDirty(true);
     showToast('Field moved down — click Save to persist', 'info');
   };
 
@@ -759,14 +1760,23 @@ export default function FormBuilderScreen({
     const isOptionsType =
       newFieldType === 'Dropdown' ||
       newFieldType === 'Radio' ||
+      newFieldType === 'Checkbox' ||
       newFieldType === 'CheckboxGroup' ||
       newFieldType === 'checkbox_group';
-    const parsedOptions = isOptionsType
-      ? newFieldOptions
+
+    let resolvedOptions: string[] | undefined = undefined;
+    if (isOptionsType) {
+      if (newFieldType === 'Dropdown' && newDataModel && newDataModel !== 'custom') {
+        resolvedOptions = undefined;
+      } else if (newOptionList && newOptionList.length > 0) {
+        resolvedOptions = newOptionList.map((s) => s.trim()).filter(Boolean);
+      } else if (newFieldOptions) {
+        resolvedOptions = newFieldOptions
           .split(',')
           .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined;
+          .filter(Boolean);
+      }
+    }
 
     const effectiveSection = addingToSection ?? newFieldSection;
     const targetSection =
@@ -786,10 +1796,21 @@ export default function FormBuilderScreen({
       visible: true,
       section: targetSection,
       placeholder: newFieldPlaceholder.trim() || undefined,
-      ...(parsedOptions && parsedOptions.length > 0 ? { options: parsedOptions } : {}),
+      options: resolvedOptions && resolvedOptions.length > 0 ? resolvedOptions : undefined,
+      minValue: newFieldMinValue.trim() !== '' ? Number(newFieldMinValue) : undefined,
+      maxValue: newFieldMaxValue.trim() !== '' ? Number(newFieldMaxValue) : undefined,
+      dataModel:
+        newFieldType === 'Dropdown' && newDataModel !== 'custom' ? newDataModel : undefined,
+      activeLabel: newFieldType === 'Switch' ? newActiveLabel : undefined,
+      inactiveLabel: newFieldType === 'Switch' ? newInactiveLabel : undefined,
+      phoneCountryCode: newFieldType === 'Phone' ? newPhoneCountryCode : undefined,
+      allowCamera: newFieldType === 'Image' ? newAllowCamera : undefined,
+      allowGallery: newFieldType === 'Image' ? newAllowGallery : undefined,
+      allowedExtensions: newFieldType === 'File' ? newAllowedExtensions : undefined,
     };
 
     setIsDefault(false);
+    setIsDirty(true);
 
     const today = new Date().toISOString().split('T')[0];
     const newHistoryEntry: HistoryEntry = {
@@ -810,6 +1831,16 @@ export default function FormBuilderScreen({
     setNewFieldOptions('');
     setNewFieldPlaceholder('');
     setNewFieldRequired(false);
+    setNewFieldMinValue('');
+    setNewFieldMaxValue('');
+    setNewDataModel('custom');
+    setNewOptionList(['Option 1', 'Option 2', 'Option 3']);
+    setNewActiveLabel('Yes');
+    setNewInactiveLabel('No');
+    setNewPhoneCountryCode('+1 (US)');
+    setNewAllowCamera(true);
+    setNewAllowGallery(true);
+    setNewAllowedExtensions('.pdf, .docx, .png, .jpg');
     setShowAddFieldBox(false);
     setAddingToSection(null);
 
@@ -828,8 +1859,26 @@ export default function FormBuilderScreen({
   const openEditModal = (field: FormField) => {
     setEditingField(field);
     setEditLabel(field.label);
-    setEditType(field.type);
-    setEditOptions(field.options ? field.options.join(', ') : '');
+    const raw = (field.type || '').toLowerCase().replace(/[\s_-]+/g, '');
+    let matchedType: string = 'Text';
+    if (raw === 'textarea') matchedType = 'TextArea';
+    else if (raw === 'number') matchedType = 'Number';
+    else if (raw === 'date') matchedType = 'Date';
+    else if (raw === 'dropdown') matchedType = 'Dropdown';
+    else if (raw === 'radio') matchedType = 'Radio';
+    else if (raw === 'checkbox' || raw === 'checkboxgroup') matchedType = 'Checkbox';
+    else if (raw === 'switch') matchedType = 'Switch';
+    else if (raw === 'phone') matchedType = 'Phone';
+    else if (raw === 'image' || raw === 'imagepicker') matchedType = 'Image';
+    else if (raw === 'file' || raw === 'fileupload') matchedType = 'File';
+    else {
+      const found = FIELD_TYPES.find((ft) => ft.toLowerCase() === field.type?.toLowerCase());
+      matchedType = found || 'Text';
+    }
+    setEditType(matchedType);
+    const opts = field.options || [];
+    setEditOptions(opts.join(', '));
+    setEditOptionList(opts.length > 0 ? [...opts] : ['Option 1', 'Option 2', 'Option 3']);
     setEditRequired(field.required);
     setEditSection(
       field.section ||
@@ -839,6 +1888,15 @@ export default function FormBuilderScreen({
     setEditPlaceholder(field.placeholder || '');
     setEditHelpText(field.helpText || '');
     setEditDefaultValue(field.defaultValue || '');
+    setEditMinValue(field.minValue !== undefined ? String(field.minValue) : '');
+    setEditMaxValue(field.maxValue !== undefined ? String(field.maxValue) : '');
+    setEditDataModel(field.dataModel || 'custom');
+    setEditActiveLabel(field.activeLabel || 'Yes');
+    setEditInactiveLabel(field.inactiveLabel || 'No');
+    setEditPhoneCountryCode(field.phoneCountryCode || '+251');
+    setEditAllowCamera(field.allowCamera ?? true);
+    setEditAllowGallery(field.allowGallery ?? true);
+    setEditAllowedExtensions(field.allowedExtensions || '.pdf, .docx, .png, .jpg');
   };
 
   const handleSaveEditField = () => {
@@ -851,22 +1909,29 @@ export default function FormBuilderScreen({
     const isOptionsType =
       editType === 'Dropdown' ||
       editType === 'Radio' ||
+      editType === 'Checkbox' ||
       editType === 'CheckboxGroup' ||
       editType === 'checkbox_group';
-    const parsedOptions = isOptionsType
-      ? editOptions
+
+    let resolvedOptions: string[] | undefined = undefined;
+    if (isOptionsType) {
+      if (editType === 'Dropdown' && editDataModel && editDataModel !== 'custom') {
+        resolvedOptions = undefined;
+      } else if (editOptionList && editOptionList.length > 0) {
+        resolvedOptions = editOptionList.map((s) => s.trim()).filter(Boolean);
+      } else if (editOptions) {
+        resolvedOptions = editOptions
           .split(',')
           .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined;
+          .filter(Boolean);
+      }
+    }
 
     const allPresets = getPresetsForForm(selectedForm);
     const selectedPreset = allPresets.find((p) => p.label === editLevel);
-    const resolvedOptions = selectedPreset
-      ? selectedPreset.options
-      : isOptionsType
-        ? parsedOptions
-        : undefined;
+    if (selectedPreset) {
+      resolvedOptions = selectedPreset.options;
+    }
 
     const updatedFields = fields.map((f) =>
       f.id === editingField.id
@@ -881,6 +1946,16 @@ export default function FormBuilderScreen({
             placeholder: editPlaceholder.trim() || undefined,
             helpText: editHelpText.trim() || undefined,
             defaultValue: editDefaultValue.trim() || undefined,
+            minValue: editMinValue.trim() !== '' ? Number(editMinValue) : undefined,
+            maxValue: editMaxValue.trim() !== '' ? Number(editMaxValue) : undefined,
+            dataModel:
+              editType === 'Dropdown' && editDataModel !== 'custom' ? editDataModel : undefined,
+            activeLabel: editType === 'Switch' ? editActiveLabel : undefined,
+            inactiveLabel: editType === 'Switch' ? editInactiveLabel : undefined,
+            phoneCountryCode: editType === 'Phone' ? editPhoneCountryCode : undefined,
+            allowCamera: editType === 'Image' ? editAllowCamera : undefined,
+            allowGallery: editType === 'Image' ? editAllowGallery : undefined,
+            allowedExtensions: editType === 'File' ? editAllowedExtensions : undefined,
           }
         : f,
     );
@@ -892,13 +1967,14 @@ export default function FormBuilderScreen({
       user: 'Admin A',
       field: trimmedLabel,
       oldValue: `${editingField.label} (${editingField.options?.join('/') || 'None'})`,
-      newValue: `Updated (${editType} - ${parsedOptions?.join('/') || 'None'})`,
+      newValue: `Updated (${editType} - ${resolvedOptions?.join('/') || 'None'})`,
     };
     const updatedHistory = [newHistoryEntry, ...history];
     setHistory(updatedHistory);
 
     setEditingField(null);
     setIsDefault(false);
+    setIsDirty(true);
 
     // Auto-save immediately
     saveFormConfig(selectedForm, {
@@ -922,6 +1998,7 @@ export default function FormBuilderScreen({
       }),
     );
     setIsDefault(false);
+    setIsDirty(true);
     showToast(`Applied preset options to items — click Save to persist`, 'success');
   };
 
@@ -955,6 +2032,7 @@ export default function FormBuilderScreen({
         },
       });
       setDirty(false);
+      setIsDirty(false);
       await load();
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
     } catch (err) {
@@ -1702,6 +2780,7 @@ export default function FormBuilderScreen({
                                     placeholderTextColor="#94A3B8"
                                     value={newFieldLabel}
                                     onChangeText={(val: string) => setNewFieldLabel(val)}
+                                    onSubmitEditing={handleConfirmAddField}
                                   />
                                 </View>
                                 <View style={styles.inlineToggleCol}>
@@ -1716,270 +2795,34 @@ export default function FormBuilderScreen({
                                 </View>
                               </View>
 
-                              {/* Dropdown Input Specification */}
-                              {newFieldType === 'Dropdown' && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <View
-                                    style={{
-                                      flexDirection: 'row',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      marginBottom: 4,
-                                    }}
-                                  >
-                                    <Text style={styles.inlineFieldPromptTitle}>
-                                      What are the dropdown options going to be?
-                                    </Text>
-                                    <View style={styles.presetChipsRow}>
-                                      {getPresetsForForm(selectedForm).map((p) => (
-                                        <TouchableOpacity
-                                          key={p.short}
-                                          style={styles.presetChip}
-                                          onPress={() => setNewFieldOptions(p.options.join(', '))}
-                                        >
-                                          <Text style={styles.presetChipText}>{p.short}</Text>
-                                        </TouchableOpacity>
-                                      ))}
-                                    </View>
-                                  </View>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Enter choices separated by comma (e.g. Option 1, Option 2,
-                                    Option 3)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Low, Medium, High or Option 1, Option 2, Option 3"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldOptions}
-                                    onChangeText={(val: string) => setNewFieldOptions(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* Radio Input Specification */}
-                              {newFieldType === 'Radio' && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <View
-                                    style={{
-                                      flexDirection: 'row',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      marginBottom: 4,
-                                    }}
-                                  >
-                                    <Text style={styles.inlineFieldPromptTitle}>
-                                      What are the radio choices going to be?
-                                    </Text>
-                                    <View style={styles.presetChipsRow}>
-                                      {getPresetsForForm(selectedForm).map((p) => (
-                                        <TouchableOpacity
-                                          key={p.short}
-                                          style={styles.presetChip}
-                                          onPress={() => setNewFieldOptions(p.options.join(', '))}
-                                        >
-                                          <Text style={styles.presetChipText}>{p.short}</Text>
-                                        </TouchableOpacity>
-                                      ))}
-                                    </View>
-                                  </View>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Enter choices separated by comma (e.g. Yes, No, N/A)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldOptions}
-                                    onChangeText={(val: string) => setNewFieldOptions(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* Number Input Specification */}
-                              {newFieldType === 'Number' && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    What is the number input going to be?
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Specify expected format, range, or units (e.g. Score 0-100, Age
-                                    in years, Count of trials, Duration in min)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in min"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* Date Input Specification */}
-                              {newFieldType === 'Date' && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    What is the date input going to be?
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Specify date format or purpose (e.g. Assessment Date, Target
-                                    Completion Date, YYYY-MM-DD)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* File Input Specification */}
-                              {newFieldType === 'File' && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    What is the file input going to be?
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Specify expected document or attachment (e.g. PDF Medical
-                                    Report, Consent Form, Evaluation Image)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* Text Input Specification */}
-                              {newFieldType === 'Text' && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    Input placeholder / hint (optional)
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Guidance shown inside the text input
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Enter notes, observations, or student details..."
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* TextArea Input Specification */}
-                              {(newFieldType === 'TextArea' || newFieldType === 'textarea') && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    Multiline Text Area Guidance
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Placeholder shown for expansive comments or observations
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Enter comprehensive clinical notes, observations..."
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* CheckboxGroup Input Specification */}
-                              {(newFieldType === 'CheckboxGroup' ||
-                                newFieldType === 'checkbox_group') && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    What are the checkbox options going to be?
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Enter choices separated by comma (e.g. Option 1, Option 2,
-                                    Option 3)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Tactile, Visual, Auditory, Movement"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldOptions}
-                                    onChangeText={(val: string) => setNewFieldOptions(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* Phone Input Specification */}
-                              {(newFieldType === 'Phone' || newFieldType === 'phone') && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    Phone Number Format Placeholder
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Guidance shown inside the phone input
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. (555) 000-0000 or +1 555-0199"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* ImagePicker Input Specification */}
-                              {(newFieldType === 'ImagePicker' ||
-                                newFieldType === 'image_picker') && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    Image / Photo Capture Specification
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Specify image requirements (e.g. Child Headshot, Clinical
-                                    Baseline Photo)
-                                  </Text>
-                                  <TextInput
-                                    style={styles.inlineTextInput}
-                                    placeholder="e.g. Child Identification Headshot Photo"
-                                    placeholderTextColor="#94A3B8"
-                                    value={newFieldPlaceholder}
-                                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                                  />
-                                </View>
-                              )}
-
-                              {/* Switch Input Specification */}
-                              {(newFieldType === 'Switch' || newFieldType === 'switch') && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    Boolean Switch Toggle (Yes/No)
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Renders an interactive mobile toggle switch
-                                  </Text>
-                                </View>
-                              )}
-
-                              {/* SectionHeader / Divider Specification */}
-                              {(newFieldType === 'SectionHeader' ||
-                                newFieldType === 'Divider' ||
-                                newFieldType === 'section_header' ||
-                                newFieldType === 'divider') && (
-                                <View style={styles.inlineOptionsRow}>
-                                  <Text style={styles.inlineFieldPromptTitle}>
-                                    Visual Layout Separator
-                                  </Text>
-                                  <Text style={styles.inlineFieldPromptHint}>
-                                    Renders a non-input heading or divider rule to organize criteria
-                                  </Text>
-                                </View>
-                              )}
+                              <FieldPropertyEditor
+                                fieldType={newFieldType}
+                                selectedForm={selectedForm}
+                                placeholder={newFieldPlaceholder}
+                                onChangePlaceholder={setNewFieldPlaceholder}
+                                minValue={newFieldMinValue}
+                                onChangeMinValue={setNewFieldMinValue}
+                                maxValue={newFieldMaxValue}
+                                onChangeMaxValue={setNewFieldMaxValue}
+                                dataModel={newDataModel}
+                                onChangeDataModel={setNewDataModel}
+                                options={newFieldOptions}
+                                onChangeOptions={setNewFieldOptions}
+                                optionList={newOptionList}
+                                onChangeOptionList={setNewOptionList}
+                                activeLabel={newActiveLabel}
+                                onChangeActiveLabel={setNewActiveLabel}
+                                inactiveLabel={newInactiveLabel}
+                                onChangeInactiveLabel={setNewInactiveLabel}
+                                phoneCountryCode={newPhoneCountryCode}
+                                onChangePhoneCountryCode={setNewPhoneCountryCode}
+                                allowCamera={newAllowCamera}
+                                onChangeAllowCamera={setNewAllowCamera}
+                                allowGallery={newAllowGallery}
+                                onChangeAllowGallery={setNewAllowGallery}
+                                allowedExtensions={newAllowedExtensions}
+                                onChangeAllowedExtensions={setNewAllowedExtensions}
+                              />
                               <View style={styles.inlineButtonRow}>
                                 <TouchableOpacity
                                   style={styles.confirmAddBtn}
@@ -2276,6 +3119,7 @@ export default function FormBuilderScreen({
                     placeholderTextColor="#94A3B8"
                     value={newFieldLabel}
                     onChangeText={(val: string) => setNewFieldLabel(val)}
+                    onSubmitEditing={handleConfirmAddField}
                   />
                 </View>
 
@@ -2318,257 +3162,34 @@ export default function FormBuilderScreen({
                 </View>
               )}
 
-              {/* Dropdown Input Specification */}
-              {newFieldType === 'Dropdown' && (
-                <View style={styles.inlineOptionsRow}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Text style={styles.inlineFieldPromptTitle}>
-                      What are the dropdown options going to be?
-                    </Text>
-                    <View style={styles.presetChipsRow}>
-                      {getPresetsForForm(selectedForm).map((p) => (
-                        <TouchableOpacity
-                          key={p.short}
-                          style={styles.presetChip}
-                          onPress={() => setNewFieldOptions(p.options.join(', '))}
-                        >
-                          <Text style={styles.presetChipText}>{p.short}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Option 1, Option 2, Option 3 or Low, Medium, High"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldOptions}
-                    onChangeText={(val: string) => setNewFieldOptions(val)}
-                  />
-                </View>
-              )}
-
-              {/* Radio Input Specification */}
-              {newFieldType === 'Radio' && (
-                <View style={styles.inlineOptionsRow}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Text style={styles.inlineFieldPromptTitle}>
-                      What are the radio choices going to be?
-                    </Text>
-                    <View style={styles.presetChipsRow}>
-                      {getPresetsForForm(selectedForm).map((p) => (
-                        <TouchableOpacity
-                          key={p.short}
-                          style={styles.presetChip}
-                          onPress={() => setNewFieldOptions(p.options.join(', '))}
-                        >
-                          <Text style={styles.presetChipText}>{p.short}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Enter choices separated by comma (e.g. Yes, No, N/A)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldOptions}
-                    onChangeText={(val: string) => setNewFieldOptions(val)}
-                  />
-                </View>
-              )}
-
-              {/* Number Input Specification */}
-              {newFieldType === 'Number' && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What is the number input going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count
-                    of trials, Duration in min)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in minutes"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* Date Input Specification */}
-              {newFieldType === 'Date' && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What is the date input going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify date format or purpose (e.g. Assessment Date, Target Completion Date,
-                    YYYY-MM-DD)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* File Input Specification */}
-              {newFieldType === 'File' && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What is the file input going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify expected document or attachment (e.g. PDF Medical Report, Consent Form,
-                    Evaluation Image)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* Text Input Specification */}
-              {newFieldType === 'Text' && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    Input placeholder / hint (optional)
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Guidance shown inside the text input
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Enter notes, observations, or student details..."
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* TextArea Input Specification */}
-              {(newFieldType === 'TextArea' || newFieldType === 'textarea') && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>Multiline Text Area Guidance</Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Placeholder shown for expansive comments or observations
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Enter comprehensive clinical notes, observations..."
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* CheckboxGroup Input Specification */}
-              {(newFieldType === 'CheckboxGroup' || newFieldType === 'checkbox_group') && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What are the checkbox options going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Tactile, Visual, Auditory, Movement"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldOptions}
-                    onChangeText={(val: string) => setNewFieldOptions(val)}
-                  />
-                </View>
-              )}
-
-              {/* Phone Input Specification */}
-              {(newFieldType === 'Phone' || newFieldType === 'phone') && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>Phone Number Format Placeholder</Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Guidance shown inside the phone input
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. (555) 000-0000 or +1 555-0199"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* ImagePicker Input Specification */}
-              {(newFieldType === 'ImagePicker' || newFieldType === 'image_picker') && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    Image / Photo Capture Specification
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify image requirements (e.g. Child Headshot, Clinical Baseline Photo)
-                  </Text>
-                  <TextInput
-                    style={styles.inlineTextInput}
-                    placeholder="e.g. Child Identification Headshot Photo"
-                    placeholderTextColor="#94A3B8"
-                    value={newFieldPlaceholder}
-                    onChangeText={(val: string) => setNewFieldPlaceholder(val)}
-                  />
-                </View>
-              )}
-
-              {/* Switch Input Specification */}
-              {(newFieldType === 'Switch' || newFieldType === 'switch') && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>Boolean Switch Toggle (Yes/No)</Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Renders an interactive mobile toggle switch
-                  </Text>
-                </View>
-              )}
-
-              {/* SectionHeader / Divider Specification */}
-              {(newFieldType === 'SectionHeader' ||
-                newFieldType === 'Divider' ||
-                newFieldType === 'section_header' ||
-                newFieldType === 'divider') && (
-                <View style={styles.inlineOptionsRow}>
-                  <Text style={styles.inlineFieldPromptTitle}>Visual Layout Separator</Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Renders a non-input heading or divider rule to organize criteria
-                  </Text>
-                </View>
-              )}
+              <FieldPropertyEditor
+                fieldType={newFieldType}
+                selectedForm={selectedForm}
+                placeholder={newFieldPlaceholder}
+                onChangePlaceholder={setNewFieldPlaceholder}
+                minValue={newFieldMinValue}
+                onChangeMinValue={setNewFieldMinValue}
+                maxValue={newFieldMaxValue}
+                onChangeMaxValue={setNewFieldMaxValue}
+                dataModel={newDataModel}
+                onChangeDataModel={setNewDataModel}
+                options={newFieldOptions}
+                onChangeOptions={setNewFieldOptions}
+                optionList={newOptionList}
+                onChangeOptionList={setNewOptionList}
+                activeLabel={newActiveLabel}
+                onChangeActiveLabel={setNewActiveLabel}
+                inactiveLabel={newInactiveLabel}
+                onChangeInactiveLabel={setNewInactiveLabel}
+                phoneCountryCode={newPhoneCountryCode}
+                onChangePhoneCountryCode={setNewPhoneCountryCode}
+                allowCamera={newAllowCamera}
+                onChangeAllowCamera={setNewAllowCamera}
+                allowGallery={newAllowGallery}
+                onChangeAllowGallery={setNewAllowGallery}
+                allowedExtensions={newAllowedExtensions}
+                onChangeAllowedExtensions={setNewAllowedExtensions}
+              />
 
               <View style={styles.inlineButtonRow}>
                 <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddField}>
@@ -2749,6 +3370,9 @@ export default function FormBuilderScreen({
         selectedForm={selectedForm}
         currentFields={fields}
         history={history}
+        formId={formId}
+        formRevision={formRevision}
+        formName={formName}
         onClose={() => setShowTemplateVersionModal(false)}
         onReuseTemplate={(tplName, tplFields) => {
           setFields(tplFields);
@@ -2756,11 +3380,9 @@ export default function FormBuilderScreen({
           setDirty(true);
           showToast(`Loaded ${tplName} into canvas`, 'info');
         }}
-        onImportJson={(importedFields) => {
-          setFields(importedFields);
-          setIsDefault(false);
+        onImportPdf={(file) => {
           setDirty(true);
-          showToast(`Imported ${importedFields.length} fields into canvas`, 'success');
+          showToast(`Attached ${file.name} to form specifications`, 'success');
         }}
       />
 
@@ -2793,6 +3415,7 @@ export default function FormBuilderScreen({
                   style={styles.inlineTextInput}
                   value={editLabel}
                   onChangeText={(val) => setEditLabel(val)}
+                  onSubmitEditing={handleSaveEditField}
                   placeholder="e.g. A1: Matches identical objects"
                   placeholderTextColor="#94A3B8"
                 />
@@ -2804,7 +3427,7 @@ export default function FormBuilderScreen({
                 <Text style={styles.inlineFieldLabel}>Field Type</Text>
                 <View style={styles.typeSelectorRow}>
                   {FIELD_TYPES.map((type) => {
-                    const isSelected = editType === type;
+                    const isSelected = editType.toLowerCase() === type.toLowerCase();
                     return (
                       <TouchableOpacity
                         key={type}
@@ -2858,83 +3481,34 @@ export default function FormBuilderScreen({
                 </View>
               )}
 
-              {/* Dropdown Options */}
-              {editType === 'Dropdown' && (
-                <View style={styles.editFormGroup}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Text style={styles.inlineFieldPromptTitle}>
-                      What are the dropdown options going to be?
-                    </Text>
-                    <View style={styles.presetChipsRow}>
-                      {getPresetsForForm(selectedForm).map((p) => (
-                        <TouchableOpacity
-                          key={p.short}
-                          style={styles.presetChip}
-                          onPress={() => setEditOptions(p.options.join(', '))}
-                        >
-                          <Text style={styles.presetChipText}>{p.short}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Enter choices separated by comma (e.g. Option 1, Option 2, Option 3)
-                  </Text>
-                  <TextInput
-                    style={[styles.inlineTextInput, { height: 40 }]}
-                    value={editOptions}
-                    onChangeText={(val) => setEditOptions(val)}
-                    placeholder="e.g. Option 1, Option 2, Option 3 or Low, Medium, High"
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              )}
-
-              {/* Radio Choices */}
-              {editType === 'Radio' && (
-                <View style={styles.editFormGroup}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Text style={styles.inlineFieldPromptTitle}>
-                      What are the radio choices going to be?
-                    </Text>
-                    <View style={styles.presetChipsRow}>
-                      {getPresetsForForm(selectedForm).map((p) => (
-                        <TouchableOpacity
-                          key={p.short}
-                          style={styles.presetChip}
-                          onPress={() => setEditOptions(p.options.join(', '))}
-                        >
-                          <Text style={styles.presetChipText}>{p.short}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Enter choices separated by comma (e.g. Yes, No, N/A)
-                  </Text>
-                  <TextInput
-                    style={[styles.inlineTextInput, { height: 40 }]}
-                    value={editOptions}
-                    onChangeText={(val) => setEditOptions(val)}
-                    placeholder="e.g. Yes, No or 0 — Never, 1 — Emerging, 2 — Mastered"
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              )}
+              <FieldPropertyEditor
+                fieldType={editType}
+                selectedForm={selectedForm}
+                placeholder={editPlaceholder}
+                onChangePlaceholder={setEditPlaceholder}
+                minValue={editMinValue}
+                onChangeMinValue={setEditMinValue}
+                maxValue={editMaxValue}
+                onChangeMaxValue={setEditMaxValue}
+                dataModel={editDataModel}
+                onChangeDataModel={setEditDataModel}
+                options={editOptions}
+                onChangeOptions={setEditOptions}
+                optionList={editOptionList}
+                onChangeOptionList={setEditOptionList}
+                activeLabel={editActiveLabel}
+                onChangeActiveLabel={setEditActiveLabel}
+                inactiveLabel={editInactiveLabel}
+                onChangeInactiveLabel={setEditInactiveLabel}
+                phoneCountryCode={editPhoneCountryCode}
+                onChangePhoneCountryCode={setEditPhoneCountryCode}
+                allowCamera={editAllowCamera}
+                onChangeAllowCamera={setEditAllowCamera}
+                allowGallery={editAllowGallery}
+                onChangeAllowGallery={setEditAllowGallery}
+                allowedExtensions={editAllowedExtensions}
+                onChangeAllowedExtensions={setEditAllowedExtensions}
+              />
 
               {/* Scoring Scale Preset — ONLY on ABLLS Assessment Form */}
               {selectedForm === 'ABLLS Assessment Form' && (
@@ -2958,6 +3532,7 @@ export default function FormBuilderScreen({
                             setEditLevel(isDeselecting ? '' : p.label);
                             if (!isDeselecting) {
                               setEditOptions(p.options.join(', '));
+                              setEditOptionList(p.options);
                             }
                           }}
                         >
@@ -2981,85 +3556,6 @@ export default function FormBuilderScreen({
                 </View>
               )}
 
-              {/* Number Input Specification */}
-              {editType === 'Number' && (
-                <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What is the number input going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify expected format, range, or units (e.g. Score 0-100, Age in years, Count
-                    of trials, Duration in min)
-                  </Text>
-                  <TextInput
-                    style={[styles.inlineTextInput, { height: 40 }]}
-                    value={editPlaceholder}
-                    onChangeText={(val) => setEditPlaceholder(val)}
-                    placeholder="e.g. Score (0-100), Age in years, Count of trials, Duration in minutes"
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              )}
-
-              {/* Date Input Specification */}
-              {editType === 'Date' && (
-                <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What is the date input going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify date format or purpose (e.g. Assessment Date, Target Completion Date,
-                    YYYY-MM-DD)
-                  </Text>
-                  <TextInput
-                    style={[styles.inlineTextInput, { height: 40 }]}
-                    value={editPlaceholder}
-                    onChangeText={(val) => setEditPlaceholder(val)}
-                    placeholder="e.g. Assessment Date, Target Goal Date, YYYY-MM-DD"
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              )}
-
-              {/* File Input Specification */}
-              {editType === 'File' && (
-                <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    What is the file input going to be?
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Specify expected document or attachment (e.g. PDF Medical Report, Consent Form,
-                    Evaluation Image)
-                  </Text>
-                  <TextInput
-                    style={[styles.inlineTextInput, { height: 40 }]}
-                    value={editPlaceholder}
-                    onChangeText={(val) => setEditPlaceholder(val)}
-                    placeholder="e.g. PDF Medical Report, Signed IEP Document, Evaluation Image"
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              )}
-
-              {/* Text Input Specification */}
-              {editType === 'Text' && (
-                <View style={styles.editFormGroup}>
-                  <Text style={styles.inlineFieldPromptTitle}>
-                    Input placeholder / hint (optional)
-                  </Text>
-                  <Text style={styles.inlineFieldPromptHint}>
-                    Guidance shown inside the text input
-                  </Text>
-                  <TextInput
-                    style={[styles.inlineTextInput, { height: 40 }]}
-                    value={editPlaceholder}
-                    onChangeText={(val) => setEditPlaceholder(val)}
-                    placeholder="e.g. Enter notes, observations, or student details..."
-                    placeholderTextColor="#94A3B8"
-                  />
-                </View>
-              )}
-
               {/* Field Properties: Help Text */}
               <View style={styles.editFormGroup}>
                 <Text style={styles.inlineFieldLabel}>Help Text</Text>
@@ -3067,6 +3563,7 @@ export default function FormBuilderScreen({
                   style={[styles.inlineTextInput, { height: 38 }]}
                   value={editHelpText}
                   onChangeText={(val) => setEditHelpText(val)}
+                  onSubmitEditing={handleSaveEditField}
                   placeholder="e.g. Guidance for therapist during evaluation session"
                   placeholderTextColor="#94A3B8"
                 />
@@ -3079,6 +3576,7 @@ export default function FormBuilderScreen({
                   style={[styles.inlineTextInput, { height: 38 }]}
                   value={editDefaultValue}
                   onChangeText={(val) => setEditDefaultValue(val)}
+                  onSubmitEditing={handleSaveEditField}
                   placeholder="e.g. N/A or initial preset value"
                   placeholderTextColor="#94A3B8"
                 />
@@ -3127,7 +3625,10 @@ export default function FormBuilderScreen({
             {FIELD_TYPES.map((type) => (
               <TouchableOpacity
                 key={type}
-                style={[styles.dropdownOption, editType === type && styles.dropdownOptionActive]}
+                style={[
+                  styles.dropdownOption,
+                  editType.toLowerCase() === type.toLowerCase() && styles.dropdownOptionActive,
+                ]}
                 onPress={() => {
                   setEditType(type);
                   setShowEditTypeModal(false);
@@ -3136,7 +3637,8 @@ export default function FormBuilderScreen({
                 <Text
                   style={[
                     styles.dropdownOptionText,
-                    editType === type && styles.dropdownOptionTextActive,
+                    editType.toLowerCase() === type.toLowerCase() &&
+                      styles.dropdownOptionTextActive,
                   ]}
                 >
                   {type}
@@ -3204,6 +3706,7 @@ export default function FormBuilderScreen({
                   style={styles.inlineTextInput}
                   value={newSkillTypeName}
                   onChangeText={setNewSkillTypeName}
+                  onSubmitEditing={handleCreateSkillType}
                   placeholder="e.g. Visual Imitation, Cognitive Skills, Play & Leisure..."
                   placeholderTextColor="#94A3B8"
                   autoFocus
@@ -3316,6 +3819,7 @@ export default function FormBuilderScreen({
                   style={styles.inlineTextInput}
                   value={newInfoTypeName}
                   onChangeText={setNewInfoTypeName}
+                  onSubmitEditing={handleCreateInfoType}
                   placeholder="e.g. Emergency Contact Info, Insurance & Billing..."
                   placeholderTextColor="#94A3B8"
                   autoFocus
@@ -3396,6 +3900,7 @@ export default function FormBuilderScreen({
                   style={styles.inlineTextInput}
                   value={editSkillTypeName}
                   onChangeText={setEditSkillTypeName}
+                  onSubmitEditing={handleSaveEditSkillType}
                   placeholder={
                     selectedForm === 'Enrollment Wizard'
                       ? 'Enter info type name...'
@@ -4358,5 +4863,175 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#2563EB',
+  },
+  propertyPreviewBox: {
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  propertyPreviewHeader: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  textareaPreviewBox: {
+    height: 50,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    padding: 8,
+    justifyContent: 'center',
+  },
+  textareaPreviewText: {
+    fontSize: 12,
+    color: '#334155',
+  },
+  numericValidationNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginVertical: 4,
+  },
+  numericValidationNoticeText: {
+    fontSize: 11,
+    color: '#1D4ED8',
+    fontWeight: '500',
+  },
+  dataModelSelectorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginVertical: 6,
+  },
+  dataModelActiveNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 10,
+    marginVertical: 4,
+  },
+  dataModelActiveNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E40AF',
+  },
+  dataModelActiveNoticeSub: {
+    fontSize: 11,
+    color: '#3B82F6',
+    marginTop: 2,
+  },
+  addOptionRowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  addOptionRowBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  dynamicOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  dynamicOptionIndexBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dynamicOptionIndexText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  deleteOptionBtn: {
+    padding: 6,
+  },
+  checkboxMockBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#0284C7',
+    backgroundColor: '#E0F2FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioMockCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioMockInnerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0284C7',
+  },
+  captureToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#CBD5E1',
+  },
+  captureToggleBtnActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  captureToggleBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  captureToggleBtnTextActive: {
+    color: '#0284C7',
+  },
+  fileDropPreviewBox: {
+    marginTop: 6,
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    gap: 4,
+  },
+  fileDropPreviewText: {
+    fontSize: 11,
+    color: '#475569',
   },
 });

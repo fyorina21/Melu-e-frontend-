@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Switch,
   Image,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -26,6 +27,10 @@ export interface DynamicFormField {
     | 'Radio'
     | 'TextArea'
     | 'File'
+    | 'Counter'
+    | 'Timer'
+    | 'counter'
+    | 'timer'
     | 'textarea'
     | 'checkbox_group'
     | 'CheckboxGroup'
@@ -53,6 +58,158 @@ export interface DynamicFormField {
   validation?: any;
   is_display_only?: boolean;
 }
+
+const InteractiveCounterField: React.FC<{
+  field: DynamicFormField;
+  value: any;
+  onChange: (fieldIdOrLabel: string, value: any) => void;
+}> = ({ field, value, onChange }) => {
+  const minVal = Number(field.ui_props?.min_value ?? field.validation?.min_value ?? 0);
+  const maxVal = Number(field.ui_props?.max_value ?? field.validation?.max_value ?? 9999);
+  const step = Number(field.ui_props?.step ?? 1);
+  const currentNum =
+    typeof value === 'number' ? value : parseInt(value, 10) || (minVal >= 0 ? minVal : 0);
+
+  const handleUpdate = (next: number) => {
+    const clamped = Math.min(maxVal, Math.max(minVal, next));
+    onChange(field.id, clamped);
+    onChange(field.label, clamped);
+  };
+
+  return (
+    <View key={field.id} style={styles.field}>
+      <Text style={typography.label}>
+        {field.label} {field.required && <Text style={styles.required}>*</Text>}
+      </Text>
+      {Boolean(field.helpText || field.help_text) && (
+        <Text style={styles.fieldSpecText}>{field.helpText || field.help_text}</Text>
+      )}
+      <View style={styles.counterContainer}>
+        <TouchableOpacity
+          style={[styles.counterBtn, currentNum <= minVal && styles.counterBtnDisabled]}
+          disabled={currentNum <= minVal}
+          onPress={() => handleUpdate(currentNum - step)}
+          accessibilityRole="button"
+          accessibilityLabel={`Decrease ${field.label}`}
+        >
+          <Feather name="minus" size={18} color={currentNum <= minVal ? '#94A3B8' : '#0284C7'} />
+        </TouchableOpacity>
+        <View style={styles.counterDisplayBox}>
+          <Text style={styles.counterDisplayText}>{currentNum}</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.counterBtn, currentNum >= maxVal && styles.counterBtnDisabled]}
+          disabled={currentNum >= maxVal}
+          onPress={() => handleUpdate(currentNum + step)}
+          accessibilityRole="button"
+          accessibilityLabel={`Increase ${field.label}`}
+        >
+          <Feather name="plus" size={18} color={currentNum >= maxVal ? '#94A3B8' : '#0284C7'} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+const InteractiveTimerField: React.FC<{
+  field: DynamicFormField;
+  value: any;
+  onChange: (fieldIdOrLabel: string, value: any) => void;
+}> = ({ field, value, onChange }) => {
+  const [seconds, setSeconds] = useState<number>(() => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string' && value.includes(':')) {
+      const parts = value.split(':').map((p) => parseInt(p, 10) || 0);
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+  });
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+
+  useEffect(() => {
+    let timer: any = null;
+    if (isRunning) {
+      timer = setInterval(() => {
+        setSeconds((prev) => {
+          const next = prev + 1;
+          const mins = String(Math.floor(next / 60)).padStart(2, '0');
+          const secs = String(next % 60).padStart(2, '0');
+          const formatted = `${mins}:${secs}`;
+          onChange(field.id, formatted);
+          onChange(field.label, formatted);
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isRunning, field.id, field.label, onChange]);
+
+  const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const secs = String(seconds % 60).padStart(2, '0');
+  const displayFormatted = `${mins}:${secs}`;
+
+  const handleStart = () => setIsRunning(true);
+  const handlePause = () => setIsRunning(false);
+  const handleStop = () => {
+    setIsRunning(false);
+    setSeconds(0);
+    onChange(field.id, '00:00');
+    onChange(field.label, '00:00');
+  };
+
+  return (
+    <View key={field.id} style={styles.field}>
+      <Text style={typography.label}>
+        {field.label} {field.required && <Text style={styles.required}>*</Text>}
+      </Text>
+      {Boolean(field.helpText || field.help_text) && (
+        <Text style={styles.fieldSpecText}>{field.helpText || field.help_text}</Text>
+      )}
+      <View style={styles.timerContainer}>
+        <View style={styles.timerDisplay}>
+          <Feather name="clock" size={18} color="#0284C7" />
+          <Text style={styles.timerClockText}>{displayFormatted}</Text>
+          {isRunning && <View style={styles.timerLiveDot} />}
+        </View>
+        <View style={styles.timerControlsRow}>
+          {!isRunning ? (
+            <TouchableOpacity
+              style={[styles.timerControlBtn, styles.timerStartBtn]}
+              onPress={handleStart}
+              accessibilityRole="button"
+              accessibilityLabel={`Start timer for ${field.label}`}
+            >
+              <Feather name="play" size={13} color="#FFFFFF" />
+              <Text style={styles.timerControlBtnText}>Start</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.timerControlBtn, styles.timerPauseBtn]}
+              onPress={handlePause}
+              accessibilityRole="button"
+              accessibilityLabel={`Pause timer for ${field.label}`}
+            >
+              <Feather name="pause" size={13} color="#FFFFFF" />
+              <Text style={styles.timerControlBtnText}>Pause</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.timerControlBtn, styles.timerStopBtn]}
+            onPress={handleStop}
+            accessibilityRole="button"
+            accessibilityLabel={`Stop and reset timer for ${field.label}`}
+          >
+            <Feather name="square" size={13} color="#FFFFFF" />
+            <Text style={styles.timerControlBtnText}>Stop</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+};
 
 interface DynamicFormFieldsProps {
   formName: string;
@@ -326,7 +483,11 @@ export default function DynamicFormFields({
           );
         }
 
-        if (normType === 'checkbox_group') {
+        const hasCustomOptions = Array.isArray(field.options)
+          ? field.options.length > 0
+          : Boolean(field.options);
+
+        if (normType === 'checkbox_group' || (normType === 'checkbox' && hasCustomOptions)) {
           const selectedVals: string[] = Array.isArray(val) ? val : [];
           return (
             <View key={field.id} style={styles.field}>
@@ -408,23 +569,20 @@ export default function DynamicFormFields({
                 {field.label} {field.required && <Text style={styles.required}>*</Text>}
               </Text>
               <View style={styles.phoneInputRow}>
-                <Feather
-                  name="phone"
-                  size={15}
-                  color={colors.mutedText}
-                  style={{ marginRight: 8 }}
-                />
+                <View style={styles.ethiopiaBadge}>
+                  <Text style={styles.ethiopiaBadgeText}>🇪🇹 +251</Text>
+                </View>
                 <TextInput
-                  style={[styles.input, { flex: 1, borderWidth: 0, paddingHorizontal: 0 }]}
+                  style={[styles.input, { flex: 1, borderWidth: 0, paddingHorizontal: 6 }]}
                   value={String(val !== undefined && val !== null ? val : '')}
-                  placeholder={field.placeholder || '+1 (555) 000-0000'}
+                  placeholder={field.placeholder || '91 234 5678'}
                   placeholderTextColor={colors.mutedText}
                   keyboardType="phone-pad"
                   textContentType="telephoneNumber"
                   accessibilityLabel={field.label}
                   aria-label={field.label}
                   onChangeText={(text) => {
-                    const cleaned = text.replace(/[^0-9+() -]/g, '');
+                    const cleaned = text.replace(/[^0-9 ]/g, '');
                     onChange(field.id, cleaned);
                     onChange(field.label, cleaned);
                   }}
@@ -434,7 +592,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (normType === 'image_picker') {
+        if (normType === 'image_picker' || normType === 'image') {
           const imgUri = typeof val === 'string' && val.length > 0 ? val : null;
           return (
             <View key={field.id} style={styles.field}>
@@ -467,7 +625,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'Checkbox') {
+        if (normType === 'checkbox') {
           const isChecked = Boolean(val);
           return (
             <TouchableOpacity
@@ -493,7 +651,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'Radio') {
+        if (normType === 'radio') {
           return (
             <View
               key={field.id}
@@ -535,7 +693,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'File') {
+        if (normType === 'file' || normType === 'fileupload' || normType === 'file_upload') {
           return (
             <View key={field.id} style={styles.field}>
               <Text style={typography.label}>
@@ -568,7 +726,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'Dropdown') {
+        if (normType === 'dropdown' || normType === 'select') {
           const isOpen = openDropdownId === field.id;
 
           return (
@@ -625,7 +783,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'Number') {
+        if (normType === 'number') {
           return (
             <View key={field.id} style={styles.field}>
               <Text style={typography.label}>
@@ -653,29 +811,57 @@ export default function DynamicFormFields({
           );
         }
 
-        if (field.type === 'Date') {
+        if (normType === 'date') {
           return (
             <View key={field.id} style={styles.field}>
               <Text style={typography.label}>
                 {field.label} {field.required && <Text style={styles.required}>*</Text>}
               </Text>
-              <TextInput
-                style={styles.input}
-                value={String(val !== undefined && val !== null ? val : '')}
-                placeholder={field.placeholder || 'YYYY-MM-DD'}
-                placeholderTextColor={colors.mutedText}
-                returnKeyType="done"
-                accessibilityLabel={field.label}
-                aria-label={field.label}
-                onChangeText={(text) => {
-                  onChange(field.id, text);
-                  onChange(field.label, text);
-                }}
-              />
+              <View style={styles.datePickerInputRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={String(val !== undefined && val !== null ? val : '')}
+                  placeholder={field.placeholder || 'YYYY-MM-DD'}
+                  placeholderTextColor={colors.mutedText}
+                  returnKeyType="done"
+                  accessibilityLabel={field.label}
+                  aria-label={field.label}
+                  onChangeText={(text) => {
+                    onChange(field.id, text);
+                    onChange(field.label, text);
+                  }}
+                />
+                <TouchableOpacity
+                  style={styles.datePickerActionBtn}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick today or select date"
+                  onPress={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onChange(field.id, today);
+                    onChange(field.label, today);
+                  }}
+                >
+                  <Feather name="calendar" size={16} color="#0284C7" />
+                  <Text style={styles.datePickerActionText}>Today</Text>
+                </TouchableOpacity>
+              </View>
               {Boolean(field.placeholder && field.placeholder !== 'YYYY-MM-DD') && (
                 <Text style={styles.fieldSpecText}>Input: {field.placeholder}</Text>
               )}
             </View>
+          );
+        }
+
+        if (normType === 'counter') {
+          return (
+            <InteractiveCounterField key={field.id} field={field} value={val} onChange={onChange} />
+          );
+        }
+
+        if (normType === 'timer') {
+          return (
+            <InteractiveTimerField key={field.id} field={field} value={val} onChange={onChange} />
           );
         }
 
@@ -1009,5 +1195,135 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#0284C7',
+  },
+  ethiopiaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginRight: 6,
+  },
+  ethiopiaBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  datePickerInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  datePickerActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#F0F9FF',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  datePickerActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  counterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 6,
+  },
+  counterBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  counterBtnDisabled: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  counterDisplayBox: {
+    minWidth: 64,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#0284C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  counterDisplayText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  timerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  timerDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timerClockText: {
+    fontSize: 18,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: '700',
+    color: '#0284C7',
+    letterSpacing: 1,
+  },
+  timerLiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
+  },
+  timerControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timerControlBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+  },
+  timerControlBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  timerStartBtn: {
+    backgroundColor: '#0284C7',
+  },
+  timerPauseBtn: {
+    backgroundColor: '#F59E0B',
+  },
+  timerStopBtn: {
+    backgroundColor: '#EF4444',
   },
 });

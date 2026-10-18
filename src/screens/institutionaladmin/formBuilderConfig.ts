@@ -18,15 +18,15 @@ export const FIELD_TYPES = [
   'Date',
   'Dropdown',
   'Radio',
-  'CheckboxGroup',
+  'Checkbox',
   'Switch',
   'Phone',
-  'ImagePicker',
+  'Image',
   'File',
-  'SectionHeader',
-  'Divider',
+  'Counter',
+  'Timer',
 ] as const;
-export type FieldType = (typeof FIELD_TYPES)[number];
+export type FieldType = (typeof FIELD_TYPES)[number] | 'CheckboxGroup' | 'ImagePicker';
 
 export const ENROLLMENT_SECTIONS = [
   'Student Info',

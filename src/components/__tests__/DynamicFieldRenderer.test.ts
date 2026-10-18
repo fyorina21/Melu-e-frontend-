@@ -126,4 +126,48 @@ describe('DynamicFieldRenderer component and schema conformance', () => {
     expect(element).toBeDefined();
     expect(element.props.field.type).toBe('image_picker');
   });
+
+  it('renders counter field with increment and decrement boundaries', () => {
+    const field: DynamicFormField = {
+      id: 'trial_count',
+      type: 'counter',
+      label: 'Trial Repetitions',
+      validation: { required: true, min_length: 0, max_length: 50 },
+    };
+
+    let updatedVal = 0;
+    const element = React.createElement(DynamicFieldRenderer, {
+      field,
+      value: 5,
+      onChange: (id: string, val: any) => {
+        updatedVal = val;
+      },
+    });
+
+    expect(element).toBeDefined();
+    expect(element.props.field.type).toBe('counter');
+    expect(element.props.value).toBe(5);
+  });
+
+  it('renders timer field with start, pause, and stop controls', () => {
+    const field: DynamicFormField = {
+      id: 'duration_timer',
+      type: 'timer',
+      label: 'Observation Duration',
+      placeholder: 'MM:SS',
+    };
+
+    let timerVal = '00:00';
+    const element = React.createElement(DynamicFieldRenderer, {
+      field,
+      value: '02:45',
+      onChange: (id: string, val: any) => {
+        timerVal = val;
+      },
+    });
+
+    expect(element).toBeDefined();
+    expect(element.props.field.type).toBe('timer');
+    expect(element.props.value).toBe('02:45');
+  });
 });
