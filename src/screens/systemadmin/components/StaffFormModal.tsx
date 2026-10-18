@@ -21,6 +21,8 @@ export interface StaffFormModalProps {
   roleOptions?: string[];
   roleMetaMap?: Record<string, RoleMeta>;
   isSaving?: boolean;
+  submissionError?: string | null;
+  serverFieldErrors?: Record<string, string>;
   onClose: () => void;
   onSave: (payload: StaffPayload) => void;
 }
@@ -31,6 +33,8 @@ export function StaffFormModal({
   roleOptions,
   roleMetaMap,
   isSaving = false,
+  submissionError = null,
+  serverFieldErrors = {},
   onClose,
   onSave,
 }: StaffFormModalProps) {
@@ -43,6 +47,12 @@ export function StaffFormModal({
   const [rolesDropdownOpen, setRolesDropdownOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [unconfiguredRoleNotice, setUnconfiguredRoleNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (serverFieldErrors && Object.keys(serverFieldErrors).length > 0) {
+      setErrors((prev) => ({ ...prev, ...serverFieldErrors }));
+    }
+  }, [serverFieldErrors]);
 
   useEffect(() => {
     setRolesDropdownOpen(false);
@@ -140,11 +150,11 @@ export function StaffFormModal({
         <View style={styles.modalSheet}>
           <Text style={typography.h2}>{staff ? 'Edit Staff Account' : 'Add New Staff Member'}</Text>
 
-          {hasErrors && (
+          {(hasErrors || !!submissionError) && (
             <View style={styles.errorSummaryBanner}>
               <Feather name="alert-circle" size={16} color={colors.error} />
               <Text style={styles.errorSummaryText}>
-                Please resolve the validation errors below before proceeding.
+                {submissionError || 'Please resolve the validation errors below before proceeding.'}
               </Text>
             </View>
           )}

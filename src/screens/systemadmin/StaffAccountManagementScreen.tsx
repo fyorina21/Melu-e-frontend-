@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
@@ -73,6 +73,8 @@ export default function StaffAccountManagementScreen({
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [serverFieldErrors, setServerFieldErrors] = useState<Record<string, string>>({});
 
   const loadRoles = useCallback(async () => {
     try {
@@ -137,8 +139,12 @@ export default function StaffAccountManagementScreen({
       showToast('You do not have permission to create staff accounts.', 'error');
       return;
     }
+
+    setSaving(true);
+    setSubmissionError(null);
+    setServerFieldErrors({});
+
     try {
-      setSaving(true);
       if (payload.id) {
         await updateStaffAccount(payload.id, payload);
         showToast('Staff account updated successfully', 'success');
@@ -154,52 +160,81 @@ export default function StaffAccountManagementScreen({
       }
       await load();
       setFormTarget(undefined);
+      setSubmissionError(null);
+      setServerFieldErrors({});
     } catch (err: any) {
       console.error('Failed to save staff account:', err);
+      const errData = err?.response?.data;
       const errMsg =
-        err?.response?.data?.error ||
-        (Array.isArray(err?.response?.data?.errors)
-          ? err.response.data.errors.join(', ')
-          : err?.response?.data?.errors) ||
+        errData?.error ||
+        (Array.isArray(errData?.errors) ? errData.errors.join(', ') : errData?.errors) ||
         err?.message ||
         'Failed to save staff account';
-      Alert.alert('Role Assignment / Account Error', errMsg);
+
+      const fieldErrors: Record<string, string> = {};
+      const lower = errMsg.toLowerCase();
+      if (
+        lower.includes('email') ||
+        lower.includes('duplicate email') ||
+        lower.includes('already exists')
+      ) {
+        fieldErrors.email = errMsg;
+      }
+      if (lower.includes('password')) {
+        fieldErrors.password = errMsg;
+      }
+      if (lower.includes('name')) {
+        fieldErrors.name = errMsg;
+      }
+      if (lower.includes('role')) {
+        fieldErrors.roles = errMsg;
+      }
+
+      setServerFieldErrors(fieldErrors);
+      setSubmissionError(errMsg);
       showToast(errMsg, 'error');
+      // Do NOT close the modal on failure so user can fix their input
     } finally {
       setSaving(false);
     }
   };
 
-  const handleToggleActive = async (s: StaffMember) => {
-    if (!staffPerms.canEdit) {
-      showToast('You do not have permission to modify staff accounts.', 'error');
-      return;
-    }
-    const next = !s.active;
-    // Optimistic UI update
-    setStaff((prev) =>
-      prev ? prev.map((item) => (item.id === s.id ? { ...item, active: next } : item)) : prev,
-    );
-    try {
-      await toggleStaffActive(s.id, next);
-      showToast(`Account ${next ? 'activated' : 'deactivated'} successfully`, 'success');
-    } catch {
-      // Revert optimistic update immediately on failure
+  const handleToggleActive = useCallback(
+    async (s: StaffMember) => {
+      if (!staffPerms.canEdit) {
+        showToast('You do not have permission to modify staff accounts.', 'error');
+        return;
+      }
+      const next = !s.active;
+      // Optimistic UI update
       setStaff((prev) =>
-        prev ? prev.map((item) => (item.id === s.id ? { ...item, active: !next } : item)) : prev,
+        prev ? prev.map((item) => (item.id === s.id ? { ...item, active: next } : item)) : prev,
       );
-      showToast('Failed to update status', 'error');
-    }
-    await load();
-  };
+      try {
+        await toggleStaffActive(s.id, next);
+        showToast(`Account ${next ? 'activated' : 'deactivated'} successfully`, 'success');
+      } catch {
+        // Revert optimistic update immediately on failure
+        setStaff((prev) =>
+          prev ? prev.map((item) => (item.id === s.id ? { ...item, active: !next } : item)) : prev,
+        );
+        showToast('Failed to update status', 'error');
+      }
+      await load();
+    },
+    [staffPerms.canEdit, showToast, load],
+  );
 
-  const handleDelete = (s: StaffMember) => {
-    if (!staffPerms.canDelete) {
-      showToast('You do not have permission to delete staff accounts.', 'error');
-      return;
-    }
-    setDeleteConfirmStaff(s);
-  };
+  const handleDelete = useCallback(
+    (s: StaffMember) => {
+      if (!staffPerms.canDelete) {
+        showToast('You do not have permission to delete staff accounts.', 'error');
+        return;
+      }
+      setDeleteConfirmStaff(s);
+    },
+    [staffPerms.canDelete, showToast],
+  );
 
   const confirmDeleteStaff = async () => {
     if (!deleteConfirmStaff) return;
@@ -264,6 +299,34 @@ export default function StaffAccountManagementScreen({
     }
   };
 
+  const renderItem = useCallback(
+    ({ item: s }: { item: StaffMember }) => (
+      <StaffAccountRow
+        staff={s}
+        isSelected={selectedIds.includes(s.id)}
+        canEdit={staffPerms.canEdit}
+        canDelete={staffPerms.canDelete}
+        onToggleSelect={toggleSelect}
+        onEdit={(staffMember) => {
+          setSubmissionError(null);
+          setServerFieldErrors({});
+          setFormTarget(staffMember);
+        }}
+        onResetPassword={setCredentialTarget}
+        onToggleActive={handleToggleActive}
+        onDelete={handleDelete}
+      />
+    ),
+    [
+      selectedIds,
+      staffPerms.canEdit,
+      staffPerms.canDelete,
+      toggleSelect,
+      handleToggleActive,
+      handleDelete,
+    ],
+  );
+
   if (staff === null) return <ScreenLoader />;
 
   return (
@@ -279,7 +342,11 @@ export default function StaffAccountManagementScreen({
             <Tooltip label="Add a new staff member account">
               <TouchableOpacity
                 style={styles.addBtn}
-                onPress={() => setFormTarget(null)}
+                onPress={() => {
+                  setSubmissionError(null);
+                  setServerFieldErrors({});
+                  setFormTarget(null);
+                }}
                 accessibilityRole="button"
                 accessibilityLabel="Add staff member"
                 {...(Platform.OS === 'web' ? { title: 'Add a new staff member account' } : {})}
@@ -330,17 +397,7 @@ export default function StaffAccountManagementScreen({
             data={filtered}
             keyExtractor={(s) => s.id}
             contentContainerStyle={styles.listContent}
-            renderItem={({ item: s }) => (
-              <StaffAccountRow
-                staff={s}
-                isSelected={selectedIds.includes(s.id)}
-                onToggleSelect={toggleSelect}
-                onEdit={setFormTarget}
-                onResetPassword={setCredentialTarget}
-                onToggleActive={handleToggleActive}
-                onDelete={handleDelete}
-              />
-            )}
+            renderItem={renderItem}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Feather name="users" size={44} color={colors.mutedText} />
@@ -376,7 +433,13 @@ export default function StaffAccountManagementScreen({
         roleOptions={availableRoles}
         roleMetaMap={roleMetaMap}
         isSaving={saving}
-        onClose={() => setFormTarget(undefined)}
+        submissionError={submissionError}
+        serverFieldErrors={serverFieldErrors}
+        onClose={() => {
+          setFormTarget(undefined);
+          setSubmissionError(null);
+          setServerFieldErrors({});
+        }}
         onSave={handleSave}
       />
 
@@ -612,12 +675,7 @@ const styles = StyleSheet.create({
     maxWidth: 480,
     width: '100%',
     alignItems: 'center',
-    gap: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 8,
+    ...makeShadow(8, 24, 0.15, '0, 0, 0', 8),
   },
   confirmIconWrap: {
     width: 52,
