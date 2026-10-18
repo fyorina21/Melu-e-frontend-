@@ -57,6 +57,8 @@ export interface DynamicFormField {
   ui_props?: any;
   validation?: any;
   is_display_only?: boolean;
+  dataModel?: string;
+  data_model?: string;
 }
 
 const InteractiveCounterField: React.FC<{
@@ -207,6 +209,437 @@ const InteractiveTimerField: React.FC<{
           </TouchableOpacity>
         </View>
       </View>
+    </View>
+  );
+};
+
+export const DYNAMIC_MODEL_OPTIONS: Record<string, string[]> = {
+  students: [
+    'Liam Chen (Age 6 - Early Intervention)',
+    'Maya Patel (Age 7 - Level 2 Support)',
+    'Noah Davis (Age 5 - Language Acquisition)',
+    'Emma Wilson (Age 8 - Social Skills)',
+    'Sophia Taylor (Age 6 - Behavioral Support)',
+    'Lucas Miller (Age 9 - Fluency Program)',
+  ],
+  teachers: [
+    'Sarah Jenkins, BCBA (Clinical Lead)',
+    'Marcus Vance, RBT (Behavior Technician)',
+    'Elena Rostova, M.S., CCC-SLP (Speech Therapist)',
+    'David Kim, M.Ed. (Special Education)',
+    'Rachel Adams, OTR/L (Occupational Therapist)',
+  ],
+  therapists: [
+    'Sarah Jenkins, BCBA (Clinical Lead)',
+    'Marcus Vance, RBT (Senior Tech)',
+    'Elena Rostova, M.S., CCC-SLP (Speech)',
+    'Chloe Bennett, RBT (Behavior Tech)',
+    'Alex Mercer, BCBA (Clinical Supervisor)',
+  ],
+  rooms: [
+    'Sensory Room A (Ground Floor)',
+    'Motor Gym 1 (Gross Motor)',
+    'Focus Pod 3 (Individual)',
+    'Observation Suite 2 (One-way Mirror)',
+    'Early Intervention Lab (Room 104)',
+    'Speech & Language Suite B',
+  ],
+  'goal domains': [
+    'Communication & Expressive Language',
+    'Receptive Language & Listening',
+    'Social & Peer Interaction Skills',
+    'Play, Leisure & Imagination',
+    'Adaptive & Daily Living Skills',
+    'Motor & Movement Coordination',
+  ],
+  'task analysis templates': [
+    'Handwashing Routine (7-step chain)',
+    'Toothbrushing Sequence (10-step chain)',
+    'Backpack Packing Routine (5-step chain)',
+    'Shoe Tying (Forward Chaining)',
+    'Independent Snack Preparation (6 steps)',
+  ],
+  'abc antecedents': [
+    'Transition from preferred activity',
+    'Demand placed / Task presentation',
+    'Attention diverted / Peer interaction',
+    'Loud or unexpected sensory stimulus',
+    'Denial of requested item or tangibles',
+    'Unstructured free-play transition',
+  ],
+  'abc behaviors': [
+    'Verbal refusal / Vocal protest',
+    'Physical elopement / Leaving seat',
+    'Aggression towards peer / staff',
+    'Property destruction (throwing/swiping)',
+    'Self-injurious behavior (hand-biting)',
+    'Tantrum / Screaming / Dropping to floor',
+  ],
+  'abc consequences': [
+    'Demand paused & prompted with visual schedule',
+    'Redirection to designated calm-down space',
+    'Differential reinforcement of alternative behavior (DRA)',
+    'Planned ignoring of attention-seeking behavior',
+    'Sensory break offered with weighted blanket',
+    'Brief verbal reprimand & guided physical compliance',
+  ],
+  'abc locations': [
+    'Main Therapy Room',
+    'Sensory Integration Gym',
+    'Cafeteria / Dining Hall',
+    'Playground / Outdoor Courtyard',
+    'Classroom Transition Hallway',
+    'Restroom / Wash Station',
+  ],
+};
+
+export function resolveFieldOptions(field: DynamicFormField): string[] {
+  // 1. Check if model-bound via dataModel or data_model
+  const modelKey = (field.dataModel || field.data_model || '').toLowerCase().trim();
+  if (modelKey && modelKey !== 'custom') {
+    if (DYNAMIC_MODEL_OPTIONS[modelKey]) {
+      return DYNAMIC_MODEL_OPTIONS[modelKey];
+    }
+    for (const [key, opts] of Object.entries(DYNAMIC_MODEL_OPTIONS)) {
+      if (modelKey.includes(key) || key.includes(modelKey)) {
+        return opts;
+      }
+    }
+  }
+
+  // 2. Check if explicitly defined options exist in field.options or ui_props.options
+  const rawOpts =
+    field.options ?? field.ui_props?.options ?? (field as any).choices ?? (field as any).items;
+  if (Array.isArray(rawOpts) && rawOpts.length > 0) {
+    const parsed = rawOpts
+      .map((item) =>
+        typeof item === 'string'
+          ? item.trim()
+          : String(item?.label ?? item?.name ?? item?.value ?? item?.title ?? item).trim(),
+      )
+      .filter(Boolean);
+    if (parsed.length > 0) return parsed;
+  } else if (typeof rawOpts === 'string' && rawOpts.trim().length > 0) {
+    const trimmed = rawOpts.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const jsonArr = JSON.parse(trimmed);
+        if (Array.isArray(jsonArr) && jsonArr.length > 0) {
+          const parsed = jsonArr
+            .map((item) =>
+              typeof item === 'string'
+                ? item.trim()
+                : String(item?.label ?? item?.name ?? item?.value ?? item?.title ?? item).trim(),
+            )
+            .filter(Boolean);
+          if (parsed.length > 0) return parsed;
+        }
+      } catch {
+        // fallback to split
+      }
+    }
+    const splitOpts = trimmed
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (splitOpts.length > 0) return splitOpts;
+  }
+
+  // 3. Fallback to model inference from field label
+  const normLabel = (field.label || '').toLowerCase();
+  if (
+    normLabel.includes('student') ||
+    normLabel.includes('child') ||
+    normLabel.includes('learner')
+  ) {
+    return DYNAMIC_MODEL_OPTIONS['students'];
+  }
+  if (normLabel.includes('teacher') || normLabel.includes('instructor')) {
+    return DYNAMIC_MODEL_OPTIONS['teachers'];
+  }
+  if (normLabel.includes('therapist') || normLabel.includes('rbt') || normLabel.includes('bcba')) {
+    return DYNAMIC_MODEL_OPTIONS['therapists'];
+  }
+  if (
+    normLabel.includes('room') ||
+    normLabel.includes('classroom') ||
+    normLabel.includes('facility')
+  ) {
+    return normLabel.includes('abc')
+      ? DYNAMIC_MODEL_OPTIONS['abc locations']
+      : DYNAMIC_MODEL_OPTIONS['rooms'];
+  }
+  if (normLabel.includes('domain') || normLabel.includes('goal')) {
+    return DYNAMIC_MODEL_OPTIONS['goal domains'];
+  }
+  if (normLabel.includes('antecedent')) {
+    return DYNAMIC_MODEL_OPTIONS['abc antecedents'];
+  }
+  if (normLabel.includes('behavior')) {
+    return DYNAMIC_MODEL_OPTIONS['abc behaviors'];
+  }
+  if (normLabel.includes('consequence')) {
+    return DYNAMIC_MODEL_OPTIONS['abc consequences'];
+  }
+
+  // 4. Default dynamic options if none found
+  return ['Option A', 'Option B', 'Option C'];
+}
+
+const InteractiveDatePickerField: React.FC<{
+  field: DynamicFormField;
+  value: any;
+  onChange: (fieldIdOrLabel: string, value: any) => void;
+}> = ({ field, value, onChange }) => {
+  const [showPicker, setShowPicker] = useState<boolean>(false);
+  const pickedDate = value ? String(value) : '';
+  const [viewYear, setViewYear] = useState<number>(() => {
+    if (pickedDate && /^\d{4}-\d{2}-\d{2}$/.test(pickedDate)) {
+      return parseInt(pickedDate.split('-')[0], 10);
+    }
+    return new Date().getFullYear();
+  });
+  const [viewMonth, setViewMonth] = useState<number>(() => {
+    if (pickedDate && /^\d{4}-\d{2}-\d{2}$/.test(pickedDate)) {
+      return parseInt(pickedDate.split('-')[1], 10) - 1;
+    }
+    return new Date().getMonth();
+  });
+
+  const handleSelectDate = (dateStr: string) => {
+    onChange(field.id, dateStr);
+    onChange(field.label, dateStr);
+    setShowPicker(false);
+  };
+
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getOffsetDateStr = (offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return d.toISOString().split('T')[0];
+  };
+
+  return (
+    <View key={field.id} style={[styles.field, { zIndex: showPicker ? 50 : 1 }]}>
+      <Text style={typography.label}>
+        {field.label} {field.required && <Text style={styles.required}>*</Text>}
+      </Text>
+      {Boolean(field.helpText || field.help_text) && (
+        <Text style={styles.fieldSpecText}>{field.helpText || field.help_text}</Text>
+      )}
+
+      <View style={styles.datePickerInputRow}>
+        <TouchableOpacity
+          style={styles.datePickerDisplayBox}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Select date for ${field.label}`}
+          onPress={() => setShowPicker(!showPicker)}
+        >
+          <Feather name="calendar" size={16} color={pickedDate ? '#0284C7' : colors.mutedText} />
+          <Text style={pickedDate ? styles.datePickerDisplayText : styles.datePickerPlaceholder}>
+            {pickedDate || field.placeholder || 'YYYY-MM-DD'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.datePickerActionBtn, showPicker && styles.datePickerActionBtnActive]}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Open calendar"
+          onPress={() => setShowPicker(!showPicker)}
+        >
+          <Feather name={showPicker ? 'chevron-up' : 'calendar'} size={15} color="#0284C7" />
+          <Text style={styles.datePickerActionText}>{showPicker ? 'Close' : 'Select Date'}</Text>
+        </TouchableOpacity>
+
+        {Boolean(pickedDate) && (
+          <TouchableOpacity
+            style={styles.datePickerClearBtn}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Clear date"
+            onPress={() => handleSelectDate('')}
+          >
+            <Feather name="x" size={14} color="#64748B" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {showPicker && (
+        <View style={styles.datePickerDropdown}>
+          {/* Quick presets */}
+          <View style={styles.dateQuickPresetsRow}>
+            <TouchableOpacity
+              style={[
+                styles.datePresetChip,
+                pickedDate === getTodayStr() && styles.datePresetChipActive,
+              ]}
+              onPress={() => handleSelectDate(getTodayStr())}
+            >
+              <Text
+                style={[
+                  styles.datePresetChipText,
+                  pickedDate === getTodayStr() && styles.datePresetChipTextActive,
+                ]}
+              >
+                Today
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.datePresetChip,
+                pickedDate === getOffsetDateStr(-1) && styles.datePresetChipActive,
+              ]}
+              onPress={() => handleSelectDate(getOffsetDateStr(-1))}
+            >
+              <Text
+                style={[
+                  styles.datePresetChipText,
+                  pickedDate === getOffsetDateStr(-1) && styles.datePresetChipTextActive,
+                ]}
+              >
+                Yesterday
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.datePresetChip,
+                pickedDate === getOffsetDateStr(7) && styles.datePresetChipActive,
+              ]}
+              onPress={() => handleSelectDate(getOffsetDateStr(7))}
+            >
+              <Text
+                style={[
+                  styles.datePresetChipText,
+                  pickedDate === getOffsetDateStr(7) && styles.datePresetChipTextActive,
+                ]}
+              >
+                +7 Days
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.datePresetChip,
+                pickedDate === getOffsetDateStr(30) && styles.datePresetChipActive,
+              ]}
+              onPress={() => handleSelectDate(getOffsetDateStr(30))}
+            >
+              <Text
+                style={[
+                  styles.datePresetChipText,
+                  pickedDate === getOffsetDateStr(30) && styles.datePresetChipTextActive,
+                ]}
+              >
+                +30 Days
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Month/Year Navigation */}
+          <View style={styles.datePickerNavRow}>
+            <TouchableOpacity
+              onPress={handlePrevMonth}
+              style={styles.dateNavBtn}
+              accessibilityLabel="Previous month"
+            >
+              <Feather name="chevron-left" size={16} color="#0284C7" />
+            </TouchableOpacity>
+            <Text style={styles.dateNavMonthYear}>
+              {monthNames[viewMonth]} {viewYear}
+            </Text>
+            <TouchableOpacity
+              onPress={handleNextMonth}
+              style={styles.dateNavBtn}
+              accessibilityLabel="Next month"
+            >
+              <Feather name="chevron-right" size={16} color="#0284C7" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Day of Week Headers */}
+          <View style={styles.calendarWeekRow}>
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+              <Text key={d} style={styles.calendarWeekHead}>
+                {d}
+              </Text>
+            ))}
+          </View>
+
+          {/* Days Grid */}
+          <View style={styles.calendarDaysGrid}>
+            {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+              <View key={`empty-${idx}`} style={styles.calendarDayCellEmpty} />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, idx) => {
+              const dayNum = idx + 1;
+              const mStr = String(viewMonth + 1).padStart(2, '0');
+              const dStr = String(dayNum).padStart(2, '0');
+              const dateIso = `${viewYear}-${mStr}-${dStr}`;
+              const isSelected = pickedDate === dateIso;
+              const isToday = getTodayStr() === dateIso;
+
+              return (
+                <TouchableOpacity
+                  key={dateIso}
+                  style={[
+                    styles.calendarDayCell,
+                    isSelected && styles.calendarDayCellSelected,
+                    isToday && !isSelected && styles.calendarDayCellToday,
+                  ]}
+                  onPress={() => handleSelectDate(dateIso)}
+                >
+                  <Text
+                    style={[
+                      styles.calendarDayText,
+                      isSelected && styles.calendarDayTextSelected,
+                      isToday && !isSelected && styles.calendarDayTextToday,
+                    ]}
+                  >
+                    {dayNum}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -429,17 +862,33 @@ export default function DynamicFormFields({
 
       {customFields.map((field) => {
         const val = values[field.id] ?? values[field.label] ?? '';
-        const fieldOptions =
-          Array.isArray(field.options) && field.options.length > 0
-            ? field.options
-            : typeof field.options === 'string' && (field.options as string).length > 0
-              ? (field.options as string)
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : ['Option 1', 'Option 2', 'Option 3'];
+        const fieldOptions = resolveFieldOptions(field);
 
-        const normType = (field.type || '').toLowerCase().replace(/[- ]/g, '_');
+        const rawType = (field.type || (field as any).field_type || '').toLowerCase();
+        const normType = rawType.replace(/[- ]/g, '_');
+
+        const hasCustomOptions =
+          (Array.isArray(field.options) && field.options.length > 0) ||
+          (typeof (field.options as unknown) === 'string' &&
+            Boolean(String(field.options).trim())) ||
+          Boolean(field.dataModel || (field as any).data_model);
+
+        const isCheckboxGroup =
+          normType === 'checkbox_group' ||
+          normType === 'checkboxgroup' ||
+          normType === 'checkboxes' ||
+          normType === 'multi_select' ||
+          normType === 'multiselect' ||
+          (normType === 'checkbox' && hasCustomOptions);
+
+        const isRadio =
+          normType === 'radio' ||
+          normType === 'radiogroup' ||
+          normType === 'radio_group' ||
+          normType === 'radio_buttons' ||
+          normType === 'radiobuttons';
+
+        const isSingleCheckbox = normType === 'checkbox' && !hasCustomOptions;
 
         if (normType === 'section_header' || normType === 'divider') {
           return (
@@ -483,17 +932,25 @@ export default function DynamicFormFields({
           );
         }
 
-        const hasCustomOptions = Array.isArray(field.options)
-          ? field.options.length > 0
-          : Boolean(field.options);
-
-        if (normType === 'checkbox_group' || (normType === 'checkbox' && hasCustomOptions)) {
-          const selectedVals: string[] = Array.isArray(val) ? val : [];
+        if (isCheckboxGroup) {
+          const selectedVals: string[] = Array.isArray(val)
+            ? val
+            : typeof val === 'string' && val.length > 0
+              ? val.includes(',')
+                ? val
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                : [val]
+              : [];
           return (
             <View key={field.id} style={styles.field}>
               <Text style={typography.label}>
                 {field.label} {field.required && <Text style={styles.required}>*</Text>}
               </Text>
+              {Boolean(field.helpText || field.help_text) && (
+                <Text style={styles.fieldSpecText}>{field.helpText || field.help_text}</Text>
+              )}
               <View style={styles.checkboxGroupContainer}>
                 {fieldOptions.map((opt) => {
                   const isChecked = selectedVals.includes(opt);
@@ -625,7 +1082,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (normType === 'checkbox') {
+        if (isSingleCheckbox) {
           const isChecked = Boolean(val);
           return (
             <TouchableOpacity
@@ -651,7 +1108,7 @@ export default function DynamicFormFields({
           );
         }
 
-        if (normType === 'radio') {
+        if (isRadio) {
           return (
             <View
               key={field.id}
@@ -662,6 +1119,9 @@ export default function DynamicFormFields({
               <Text style={typography.label}>
                 {field.label} {field.required && <Text style={styles.required}>*</Text>}
               </Text>
+              {Boolean(field.helpText || field.help_text) && (
+                <Text style={styles.fieldSpecText}>{field.helpText || field.help_text}</Text>
+              )}
               <View style={styles.radioGroup}>
                 {fieldOptions.map((opt) => {
                   const isSelected = val === opt;
@@ -728,12 +1188,28 @@ export default function DynamicFormFields({
 
         if (normType === 'dropdown' || normType === 'select') {
           const isOpen = openDropdownId === field.id;
+          const isModelBound = Boolean(field.dataModel && field.dataModel !== 'custom');
 
           return (
             <View key={field.id} style={[styles.field, { zIndex: isOpen ? 100 : 1 }]}>
-              <Text style={typography.label}>
-                {field.label} {field.required && <Text style={styles.required}>*</Text>}
-              </Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 4,
+                }}
+              >
+                <Text style={typography.label}>
+                  {field.label} {field.required && <Text style={styles.required}>*</Text>}
+                </Text>
+                {isModelBound && (
+                  <View style={styles.modelBadgePill}>
+                    <Feather name="database" size={10} color="#0284C7" />
+                    <Text style={styles.modelBadgePillText}>{field.dataModel}</Text>
+                  </View>
+                )}
+              </View>
               <TouchableOpacity
                 style={styles.dropdownBtn}
                 activeOpacity={0.8}
@@ -813,43 +1289,12 @@ export default function DynamicFormFields({
 
         if (normType === 'date') {
           return (
-            <View key={field.id} style={styles.field}>
-              <Text style={typography.label}>
-                {field.label} {field.required && <Text style={styles.required}>*</Text>}
-              </Text>
-              <View style={styles.datePickerInputRow}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={String(val !== undefined && val !== null ? val : '')}
-                  placeholder={field.placeholder || 'YYYY-MM-DD'}
-                  placeholderTextColor={colors.mutedText}
-                  returnKeyType="done"
-                  accessibilityLabel={field.label}
-                  aria-label={field.label}
-                  onChangeText={(text) => {
-                    onChange(field.id, text);
-                    onChange(field.label, text);
-                  }}
-                />
-                <TouchableOpacity
-                  style={styles.datePickerActionBtn}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pick today or select date"
-                  onPress={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    onChange(field.id, today);
-                    onChange(field.label, today);
-                  }}
-                >
-                  <Feather name="calendar" size={16} color="#0284C7" />
-                  <Text style={styles.datePickerActionText}>Today</Text>
-                </TouchableOpacity>
-              </View>
-              {Boolean(field.placeholder && field.placeholder !== 'YYYY-MM-DD') && (
-                <Text style={styles.fieldSpecText}>Input: {field.placeholder}</Text>
-              )}
-            </View>
+            <InteractiveDatePickerField
+              key={field.id}
+              field={field}
+              value={val}
+              onChange={onChange}
+            />
           );
         }
 
@@ -1325,5 +1770,151 @@ const styles = StyleSheet.create({
   },
   timerStopBtn: {
     backgroundColor: '#EF4444',
+  },
+  datePickerDisplayBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  datePickerDisplayText: {
+    fontSize: 14,
+    color: '#0F172A',
+    fontWeight: '500',
+  },
+  datePickerPlaceholder: {
+    fontSize: 14,
+    color: colors.mutedText,
+  },
+  datePickerActionBtnActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  datePickerClearBtn: {
+    padding: 8,
+    borderRadius: radius.sm,
+    backgroundColor: '#F1F5F9',
+  },
+  datePickerDropdown: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.md,
+    padding: 12,
+    marginTop: 8,
+    ...makeShadow(3),
+  },
+  dateQuickPresetsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 10,
+  },
+  datePresetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+  },
+  datePresetChipActive: {
+    backgroundColor: '#0284C7',
+  },
+  datePresetChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  datePresetChipTextActive: {
+    color: '#FFFFFF',
+  },
+  datePickerNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  dateNavBtn: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#F0F9FF',
+  },
+  dateNavMonthYear: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  calendarWeekHead: {
+    width: 32,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  calendarDaysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 4,
+  },
+  calendarDayCellEmpty: {
+    width: '14.28%',
+    height: 32,
+  },
+  calendarDayCell: {
+    width: '14.28%',
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
+  calendarDayCellSelected: {
+    backgroundColor: '#0284C7',
+  },
+  calendarDayCellToday: {
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    backgroundColor: '#F0F9FF',
+  },
+  calendarDayText: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  calendarDayTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  calendarDayTextToday: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+  modelBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  modelBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0369A1',
   },
 });

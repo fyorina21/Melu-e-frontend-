@@ -331,7 +331,7 @@ export const PreviewFormModal: React.FC<PreviewFormModalProps> = React.memo(
             </View>
 
             {/* In-Modal Toast Banner */}
-            {toastMessage && (
+            {Boolean(toastMessage) && (
               <View style={styles.toastBanner}>
                 <Feather name="check-circle" size={14} color="#059669" />
                 <Text style={styles.toastBannerText}>{toastMessage}</Text>

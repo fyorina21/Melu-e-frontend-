@@ -203,8 +203,125 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
     );
   }
 
+  const InteractiveDatePreviewBox: React.FC<{ placeholder: string }> = ({ placeholder }) => {
+    const [selectedDate, setSelectedDate] = useState<string>(
+      () => new Date().toISOString().split('T')[0],
+    );
+    const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
+
+    const formatDisplay = (isoDate: string, fmt: string) => {
+      if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
+      const [y, m, d] = isoDate.split('-');
+      if (fmt === 'DD/MM/YYYY') return `${d}/${m}/${y}`;
+      if (fmt === 'MM/DD/YYYY') return `${m}/${d}/${y}`;
+      return isoDate;
+    };
+
+    const getToday = () => new Date().toISOString().split('T')[0];
+    const getOffset = (days: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      return d.toISOString().split('T')[0];
+    };
+
+    return (
+      <View style={styles.propertyPreviewBox}>
+        <Text style={styles.propertyPreviewHeader}>INTERACTIVE DATE PICKER PREVIEW</Text>
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1,
+            borderColor: isCalendarOpen ? '#0284C7' : '#CBD5E1',
+            borderRadius: 6,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            marginTop: 4,
+          }}
+          activeOpacity={0.8}
+          onPress={() => setIsCalendarOpen(!isCalendarOpen)}
+        >
+          <Text style={{ fontSize: 13, color: '#1E293B', fontWeight: '500' }}>
+            {formatDisplay(selectedDate, placeholder || 'YYYY-MM-DD')}
+          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: '#E0F2FE',
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 4,
+            }}
+          >
+            <Feather name="calendar" size={14} color="#0284C7" />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#0369A1' }}>
+              {isCalendarOpen ? 'Close' : 'Pick Date'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {isCalendarOpen && (
+          <View
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: '#BAE6FD',
+              borderRadius: 8,
+              padding: 10,
+              marginTop: 6,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 6 }}>
+              QUICK DATE SELECTOR:
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {[
+                { label: 'Today', date: getToday() },
+                { label: 'Yesterday', date: getOffset(-1) },
+                { label: 'Tomorrow', date: getOffset(1) },
+                { label: '+7 Days', date: getOffset(7) },
+                { label: '+30 Days', date: getOffset(30) },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 4,
+                    backgroundColor: selectedDate === item.date ? '#0284C7' : '#F1F5F9',
+                  }}
+                  onPress={() => {
+                    setSelectedDate(item.date);
+                    setIsCalendarOpen(false);
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: selectedDate === item.date ? '#FFFFFF' : '#334155',
+                    }}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={{ fontSize: 11, color: '#0369A1', fontStyle: 'italic' }}>
+              Selected Date: {selectedDate} → Display:{' '}
+              {formatDisplay(selectedDate, placeholder || 'YYYY-MM-DD')}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   if (normType === 'date') {
-    const todayStr = new Date().toISOString().split('T')[0];
     return (
       <View style={styles.inlineOptionsRow}>
         <Text style={styles.inlineFieldPromptTitle}>Date Input & Date Picker Configuration</Text>
@@ -240,41 +357,7 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
           value={placeholder}
           onChangeText={onChangePlaceholder}
         />
-        <View style={styles.propertyPreviewBox}>
-          <Text style={styles.propertyPreviewHeader}>INTERACTIVE DATE PICKER PREVIEW</Text>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1,
-              borderColor: '#CBD5E1',
-              borderRadius: 6,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              marginTop: 4,
-            }}
-          >
-            <Text style={{ fontSize: 13, color: '#1E293B' }}>
-              {todayStr} ({placeholder || 'YYYY-MM-DD'})
-            </Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                backgroundColor: '#E0F2FE',
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 4,
-              }}
-            >
-              <Feather name="calendar" size={14} color="#0284C7" />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#0369A1' }}>Pick Date</Text>
-            </View>
-          </View>
-        </View>
+        <InteractiveDatePreviewBox placeholder={placeholder} />
       </View>
     );
   }

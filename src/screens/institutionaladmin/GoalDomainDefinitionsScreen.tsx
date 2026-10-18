@@ -22,6 +22,8 @@ import {
   saveGoalDomains,
   deleteGoalDomainApi,
   getGoalsApi,
+  createGoalApi,
+  updateGoalApi,
   deleteGoalApi,
   getTaskAnalysisTemplates,
   saveTaskAnalysisTemplate,
@@ -90,18 +92,13 @@ export default function GoalDomainDefinitionsScreen({
     return () => setDirty(false);
   }, [isDirty, setDirty]);
 
-  const initialSection =
-    (route?.params as any)?.defaultSection ||
-    ((route?.name as string) === 'TaskAnalysisTemplates' ? 'templates' : 'domains');
-  const [activeSection, setActiveSection] = useState<'domains' | 'goals' | 'templates'>(
-    initialSection,
-  );
+  const initialSection: 'domains' | 'goals' =
+    (route?.params as any)?.defaultSection === 'goals' ? 'goals' : 'domains';
+  const [activeSection, setActiveSection] = useState<'domains' | 'goals'>(initialSection);
 
   useEffect(() => {
-    const targetSection =
-      (route?.params as any)?.defaultSection ||
-      ((route?.name as string) === 'TaskAnalysisTemplates' ? 'templates' : null);
-    if (targetSection && targetSection !== activeSection) {
+    const targetSection = (route?.params as any)?.defaultSection;
+    if (targetSection === 'goals' || targetSection === 'domains') {
       setActiveSection(targetSection);
     }
   }, [route?.params, route?.name]);
@@ -135,7 +132,7 @@ export default function GoalDomainDefinitionsScreen({
   const [goalFormType, setGoalFormType] = useState<'standard' | 'task_analysis'>('standard');
   const [goalFormActive, setGoalFormActive] = useState(true);
 
-  // Task Analysis Templates State
+  // Task Analysis Templates State (Hidden / unmounted from Goals domain management)
   const [templates, setTemplates] = useState<TaskAnalysisTemplate[]>([]);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
@@ -146,12 +143,8 @@ export default function GoalDomainDefinitionsScreen({
   const [overallMastery, setOverallMastery] = useState('80');
 
   const loadAll = useCallback(async () => {
-    // Settle endpoints independently
-    const [domainRes, templateRes, goalsRes] = await Promise.allSettled([
-      getGoalDomains(),
-      getTaskAnalysisTemplates(),
-      getGoalsApi(),
-    ]);
+    // Settle endpoints independently (Target goals belong to Goals model / Goal Domain persistence endpoint, NOT task analysis templates)
+    const [domainRes, goalsRes] = await Promise.allSettled([getGoalDomains(), getGoalsApi()]);
 
     if (domainRes.status === 'fulfilled') {
       const rawDomains = Array.isArray(domainRes.value.data) ? domainRes.value.data : [];
@@ -168,11 +161,7 @@ export default function GoalDomainDefinitionsScreen({
       setDomains(getStoredGoalDomains());
     }
 
-    if (templateRes.status === 'fulfilled') {
-      setTemplates(Array.isArray(templateRes.value.data) ? templateRes.value.data : []);
-    } else {
-      setTemplates([]);
-    }
+    setTemplates([]);
 
     const localGoals = getStoredGoalBank().map((lg) => ({
       ...lg,
@@ -385,25 +374,79 @@ export default function GoalDomainDefinitionsScreen({
     setShowGoalEditor(true);
   };
 
-  const handleSaveGoal = () => {
+  const handleSaveGoal = async () => {
     if (!goalFormName.trim()) {
       showToast('Please enter a Goal Name', 'error');
       return;
     }
-    const item = saveGoalItem({
-      id: editingGoal?.id,
+
+    const matchedDomain =
+      domains.find((d) => d.name.toLowerCase() === goalFormDomain.trim().toLowerCase()) ||
+      domains[0];
+    const goalDomainId = matchedDomain?.id;
+
+    const payload = {
       name: goalFormName.trim(),
-      domain: goalFormDomain,
       description: goalFormDesc.trim(),
-      masteryCriteria: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
-      goalType: goalFormType,
-      active: goalFormActive,
-      status: goalFormActive ? 'active' : 'inactive',
-    });
+      goal_domain_id: goalDomainId,
+      goal_type: goalFormType,
+      is_active: goalFormActive,
+      mastery_criteria: {
+        description: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
+      },
+    };
+
+    let savedItem: GoalBankItem;
+    try {
+      if (editingGoal?.id && /^[0-9a-f-]{36}$/i.test(editingGoal.id)) {
+        const res = await updateGoalApi(editingGoal.id, payload);
+        const bg = res.data;
+        savedItem = {
+          id: String(bg.id || editingGoal.id),
+          name: bg.name || goalFormName.trim(),
+          domain: bg.goal_domain?.name || goalFormDomain,
+          description: bg.description || goalFormDesc.trim(),
+          masteryCriteria: formatMasteryCriteria(bg.mastery_criteria || goalFormMastery),
+          goalType: bg.goal_type || goalFormType,
+          active: bg.is_active !== false,
+          status: bg.is_active !== false ? 'active' : 'inactive',
+          usageCount: bg.usage_count || editingGoal.usageCount || 0,
+        };
+      } else {
+        const res = await createGoalApi(payload);
+        const bg = res.data;
+        savedItem = {
+          id: String(bg.id),
+          name: bg.name || goalFormName.trim(),
+          domain: bg.goal_domain?.name || goalFormDomain,
+          description: bg.description || goalFormDesc.trim(),
+          masteryCriteria: formatMasteryCriteria(bg.mastery_criteria || goalFormMastery),
+          goalType: bg.goal_type || goalFormType,
+          active: bg.is_active !== false,
+          status: bg.is_active !== false ? 'active' : 'inactive',
+          usageCount: bg.usage_count || 0,
+        };
+      }
+      saveGoalItem(savedItem);
+      showToast(`Goal "${savedItem.name}" saved to database and IUP Generation`, 'success');
+    } catch (apiErr: any) {
+      console.warn('Backend goal save failed, saving locally:', apiErr);
+      savedItem = saveGoalItem({
+        id: editingGoal?.id,
+        name: goalFormName.trim(),
+        domain: goalFormDomain,
+        description: goalFormDesc.trim(),
+        masteryCriteria: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
+        goalType: goalFormType,
+        active: goalFormActive,
+        status: goalFormActive ? 'active' : 'inactive',
+      });
+      showToast(`Goal "${savedItem.name}" saved locally and updated in IUP Generation`, 'info');
+    }
+
     setGoals(getStoredGoalBank());
     setShowGoalEditor(false);
     setEditingGoal(null);
-    showToast(`Goal "${item.name}" saved and updated in IUP Generation`, 'success');
   };
 
   const handleDeleteGoal = (goal: GoalBankItem) => {
@@ -425,13 +468,19 @@ export default function GoalDomainDefinitionsScreen({
     });
   };
 
-  const handleToggleGoalActive = (goal: GoalBankItem) => {
+  const handleToggleGoalActive = async (goal: GoalBankItem) => {
+    const nextActive = !goal.active;
     saveGoalItem({
       ...goal,
-      active: !goal.active,
-      status: !goal.active ? 'active' : 'inactive',
+      active: nextActive,
+      status: nextActive ? 'active' : 'inactive',
     });
     setGoals(getStoredGoalBank());
+    if (/^[0-9a-f-]{36}$/i.test(goal.id)) {
+      try {
+        await updateGoalApi(goal.id, { is_active: nextActive });
+      } catch {}
+    }
   };
 
   const filteredGoals = useMemo(() => {

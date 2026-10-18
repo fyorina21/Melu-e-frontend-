@@ -1303,6 +1303,14 @@ export const getGoalsApi = async () => {
   return [];
 };
 
+export const createGoalApi = async (payload: any) => {
+  return await client.post('/goals', { goal: payload });
+};
+
+export const updateGoalApi = async (goalId: string | number, payload: any) => {
+  return await client.patch(`/goals/${goalId}`, { goal: payload });
+};
+
 export const deleteGoalApi = async (goalId: string | number) => {
   try {
     return await client.delete(`/goals/${goalId}`);
