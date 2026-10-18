@@ -39,6 +39,19 @@ export default function RootLayout() {
       originalWarn.apply(console, args);
     };
 
+    // Inject runtime font-display: swap for any dynamically generated web font styles
+    if (typeof document !== 'undefined' && !document.getElementById('font-swap-enforcer')) {
+      const fontStyle = document.createElement('style');
+      fontStyle.id = 'font-swap-enforcer';
+      fontStyle.textContent = `
+        @font-face { font-family: 'Ionicons'; font-display: swap; }
+        @font-face { font-family: 'ionicons'; font-display: swap; }
+        @font-face { font-family: 'Feather'; font-display: swap; }
+        @font-face { font-family: 'feather'; font-display: swap; }
+      `;
+      document.head.appendChild(fontStyle);
+    }
+
     return () => {
       window.removeEventListener('unload', noopUnload);
       window.removeEventListener('pageshow', handlePageShow);
