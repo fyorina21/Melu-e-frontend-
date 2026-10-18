@@ -895,7 +895,7 @@ describe('FormBuilder Assessment Integration', () => {
     await resetFormToDefault('Enrollment Wizard');
   });
 
-  it('supports expanded FIELD_TYPES catalog including TextArea, CheckboxGroup, Switch, Phone, ImagePicker, SectionHeader, Divider and persists input specifications', async () => {
+  it('supports expanded FIELD_TYPES catalog including TextArea, Checkbox, Switch, Phone, Image, and File and persists input specifications', async () => {
     // 1. Verify FIELD_TYPES contains the core and expanded types
     expect(FIELD_TYPES).toContain('Text');
     expect(FIELD_TYPES).toContain('TextArea');
@@ -903,13 +903,13 @@ describe('FormBuilder Assessment Integration', () => {
     expect(FIELD_TYPES).toContain('Date');
     expect(FIELD_TYPES).toContain('Dropdown');
     expect(FIELD_TYPES).toContain('Radio');
-    expect(FIELD_TYPES).toContain('CheckboxGroup');
+    expect(FIELD_TYPES).toContain('Checkbox');
     expect(FIELD_TYPES).toContain('Switch');
     expect(FIELD_TYPES).toContain('Phone');
-    expect(FIELD_TYPES).toContain('ImagePicker');
+    expect(FIELD_TYPES).toContain('Image');
     expect(FIELD_TYPES).toContain('File');
-    expect(FIELD_TYPES).toContain('SectionHeader');
-    expect(FIELD_TYPES).toContain('Divider');
+    expect(FIELD_TYPES).not.toContain('SectionHeader');
+    expect(FIELD_TYPES).not.toContain('Divider');
 
     // 2. Verify creating fields of each type with input specifications (options for Dropdown/Radio, placeholder for Number/Date/File/Text)
     const { data: initialConfig } = await getFormConfig('Behavioral Assessment');

@@ -70,6 +70,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
                   style={styles.textInput}
                   value={formId}
                   onChangeText={setFormId}
+                  onSubmitEditing={handleSave}
                   placeholder="e.g. FRM-ENR-001"
                   placeholderTextColor="#94A3B8"
                   autoCapitalize="characters"
@@ -82,6 +83,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
                   style={styles.textInput}
                   value={formName}
                   onChangeText={setFormName}
+                  onSubmitEditing={handleSave}
                   placeholder="e.g. Enrollment Wizard"
                   placeholderTextColor="#94A3B8"
                 />
@@ -94,6 +96,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
                     style={styles.textInput}
                     value={revision}
                     onChangeText={setRevision}
+                    onSubmitEditing={handleSave}
                     placeholder="e.g. Rev 2.4 · 2026-09-19"
                     placeholderTextColor="#94A3B8"
                   />
@@ -105,6 +108,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
                     style={styles.textInput}
                     value={pages}
                     onChangeText={setPages}
+                    onSubmitEditing={handleSave}
                     placeholder="e.g. Page 1 of 3"
                     placeholderTextColor="#94A3B8"
                   />

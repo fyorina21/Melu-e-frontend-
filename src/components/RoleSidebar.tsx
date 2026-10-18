@@ -34,9 +34,13 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   'Form Builder': 'file-plus',
 };
 
+import { useUnsavedChanges } from '../context/UnsavedChangesContext';
+import { confirmAction } from '../utils/dialogs';
+
 export default function RoleSidebar({ role }: { role: Role }) {
   const { navRef, version, isCollapsed, toggleSidebar, setIsCollapsed } =
     useContext(SidebarNavContext);
+  const { isDirty, setDirty } = useUnsavedChanges();
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const tabs = ROLE_TABS[role] ?? [];
@@ -49,6 +53,24 @@ export default function RoleSidebar({ role }: { role: Role }) {
   const handlePress = (tab: string) => {
     const route = routeMap?.[tab];
     if (route) {
+      if (isDirty) {
+        confirmAction({
+          title: 'Unsaved Changes',
+          message:
+            'You have unsaved changes on this page. If you leave now, your modifications will be lost. Are you sure you want to navigate away?',
+          confirmLabel: 'Leave without saving',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            navRef.current?.navigate(route as never);
+            if (isCompact) {
+              setIsCollapsed(true);
+            }
+          },
+        });
+        return;
+      }
       navRef.current?.navigate(route as never);
       if (isCompact) {
         setIsCollapsed(true);

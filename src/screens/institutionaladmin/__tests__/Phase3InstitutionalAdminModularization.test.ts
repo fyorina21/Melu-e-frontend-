@@ -126,7 +126,7 @@ describe('Phase 3: Institutional Admin Modularization & Barrel Architecture', ()
 
       // Fallback on invalid format
       expect(parseTimeString('invalid')).toEqual({ hour: '08', minute: '00', period: 'AM' });
-      expect(DEFAULT_BLOCKS.length).toBe(2);
+      expect(DEFAULT_BLOCKS.length).toBe(4);
     });
   });
 });
