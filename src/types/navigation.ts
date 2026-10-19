@@ -24,6 +24,7 @@ export type SessionStackParamList = {
   Notifications: undefined;
   StudentProfile: { studentId: string };
   StudentEnrollmentWizard: undefined;
+  StudentEnrollment?: undefined;
   IupGeneration: { studentId?: string } | undefined;
   GoalMasteryApproval?: undefined;
   ChildProgress?: undefined;

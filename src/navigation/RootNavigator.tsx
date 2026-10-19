@@ -96,7 +96,7 @@ function AppNavigator() {
 
   // Resolves the role's stack; custom roles use CustomRoleStack
   const RoleStack = STACK_BY_ROLE[session.role] || CustomRoleStack;
-  const isSidebarRole = SIDEBAR_ROLES.has(session.role);
+  const isSidebarRole = true;
 
   return (
     <ErrorBoundary screenName={`${session.role} Navigator`}>

@@ -62,53 +62,9 @@ export const blankActions = (): Record<ActionType, boolean> => ({
   APPROVE: false,
 });
 
-// Canonical application pages organized by clinical/administrative roles
+// Canonical application pages organized by clinical/administrative categories
 export const ALL_PAGE_MODULES: AppPageModule[] = [
-  // --- DIRECTOR ---
-  {
-    id: 'director_dashboard',
-    name: 'Director Overview Dashboard',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Executive Oversight',
-    route: 'DirectorDashboard',
-    backendResource: 'reports',
-    subResource: 'oversight',
-    description: 'Executive clinical KPIs, facility approvals, scheduling & message escalations',
-  },
-  {
-    id: 'director_scheduling',
-    name: 'Staff Scheduling & Capacity',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Operations & Scheduling',
-    route: 'DirectorScheduling',
-    backendResource: 'staff',
-    subResource: 'staff_scheduling',
-    description: 'Facility capacity limits, therapist schedules, and student blocks',
-  },
-  {
-    id: 'director_goal_mastery',
-    name: 'Goal Mastery Approval',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Clinical Verification',
-    route: 'GoalMasteryApproval',
-    backendResource: 'iups',
-    subResource: 'goals',
-    description: 'Multi-therapist goal mastery verification and executive approval sign-off',
-  },
-  {
-    id: 'director_parent_comm',
-    name: 'Parent Communication Hub',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Family & Messages',
-    route: 'DirectorParentCommunication',
-    backendResource: 'parent_portal',
-    subResource: 'parent_communications',
-    description: 'Executive parent messaging hub and escalated family incident resolution',
-  },
+  // --- EXECUTIVE OVERSIGHT ---
   {
     id: 'director_reports_oversight',
     name: 'Reports & Executive Oversight',
@@ -121,16 +77,6 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Clinical reports oversight, bi-annual reviews, and session record exports',
   },
   {
-    id: 'director_student_progress',
-    name: 'Student Progress Monitoring',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Clinical Supervision',
-    route: 'DirectorStudentProgress',
-    backendResource: 'students',
-    description: 'Clinical oversight of goals, sessions, assessments & behavior trends',
-  },
-  {
     id: 'director_report_builder',
     name: 'Custom Report Builder',
     role: 'Director',
@@ -141,18 +87,7 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Custom report generation, multi-metric filtering, and PDF generation',
   },
 
-  // --- PROGRAM DIRECTOR ---
-  {
-    id: 'pd_dashboard',
-    name: 'Program Director Dashboard',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Executive Oversight',
-    route: 'ProgramDirectorDashboard',
-    backendResource: 'reports',
-    subResource: 'oversight',
-    description: 'Program operations metrics, student intake pipelines, and milestones',
-  },
+  // --- INTAKE & REGISTRATION ---
   {
     id: 'pd_enrollment_wizard',
     name: 'Student Enrollment Wizard',
@@ -165,6 +100,19 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Multi-step student onboarding questionnaire and clinical profile wizard',
   },
   {
+    id: 'coord_student_registration',
+    name: 'Student Register & Roster List',
+    role: 'Therapy Coordinator',
+    roleKey: 'coordinator',
+    category: 'Intake & Registration',
+    route: 'StudentEnrollment',
+    backendResource: 'students',
+    subResource: 'enrollments',
+    description: 'Student register and roster list, search, filter, and enrollment status',
+  },
+
+  // --- GOAL MANAGEMENT ---
+  {
     id: 'pd_iup_generation',
     name: 'IUP Creation & Goal Assignment',
     role: 'Program Director',
@@ -173,37 +121,6 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     route: 'IupGeneration',
     backendResource: 'iups',
     description: 'Generate individualized IUPs, assign baseline criteria and SMART goals',
-  },
-  {
-    id: 'pd_assessment_summary',
-    name: 'Assessment Summary Report',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Assessments',
-    route: 'AssessmentSummaryReport',
-    backendResource: 'assessments',
-    description: 'Comprehensive 6-week assessment report review and export generation',
-  },
-  {
-    id: 'pd_goal_mastery',
-    name: 'Goal Mastery Approval',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Clinical Verification',
-    route: 'GoalMasteryApproval',
-    backendResource: 'iups',
-    subResource: 'goals',
-    description: 'Multi-therapist clinical verification and sign-off on goal completion',
-  },
-  {
-    id: 'pd_assessment_review',
-    name: 'Assessment Review & Sign-Off',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Assessments',
-    route: 'AssessmentReview',
-    backendResource: 'assessments',
-    description: 'Review and verify teacher assessment submissions and preferences',
   },
   {
     id: 'pd_iup_library',
@@ -220,9 +137,9 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     name: 'Student Caseload Management',
     role: 'Program Director',
     roleKey: 'program_director',
-    category: 'Operations & Scheduling',
+    category: 'Goal Management',
     route: 'StudentCaseload',
-    backendResource: 'students',
+    backendResource: 'iups',
     description: 'Caseload allocation, therapist capacity, and tier readiness queue',
   },
   {
@@ -230,54 +147,80 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     name: 'Clinical Quality & Goal Bank',
     role: 'Program Director',
     roleKey: 'program_director',
-    category: 'Clinical Supervision',
+    category: 'Goal Management',
     route: 'GoalBankManagement',
     backendResource: 'iups',
     subResource: 'goals',
     description: 'Clinical quality monitoring, program integrity, and goal bank catalog',
   },
+
+  // --- CLINICAL VERIFICATION ---
   {
-    id: 'pd_parent_comm',
-    name: 'Program Director Parent Chat',
-    role: 'Program Director',
+    id: 'goal_mastery_approval',
+    name: 'Goal Mastery Approval',
+    role: 'Program Director / Director',
     roleKey: 'program_director',
-    category: 'Family & Messages',
-    route: 'PdParentCommunication',
-    backendResource: 'parent_portal',
-    subResource: 'parent_communications',
-    description: 'Clinical director communication channel for parent updates and notes',
-  },
-  {
-    id: 'pd_progress_charts',
-    name: 'Clinical Reports & Progress Charts',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Executive Oversight',
-    route: 'GraphChartView',
-    backendResource: 'reports',
-    description: 'Longitudinal skill acquisition curves, trials distribution, and progress charts',
+    category: 'Clinical Verification',
+    route: 'GoalMasteryApproval',
+    backendResource: 'goals',
+    description: 'Multi-therapist goal mastery verification and executive approval sign-off',
   },
 
-  // --- COORDINATOR ---
+  // --- OPERATIONS & SCHEDULING ---
   {
-    id: 'coord_dashboard',
-    name: 'Coordinator Overview Dashboard',
+    id: 'director_scheduling',
+    name: 'Staff Scheduling & Capacity',
+    role: 'Director',
+    roleKey: 'director',
+    category: 'Operations & Scheduling',
+    route: 'DirectorScheduling',
+    backendResource: 'staff',
+    subResource: 'staff_scheduling',
+    description: 'Facility capacity limits, therapist schedules, and student blocks',
+  },
+  {
+    id: 'coord_staff_workload',
+    name: 'Staff Workload & Therapist Linking',
     role: 'Therapy Coordinator',
     roleKey: 'coordinator',
     category: 'Operations & Scheduling',
-    route: 'CoordinatorDashboard',
-    backendResource: 'reports',
-    description: 'Therapy center overview, live room status, and pending approvals queue',
+    route: 'WorkloadDashboard',
+    backendResource: 'staff',
+    description: 'Therapist case assignments, student pairing, and workload distribution',
   },
   {
-    id: 'coord_student_profile',
-    name: 'Student Profile & Clinical Chart',
+    id: 'coord_room_scheduling',
+    name: 'Room Resource Scheduling',
     role: 'Therapy Coordinator',
     roleKey: 'coordinator',
-    category: 'Clinical Supervision',
-    route: 'StudentProfile',
-    backendResource: 'students',
-    description: 'Detailed student clinical profile, medical records, and behavior history',
+    category: 'Operations & Scheduling',
+    route: 'RoomResourceScheduling',
+    backendResource: 'staff',
+    subResource: 'session_block_definitions',
+    description: 'Facility therapy rooms, sensory stations, and space availability',
+  },
+
+  // --- THERAPY & DAILY CLINICAL ---
+  {
+    id: 'teacher_session_collection',
+    name: 'Session Data Collection',
+    role: 'Teacher / Therapist',
+    roleKey: 'teacher',
+    category: 'Therapy & Daily Clinical',
+    route: 'SessionDataCollection',
+    backendResource: 'sessions',
+    subResource: 'trials',
+    description: 'Active therapy interface: prompt hierarchy, trial recording, timers, tokens',
+  },
+  {
+    id: 'teacher_daily_notes',
+    name: 'Daily Session Notes',
+    role: 'Teacher / Therapist',
+    roleKey: 'teacher',
+    category: 'Therapy & Daily Clinical',
+    route: 'DailyNotes',
+    backendResource: 'sessions',
+    description: 'Draft qualitative clinical notes, incident logs, and submit for review',
   },
   {
     id: 'coord_live_sessions',
@@ -301,102 +244,18 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Review, approve, or request revision on therapist daily session notes',
   },
   {
-    id: 'coord_student_progress',
-    name: 'Coordinator Student Progress',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Clinical Supervision',
-    route: 'CoordinatorStudentProgress',
-    backendResource: 'students',
-    description: 'Clinical goal tracking, trend charts, and incident pattern analysis',
-  },
-  {
-    id: 'coord_schedule',
-    name: 'Operational Schedule & Appointments',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'CoordinatorSchedule',
-    backendResource: 'staff',
-    subResource: 'staff_scheduling',
-    description: 'Session scheduling, station rotations, and therapist coverage grid',
-  },
-  {
-    id: 'coord_parent_comm',
-    name: 'Coordinator Parent Messages',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Family & Messages',
-    route: 'CoordinatorParentCommunication',
-    backendResource: 'parent_portal',
-    subResource: 'parent_communications',
-    description: 'Parent communication hub, escalated threads, and family observations',
-  },
-  {
-    id: 'coord_student_registration',
-    name: 'Student Intake & Registration',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Intake & Registration',
-    route: 'StudentEnrollment',
-    backendResource: 'students',
-    subResource: 'enrollments',
-    description: 'Student registration records, baseline evaluation intake, and documents',
-  },
-  {
-    id: 'coord_staff_workload',
-    name: 'Staff Workload & Therapist Linking',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'WorkloadDashboard',
-    backendResource: 'staff',
-    description: 'Therapist case assignments, student pairing, and workload distribution',
-  },
-  {
-    id: 'coord_room_scheduling',
-    name: 'Room Resource Scheduling',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'RoomResourceScheduling',
-    backendResource: 'staff',
-    subResource: 'session_block_definitions',
-    description: 'Facility therapy rooms, sensory stations, and space availability',
-  },
-  {
-    id: 'coord_iup_generation',
-    name: 'IUP Creation & Objectives',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Goal Management',
-    route: 'IupGeneration',
-    backendResource: 'iups',
-    description: 'Assist in drafting individualized education plans and target assignments',
+    id: 'teacher_abc_log',
+    name: 'ABC Behavior Incident Log',
+    role: 'Teacher / Therapist',
+    roleKey: 'teacher',
+    category: 'Therapy & Daily Clinical',
+    route: 'AbcLog',
+    backendResource: 'behavior_incidents',
+    subResource: 'abc_lists',
+    description: 'Antecedent, Behavior, Consequence event tracking and behavior logs',
   },
 
-  // --- TEACHER / THERAPIST ---
-  {
-    id: 'teacher_dashboard',
-    name: 'Teacher Dashboard',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'TeacherDashboard',
-    backendResource: 'sessions',
-    description: 'Daily therapist view: assigned students, scheduled sessions, and tasks',
-  },
-  {
-    id: 'teacher_session_collection',
-    name: 'Session Data Collection',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'SessionDataCollection',
-    backendResource: 'sessions',
-    subResource: 'trials',
-    description: 'Active therapy interface: prompt hierarchy, trial recording, timers, tokens',
-  },
+  // --- ASSESSMENTS ---
   {
     id: 'teacher_assessments',
     name: 'Assessment Dashboard',
@@ -408,60 +267,40 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Conduct baseline assessments: ABLLS-R, FAST, MASS, and preference tests',
   },
   {
-    id: 'teacher_daily_notes',
-    name: 'Daily Session Notes',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'DailyNotes',
-    backendResource: 'sessions',
-    description: 'Draft qualitative clinical notes, incident logs, and submit for review',
+    id: 'pd_assessment_review',
+    name: 'Assessment Review & Sign-Off',
+    role: 'Program Director',
+    roleKey: 'program_director',
+    category: 'Assessments',
+    route: 'AssessmentReview',
+    backendResource: 'assessments',
+    description: 'Review and verify teacher assessment submissions and preferences',
   },
   {
-    id: 'teacher_abc_log',
-    name: 'ABC Behavior Incident Log',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'AbcLog',
-    backendResource: 'behavior_incidents',
-    subResource: 'abc_lists',
-    description: 'Antecedent, Behavior, Consequence event tracking and behavior logs',
+    id: 'pd_assessment_summary',
+    name: 'Assessment Summary Report',
+    role: 'Program Director',
+    roleKey: 'program_director',
+    category: 'Assessments',
+    route: 'AssessmentSummaryReport',
+    backendResource: 'assessments',
+    description: 'Comprehensive 6-week assessment report review and export generation',
   },
+
+  // --- FAMILY & MESSAGES ---
   {
-    id: 'teacher_parent_comm',
-    name: 'Parent Communication Thread',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
+    id: 'director_parent_comm',
+    name: 'Parent Communication Hub',
+    role: 'Director',
+    roleKey: 'director',
     category: 'Family & Messages',
     route: 'ParentCommunication',
     backendResource: 'parent_portal',
     subResource: 'parent_communications',
-    description: 'Direct messaging thread with parents, share approved summaries',
-  },
-  {
-    id: 'teacher_notifications',
-    name: 'Clinical Notifications',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Family & Messages',
-    route: 'Notifications',
-    backendResource: 'sessions',
-    description: 'System alert list, supervisor feedback alerts, and session updates',
+    description: 'Executive parent messaging hub and escalated family incident resolution',
   },
 
-  // --- INSTITUTIONAL ADMIN ---
-  {
-    id: 'ia_goal_domains',
-    name: 'Goal Domain Definitions',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'GoalDomainDefinitions',
-    backendResource: 'iups',
-    subResource: 'goal_domains',
-    description: 'Configure institutional developmental domains and skill taxonomies',
-  },
+  // --- ADMINISTRATION ---
   {
     id: 'ia_schedule_capacity',
     name: 'Schedule & Capacity Configuration',
@@ -507,18 +346,6 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Interactive form designer, assessment question editors, and form sections',
   },
   {
-    id: 'ia_task_analysis',
-    name: 'Task Analysis Templates',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'TaskAnalysisTemplates',
-    backendResource: 'iups',
-    description: 'Curate forward and backward chaining task analysis templates and step lists',
-  },
-
-  // --- SYSTEM ADMIN ---
-  {
     id: 'sys_staff_accounts',
     name: 'Staff Account Management',
     role: 'System Admin',
@@ -563,17 +390,7 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     description: 'Security and administrative audit trail with IP address and timestamp records',
   },
 
-  // --- PARENT ---
-  {
-    id: 'parent_dashboard',
-    name: 'Parent Family Dashboard',
-    role: 'Parent',
-    roleKey: 'parent',
-    category: 'Parent Portal',
-    route: 'ParentDashboard',
-    backendResource: 'parent_portal',
-    description: 'Guardian portal overview, therapy attendance, and weekly skill milestones',
-  },
+  // --- PARENT PORTAL ---
   {
     id: 'parent_child_progress',
     name: 'Child Progress Tracker',
@@ -594,17 +411,6 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     backendResource: 'parent_portal',
     subResource: 'home_observations',
     description: 'Log behaviors and skills observed at home with therapist feedback',
-  },
-  {
-    id: 'parent_messages',
-    name: 'Parent Messaging Hub',
-    role: 'Parent',
-    roleKey: 'parent',
-    category: 'Parent Portal',
-    route: 'ParentCommunication',
-    backendResource: 'parent_portal',
-    subResource: 'parent_communications',
-    description: 'Direct communication thread with child therapist and clinical team',
   },
 ];
 
@@ -795,6 +601,12 @@ export function mapBackendPermissionsToMatrix(
   ALL_PAGE_MODULES.forEach((page) => {
     ACTIONS.forEach((act) => {
       const actLower = act.toLowerCase();
+
+      // 0. Direct page-level match (e.g. 'teacher_session_collection:view' or 'coord_live_sessions:view')
+      if (granted.has(`${page.id.toLowerCase()}:${actLower}`)) {
+        mat[page.id][act] = true;
+        return;
+      }
 
       // 1. Direct sub-resource match (e.g. 'staff_members:view')
       if (page.subResource && granted.has(`${page.subResource.toLowerCase()}:${actLower}`)) {
@@ -1010,6 +822,8 @@ export function buildSavePayload(
             permissionIdsSet.add(`${page.subResource}:${actLower}`);
           }
         }
+        // Always include exact page module identifier so page-level precision is preserved
+        permissionIdsSet.add(`${page.id}:${actLower}`);
       }
     });
   });

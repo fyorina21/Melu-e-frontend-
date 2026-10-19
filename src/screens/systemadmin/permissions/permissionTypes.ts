@@ -68,6 +68,13 @@ export const FALLBACK_MODULES: CatalogModule[] = [
     permissions: [],
   },
   {
+    id: 'goals',
+    name: 'Clinical Verification',
+    description: 'Goal mastery approval and executive clinical verification',
+    resource: 'goals',
+    permissions: [],
+  },
+  {
     id: 'sessions',
     name: 'Daily Active Therapy',
     description: 'Session blocks, real-time trial logging, and session summaries',
@@ -135,7 +142,7 @@ export const RESOURCE_ALIAS_MAP: Record<string, string> = {
   behavior_assessments: 'assessments',
   preference_assessments: 'assessments',
   iups: 'iups',
-  goals: 'iups',
+  goals: 'goals',
   goal_domains: 'iups',
   prompt_levels: 'iups',
   sessions: 'sessions',

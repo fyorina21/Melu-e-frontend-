@@ -254,7 +254,7 @@ export function StaffFormModal({
               <Text style={typography.label}>Phone Number</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="e.g. +1 (555) 019-2834"
+                placeholder="e.g. +251911283154"
                 placeholderTextColor={colors.mutedText}
                 value={phone}
                 onChangeText={setPhone}

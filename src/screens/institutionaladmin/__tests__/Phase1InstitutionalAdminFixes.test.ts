@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ROLE_TABS,
   MODULE_TO_TABS,
+  TAB_ALIASES_TO_MODULE,
   IA_ROUTE_BY_TAB,
   getTabsForSession,
 } from '../../../components/appNavConfig';
@@ -30,7 +31,7 @@ describe('Phase 1: Institutional Admin Routing & Module Guards', () => {
   });
 
   it('wires institutional admin tabs into MODULE_TO_TABS for RBAC filtering', () => {
-    expect(MODULE_TO_TABS.iups).toContain('Goals');
+    expect(TAB_ALIASES_TO_MODULE['Goals']).toBe('iups');
     expect(MODULE_TO_TABS.iups).not.toContain('Task Analysis');
     expect(MODULE_TO_TABS.sessions).toContain('Trial Logging Format');
     expect(MODULE_TO_TABS.behavior_incidents).toContain('ABC Dropdown Lists');
