@@ -8,6 +8,7 @@ interface SendAlertModalProps {
   session: Session | null;
   alertType: string;
   alertMessage: string;
+  isSending?: boolean;
   onAlertTypeChange: (type: string) => void;
   onAlertMessageChange: (message: string) => void;
   onSend: () => void;
@@ -19,6 +20,7 @@ export const SendAlertModal: React.FC<SendAlertModalProps> = React.memo(
     session,
     alertType,
     alertMessage,
+    isSending = false,
     onAlertTypeChange,
     onAlertMessageChange,
     onSend,
@@ -93,14 +95,17 @@ export const SendAlertModal: React.FC<SendAlertModalProps> = React.memo(
                 <Text style={styles.closeButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.sendBtn, !alertMessage.trim() && styles.sendBtnDisabled]}
-                disabled={!alertMessage.trim()}
+                style={[
+                  styles.sendBtn,
+                  (!alertMessage.trim() || isSending) && styles.sendBtnDisabled,
+                ]}
+                disabled={!alertMessage.trim() || isSending}
                 onPress={onSend}
                 activeOpacity={0.8}
                 accessibilityRole="button"
                 accessibilityLabel="Send alert"
               >
-                <Text style={styles.sendBtnText}>Send Alert</Text>
+                <Text style={styles.sendBtnText}>{isSending ? 'Sending...' : 'Send Alert'}</Text>
               </TouchableOpacity>
             </View>
           </View>
