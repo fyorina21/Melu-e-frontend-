@@ -2,6 +2,7 @@ import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
+import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
 
 // ============================================================================
 // Storage Keys
@@ -343,6 +344,10 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
     if (Array.isArray(res?.data) && res.data.length > 0) {
       return res;
     }
+    const list = res?.data?.data?.sessions || res?.data?.sessions;
+    if (Array.isArray(list) && list.length > 0) {
+      return { ...res, data: list };
+    }
   } catch {}
 
   let realStudents: any[] = [];
@@ -358,23 +363,31 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
       id: 'sess-live-1',
       therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
       therapistName: 'Abeba Tadesse',
+      teacherName: 'Abeba Tadesse',
       station: 'Station 1',
       stationName: 'Station 1 · Early Learners',
       room: 'Room 1',
+      roomName: 'Room 1',
       status: 'on-track',
-      timer: 1420,
+      timer: '23:40',
       trialsCount: 38,
+      trialCount: 38,
       incidentsCount: 0,
+      incidents: [],
+      studentNames: [
+        pool[0]?.name || pool[0]?.fullName || 'Amir Hassan',
+        pool[1]?.name || pool[1]?.fullName || 'Tigist Bekele',
+      ],
       students: [
         {
           id: String(pool[0]?.id),
-          name: pool[0]?.name || 'Amir Hassan',
+          name: pool[0]?.name || pool[0]?.fullName || 'Amir Hassan',
           trials: 20,
           independence: 85,
         },
         {
           id: String(pool[1]?.id),
-          name: pool[1]?.name || 'Tigist Bekele',
+          name: pool[1]?.name || pool[1]?.fullName || 'Tigist Bekele',
           trials: 18,
           independence: 80,
         },
@@ -384,23 +397,31 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
       id: 'sess-live-2',
       therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
       therapistName: 'Dawit Bekele',
+      teacherName: 'Dawit Bekele',
       station: 'Station 2',
       stationName: 'Station 2 · Social Play',
       room: 'Room 2',
+      roomName: 'Room 2',
       status: 'needs-attention',
-      timer: 890,
+      timer: '14:50',
       trialsCount: 19,
+      trialCount: 19,
       incidentsCount: 1,
+      incidents: [{ id: 'inc-1' }],
+      studentNames: [
+        pool[2]?.name || pool[2]?.fullName || 'Saron Tekle',
+        pool[3]?.name || pool[3]?.fullName || 'Biniam Hailu',
+      ],
       students: [
         {
           id: String(pool[2]?.id),
-          name: pool[2]?.name || 'Saron Tekle',
+          name: pool[2]?.name || pool[2]?.fullName || 'Saron Tekle',
           trials: 12,
           independence: 65,
         },
         {
           id: String(pool[3]?.id),
-          name: pool[3]?.name || 'Biniam Hailu',
+          name: pool[3]?.name || pool[3]?.fullName || 'Biniam Hailu',
           trials: 7,
           independence: 75,
         },
@@ -410,17 +431,22 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
       id: 'sess-live-3',
       therapistId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
       therapistName: 'Selam Tesfaye',
+      teacherName: 'Selam Tesfaye',
       station: 'Station 3',
       stationName: 'Station 3 · Academic Prep',
       room: 'Room 3',
+      roomName: 'Room 3',
       status: 'on-track',
-      timer: 2100,
+      timer: '35:00',
       trialsCount: 42,
+      trialCount: 42,
       incidentsCount: 0,
+      incidents: [],
+      studentNames: [pool[4]?.name || pool[4]?.fullName || 'Yonas Girma'],
       students: [
         {
           id: String(pool[4]?.id),
-          name: pool[4]?.name || 'Yonas Girma',
+          name: pool[4]?.name || pool[4]?.fullName || 'Yonas Girma',
           trials: 42,
           independence: 90,
         },
@@ -435,6 +461,13 @@ export const sendAlertToTeacher = async (
   sessionId: string,
   payload: Payload,
 ): Promise<{ data: any }> => {
+  saveCoordinatorAlert({
+    sessionId,
+    teacherName: String(payload.teacherName || ''),
+    type: String(payload.type || 'FYI'),
+    message: String(payload.message || ''),
+  });
+
   try {
     const res = await client.post(`/coordinator/sessions/${sessionId}/alert`, payload);
     if (res?.data) return res;
@@ -1282,7 +1315,12 @@ export const getStudentProfile = async (studentId: string): Promise<{ data: any 
   let program = 'Comprehensive ABA';
   let therapyGroup = 'Station 1 · Early Learners';
 
-  const defaultMatch = DEFAULT_COORDINATOR_STUDENTS.find((s) => s.id === studentId);
+  const defaultMatch = DEFAULT_COORDINATOR_STUDENTS.find(
+    (s) =>
+      s.id === studentId ||
+      s.name.toLowerCase() === studentId.toLowerCase() ||
+      s.fullName.toLowerCase() === studentId.toLowerCase(),
+  );
   if (defaultMatch) {
     fullName = defaultMatch.name;
     age = defaultMatch.age;
