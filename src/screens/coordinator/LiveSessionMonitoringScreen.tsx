@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
 import { downloadTextFile } from '../../utils/webExport';
 import { colors, radius, spacing } from '../../theme/colors';
+import { useToast } from '../../context/ToastContext';
 
 import { type Session, type ActiveSessionRow, mapActiveSession } from './livesession/types';
 import { LiveSessionStatsGrid } from './livesession/components/LiveSessionStatsGrid';
@@ -17,6 +18,7 @@ import { SendAlertModal } from './livesession/components/SendAlertModal';
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'LiveSessionMonitoring'>;
 
 export default function LiveSessionMonitoringScreen({ navigation }: Props) {
+  const { showToast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stationFilter, setStationFilter] = useState<string>('all');
@@ -24,12 +26,24 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
   const [alertSession, setAlertSession] = useState<Session | null>(null);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('FYI');
+  const [sendingAlert, setSendingAlert] = useState(false);
   const [refreshCountdown, setRefreshCountdown] = useState(30);
 
   const loadSessions = useCallback(async () => {
     try {
       const { data } = await getActiveSessions({});
-      setSessions(((Array.isArray(data) ? data : []) as ActiveSessionRow[]).map(mapActiveSession));
+      const mapped = ((Array.isArray(data) ? data : []) as ActiveSessionRow[]).map(
+        mapActiveSession,
+      );
+      // Deduplicate sessions so each active teacher/station appears once
+      const seen = new Set<string>();
+      const uniqueSessions = mapped.filter((s) => {
+        const key = `${s.teacher}_${s.station}_${s.room}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setSessions(uniqueSessions);
     } catch {
       setSessions([]);
     }
@@ -66,10 +80,11 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
       const { data } = await exportSessionLog({});
       const csv = (data as { csv?: string })?.csv ?? '';
       downloadTextFile('session_log.csv', csv);
+      showToast('Session log exported successfully', 'success');
     } catch {
-      Alert.alert('Export failed', 'Could not export the session log.');
+      showToast('Could not export the session log.', 'error');
     }
-  }, []);
+  }, [showToast]);
 
   const filtered = useMemo(() => {
     return sessions.filter((s) => {
@@ -96,17 +111,24 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
 
   const handleSendAlert = useCallback(async () => {
     if (!alertMessage.trim() || !alertSession) {
-      Alert.alert('Error', 'Please enter an alert message');
+      showToast('Please enter an alert message', 'error');
       return;
     }
+    setSendingAlert(true);
     try {
-      await sendAlertToTeacher(alertSession.id, { type: alertType, message: alertMessage });
-      Alert.alert('Sent', `Alert sent to ${alertSession.teacher}`);
+      await sendAlertToTeacher(alertSession.id, {
+        type: alertType,
+        message: alertMessage.trim(),
+        teacherName: alertSession.teacher,
+      });
+      showToast(`Alert (${alertType}) sent to ${alertSession.teacher}`, 'success');
+      closeAlertModal();
     } catch {
-      Alert.alert('Failed', 'Could not deliver the alert.');
+      showToast('Could not deliver the alert. Please try again.', 'error');
+    } finally {
+      setSendingAlert(false);
     }
-    closeAlertModal();
-  }, [alertMessage, alertSession, alertType, closeAlertModal]);
+  }, [alertMessage, alertSession, alertType, closeAlertModal, showToast]);
 
   const openStudent = useCallback(
     (studentId: string) => {
@@ -178,6 +200,7 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
         session={alertSession}
         alertType={alertType}
         alertMessage={alertMessage}
+        isSending={sendingAlert}
         onAlertTypeChange={setAlertType}
         onAlertMessageChange={setAlertMessage}
         onSend={handleSendAlert}
