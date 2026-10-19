@@ -28,11 +28,21 @@ const ASSESSMENT_SUBMISSION_DATA_KEY = 'melue_assessment_submission_';
 const STUDENT_STATUS_REGISTRY_KEY = 'melue_student_status_registry';
 
 /**
- * Normalizes a student ID into a trimmed, lowercased string for consistent comparison.
+ * Normalizes a student ID into a trimmed, canonical string for consistent comparison.
  */
 export function normalizeStudentId(id: string | number | null | undefined): string {
   if (id === null || id === undefined) return '';
-  return String(id).trim().toLowerCase();
+  const s = String(id).trim().toLowerCase();
+  if (s === '1' || s === 'stu-1' || s === 'student-a' || s === 'student-1') {
+    return 'stu-1';
+  }
+  if (s === '2' || s === 'stu-2' || s === 'student-b' || s === 'student-2') {
+    return 'stu-2';
+  }
+  if (s === '3' || s === 'stu-3' || s === 'student-c' || s === 'student-3') {
+    return 'stu-3';
+  }
+  return s;
 }
 
 /**
@@ -44,13 +54,24 @@ export function getStudentIdAliases(id: string | number | null | undefined): str
   const s = String(id).trim();
   if (!s) return [];
   const lower = s.toLowerCase();
-  const aliases = new Set<string>([s, lower]);
+  const normalized = normalizeStudentId(s);
+  const aliases = new Set<string>([s, lower, normalized]);
 
-  if (lower === '1' || lower === 'stu-1' || lower === 'student-a' || lower === 'student-1') {
+  if (normalized === 'stu-1') {
     aliases.add('stu-1');
     aliases.add('student-a');
     aliases.add('1');
     aliases.add('student-1');
+  } else if (normalized === 'stu-2') {
+    aliases.add('stu-2');
+    aliases.add('student-b');
+    aliases.add('2');
+    aliases.add('student-2');
+  } else if (normalized === 'stu-3') {
+    aliases.add('stu-3');
+    aliases.add('student-c');
+    aliases.add('3');
+    aliases.add('student-3');
   }
   return Array.from(aliases);
 }
@@ -68,6 +89,36 @@ export function isStudentAssessmentSubmitted(studentId: string | number): boolea
       }
       const raw = storage.getJSONSync<any>(`${ASSESSMENT_SUBMISSION_DATA_KEY}${alias}`);
       if (raw?.status === 'submitted') {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+/**
+ * Asynchronously checks if a student's assessment has been submitted,
+ * hydrating in-memory cache for cross-platform compatibility on app restart.
+ */
+export async function isStudentAssessmentSubmittedAsync(
+  studentId: string | number,
+): Promise<boolean> {
+  if (!studentId) return false;
+  if (isStudentAssessmentSubmitted(studentId)) return true;
+  try {
+    const aliases = getStudentIdAliases(studentId);
+    for (const alias of aliases) {
+      const val = await storage.getItem(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`);
+      if (val === 'true') {
+        storage.setSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`, 'true');
+        storage.setSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`, 'true');
+        return true;
+      }
+      const raw = await storage.getJSON<any>(`${ASSESSMENT_SUBMISSION_DATA_KEY}${alias}`);
+      if (raw?.status === 'submitted') {
+        storage.setSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`, 'true');
+        storage.setSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`, 'true');
+        storage.setJSONSync(`${ASSESSMENT_SUBMISSION_DATA_KEY}${alias}`, raw);
         return true;
       }
     }
@@ -196,6 +247,10 @@ export function checkStudentAllAssessmentsCompleted(
   if (!studentId) return false;
   const sid = String(studentId);
 
+  if (isStudentAssessmentSubmitted(sid)) {
+    return true;
+  }
+
   const skillsData =
     precomputedSkills ??
     getStudentSkillsProgress(
@@ -259,6 +314,31 @@ export function checkStudentAllAssessmentsCompleted(
   }
 
   return true;
+}
+
+/**
+ * Ensures IUP Generation is accessible only when both Skills and Behavior assessments are fully complete.
+ */
+export function canAccessIupGeneration(
+  studentId: string | number,
+  fallbackAblls?: { status?: string; progress?: number },
+  fallbackBehavior?: { status?: string; progress?: number },
+  precomputedSkills?: { progress: number; status: string },
+  precomputedBehavior?: { progress: number; status: string },
+): boolean {
+  if (!studentId) return false;
+  const sid = String(studentId);
+  if (isStudentAssessmentSubmitted(sid)) return true;
+  return checkStudentAllAssessmentsCompleted(
+    sid,
+    fallbackAblls,
+    fallbackBehavior,
+    precomputedSkills,
+    precomputedBehavior,
+    undefined,
+    undefined,
+    { requireAllFour: false },
+  );
 }
 
 /**
@@ -383,6 +463,15 @@ export function getStudentBehaviorProgress(
   try {
     const sid = String(studentId).trim();
     const aliases = getStudentIdAliases(sid);
+
+    for (const alias of aliases) {
+      if (
+        storage.getSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`) === 'true' ||
+        storage.getSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`) === 'true'
+      ) {
+        return { progress: 100, status: 'Completed' };
+      }
+    }
 
     for (const alias of aliases) {
       const raw =

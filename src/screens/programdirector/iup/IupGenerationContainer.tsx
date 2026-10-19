@@ -20,6 +20,7 @@ import {
 import ScreenLoader from '../../../components/ScreenLoader';
 import { routeMapForRole } from '../../../components/appNavConfig';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../../types';
+import { normalizeStudentId } from '../../../utils/studentLifecycleHelper';
 
 import IupGenerationPresenter, {
   type GoalBankItem,
@@ -45,7 +46,7 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
   const { showToast } = useToast();
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [slots, setSlots] = useState<Slots>({ station1: [null, null], station2: [null, null] });
+  const [slots, setSlots] = useState<Slots>({ station1: [null], station2: [null] });
   const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<
     'assessment' | 'goals' | 'strategies'
   >('goals');
@@ -100,9 +101,18 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
 
   useEffect(() => {
     const preId = (route.params as { studentId?: string })?.studentId;
-    if (preId) {
-      setSelectedStudentId(preId);
-    } else if (candidates.length > 0 && !selectedStudentId) {
+    const match = preId
+      ? candidates.find(
+          (c) => c.id === preId || normalizeStudentId(c.id) === normalizeStudentId(preId),
+        )
+      : null;
+
+    if (match) {
+      setSelectedStudentId(match.id);
+    } else if (
+      candidates.length > 0 &&
+      (!selectedStudentId || !candidates.some((c) => c.id === selectedStudentId))
+    ) {
       setSelectedStudentId(candidates[0].id);
     }
   }, [route.params, candidates, selectedStudentId]);
@@ -126,16 +136,17 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
           if (data?.goals) {
-            setSlots((_prev) => {
-              const next: Slots = { station1: [null, null], station2: [null, null] };
+            setSlots((prev) => {
+              const hasExistingGoals = [...prev.station1, ...prev.station2].some(Boolean);
+              if (hasExistingGoals) return prev;
+
+              const next: Slots = { station1: [null], station2: [null] };
               data.goals.forEach((g: any) => {
                 const gbGoal = goalBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
-                  const slotIndex =
-                    typeof g.slot === 'number' ? g.slot : next[stationKey][0] === null ? 0 : 1;
-                  if (slotIndex >= 0 && slotIndex <= 1) {
-                    next[stationKey][slotIndex] = gbGoal;
+                  if (next[stationKey][0] === null) {
+                    next[stationKey][0] = gbGoal;
                   }
                 }
               });
@@ -182,6 +193,9 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     setSlots((prev) => {
       const next: Slots = { ...prev };
       next[station] = [...prev[station]];
+      while (next[station].length <= slotIndex) {
+        next[station].push(null);
+      }
       next[station][slotIndex] = goal;
       return next;
     });
@@ -229,6 +243,31 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
         },
       },
     ]);
+  };
+
+  const handleAddSlot = (station: StationKey) => {
+    setSlots((prev) => {
+      const nextIndex = prev[station].length;
+      const next = {
+        ...prev,
+        [station]: [...prev[station], null],
+      };
+      setTimeout(() => {
+        setSelectorTarget({ station, slotIndex: nextIndex });
+      }, 50);
+      return next;
+    });
+  };
+
+  const handleRemoveSlot = (station: StationKey, slotIndex: number) => {
+    setSlots((prev) => {
+      const list = prev[station];
+      if (list.length <= 1) return prev;
+      return {
+        ...prev,
+        [station]: list.filter((_, idx) => idx !== slotIndex),
+      };
+    });
   };
 
   const handleDraftSave = async () => {
@@ -443,6 +482,8 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       onCloseGoalSelector={() => setSelectorTarget(null)}
       onSelectGoal={handleSelectGoal}
       onRemoveGoal={handleRemoveGoal}
+      onAddSlot={handleAddSlot}
+      onRemoveSlot={handleRemoveSlot}
       onDraftSave={handleDraftSave}
       onFinalize={handleFinalize}
       onOpenPreview={() => setPreviewOpen(true)}

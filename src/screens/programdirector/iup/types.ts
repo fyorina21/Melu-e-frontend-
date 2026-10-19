@@ -67,6 +67,8 @@ export interface IupGenerationPresenterProps {
   onCloseGoalSelector: () => void;
   onSelectGoal: (goal: GoalBankItem) => void;
   onRemoveGoal: (station: StationKey, slotIndex: number) => void;
+  onAddSlot?: (station: StationKey) => void;
+  onRemoveSlot?: (station: StationKey, slotIndex: number) => void;
   onDraftSave: () => void;
   onFinalize: () => void;
   onOpenPreview: () => void;

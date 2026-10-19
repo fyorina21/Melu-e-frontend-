@@ -16,13 +16,16 @@ import storage from '../../utils/storage';
 import {
   isStudentInSession,
   isStudentAssessmentSubmitted,
+  isStudentAssessmentSubmittedAsync,
   saveStudentAssessmentSubmission,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
   getStudentPreferenceProgress,
   getStudentSensoryProgress,
   checkStudentAllAssessmentsCompleted,
+  canAccessIupGeneration,
   normalizeStudentId,
+  getStudentIdAliases,
 } from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList } from '../../types';
 
@@ -115,18 +118,26 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   const [submittedIds, setSubmittedIds] = useState<Set<string>>(() => new Set());
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
+  const queuedRefreshRef = useRef(false);
+  const isSubmittingRef = useRef<Set<string>>(new Set());
 
-  // Refresh submission status from storage
+  // Refresh submission status from storage (supporting both sync and async storage hydration)
   const refreshSubmissionStatus = useCallback(
-    (studentsList?: any[]) => {
+    async (studentsList?: any[]) => {
       const list = studentsList ?? data?.students ?? [];
       const set = new Set<string>();
-      list.forEach((s: any) => {
-        if (s?.id && isStudentAssessmentSubmitted(s.id)) {
-          set.add(String(s.id).trim());
-          set.add(normalizeStudentId(s.id));
+      for (const s of list) {
+        if (s?.id) {
+          const sid = String(s.id).trim();
+          const isSub =
+            isStudentAssessmentSubmitted(sid) || (await isStudentAssessmentSubmittedAsync(sid));
+          if (isSub) {
+            set.add(sid);
+            set.add(normalizeStudentId(sid));
+            getStudentIdAliases(sid).forEach((a) => set.add(a));
+          }
         }
-      });
+      }
       setSubmittedIds(set);
     },
     [data?.students],
@@ -134,8 +145,13 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
   const load = useCallback(async (force = false) => {
     const now = Date.now();
+    // If a request is already in-flight, queue a refresh so we never miss updates
+    if (isFetchingRef.current) {
+      queuedRefreshRef.current = true;
+      return;
+    }
     // Prevent redundant rapid duplicate API requests within 800ms unless forced
-    if (isFetchingRef.current || (!force && now - lastFetchTimeRef.current < 800)) {
+    if (!force && now - lastFetchTimeRef.current < 800) {
       return;
     }
     isFetchingRef.current = true;
@@ -146,31 +162,41 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       setLoadError(false);
       if (Array.isArray(res?.students)) {
         const set = new Set<string>();
-        res.students.forEach((s: any) => {
-          if (s?.id && isStudentAssessmentSubmitted(s.id)) {
-            set.add(String(s.id).trim());
-            set.add(normalizeStudentId(s.id));
+        for (const s of res.students) {
+          if (s?.id) {
+            const sid = String(s.id).trim();
+            const isSub =
+              isStudentAssessmentSubmitted(sid) || (await isStudentAssessmentSubmittedAsync(sid));
+            if (isSub) {
+              set.add(sid);
+              set.add(normalizeStudentId(sid));
+              getStudentIdAliases(sid).forEach((a) => set.add(a));
+            }
           }
-        });
+        }
         setSubmittedIds(set);
       }
     } catch {
       setLoadError(true);
     } finally {
       isFetchingRef.current = false;
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false;
+        load(true);
+      }
     }
   }, []);
 
   // useFocusEffect runs on initial mount AND refreshes every time screen regains focus (e.g. returning from assessment screens)
   useFocusEffect(
     useCallback(() => {
-      load();
+      load(true);
     }, [load]),
   );
 
   useEffect(() => {
     const handleSync = () => {
-      load();
+      load(true);
     };
     if (typeof window !== 'undefined') {
       window.addEventListener?.('storage', handleSync);
@@ -199,10 +225,16 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     if (!student?.id) return;
     const sid = String(student.id).trim();
 
-    // Guard against repeated submissions
-    if (submittedIds.has(sid) || isStudentAssessmentSubmitted(sid)) {
+    // Guard against repeated submissions or duplicate in-flight submissions
+    if (
+      isSubmittingRef.current.has(sid) ||
+      submittedIds.has(sid) ||
+      submittedIds.has(normalizeStudentId(sid)) ||
+      isStudentAssessmentSubmitted(sid)
+    ) {
       return;
     }
+    isSubmittingRef.current.add(sid);
 
     // Guard: Only allow submitting when all assessments (Skills, Behavior, Preference, Sensory) are genuinely 100% complete
     const isCompleted = checkStudentAllAssessmentsCompleted(
@@ -215,7 +247,10 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       undefined,
       { requireAllFour: true },
     );
-    if (!isCompleted) return;
+    if (!isCompleted) {
+      isSubmittingRef.current.delete(sid);
+      return;
+    }
 
     try {
       const success = await saveStudentAssessmentSubmission(sid, {
@@ -232,12 +267,15 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         const next = new Set(prev);
         next.add(sid);
         next.add(normalizeStudentId(sid));
+        getStudentIdAliases(sid).forEach((a) => next.add(a));
         return next;
       });
 
       (navigation as any)?.navigate?.('AssessmentSummaryReport', { studentId: sid });
     } catch (error) {
       console.error('Failed to submit assessment:', error);
+    } finally {
+      isSubmittingRef.current.delete(sid);
     }
   };
 
@@ -249,6 +287,11 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
     filteredStudents.forEach((s) => {
       const sid = String(s.id);
+      const isSub =
+        submittedIds.has(sid) ||
+        submittedIds.has(normalizeStudentId(sid)) ||
+        isStudentAssessmentSubmitted(sid);
+
       const skillsData = getStudentSkillsProgress(
         sid,
         Number(s.ablls?.progress || 0),
@@ -271,7 +314,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         sensoryData,
         { requireAllFour: true },
       );
-      if (isComp) {
+      if (isComp || isSub) {
         completedCount++;
         return;
       }
@@ -327,7 +370,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       inProgress: inProgressCount,
       notStarted: notStartedCount,
     };
-  }, [filteredStudents]);
+  }, [filteredStudents, submittedIds]);
 
   if (loadError) return <ScreenError onRetry={load} />;
   if (!data) return <ScreenLoader />;
@@ -455,18 +498,30 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                     ? 'In Progress'
                     : sensoryData.status || 'Not Started';
 
+              const isSubmitted =
+                submittedIds.has(sid) ||
+                submittedIds.has(normalizeStudentId(sid)) ||
+                isStudentAssessmentSubmitted(sid);
+
               // Standardized completion rule: ALL assessments (Skills, Behavior, Preference, Sensory) must be 100% complete.
               // Neither an overall score of 100% nor a single assessment reaching 100% can override an incomplete assessment.
-              const isAllCompleted = checkStudentAllAssessmentsCompleted(
-                sid,
-                s.ablls,
-                s.behavior,
-                skillsData,
-                behaviorData,
-                preferenceData,
-                sensoryData,
-                { requireAllFour: true },
-              );
+              const isAllCompleted =
+                isSubmitted ||
+                checkStudentAllAssessmentsCompleted(
+                  sid,
+                  s.ablls,
+                  s.behavior,
+                  skillsData,
+                  behaviorData,
+                  preferenceData,
+                  sensoryData,
+                  { requireAllFour: true },
+                );
+
+              // Ensure IUP Generation is accessible only when both Skills and Behavior assessments are fully complete
+              const canAccessIup =
+                isSubmitted ||
+                canAccessIupGeneration(sid, s.ablls, s.behavior, skillsData, behaviorData);
 
               // Accurately calculate overall score from actual assessment progress across all 4 assessments
               const displayScore = isAllCompleted
@@ -480,11 +535,6 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                         Math.round((skillsProg + behaviorProg + prefProg + sensoryProg) / 4),
                       ),
                     );
-
-              const isSubmitted =
-                submittedIds.has(sid) ||
-                submittedIds.has(normalizeStudentId(sid)) ||
-                isStudentAssessmentSubmitted(sid);
 
               return (
                 <View key={s.id} style={styles.studentCard}>
@@ -537,6 +587,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                       style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]}
                       onPress={() => {
                         storage.setSync('last_assessment_student_id', s.id);
+                        storage.setItem('last_assessment_student_id', s.id).catch(() => {});
                         navigation?.navigate?.('SkillsAssessment', { studentId: s.id });
                       }}
                     >
@@ -546,6 +597,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                       style={[styles.launchBtn, { backgroundColor: '#EF4444' }]}
                       onPress={() => {
                         storage.setSync('last_assessment_student_id', s.id);
+                        storage.setItem('last_assessment_student_id', s.id).catch(() => {});
                         navigation?.navigate?.('BehaviorAssessment', { studentId: s.id });
                       }}
                     >
@@ -557,6 +609,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                       style={[styles.launchBtn, { backgroundColor: '#22C55E' }]}
                       onPress={() => {
                         storage.setSync('last_assessment_student_id', s.id);
+                        storage.setItem('last_assessment_student_id', s.id).catch(() => {});
                         navigation?.navigate?.('PreferenceAssessment', { studentId: s.id });
                       }}
                     >
@@ -566,6 +619,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                       style={[styles.launchBtn, { backgroundColor: '#A855F7' }]}
                       onPress={() => {
                         storage.setSync('last_assessment_student_id', s.id);
+                        storage.setItem('last_assessment_student_id', s.id).catch(() => {});
                         navigation?.navigate?.('SensoryAssessment', { studentId: s.id });
                       }}
                     >
@@ -610,6 +664,33 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                             </Text>
                           </>
                         )}
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      testID={`iup-generation-btn-${s.id}`}
+                      style={[styles.launchBtn, canAccessIup ? styles.iupBtn : styles.disabledBtn]}
+                      disabled={!canAccessIup}
+                      onPress={() => {
+                        storage.setSync('last_assessment_student_id', s.id);
+                        storage.setItem('last_assessment_student_id', s.id).catch(() => {});
+                        (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
+                      }}
+                    >
+                      <View style={styles.btnContentRow}>
+                        <Feather
+                          name={canAccessIup ? 'file-text' : 'lock'}
+                          size={13}
+                          color={canAccessIup ? '#FFFFFF' : '#CBD5E1'}
+                        />
+                        <Text
+                          style={[
+                            styles.launchBtnTextLight,
+                            !canAccessIup && styles.disabledBtnText,
+                          ]}
+                        >
+                          IUP Generation {canAccessIup ? '→' : '(Locked)'}
+                        </Text>
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -726,6 +807,9 @@ const styles = StyleSheet.create({
   },
   submittedBtn: {
     backgroundColor: '#10B981',
+  },
+  iupBtn: {
+    backgroundColor: '#6366F1',
   },
   disabledBtn: {
     backgroundColor: '#94A3B8',

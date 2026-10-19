@@ -57,6 +57,8 @@ export default function IupGenerationPresenter({
   onCloseGoalSelector,
   onSelectGoal,
   onRemoveGoal,
+  onAddSlot,
+  onRemoveSlot,
   onDraftSave,
   onFinalize,
   onOpenPreview,
@@ -148,7 +150,7 @@ export default function IupGenerationPresenter({
                   activeWorkbenchTab === 'goals' && styles.tabBtnTextActive,
                 ]}
               >
-                Goal Assignment ({assignedGoalCount}/4)
+                Goal Assignment ({assignedGoalCount})
               </Text>
             </TouchableOpacity>
 
@@ -201,6 +203,8 @@ export default function IupGenerationPresenter({
               slots={slots}
               onOpenGoalSelector={onOpenGoalSelector}
               onRemoveGoal={onRemoveGoal}
+              onAddSlot={onAddSlot}
+              onRemoveSlot={onRemoveSlot}
             />
           )}
 

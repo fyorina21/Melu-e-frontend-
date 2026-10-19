@@ -34,6 +34,16 @@ interface IupRecord {
   goalCount: number;
   version: string;
   status: string;
+  isPermanent?: boolean;
+  isFinalized?: boolean;
+  editable?: boolean;
+  slots?: any;
+  goals?: any[];
+  reinforcementSchedule?: string;
+  crisisProtocol?: string;
+  accommodations?: string;
+  reviewCycle?: string;
+  customFields?: Record<string, any>;
 }
 
 export default function IupLibraryScreen({
@@ -80,20 +90,50 @@ export default function IupLibraryScreen({
     ]);
   };
 
-  const buildExportText = (iup: IupRecord) =>
-    [
+  const buildExportText = (iup: any) => {
+    const lines = [
       '================================================================',
       `MELU'E FOUNDATION — IUP RECORD ARCHIVE`,
       '================================================================',
       `Student: ${iup.studentName}`,
+      `Student ID: ${iup.studentId}`,
       `Program: ${iup.program}`,
-      `Plan Status: ${iup.status}`,
+      `Plan Status: ${iup.status} (Permanent, Non-Editable)`,
       `Finalized Date: ${iup.finalizedDate}`,
       `Target Goals Assigned: ${iup.goalCount}`,
       `Plan Version: v${iup.version}`,
-      `Generated: ${new Date().toLocaleDateString()}`,
-      '================================================================',
-    ].join('\n');
+      '----------------------------------------------------------------',
+    ];
+
+    if (iup.slots) {
+      lines.push('ASSIGNED TARGET GOALS:');
+      const s1 = iup.slots.station1 || [];
+      const s2 = iup.slots.station2 || [];
+      s1.forEach((g: any, i: number) => {
+        if (g)
+          lines.push(
+            `  Station 1 (Slot ${i + 1}): ${g.name} [${g.domain}] — ${g.masteryCriteria || 'Mastery'}`,
+          );
+      });
+      s2.forEach((g: any, i: number) => {
+        if (g)
+          lines.push(
+            `  Station 2 (Slot ${i + 1}): ${g.name} [${g.domain}] — ${g.masteryCriteria || 'Mastery'}`,
+          );
+      });
+      lines.push('----------------------------------------------------------------');
+    }
+
+    if (iup.reinforcementSchedule)
+      lines.push(`Reinforcement Schedule: ${iup.reinforcementSchedule}`);
+    if (iup.accommodations) lines.push(`Accommodations: ${iup.accommodations}`);
+    if (iup.crisisProtocol) lines.push(`Crisis Protocol: ${iup.crisisProtocol}`);
+    if (iup.reviewCycle) lines.push(`Review Cycle: ${iup.reviewCycle}`);
+
+    lines.push(`Generated: ${new Date().toLocaleDateString()}`);
+    lines.push('================================================================');
+    return lines.join('\n');
+  };
 
   const filtered = useMemo(() => {
     if (!list) return [];
@@ -226,6 +266,15 @@ export default function IupLibraryScreen({
                     <View style={styles.versionBadge}>
                       <Text style={styles.versionBadgeText}>v{iup.version}</Text>
                     </View>
+                    {(iup.isPermanent ||
+                      iup.isFinalized ||
+                      iup.editable === false ||
+                      iup.status === 'Active') && (
+                      <View style={styles.permanentBadge}>
+                        <Feather name="lock" size={10} color="#15803D" style={{ marginRight: 3 }} />
+                        <Text style={styles.permanentBadgeText}>Permanent Record</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={styles.iupMeta}>
                     {iup.program} · Finalized: {iup.finalizedDate} · {iup.goalCount} Target Goals
@@ -421,6 +470,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   versionBadgeText: { fontSize: 10, fontWeight: '700', color: colors.bodyText },
+  permanentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  permanentBadgeText: { fontSize: 10, fontWeight: '700', color: '#15803D' },
   iupMeta: { fontSize: 12, color: colors.bodyText, marginTop: 2 },
 
   iupCardActions: {

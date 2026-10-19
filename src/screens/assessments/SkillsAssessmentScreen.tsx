@@ -18,9 +18,18 @@ import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getSkillsAssessment, saveSkillsAssessment, bulkSaveAbllsResponses, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import {
+  getSkillsAssessment,
+  saveSkillsAssessment,
+  bulkSaveAbllsResponses,
+  getTeacherStudentProfile,
+} from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
-import { markStudentAssessmentCompleted } from '../../utils/studentLifecycleHelper';
+import {
+  markStudentAssessmentCompleted,
+  normalizeStudentId,
+} from '../../utils/studentLifecycleHelper';
+import storage from '../../utils/storage';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import {
   DEFAULT_ABLLS_DOMAINS,
@@ -44,15 +53,19 @@ interface StudentProfile {
 }
 
 export default function SkillsAssessmentScreen({ navigation, route }: Props) {
-  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
-  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
-  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const localSid = storage.getSync('last_assessment_student_id');
+  const rawId = route?.params?.studentId || urlSid || localSid || 'stu-1';
+  const studentId = normalizeStudentId(rawId);
 
   useEffect(() => {
-    if (typeof localStorage !== 'undefined' && studentId) {
+    if (studentId) {
       try {
-        localStorage.setItem('last_assessment_student_id', studentId);
+        storage.setSync('last_assessment_student_id', studentId);
+        storage.setItem('last_assessment_student_id', studentId).catch(() => {});
       } catch {}
     }
   }, [studentId]);
@@ -77,7 +90,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     try {
       const { data: cfg } = await getFormConfig('ABLLS Assessment Form');
       if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-        setDomains(buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections));
+        setDomains(
+          buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections),
+        );
       }
     } catch (err) {
       setDomains(DEFAULT_ABLLS_DOMAINS);
@@ -92,7 +107,11 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         notes?: Record<string, string>;
         customFields?: Record<string, any>;
       };
-      const foundId = savedData?.ablls_assessment_id || savedData?.assessment_id || savedData?.id || (saved as any)?.id;
+      const foundId =
+        savedData?.ablls_assessment_id ||
+        savedData?.assessment_id ||
+        savedData?.id ||
+        (saved as any)?.id;
       if (foundId) {
         setAssessmentId(foundId);
       }
@@ -100,7 +119,10 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       const localData = loadStorageAssessment(studentId);
       const mergedScores = { ...apiScores, ...(localData?.scores ?? {}) };
       const mergedNotes = { ...(savedData.notes ?? {}), ...(localData?.notes ?? {}) };
-      const mergedCustomFields = { ...(savedData.customFields ?? {}), ...(localData?.customFields ?? {}) };
+      const mergedCustomFields = {
+        ...(savedData.customFields ?? {}),
+        ...(localData?.customFields ?? {}),
+      };
       setScores(mergedScores);
       if (Object.keys(mergedNotes).length > 0) setNotes(mergedNotes);
       if (Object.keys(mergedCustomFields).length > 0) setCustomFields(mergedCustomFields);
@@ -117,7 +139,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   useEffect(() => {
@@ -126,7 +148,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       if (name.includes('ablls') || name.includes('skill')) {
         const cfg = e.detail?.config;
         if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-          setDomains(buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections));
+          setDomains(
+            buildAbllsDomainsFromConfig(cfg.fields, cfg.customSections, cfg.deletedSections),
+          );
         } else {
           load();
         }
@@ -143,30 +167,63 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const totalItems = domains.reduce((sum, d) => sum + d.items.length, 0);
   const totalAnswered = Object.keys(scores).length;
 
-  const persistBulkResponses = useCallback((updatedScores: Record<string, Score>, updatedNotes: Record<string, string>, status = 'in_progress') => {
-    const answered = Object.keys(updatedScores).length;
-    const progress = totalItems > 0 ? Math.min(100, Math.round((answered / totalItems) * 100)) : 0;
-    saveStorageAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, progress, status });
-    const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
-    if (aliasSid) {
-      saveStorageAssessment(aliasSid, { scores: updatedScores, notes: updatedNotes, customFields, progress, status });
-    }
-    const formattedResponses = Object.entries(updatedScores).map(([k, v]) => ({
-      skill_item_id: k,
-      score: String(v),
-      note: updatedNotes[k] || undefined,
-    }));
-    const targetId = assessmentId || studentId;
-    bulkSaveAbllsResponses(targetId, {
-      responses: formattedResponses,
-      scores: updatedScores,
-      notes: updatedNotes,
-    }).catch(() => {});
-    saveSkillsAssessment(studentId, { scores: updatedScores, notes: updatedNotes, customFields, status, progress }).catch(() => {});
-    if (aliasSid) {
-      saveSkillsAssessment(aliasSid, { scores: updatedScores, notes: updatedNotes, customFields, status, progress }).catch(() => {});
-    }
-  }, [assessmentId, studentId, customFields, totalItems]);
+  const persistBulkResponses = useCallback(
+    (
+      updatedScores: Record<string, Score>,
+      updatedNotes: Record<string, string>,
+      status = 'in_progress',
+    ) => {
+      const answered = Object.keys(updatedScores).length;
+      const progress =
+        totalItems > 0 ? Math.min(100, Math.round((answered / totalItems) * 100)) : 0;
+      saveStorageAssessment(studentId, {
+        scores: updatedScores,
+        notes: updatedNotes,
+        customFields,
+        progress,
+        status,
+      });
+      const aliasSid =
+        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        saveStorageAssessment(aliasSid, {
+          scores: updatedScores,
+          notes: updatedNotes,
+          customFields,
+          progress,
+          status,
+        });
+      }
+      const formattedResponses = Object.entries(updatedScores).map(([k, v]) => ({
+        skill_item_id: k,
+        score: String(v),
+        note: updatedNotes[k] || undefined,
+      }));
+      const targetId = assessmentId || studentId;
+      bulkSaveAbllsResponses(targetId, {
+        responses: formattedResponses,
+        scores: updatedScores,
+        notes: updatedNotes,
+      }).catch(() => {});
+      saveSkillsAssessment(studentId, {
+        scores: updatedScores,
+        notes: updatedNotes,
+        customFields,
+        status,
+        progress,
+      }).catch(() => {});
+      if (aliasSid) {
+        saveSkillsAssessment(aliasSid, {
+          scores: updatedScores,
+          notes: updatedNotes,
+          customFields,
+          status,
+          progress,
+        }).catch(() => {});
+      }
+    },
+    [assessmentId, studentId, customFields, totalItems],
+  );
 
   useEffect(() => {
     if (totalAnswered === 0 && Object.keys(notes).length === 0) return;
@@ -185,11 +242,17 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   const domain = domains[activeDomain] || domains[0];
   const studentName = profile?.fullName || 'Student A';
-  const studentInitials = studentName.split(' ').map((p) => p.charAt(0)).join('').slice(0, 2).toUpperCase();
+  const studentInitials = studentName
+    .split(' ')
+    .map((p) => p.charAt(0))
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   const domainTotalItems = domain?.items?.length ?? 0;
   const domainAnswered = (domain?.items ?? []).filter((i) => scores[i.id] !== undefined).length;
-  const domainProgress = domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
+  const domainProgress =
+    domainTotalItems === 0 ? 0 : Math.round((domainAnswered / domainTotalItems) * 100);
 
   const setScore = (itemId: string, score: Score) => {
     const updated = { ...scores, [itemId]: score };
@@ -209,12 +272,14 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     try {
       const allAnswered = totalItems > 0 && totalAnswered >= totalItems;
       const status = allAnswered ? 'completed' : totalAnswered > 0 ? 'in_progress' : 'not_started';
-      const progress = totalItems > 0 ? Math.min(100, Math.round((totalAnswered / totalItems) * 100)) : 0;
+      const progress =
+        totalItems > 0 ? Math.min(100, Math.round((totalAnswered / totalItems) * 100)) : 0;
       if (allAnswered) {
         markStudentAssessmentCompleted(studentId);
       }
       saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
-      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      const aliasSid =
+        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
       if (aliasSid) {
         saveStorageAssessment(aliasSid, { scores, notes, customFields, progress, status });
       }
@@ -237,7 +302,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
         allAnswered
           ? `${studentName} ABLLS assessment completed!`
           : `${studentName} ABLLS assessment draft saved (${progress}%).`,
-        'success'
+        'success',
       );
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');
@@ -254,7 +319,10 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       {/* Header Bar */}
       <View style={styles.headerContainer}>
@@ -271,7 +339,9 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
           <StudentAvatar
             name={studentName}
             studentId={studentId}
-            photoUrl={(profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo}
+            photoUrl={
+              (profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo
+            }
             size={40}
             style={{ marginRight: 10 }}
           />
@@ -286,7 +356,6 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
             <Text style={styles.stationText}>Station A</Text>
           </View>
         </View>
-
 
         {/* Domain Tabs Navigation */}
         <ScrollView

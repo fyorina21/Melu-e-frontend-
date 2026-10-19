@@ -16,12 +16,19 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { saveSensoryAssessment, getTeacherStudentProfile, getSensoryAssessment } from '../../api/teacherExtrasApi';
+import {
+  saveSensoryAssessment,
+  getTeacherStudentProfile,
+  getSensoryAssessment,
+} from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import type { SessionStackParamList } from '../../types';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import storage from '../../utils/storage';
+import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
 
-export type EngagementLevel = 'Independent' | 'Partial Physical Prompt' | 'Full Physical Prompt' | 'Not Applicable';
+export type EngagementLevel =
+  'Independent' | 'Partial Physical Prompt' | 'Full Physical Prompt' | 'Not Applicable';
 export type ResponseReaction = 'Enjoyed' | 'Neutral' | 'Refused' | 'Not Observed';
 
 export interface SensoryActivityItem {
@@ -54,24 +61,36 @@ const ENGAGEMENT_OPTIONS: EngagementLevel[] = [
   'Not Applicable',
 ];
 
-const REACTION_OPTIONS: ResponseReaction[] = [
-  'Enjoyed',
-  'Neutral',
-  'Refused',
-  'Not Observed',
-];
+const REACTION_OPTIONS: ResponseReaction[] = ['Enjoyed', 'Neutral', 'Refused', 'Not Observed'];
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'SensoryAssessment'>;
 
 export default function SensoryAssessmentScreen({ navigation, route }: Props) {
-  const { studentId } = route.params;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const localSid = storage.getSync('last_assessment_student_id');
+  const rawId = (route?.params as any)?.studentId || urlSid || localSid || 'stu-1';
+  const studentId = normalizeStudentId(rawId);
+
+  useEffect(() => {
+    if (studentId) {
+      try {
+        storage.setSync('last_assessment_student_id', studentId);
+        storage.setItem('last_assessment_student_id', studentId).catch(() => {});
+      } catch {}
+    }
+  }, [studentId]);
 
   const [assessmentDate, setAssessmentDate] = useState('08/21/2026');
   const [profile, setProfile] = useState<any>(null);
   useEffect(() => {
-    getTeacherStudentProfile(studentId).then(res => {
-      if (res?.data) setProfile(res.data);
-    }).catch(() => {});
+    getTeacherStudentProfile(studentId)
+      .then((res) => {
+        if (res?.data) setProfile(res.data);
+      })
+      .catch(() => {});
   }, [studentId]);
   const [activities, setActivities] = useState<SensoryActivityItem[]>(DEFAULT_ACTIVITIES);
   const [showExport, setShowExport] = useState(false);
@@ -96,10 +115,16 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
 
         const res = await getSensoryAssessment(studentId).catch(() => null);
         const savedData = res?.data?.data || res?.data;
-        if (savedData && savedData.activities && Array.isArray(savedData.activities) && savedData.activities.length > 0) {
+        if (
+          savedData &&
+          savedData.activities &&
+          Array.isArray(savedData.activities) &&
+          savedData.activities.length > 0
+        ) {
           const savedMap = new Map(savedData.activities.map((a: any) => [String(a.id), a]));
           const merged = configActivities.map((ca) => {
-            const saved = savedMap.get(ca.id) || savedData.activities.find((a: any) => a.name === ca.name);
+            const saved =
+              savedMap.get(ca.id) || savedData.activities.find((a: any) => a.name === ca.name);
             return saved ? { ...ca, ...saved, name: ca.name } : ca;
           });
           setActivities(merged);
@@ -157,7 +182,8 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
   // Metrics
   const totalActivities = activities.length;
   const scoredCount = activities.filter((a) => a.engagementLevel || a.responseReaction).length;
-  const progressPercent = totalActivities === 0 ? 0 : Math.round((scoredCount / totalActivities) * 100);
+  const progressPercent =
+    totalActivities === 0 ? 0 : Math.round((scoredCount / totalActivities) * 100);
 
   const countEngagement = (level: EngagementLevel) =>
     activities.filter((a) => a.engagementLevel === level).length;
@@ -177,10 +203,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
     const nextIdNumber = activities.length + 1;
     const newId = `SEN-${String(nextIdNumber).padStart(3, '0')}`;
 
-    setActivities((prev) => [
-      ...prev,
-      { id: newId, name: newActivityName.trim(), remark: '' },
-    ]);
+    setActivities((prev) => [...prev, { id: newId, name: newActivityName.trim(), remark: '' }]);
     setNewActivityName('');
     setIsModalVisible(false);
   };
@@ -190,7 +213,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
       await saveSensoryAssessment(studentId, { assessmentDate, activities, status });
       Alert.alert(
         status === 'submitted' ? 'Submitted' : 'Saved',
-        `Sensory assessment updated (${progressPercent}% complete).`
+        `Sensory assessment updated (${progressPercent}% complete).`,
       );
       if (status === 'submitted') {
         navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
@@ -202,7 +225,10 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <View style={styles.backRow}>
         <TouchableOpacity onPress={() => navigation?.goBack?.()}>
@@ -218,7 +244,11 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
             <StudentAvatar
               name={profile?.fullName || 'Student'}
               studentId={studentId}
-              photoUrl={(profile as any)?.photoUrl || (profile as any)?.headshotUrl || (profile as any)?.photo}
+              photoUrl={
+                (profile as any)?.photoUrl ||
+                (profile as any)?.headshotUrl ||
+                (profile as any)?.photo
+              }
               size={48}
               style={{ marginRight: 12 }}
             />
@@ -294,9 +324,14 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
                 {/* Engagement Level Dropdown */}
                 <View style={[styles.colDropdown, { zIndex: isEngagementOpen ? 1000 : 1 }]}>
                   <TouchableOpacity
-                    style={[styles.dropdownTrigger, isEngagementOpen && styles.dropdownTriggerActive]}
+                    style={[
+                      styles.dropdownTrigger,
+                      isEngagementOpen && styles.dropdownTriggerActive,
+                    ]}
                     onPress={() =>
-                      setActivePicker(isEngagementOpen ? null : { id: item.id, field: 'engagement' })
+                      setActivePicker(
+                        isEngagementOpen ? null : { id: item.id, field: 'engagement' },
+                      )
                     }
                   >
                     <Text style={styles.dropdownTriggerText}>
@@ -470,7 +505,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
           '',
           ...activities.map(
             (a, idx) =>
-              `${idx + 1}. ${a.name}\n   Engagement: ${a.engagementLevel || 'Not Specified'}\n   Reaction: ${a.responseReaction || 'Not Observed'}\n   Remarks: ${a.remark || 'None'}\n`
+              `${idx + 1}. ${a.name}\n   Engagement: ${a.engagementLevel || 'Not Specified'}\n   Reaction: ${a.responseReaction || 'Not Observed'}\n   Remarks: ${a.remark || 'None'}\n`,
           ),
           '----------------------------------------------------------------',
           'SUMMARY METRICS:',
@@ -513,10 +548,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
               >
                 <Text style={styles.cancelModalText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.addModalBtn}
-                onPress={handleAddCustomActivity}
-              >
+              <TouchableOpacity style={styles.addModalBtn} onPress={handleAddCustomActivity}>
                 <Text style={styles.addModalText}>Add Activity</Text>
               </TouchableOpacity>
             </View>
@@ -529,7 +561,12 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 8 },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+  },
   backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
   content: { padding: 24, gap: 16 },
 
@@ -716,7 +753,13 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   summaryTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 16 },
-  summarySubtitle: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, marginBottom: 12 },
+  summarySubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 
   blueBadge: {

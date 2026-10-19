@@ -16,10 +16,16 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { savePreferenceAssessment, getPreferenceAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
+import {
+  savePreferenceAssessment,
+  getPreferenceAssessment,
+  getTeacherStudentProfile,
+} from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
+import storage from '../../utils/storage';
+import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
 import type { SessionStackParamList } from '../../types';
 
 interface StimulusItem {
@@ -46,10 +52,46 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const DEFAULT_ITEMS: StimulusItem[] = [
-  { id: '1', name: 'Light-up toys', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-  { id: '2', name: 'Bubbles', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-  { id: '3', name: 'Mirror', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-  { id: '4', name: 'Kaleidoscope', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
+  {
+    id: '1',
+    name: 'Light-up toys',
+    category: 'Visual',
+    timerSeconds: 0,
+    isRunning: false,
+    frequency: 0,
+    durationSeconds: 0,
+    notes: '',
+  },
+  {
+    id: '2',
+    name: 'Bubbles',
+    category: 'Visual',
+    timerSeconds: 0,
+    isRunning: false,
+    frequency: 0,
+    durationSeconds: 0,
+    notes: '',
+  },
+  {
+    id: '3',
+    name: 'Mirror',
+    category: 'Visual',
+    timerSeconds: 0,
+    isRunning: false,
+    frequency: 0,
+    durationSeconds: 0,
+    notes: '',
+  },
+  {
+    id: '4',
+    name: 'Kaleidoscope',
+    category: 'Visual',
+    timerSeconds: 0,
+    isRunning: false,
+    frequency: 0,
+    durationSeconds: 0,
+    notes: '',
+  },
 ];
 
 type TabType = 'Sensory Time' | 'Circle Time' | 'Play Time';
@@ -63,14 +105,21 @@ const createDefaultTabItems = (baseItems: StimulusItem[]): Record<TabType, Stimu
 
 const mergeTabItems = (baseItems: StimulusItem[], savedItems?: StimulusItem[]): StimulusItem[] => {
   if (!savedItems || !Array.isArray(savedItems) || savedItems.length === 0) {
-    return baseItems.map((i) => ({ ...i, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' }));
+    return baseItems.map((i) => ({
+      ...i,
+      timerSeconds: 0,
+      isRunning: false,
+      frequency: 0,
+      durationSeconds: 0,
+      notes: '',
+    }));
   }
   const savedMap = new Map(savedItems.map((it: any) => [String(it.id), it]));
   const merged = baseItems.map((ci) => {
     const saved =
       savedMap.get(ci.id) ||
       savedItems.find(
-        (it: any) => String(it.name).toLowerCase().trim() === String(ci.name).toLowerCase().trim()
+        (it: any) => String(it.name).toLowerCase().trim() === String(ci.name).toLowerCase().trim(),
       );
     return saved
       ? {
@@ -88,8 +137,7 @@ const mergeTabItems = (baseItems: StimulusItem[], savedItems?: StimulusItem[]): 
   const customSavedItems = savedItems
     .filter(
       (it: any) =>
-        !baseIds.has(String(it.id)) &&
-        !baseNames.has(String(it.name).toLowerCase().trim())
+        !baseIds.has(String(it.id)) && !baseNames.has(String(it.name).toLowerCase().trim()),
     )
     .map((it: any) => ({ ...it, isRunning: false }));
 
@@ -99,14 +147,17 @@ const mergeTabItems = (baseItems: StimulusItem[], savedItems?: StimulusItem[]): 
 type Props = NativeStackScreenProps<SessionStackParamList, 'PreferenceAssessment'>;
 
 export default function PreferenceAssessmentScreen({ navigation, route }: Props) {
-  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
-  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
-  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const localSid = storage.getSync('last_assessment_student_id');
+  const rawId = route?.params?.studentId || urlSid || localSid || 'stu-1';
+  const studentId = normalizeStudentId(rawId);
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('Sensory Time');
   const [itemsByTab, setItemsByTab] = useState<Record<TabType, StimulusItem[]>>(() =>
-    createDefaultTabItems(DEFAULT_ITEMS)
+    createDefaultTabItems(DEFAULT_ITEMS),
   );
   const [profile, setProfile] = useState<any>(null);
 
@@ -119,9 +170,10 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    if (typeof localStorage !== 'undefined' && studentId) {
+    if (studentId) {
       try {
-        localStorage.setItem('last_assessment_student_id', studentId);
+        storage.setSync('last_assessment_student_id', studentId);
+        storage.setItem('last_assessment_student_id', studentId).catch(() => {});
       } catch {}
     }
   }, [studentId]);
@@ -159,9 +211,14 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       let storedItems = savedData?.items;
       let storedSessionTab = savedData?.sessionTab;
 
-      if (!storedItemsByTab && (!storedItems || storedItems.length === 0) && typeof localStorage !== 'undefined') {
+      if (
+        !storedItemsByTab &&
+        (!storedItems || storedItems.length === 0) &&
+        typeof localStorage !== 'undefined'
+      ) {
         try {
-          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          const alias =
+            studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
           const raw =
             localStorage.getItem(`melue_preference_assessment_${studentId}`) ||
             (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
@@ -183,24 +240,24 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       const newItemsByTab: Record<TabType, StimulusItem[]> = {
         'Sensory Time': mergeTabItems(
           configItems,
-          storedItemsByTab?.['Sensory Time'] || (storedSessionTab === 'Sensory Time' ? storedItems : undefined)
+          storedItemsByTab?.['Sensory Time'] ||
+            (storedSessionTab === 'Sensory Time' ? storedItems : undefined),
         ),
         'Circle Time': mergeTabItems(
           configItems,
-          storedItemsByTab?.['Circle Time'] || (storedSessionTab === 'Circle Time' ? storedItems : undefined)
+          storedItemsByTab?.['Circle Time'] ||
+            (storedSessionTab === 'Circle Time' ? storedItems : undefined),
         ),
         'Play Time': mergeTabItems(
           configItems,
-          storedItemsByTab?.['Play Time'] || (storedSessionTab === 'Play Time' ? storedItems : undefined)
+          storedItemsByTab?.['Play Time'] ||
+            (storedSessionTab === 'Play Time' ? storedItems : undefined),
         ),
       };
 
       setItemsByTab(newItemsByTab);
 
-      if (
-        storedSessionTab &&
-        TABS.includes(storedSessionTab as TabType)
-      ) {
+      if (storedSessionTab && TABS.includes(storedSessionTab as TabType)) {
         setActiveTab(storedSessionTab as TabType);
       }
     } catch (err) {}
@@ -213,7 +270,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
   useEffect(() => {
@@ -282,7 +339,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
                     timerSeconds: item.timerSeconds + 1,
                     durationSeconds: item.durationSeconds + 1,
                   }
-                : item
+                : item,
             );
           }
         }
@@ -302,7 +359,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     setItemsByTab((prev) => ({
       ...prev,
       [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, isRunning: !i.isRunning } : i
+        i.id === id ? { ...i, isRunning: !i.isRunning } : i,
       ),
     }));
   };
@@ -311,7 +368,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     setItemsByTab((prev) => ({
       ...prev,
       [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i
+        i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i,
       ),
     }));
   };
@@ -320,7 +377,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     setItemsByTab((prev) => ({
       ...prev,
       [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i
+        i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i,
       ),
     }));
   };
@@ -328,18 +385,14 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   const updateNotes = (id: string, notes: string) => {
     setItemsByTab((prev) => ({
       ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, notes } : i
-      ),
+      [activeTab]: (prev[activeTab] || []).map((i) => (i.id === id ? { ...i, notes } : i)),
     }));
   };
 
   const updateEngaged = (id: string, val: 'Engaged' | 'Did Not Engage') => {
     setItemsByTab((prev) => ({
       ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, engaged: val } : i
-      ),
+      [activeTab]: (prev[activeTab] || []).map((i) => (i.id === id ? { ...i, engaged: val } : i)),
     }));
   };
 
@@ -347,7 +400,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     setItemsByTab((prev) => ({
       ...prev,
       [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, approached: val } : i
+        i.id === id ? { ...i, approached: val } : i,
       ),
     }));
   };
@@ -388,7 +441,9 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
               </tr>
             </thead>
             <tbody>
-              ${currentItems.map((i) => `
+              ${currentItems
+                .map(
+                  (i) => `
                 <tr>
                   <td><strong>${i.name}</strong></td>
                   <td>${i.category}</td>
@@ -396,7 +451,9 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
                   <td>${formatMMSS(i.durationSeconds)}</td>
                   <td>${i.notes || '—'}</td>
                 </tr>
-              `).join('')}
+              `,
+                )
+                .join('')}
             </tbody>
           </table>
         </body>
@@ -442,16 +499,15 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       for (const tab of TABS) {
         const tabList = itemsByTab[tab] || [];
         const sorted = [...tabList].sort((a, b) => {
-          const scoreA = (a.frequency * 60) + a.durationSeconds;
-          const scoreB = (b.frequency * 60) + b.durationSeconds;
+          const scoreA = a.frequency * 60 + a.durationSeconds;
+          const scoreB = b.frequency * 60 + b.durationSeconds;
           return scoreB - scoreA;
         });
 
         sorted.forEach((item, idx) => {
           const sec = item.durationSeconds;
-          const durStr = sec > 0
-            ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`)
-            : '0 min';
+          const durStr =
+            sec > 0 ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`) : '0 min';
 
           allObservations.push({
             id: `${tab.toLowerCase().replace(/\s+/g, '-')}-${item.id}`,
@@ -490,8 +546,12 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       if (typeof localStorage !== 'undefined') {
         try {
           const enriched = { ...payload, updatedAt: new Date().toISOString() };
-          localStorage.setItem(`melue_preference_assessment_${studentId}`, JSON.stringify(enriched));
-          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          localStorage.setItem(
+            `melue_preference_assessment_${studentId}`,
+            JSON.stringify(enriched),
+          );
+          const alias =
+            studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
           if (alias) {
             localStorage.setItem(`melue_preference_assessment_${alias}`, JSON.stringify(enriched));
           }
@@ -499,12 +559,16 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       }
 
       await savePreferenceAssessment(studentId, payload);
-      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      const aliasSid =
+        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
       if (aliasSid) {
         await savePreferenceAssessment(aliasSid, payload);
       }
 
-      showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
+      showToast(
+        status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved',
+        'success',
+      );
       // Saved successfully without navigating away
     } catch {
       showToast('Failed to save assessment data', 'error');
@@ -513,7 +577,10 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <View style={styles.backRow}>
         <TouchableOpacity onPress={() => navigation?.goBack?.()}>
@@ -541,7 +608,9 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
               style={[styles.sessionTabBtn, activeTab === tab && styles.sessionTabBtnActive]}
               onPress={() => setActiveTab(tab)}
             >
-              <Text style={[styles.sessionTabText, activeTab === tab && styles.sessionTabTextActive]}>
+              <Text
+                style={[styles.sessionTabText, activeTab === tab && styles.sessionTabTextActive]}
+              >
                 {tab}
               </Text>
             </TouchableOpacity>
@@ -549,13 +618,18 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
         </View>
 
         {currentItems.map((item) => {
-          const categoryStyle = CATEGORY_COLORS[item.category] || { bg: '#F1F5F9', text: '#475569' };
+          const categoryStyle = CATEGORY_COLORS[item.category] || {
+            bg: '#F1F5F9',
+            text: '#475569',
+          };
           return (
             <View key={item.id} style={styles.itemCard}>
               <View style={styles.itemInfoCol}>
                 <Text style={styles.itemName}>{item.name}</Text>
                 <View style={[styles.categoryPill, { backgroundColor: categoryStyle.bg }]}>
-                  <Text style={[styles.categoryText, { color: categoryStyle.text }]}>{item.category}</Text>
+                  <Text style={[styles.categoryText, { color: categoryStyle.text }]}>
+                    {item.category}
+                  </Text>
                 </View>
               </View>
 
@@ -569,7 +643,10 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
                   >
                     <Text style={styles.startBtnText}>{item.isRunning ? 'Pause' : 'Start'}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.smallBtn, styles.resetBtn]} onPress={() => resetTimer(item.id)}>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, styles.resetBtn]}
+                    onPress={() => resetTimer(item.id)}
+                  >
                     <Text style={styles.resetBtnText}>Reset</Text>
                   </TouchableOpacity>
                 </View>
@@ -579,10 +656,16 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
                 <Text style={styles.metricLabel}>FREQUENCY</Text>
                 <Text style={styles.freqVal}>{item.frequency}</Text>
                 <View style={styles.btnGroup}>
-                  <TouchableOpacity style={[styles.stepBtn, styles.stepBtnMinus]} onPress={() => updateFrequency(item.id, -1)}>
+                  <TouchableOpacity
+                    style={[styles.stepBtn, styles.stepBtnMinus]}
+                    onPress={() => updateFrequency(item.id, -1)}
+                  >
                     <Text style={styles.stepBtnText}>-</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.stepBtn, styles.stepBtnPlus]} onPress={() => updateFrequency(item.id, 1)}>
+                  <TouchableOpacity
+                    style={[styles.stepBtn, styles.stepBtnPlus]}
+                    onPress={() => updateFrequency(item.id, 1)}
+                  >
                     <Text style={styles.stepBtnText}>+</Text>
                   </TouchableOpacity>
                 </View>
@@ -600,14 +683,30 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
               <View style={radioStyles.col}>
                 <Text style={styles.metricLabel}>ENGAGEMENT</Text>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Engaged')}>
-                  <View style={[radioStyles.radioCircle, item.engaged === 'Engaged' && radioStyles.radioCircleSelected]}>
+                <TouchableOpacity
+                  style={radioStyles.radioBtn}
+                  onPress={() => updateEngaged(item.id, 'Engaged')}
+                >
+                  <View
+                    style={[
+                      radioStyles.radioCircle,
+                      item.engaged === 'Engaged' && radioStyles.radioCircleSelected,
+                    ]}
+                  >
                     {item.engaged === 'Engaged' && <View style={radioStyles.radioDot} />}
                   </View>
                   <Text style={radioStyles.radioText}>Engaged</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Did Not Engage')}>
-                  <View style={[radioStyles.radioCircle, item.engaged === 'Did Not Engage' && radioStyles.radioCircleSelected]}>
+                <TouchableOpacity
+                  style={radioStyles.radioBtn}
+                  onPress={() => updateEngaged(item.id, 'Did Not Engage')}
+                >
+                  <View
+                    style={[
+                      radioStyles.radioCircle,
+                      item.engaged === 'Did Not Engage' && radioStyles.radioCircleSelected,
+                    ]}
+                  >
                     {item.engaged === 'Did Not Engage' && <View style={radioStyles.radioDot} />}
                   </View>
                   <Text style={radioStyles.radioText}>Did Not Engage</Text>
@@ -616,15 +715,33 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
               <View style={radioStyles.col}>
                 <Text style={styles.metricLabel}>APPROACH</Text>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Approached')}>
-                  <View style={[radioStyles.radioCircle, item.approached === 'Approached' && radioStyles.radioCircleSelected]}>
+                <TouchableOpacity
+                  style={radioStyles.radioBtn}
+                  onPress={() => updateApproached(item.id, 'Approached')}
+                >
+                  <View
+                    style={[
+                      radioStyles.radioCircle,
+                      item.approached === 'Approached' && radioStyles.radioCircleSelected,
+                    ]}
+                  >
                     {item.approached === 'Approached' && <View style={radioStyles.radioDot} />}
                   </View>
                   <Text style={radioStyles.radioText}>Approached</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Did Not Approach')}>
-                  <View style={[radioStyles.radioCircle, item.approached === 'Did Not Approach' && radioStyles.radioCircleSelected]}>
-                    {item.approached === 'Did Not Approach' && <View style={radioStyles.radioDot} />}
+                <TouchableOpacity
+                  style={radioStyles.radioBtn}
+                  onPress={() => updateApproached(item.id, 'Did Not Approach')}
+                >
+                  <View
+                    style={[
+                      radioStyles.radioCircle,
+                      item.approached === 'Did Not Approach' && radioStyles.radioCircleSelected,
+                    ]}
+                  >
+                    {item.approached === 'Did Not Approach' && (
+                      <View style={radioStyles.radioDot} />
+                    )}
                   </View>
                   <Text style={radioStyles.radioText}>Did Not Approach</Text>
                 </TouchableOpacity>
@@ -734,10 +851,7 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
                 <Text style={styles.cancelModalText}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.addModalBtn}
-                onPress={handleConfirmAddItem}
-              >
+              <TouchableOpacity style={styles.addModalBtn} onPress={handleConfirmAddItem}>
                 <Text style={styles.addModalText}>Add Item</Text>
               </TouchableOpacity>
             </View>
@@ -750,24 +864,66 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 8 },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+  },
   backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
-  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  topHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
   headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
-  studentBadge: { backgroundColor: '#FEF9C3', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, alignItems: 'center' },
+  studentBadge: {
+    backgroundColor: '#FEF9C3',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
   studentName: { fontSize: 13, fontWeight: '700', color: '#854D0E' },
   studentAge: { fontSize: 11, color: '#A16207' },
   content: { padding: 24, gap: 12 },
   sessionTabRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
-  sessionTabBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' },
+  sessionTabBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
   sessionTabBtnActive: { backgroundColor: '#38BDF8', borderColor: '#38BDF8' },
   sessionTabText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
   sessionTabTextActive: { color: '#FFFFFF' },
-  itemCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16 },
+  itemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
   itemInfoCol: { width: 140, gap: 6 },
   itemName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  categoryPill: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
+  categoryPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
   categoryText: { fontSize: 11, fontWeight: '700' },
   metricCol: { alignItems: 'center', gap: 4, width: 90 },
   metricColCompact: { alignItems: 'center', gap: 4, width: 60 },
@@ -782,20 +938,65 @@ const styles = StyleSheet.create({
   startBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
   resetBtn: { backgroundColor: '#F1F5F9' },
   resetBtnText: { color: '#475569', fontSize: 11, fontWeight: '600' },
-  stepBtn: { width: 24, height: 24, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  stepBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stepBtnMinus: { backgroundColor: '#F1F5F9' },
   stepBtnPlus: { backgroundColor: '#FACC15' },
   stepBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   notesCol: { flex: 1, minWidth: 200, gap: 4 },
-  notesInput: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, fontSize: 13, color: '#0F172A', backgroundColor: '#FFFFFF' },
-  addCustomBtn: { borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  addCustomBtn: {
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   addCustomText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
   footerRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  draftBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  draftBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
   draftBtnText: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  submitBtn: { backgroundColor: '#FACC15', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
+  submitBtn: {
+    backgroundColor: '#FACC15',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
   submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  printBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#38BDF8', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  printBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
   printBtnText: { fontSize: 14, fontWeight: '600', color: '#0284C7' },
 
   // Modal Styles
@@ -933,4 +1134,19 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
 });
-const radioStyles = StyleSheet.create({ col: { gap: 6, minWidth: 120 }, radioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }, radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#94A3B8', alignItems: 'center', justifyContent: 'center' }, radioCircleSelected: { borderColor: '#0284C7' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284C7' }, radioText: { fontSize: 13, color: '#334155' } });
+const radioStyles = StyleSheet.create({
+  col: { gap: 6, minWidth: 120 },
+  radioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  radioCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCircleSelected: { borderColor: '#0284C7' },
+  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284C7' },
+  radioText: { fontSize: 13, color: '#334155' },
+});

@@ -8,12 +8,16 @@ interface GoalAssignmentTabProps {
   slots: Slots;
   onOpenGoalSelector: (station: StationKey, slotIndex: number) => void;
   onRemoveGoal: (station: StationKey, slotIndex: number) => void;
+  onAddSlot?: (station: StationKey) => void;
+  onRemoveSlot?: (station: StationKey, slotIndex: number) => void;
 }
 
 export function GoalAssignmentTab({
   slots,
   onOpenGoalSelector,
   onRemoveGoal,
+  onAddSlot,
+  onRemoveSlot,
 }: GoalAssignmentTabProps) {
   return (
     <View style={styles.tabContentWrap}>
@@ -34,7 +38,9 @@ export function GoalAssignmentTab({
         <View style={styles.slotList}>
           {slots.station1.map((goal, idx) => (
             <View key={`s1-${idx}`} style={styles.slotContainer}>
-              <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+              <View style={styles.slotHeaderRow}>
+                <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+              </View>
               {goal ? (
                 <View style={styles.filledGoalCard}>
                   <View style={{ flex: 1 }}>
@@ -111,7 +117,9 @@ export function GoalAssignmentTab({
         <View style={styles.slotList}>
           {slots.station2.map((goal, idx) => (
             <View key={`s2-${idx}`} style={styles.slotContainer}>
-              <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+              <View style={styles.slotHeaderRow}>
+                <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+              </View>
               {goal ? (
                 <View style={styles.filledGoalCard}>
                   <View style={{ flex: 1 }}>
@@ -331,6 +339,41 @@ const styles = StyleSheet.create({
   emptySlotText: {
     fontSize: 13,
     fontWeight: '600',
+    color: colors.navyText,
+  },
+  slotHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  removeSlotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  removeSlotBtnText: {
+    fontSize: 11,
+    color: colors.mutedText,
+    fontWeight: '500',
+  },
+  addSlotFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.bgApp,
+    marginTop: spacing.xs,
+  },
+  addSlotFooterBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
     color: colors.navyText,
   },
 });

@@ -1,4 +1,5 @@
 import { storage } from '../../utils/storage';
+import { getStudentIdAliases } from '../../utils/studentLifecycleHelper';
 
 export interface AbllsItemDef {
   id: string;
@@ -434,10 +435,8 @@ export function saveStorageAssessment(
     updatedAt: new Date().toISOString(),
   };
 
-  storage.setJSONSync(key, merged);
-
-  const alias = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : null;
-  if (alias) {
+  const aliases = getStudentIdAliases(sid);
+  for (const alias of aliases) {
     storage.setJSONSync(`${STORAGE_PREFIX}${alias}`, merged);
   }
 }
@@ -448,8 +447,12 @@ export function loadStorageAssessment(studentId: string): {
   customFields?: Record<string, any>;
 } | null {
   if (!studentId) return null;
-  const key = `${STORAGE_PREFIX}${studentId}`;
-  return storage.getJSONSync<any>(key, null);
+  const aliases = getStudentIdAliases(studentId);
+  for (const alias of aliases) {
+    const data = storage.getJSONSync<any>(`${STORAGE_PREFIX}${alias}`, null);
+    if (data) return data;
+  }
+  return null;
 }
 
 export const getMaxCellsForItem = (item: { options?: string[]; maxCells?: number }): number => {

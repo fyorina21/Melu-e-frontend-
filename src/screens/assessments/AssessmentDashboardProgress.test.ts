@@ -10,7 +10,12 @@ import {
   getStudentAssessmentSubmission,
   saveStudentAssessmentSubmission,
   checkStudentAllAssessmentsCompleted,
+  canAccessIupGeneration,
+  isStudentAssessmentSubmittedAsync,
+  normalizeStudentId,
+  getStudentIdAliases,
 } from '../../utils/studentLifecycleHelper';
+import { storage, toSecureKey } from '../../utils/storage';
 import { saveStorageAssessment } from './abllsConfigHelper';
 import {
   saveBehaviorAssessment,
@@ -739,5 +744,81 @@ describe('Assessment Dashboard Progress Sync', () => {
         { requireAllFour: true },
       ),
     ).toBe(true);
+  });
+
+  it('gates IUP Generation accessibility strictly on both Skills and Behavior reaching 100% completion', async () => {
+    const studentId = 'stu-iup-gating-test';
+
+    // 1. Initial: neither completed -> IUP Generation locked
+    expect(canAccessIupGeneration(studentId)).toBe(false);
+
+    // 2. Only Skills complete (100%), Behavior incomplete (50%) -> IUP Generation locked
+    saveStorageAssessment(studentId, { progress: 100, status: 'completed' });
+    await saveBehaviorAssessment(studentId, { progress: 50, status: 'draft' });
+    expect(canAccessIupGeneration(studentId)).toBe(false);
+
+    // 3. Behavior complete (100%), Skills incomplete (80%) -> IUP Generation locked
+    clearStudentAssessmentCompleted(studentId);
+    saveStorageAssessment(studentId, { progress: 80, status: 'in_progress' });
+    await saveBehaviorAssessment(studentId, { progress: 100, status: 'submitted' });
+    expect(canAccessIupGeneration(studentId)).toBe(false);
+
+    // 4. Both Skills (100%) and Behavior (100%) complete, even if Preference (0%) and Sensory (0%) are not started -> IUP Generation UNLOCKED
+    markStudentAssessmentCompleted(studentId);
+    expect(canAccessIupGeneration(studentId)).toBe(true);
+
+    // 5. Check alias consistency for IUP access
+    const aliases = getStudentIdAliases(studentId);
+    for (const alias of aliases) {
+      expect(canAccessIupGeneration(alias)).toBe(true);
+    }
+  });
+
+  it('persists submission status asynchronously across mobile secure storage simulation and app restarts', async () => {
+    const studentId = 'stu-mobile-restart-test';
+
+    // Verify initial async state
+    const initialSubmitted = await isStudentAssessmentSubmittedAsync(studentId);
+    expect(initialSubmitted).toBe(false);
+
+    // Save submission data
+    await saveStudentAssessmentSubmission(studentId, {
+      studentName: 'Maya Angelou',
+      therapist: 'Abeba',
+      notes: 'Mobile test',
+    });
+
+    // Check async check across aliases
+    const submittedPrimary = await isStudentAssessmentSubmittedAsync(studentId);
+    expect(submittedPrimary).toBe(true);
+
+    const aliases = getStudentIdAliases(studentId);
+    for (const alias of aliases) {
+      const isSub = await isStudentAssessmentSubmittedAsync(alias);
+      expect(isSub).toBe(true);
+    }
+
+    // Verify sync getter also returns true
+    expect(isStudentAssessmentSubmitted(studentId)).toBe(true);
+  });
+
+  it('normalizes student IDs consistently across aliases and sanitizes keys with toSecureKey', () => {
+    // Normalization checks
+    expect(normalizeStudentId('1')).toBe('stu-1');
+    expect(normalizeStudentId('student-a')).toBe('stu-1');
+    expect(normalizeStudentId('stu-1')).toBe('stu-1');
+    expect(normalizeStudentId('student-1')).toBe('stu-1');
+
+    expect(normalizeStudentId('2')).toBe('stu-2');
+    expect(normalizeStudentId('student-b')).toBe('stu-2');
+    expect(normalizeStudentId('stu-2')).toBe('stu-2');
+
+    expect(normalizeStudentId('3')).toBe('stu-3');
+    expect(normalizeStudentId('student-c')).toBe('stu-3');
+
+    // toSecureKey sanitization for Expo SecureStore compatibility
+    expect(toSecureKey('assessment_submitted_stu-1')).toBe('assessment_submitted_stu-1');
+    expect(toSecureKey('prefix:colon@special.key')).toBe('prefix_colon_special.key');
+    expect(toSecureKey('')).toBe('melue_default_key');
   });
 });

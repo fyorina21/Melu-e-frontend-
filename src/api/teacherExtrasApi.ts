@@ -8,6 +8,11 @@ import {
   registerStudentStatuses,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
+  getStudentPreferenceProgress,
+  getStudentSensoryProgress,
+  checkStudentAllAssessmentsCompleted,
+  getStudentIdAliases,
+  isStudentAssessmentSubmitted,
 } from '../utils/studentLifecycleHelper';
 
 // SCR-TEA-001: Teacher Dashboard
@@ -69,7 +74,7 @@ export const getAssessmentDashboard = async () => {
     }
   } catch {}
 
-  // Update all students with their saved skill and behavior assessment progress
+  // Update all students with their saved assessment progress across all 4 assessments
   backendStudents.forEach((s) => {
     const sid = String(s.id);
     const skillsInfo = getStudentSkillsProgress(
@@ -82,30 +87,104 @@ export const getAssessmentDashboard = async () => {
       s.behavior?.progress ?? 0,
       s.behavior?.status ?? 'Not Started',
     );
+    const prefInfo = getStudentPreferenceProgress(sid);
+    const sensoryInfo = getStudentSensoryProgress(sid);
+
     s.ablls = { status: skillsInfo.status, progress: skillsInfo.progress };
     s.behavior = { status: behaviorInfo.status, progress: behaviorInfo.progress };
-    s.score = Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2));
+
+    const isAllComp = checkStudentAllAssessmentsCompleted(
+      sid,
+      s.ablls,
+      s.behavior,
+      skillsInfo,
+      behaviorInfo,
+      prefInfo,
+      sensoryInfo,
+      { requireAllFour: true },
+    );
+
+    s.score = isAllComp
+      ? 100
+      : skillsInfo.progress === 0 &&
+          behaviorInfo.progress === 0 &&
+          prefInfo.progress === 0 &&
+          sensoryInfo.progress === 0
+        ? 0
+        : Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round(
+                (skillsInfo.progress +
+                  behaviorInfo.progress +
+                  prefInfo.progress +
+                  sensoryInfo.progress) /
+                  4,
+              ),
+            ),
+          );
   });
 
   // Filter out any student in session
   const activeStudents = backendStudents.filter((s) => !isStudentInSession(s));
+
+  let completedCount = 0;
+  let notStartedCount = 0;
+  let inProgressCount = 0;
+
+  activeStudents.forEach((s) => {
+    const sid = String(s.id);
+    const skillsInfo = getStudentSkillsProgress(
+      sid,
+      s.ablls?.progress ?? 0,
+      s.ablls?.status ?? 'Not Started',
+    );
+    const behaviorInfo = getStudentBehaviorProgress(
+      sid,
+      s.behavior?.progress ?? 0,
+      s.behavior?.status ?? 'Not Started',
+    );
+    const prefInfo = getStudentPreferenceProgress(sid);
+    const sensoryInfo = getStudentSensoryProgress(sid);
+
+    const isComp = checkStudentAllAssessmentsCompleted(
+      sid,
+      s.ablls,
+      s.behavior,
+      skillsInfo,
+      behaviorInfo,
+      prefInfo,
+      sensoryInfo,
+      { requireAllFour: true },
+    );
+
+    if (isComp || isStudentAssessmentSubmitted(sid)) {
+      completedCount++;
+    } else if (
+      skillsInfo.progress === 0 &&
+      behaviorInfo.progress === 0 &&
+      prefInfo.progress === 0 &&
+      sensoryInfo.progress === 0 &&
+      skillsInfo.status === 'Not Started' &&
+      behaviorInfo.status === 'Not Started' &&
+      prefInfo.status === 'Not Started' &&
+      sensoryInfo.status === 'Not Started'
+    ) {
+      notStartedCount++;
+    } else {
+      inProgressCount++;
+    }
+  });
 
   return {
     data: {
       periodLabel,
       stats: {
         total: activeStudents.length,
-        completed: activeStudents.filter(
-          (s) => s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed',
-        ).length,
-        inProgress: activeStudents.filter(
-          (s) =>
-            (s.ablls?.status === 'In Progress' || s.behavior?.status === 'In Progress') &&
-            !(s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed'),
-        ).length,
-        notStarted: activeStudents.filter(
-          (s) => s.ablls?.status === 'Not Started' && s.behavior?.status === 'Not Started',
-        ).length,
+        completed: completedCount,
+        inProgress: inProgressCount,
+        notStarted: notStartedCount,
       },
       students: activeStudents,
     },
@@ -130,31 +209,39 @@ export const deleteAbcIncident = (id: string) => client.delete(`/teacher/abc-log
 const assessmentMemoryStore: Record<string, Record<string, any>> = {};
 
 function getStoredAssessment(type: string, studentId: string): any {
-  const key = `melue_${type}_assessment_${studentId}`;
-  try {
-    const fromStorage = storage.getJSONSync(key);
-    if (fromStorage) return fromStorage;
-  } catch {}
-  if (typeof localStorage !== 'undefined') {
+  const aliases = getStudentIdAliases(studentId);
+  for (const alias of aliases) {
+    const key = `melue_${type}_assessment_${alias}`;
     try {
-      const raw = localStorage.getItem(key);
-      if (raw) return JSON.parse(raw);
+      const fromStorage = storage.getJSONSync(key);
+      if (fromStorage) return fromStorage;
     } catch {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    const mem = assessmentMemoryStore[`${type}_${alias}`];
+    if (mem) return mem;
   }
-  return assessmentMemoryStore[`${type}_${studentId}`] || null;
+  return null;
 }
 
 function setStoredAssessment(type: string, studentId: string, data: any): void {
-  const key = `melue_${type}_assessment_${studentId}`;
-  assessmentMemoryStore[`${type}_${studentId}`] = data;
-  try {
-    storage.setJSONSync(key, data);
-    storage.setJSON(key, data).catch(() => {});
-  } catch {}
-  if (typeof localStorage !== 'undefined') {
+  const aliases = getStudentIdAliases(studentId);
+  for (const alias of aliases) {
+    const key = `melue_${type}_assessment_${alias}`;
+    assessmentMemoryStore[`${type}_${alias}`] = data;
     try {
-      localStorage.setItem(key, JSON.stringify(data));
+      storage.setJSONSync(key, data);
+      storage.setJSON(key, data).catch(() => {});
     } catch {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch {}
+    }
   }
 }
 

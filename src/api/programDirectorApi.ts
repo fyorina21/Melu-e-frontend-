@@ -12,17 +12,20 @@ import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 import {
   getRegisteredStudentStatus,
   getStudentAssessmentSubmission,
+  getStudentSkillsProgress,
+  getStudentBehaviorProgress,
+  isStudentAssessmentSubmitted,
 } from '../utils/studentLifecycleHelper';
 
 // ============================================================================
 // Storage Keys
 // ============================================================================
-const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
-const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
-const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
-const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
-const ARCHIVED_IUPS_STORAGE_KEY = 'melue_archived_iups_cache';
-const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
+export const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
+export const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
+export const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
+export const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
+export const ARCHIVED_IUPS_STORAGE_KEY = 'melue_archived_iups_cache';
+export const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
 
 // ============================================================================
 // Default Datasets for Resilient Fallbacks
@@ -326,8 +329,14 @@ export function getStoredIupDraft(id: string): Payload | null {
 export function storeIupDraftLocally(id: string, payload: Payload): void {
   try {
     const all = getAllStoredIupDrafts();
+    const existing = all[id] || {};
+    // Prevent unauthorized overwrite if record is marked finalized/permanent/non-editable
+    if (existing.isFinalized && !payload.isFinalized && payload.status !== 'finalized') {
+      console.warn('Blocked unauthorized modification to finalized permanent IUP draft:', id);
+      return;
+    }
     const entry = {
-      ...(all[id] || {}),
+      ...existing,
       ...payload,
       saved_at: new Date().toISOString(),
     };
@@ -363,16 +372,114 @@ function setStudentReviewedLocally(studentId: string, notes?: string): void {
   } catch {}
 }
 
-function getStoredCaseloadMap(): Record<string, any> {
+export function dispatchCaseloadEvent(name: string, detail?: any): void {
+  try {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent(name, { detail }));
+    } else if (
+      typeof globalThis !== 'undefined' &&
+      typeof (globalThis as any).dispatchEvent === 'function'
+    ) {
+      (globalThis as any).dispatchEvent(new CustomEvent(name, { detail }));
+    }
+  } catch {}
+}
+
+export function getStoredCaseloadMap(): Record<string, any> {
   return storage.getJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, {}) || {};
 }
 
-function setStoredCaseload(studentId: string, data: any): void {
+export function setStoredCaseload(studentId: string, data: any): void {
   try {
     const all = getStoredCaseloadMap();
     all[studentId] = data;
     storage.setJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, all);
   } catch {}
+}
+
+export function unassignApprovedGoalFromCaseload(
+  studentId: string,
+  goalId?: string,
+  goalName?: string,
+): boolean {
+  if (!studentId) return false;
+
+  const caseloadMap = getStoredCaseloadMap();
+
+  // Find student in caseloadMap (direct key or alias)
+  let matchedKey = studentId;
+  if (!caseloadMap[matchedKey]) {
+    const defaultStudent = DEFAULT_PD_STUDENTS.find(
+      (s) => s.id === studentId || s.name.toLowerCase() === studentId.toLowerCase(),
+    );
+    if (defaultStudent && caseloadMap[defaultStudent.id]) {
+      matchedKey = defaultStudent.id;
+    }
+  }
+
+  const studentSlots = caseloadMap[matchedKey] ? { ...caseloadMap[matchedKey] } : {};
+  let removedFromCaseload = false;
+
+  Object.keys(studentSlots).forEach((k) => {
+    const slotGoal = studentSlots[k];
+    if (!slotGoal) return;
+
+    const matchesId =
+      goalId &&
+      (String(slotGoal.id) === String(goalId) || String(slotGoal.goalId) === String(goalId));
+    const matchesName =
+      goalName && slotGoal.name && slotGoal.name.toLowerCase() === goalName.toLowerCase();
+
+    if (matchesId || matchesName) {
+      delete studentSlots[k];
+      removedFromCaseload = true;
+    }
+  });
+
+  if (removedFromCaseload) {
+    setStoredCaseload(matchedKey, studentSlots);
+  }
+
+  // Also remove from draft IUP slots for that student
+  let removedFromDraft = false;
+  const draft = getStoredIupDraft(matchedKey) || getStoredIupDraft(studentId);
+  if (draft && draft.slots) {
+    const slots = { ...draft.slots } as any;
+    (['station1', 'station2'] as const).forEach((station) => {
+      if (Array.isArray(slots[station])) {
+        slots[station] = slots[station].map((g: any) => {
+          if (!g) return null;
+          const matchesId =
+            goalId && (String(g.id) === String(goalId) || String(g.goalId) === String(goalId));
+          const matchesName = goalName && g.name && g.name.toLowerCase() === goalName.toLowerCase();
+          if (matchesId || matchesName) {
+            removedFromDraft = true;
+            return null;
+          }
+          return g;
+        });
+      }
+    });
+
+    if (removedFromDraft) {
+      storeIupDraftLocally(matchedKey, {
+        ...draft,
+        slots,
+        goals: [...(slots.station1 || []), ...(slots.station2 || [])]
+          .filter(Boolean)
+          .map((g: any) => g.id),
+      });
+    }
+  }
+
+  dispatchCaseloadEvent('melue_caseload_updated', {
+    studentId: matchedKey,
+    goalId,
+    goalName,
+    action: 'mastery_approved',
+  });
+
+  return removedFromCaseload || removedFromDraft;
 }
 
 function getStoredCustomGoals(): any[] {
@@ -981,16 +1088,21 @@ export interface IupCandidate {
   id: string;
   studentId?: string;
   iupId?: string;
+  iup_id?: string;
   name: string;
   status: string;
   rawStatus?: string;
   program?: string;
   age?: number;
   currentStage?: string;
+  stage?: string;
   sessionAssigned?: boolean;
   assessmentProgress?: number;
   assessmentStatus?: string;
   hasAssessmentData?: boolean;
+  photoUrl?: string;
+  headshotUrl?: string;
+  photo?: string;
 }
 
 export const isCandidateInSession = (c: IupCandidate): boolean => {
@@ -1038,6 +1150,19 @@ export const isEligibleIupCandidate = (c: IupCandidate): boolean => {
     assessStatus === 'not-started'
   ) {
     return false;
+  }
+
+  // Ensure IUP Generation is accessible only when both Skills and Behavior assessments are fully complete
+  const sid = String(c.id || '');
+  if (sid && !isStudentAssessmentSubmitted(sid)) {
+    const skills = getStudentSkillsProgress(sid, -1, '');
+    const behavior = getStudentBehaviorProgress(sid, -1, '');
+    if (skills.progress >= 0 && skills.progress < 100) {
+      return false;
+    }
+    if (behavior.progress >= 0 && behavior.progress < 100) {
+      return false;
+    }
   }
 
   // Allow students whose status is Ready for IUP or In Session
@@ -1349,6 +1474,29 @@ export const getIupContext = async (studentId: string): Promise<{ data: any }> =
 };
 
 export const saveIupDraft = async (id: string, payload: Payload): Promise<{ data: any }> => {
+  const studentId = String(payload.studentId || payload.student_id || id);
+  const existingDraft = getStoredIupDraft(id) || getStoredIupDraft(studentId);
+  const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+  const existingInLib = lib.find((item) => item.id === id || item.studentId === studentId);
+
+  // Enforce non-editability through backend authorization and data protection
+  if (
+    (existingDraft &&
+      (existingDraft.isFinalized ||
+        existingDraft.status === 'finalized' ||
+        existingDraft.editable === false)) ||
+    (existingInLib &&
+      (existingInLib.isFinalized ||
+        existingInLib.editable === false ||
+        existingInLib.status === 'Active'))
+  ) {
+    const error = new Error(
+      'Unauthorized modification: Finalized IUP records are permanent and non-editable.',
+    );
+    (error as any).status = 403;
+    throw error;
+  }
+
   storeIupDraftLocally(id, payload);
 
   try {
@@ -1358,7 +1506,9 @@ export const saveIupDraft = async (id: string, payload: Payload): Promise<{ data
     };
     const res = await client.patch(`/iups/${id}`, formattedPayload);
     if (res?.data) return res;
-  } catch {}
+  } catch (err: any) {
+    if (err?.status === 403) throw err;
+  }
 
   return {
     data: {
@@ -1371,21 +1521,55 @@ export const saveIupDraft = async (id: string, payload: Payload): Promise<{ data
 };
 
 export const finalizeIup = async (id: string, payload: Payload): Promise<{ data: any }> => {
-  storeIupDraftLocally(id, { ...payload, status: 'finalized' });
+  const studentId = String(payload.studentId || payload.student_id || id);
+  const studentName = payload.studentName || 'Student';
+  const program = payload.program || 'Comprehensive ABA';
+  const slotsPayload = payload.slots as any;
+  const goalCount = Array.isArray(payload.goals)
+    ? payload.goals.length
+    : slotsPayload
+      ? [...(slotsPayload.station1 || []), ...(slotsPayload.station2 || [])].filter(Boolean).length
+      : 2;
 
-  // Also update IUP library record
+  const finalizedPayload = {
+    ...payload,
+    studentId,
+    studentName,
+    program,
+    goalCount,
+    status: 'finalized',
+    isFinalized: true,
+    isPermanent: true,
+    editable: false,
+  };
+
+  storeIupDraftLocally(id, finalizedPayload);
+  storeIupDraftLocally(studentId, finalizedPayload);
+
+  // Also update IUP library record as permanent, non-editable record
   try {
     const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
-    const existingIdx = lib.findIndex((item) => item.id === id || item.studentId === id);
+    const existingIdx = lib.findIndex((item) => item.id === id || item.studentId === studentId);
     const rec = {
       id,
-      studentId: id,
-      studentName: payload.studentName || 'Student',
-      program: payload.program || 'Comprehensive ABA',
+      studentId,
+      studentName,
+      program,
       finalizedDate: new Date().toISOString().slice(0, 10),
-      goalCount: Array.isArray(payload.goals) ? payload.goals.length : 4,
+      finalizedAt: new Date().toISOString(),
+      goalCount,
       version: '1.0',
       status: 'Active',
+      slots: payload.slots,
+      goals: payload.goals,
+      reinforcementSchedule: payload.reinforcementSchedule,
+      crisisProtocol: payload.crisisProtocol,
+      accommodations: payload.accommodations,
+      reviewCycle: payload.reviewCycle,
+      customFields: payload.customFields || payload.form_values,
+      isFinalized: true,
+      isPermanent: true,
+      editable: false,
     };
     if (existingIdx >= 0) {
       lib[existingIdx] = { ...lib[existingIdx], ...rec };
@@ -1395,8 +1579,27 @@ export const finalizeIup = async (id: string, payload: Payload): Promise<{ data:
     storage.setJSONSync(IUP_LIBRARY_STORAGE_KEY, lib);
   } catch {}
 
+  // Sync assigned goals directly to student caseload so they appear on Student Caseload page
+  if (payload.slots) {
+    try {
+      const caseloadMap = getStoredCaseloadMap();
+      const studentSlots = caseloadMap[studentId] ? { ...caseloadMap[studentId] } : {};
+      const slotsObj = payload.slots as any;
+      const s1 = Array.isArray(slotsObj.station1) ? slotsObj.station1 : [];
+      const s2 = Array.isArray(slotsObj.station2) ? slotsObj.station2 : [];
+      s1.forEach((g: any, idx: number) => {
+        if (g) studentSlots[`station1-${idx}`] = g;
+      });
+      s2.forEach((g: any, idx: number) => {
+        if (g) studentSlots[`station2-${idx}`] = g;
+      });
+      setStoredCaseload(studentId, studentSlots);
+      dispatchCaseloadEvent('melue_caseload_updated', { studentId, slots: studentSlots });
+    } catch {}
+  }
+
   try {
-    const res = await client.post(`/iups/${id}/finalize`, payload);
+    const res = await client.post(`/iups/${id}/finalize`, finalizedPayload);
     if (res?.data) return res;
   } catch {}
 
@@ -1404,8 +1607,8 @@ export const finalizeIup = async (id: string, payload: Payload): Promise<{ data:
     data: {
       success: true,
       message: 'IUP finalized successfully',
-      iup: { id, status: 'active' },
-      ...payload,
+      iup: { id, status: 'active', isFinalized: true, editable: false },
+      ...finalizedPayload,
     },
   };
 };
@@ -1460,6 +1663,7 @@ export const getIupLibrary = async (
     const id = String(item.id || '');
     const isArchived = archivedSet.has(id) || item.status === 'Archived';
     return {
+      ...item,
       id,
       studentId: String(item.studentId || item.student_id || id),
       studentName: String(item.studentName || item.student_name || item.name || 'Student'),
@@ -1472,6 +1676,9 @@ export const getIupLibrary = async (
       ),
       version: String(item.version || '1.0'),
       status: isArchived ? 'Archived' : String(item.status || 'Active'),
+      isFinalized: item.isFinalized ?? (item.status === 'Active' || item.status === 'finalized'),
+      isPermanent: item.isPermanent ?? (item.status === 'Active' || item.status === 'finalized'),
+      editable: item.editable ?? item.status === 'Draft',
     };
   });
 
@@ -1588,6 +1795,11 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
   const draft = getStoredIupDraft(studentId);
   const draftSlots = (draft?.slots as any) || {};
 
+  // Also check finalized IUPs in the library
+  const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+  const finalizedIup = lib.find((item) => item.studentId === studentId || item.id === studentId);
+  const finalizedSlots = (finalizedIup?.slots as any) || {};
+
   // Build standard slot format: station1-0, station1-1, station2-0, station2-1
   const slots: Record<string, any> = {
     'station1-0': null,
@@ -1599,15 +1811,36 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
   // Populate from local caseload assignments if present
   if (localCaseload && typeof localCaseload === 'object') {
     Object.keys(slots).forEach((k) => {
-      if (localCaseload[k]) slots[k] = localCaseload[k];
+      slots[k] = localCaseload[k] || null;
     });
-  }
+    // Also include any additional station slots beyond standard 0 and 1
+    Object.entries(localCaseload).forEach(([k, val]) => {
+      if (val) slots[k] = val;
+    });
+  } else {
+    // Only initialize from draft or finalized IUP slots if no explicit caseload record exists yet
+    if (Array.isArray(finalizedSlots.station1)) {
+      finalizedSlots.station1.forEach((g: any, i: number) => {
+        if (g) slots[`station1-${i}`] = g;
+      });
+    }
+    if (Array.isArray(finalizedSlots.station2)) {
+      finalizedSlots.station2.forEach((g: any, i: number) => {
+        if (g) slots[`station2-${i}`] = g;
+      });
+    }
 
-  // Populate from draft IUP slots
-  if (draftSlots.station1?.[0]) slots['station1-0'] = draftSlots.station1[0];
-  if (draftSlots.station1?.[1]) slots['station1-1'] = draftSlots.station1[1];
-  if (draftSlots.station2?.[0]) slots['station2-0'] = draftSlots.station2[0];
-  if (draftSlots.station2?.[1]) slots['station2-1'] = draftSlots.station2[1];
+    if (Array.isArray(draftSlots.station1)) {
+      draftSlots.station1.forEach((g: any, i: number) => {
+        if (!slots[`station1-${i}`] && g) slots[`station1-${i}`] = g;
+      });
+    }
+    if (Array.isArray(draftSlots.station2)) {
+      draftSlots.station2.forEach((g: any, i: number) => {
+        if (!slots[`station2-${i}`] && g) slots[`station2-${i}`] = g;
+      });
+    }
+  }
 
   // Populate from backend goals
   backendGoals.forEach((bg) => {
@@ -1624,37 +1857,17 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
     }
   });
 
-  // If entirely empty, supply a realistic default assigned goal in Station 1
-  if (
-    !slots['station1-0'] &&
-    !slots['station1-1'] &&
-    !slots['station2-0'] &&
-    !slots['station2-1']
-  ) {
-    slots['station1-0'] = {
-      id: DEFAULT_GOAL_BANK[0].id,
-      name: DEFAULT_GOAL_BANK[0].name,
-      domain: DEFAULT_GOAL_BANK[0].domain,
-      description: DEFAULT_GOAL_BANK[0].description,
-      status: 'Active',
-      progress: 60,
-    };
-    slots['station2-0'] = {
-      id: DEFAULT_GOAL_BANK[1].id,
-      name: DEFAULT_GOAL_BANK[1].name,
-      domain: DEFAULT_GOAL_BANK[1].domain,
-      description: DEFAULT_GOAL_BANK[1].description,
-      status: 'Active',
-      progress: 45,
-    };
-  }
-
-  // Build flat goals array for IupGenerationContainer
+  // Build flat goals array for IupGenerationContainer across all slots
   const goals: any[] = [];
-  if (slots['station1-0']) goals.push({ ...slots['station1-0'], station: 1, slot: 0 });
-  if (slots['station1-1']) goals.push({ ...slots['station1-1'], station: 1, slot: 1 });
-  if (slots['station2-0']) goals.push({ ...slots['station2-0'], station: 2, slot: 0 });
-  if (slots['station2-1']) goals.push({ ...slots['station2-1'], station: 2, slot: 1 });
+  Object.entries(slots).forEach(([key, goalObj]) => {
+    if (goalObj) {
+      const isStation2 = key.startsWith('station2');
+      const station = isStation2 ? 2 : 1;
+      const parts = key.split('-');
+      const slot = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+      goals.push({ ...goalObj, station, slot });
+    }
+  });
 
   return {
     data: {
@@ -1678,7 +1891,9 @@ export const assignGoalToSlot = async (
   if (typeof payload.slot === 'string') {
     slotKey = payload.slot;
     stationKey = slotKey.startsWith('station2') ? 'station2' : 'station1';
-    slotIdx = slotKey.endsWith('1') ? 1 : 0;
+    const numPart = slotKey.replace(/^[^\d]*-/, '');
+    const parsed = parseInt(numPart, 10);
+    slotIdx = !isNaN(parsed) ? parsed : slotKey.endsWith('1') ? 1 : 0;
   } else {
     stationKey = payload.station === 2 || payload.station === 'station2' ? 'station2' : 'station1';
     slotIdx =
@@ -1700,9 +1915,40 @@ export const assignGoalToSlot = async (
     progress: 50,
   };
 
-  // 1. Update local caseload assignments
+  // 1. Update local caseload assignments with two-goal limit and duplicate checks
   const caseloadMap = getStoredCaseloadMap();
-  const studentSlots = caseloadMap[studentId] || {};
+  const studentSlots = caseloadMap[studentId] ? { ...caseloadMap[studentId] } : {};
+
+  // Check duplicate goal assignment for this student
+  const isDuplicate = Object.entries(studentSlots).some(
+    ([k, g]: [string, any]) =>
+      k !== slotKey && g && (String(g.id) === goalId || g.name === goalObj.name),
+  );
+  if (isDuplicate) {
+    const err = new Error(
+      `Duplicate goal assignment: "${goalObj.name}" is already assigned to this student.`,
+    );
+    (err as any).status = 400;
+    throw err;
+  }
+
+  // Check two-goal limit when assigning to a new / empty slot
+  const currentActiveKeys = Object.keys(studentSlots).filter(
+    (k) => k !== slotKey && studentSlots[k] && studentSlots[k].status !== 'Mastered',
+  );
+  if (
+    !payload.allowMultipleGoals &&
+    payload.source !== 'iup_generation' &&
+    !studentSlots[slotKey] &&
+    currentActiveKeys.length >= 2
+  ) {
+    const err = new Error(
+      'Two-goal limit exceeded: Each student can have a maximum of two active assigned goals at a time.',
+    );
+    (err as any).status = 400;
+    throw err;
+  }
+
   studentSlots[slotKey] = goalObj;
   setStoredCaseload(studentId, studentSlots);
 
@@ -1711,6 +1957,9 @@ export const assignGoalToSlot = async (
     const draft = getStoredIupDraft(studentId) || {};
     const slots = (draft.slots as any) || { station1: [null, null], station2: [null, null] };
     if (Array.isArray(slots[stationKey])) {
+      while (slots[stationKey].length <= slotIdx) {
+        slots[stationKey].push(null);
+      }
       slots[stationKey][slotIdx] = goalObj;
       storeIupDraftLocally(studentId, {
         ...draft,
@@ -1723,7 +1972,10 @@ export const assignGoalToSlot = async (
     }
   } catch {}
 
-  // 3. Attempt live API call if available
+  // 3. Dispatch caseload update event
+  dispatchCaseloadEvent('melue_caseload_updated', { studentId, slotKey, goal: goalObj });
+
+  // 4. Attempt live API call if available
   try {
     await client.post('/goal_assignments', {
       student_id: studentId,
@@ -1762,7 +2014,7 @@ export const removeGoalFromSlot = async (
 
   // 1. Update local caseload assignments
   const caseloadMap = getStoredCaseloadMap();
-  const studentSlots = caseloadMap[studentId] || {};
+  const studentSlots = caseloadMap[studentId] ? { ...caseloadMap[studentId] } : {};
   delete studentSlots[slotKey];
   setStoredCaseload(studentId, studentSlots);
 
@@ -1782,6 +2034,13 @@ export const removeGoalFromSlot = async (
       });
     }
   } catch {}
+
+  // 3. Dispatch caseload update event
+  dispatchCaseloadEvent('melue_caseload_updated', {
+    studentId,
+    slotKey,
+    action: 'removed',
+  });
 
   return { data: { success: true, studentId, slotKey } };
 };

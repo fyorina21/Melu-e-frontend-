@@ -16,7 +16,6 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
@@ -36,10 +35,17 @@ import {
   getStoredIupDraft,
   isCandidateInSession,
   isEligibleIupCandidate,
+  IUP_LIBRARY_STORAGE_KEY,
   type IupCandidate,
 } from '../../api/programDirectorApi';
+import { storage } from '../../utils/storage';
 import DynamicFormFields from '../../components/DynamicFormFields';
-import { getStoredGoalDomains, getStoredGoalBank, type GoalDomain } from '../../stores/goalBankStore';
+import {
+  getStoredGoalDomains,
+  getStoredGoalBank,
+  type GoalDomain,
+} from '../../stores/goalBankStore';
+import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 interface GoalBankItem {
@@ -67,10 +73,28 @@ interface IupContext {
 type StationKey = 'station1' | 'station2';
 type Slots = Record<StationKey, (GoalBankItem | null)[]>;
 
+interface CachedIupRecord {
+  id?: string;
+  studentId?: string;
+  isFinalized?: boolean;
+  status?: string;
+  slots?: Slots | Record<string, unknown>;
+  reinforcementSchedule?: string;
+  crisisProtocol?: string;
+  accommodations?: string;
+  reviewCycle?: string;
+  customFields?: Record<string, unknown>;
+  saved_at?: string;
+  finalizedAt?: string;
+}
+
 export default function IupGenerationScreen({
   navigation,
   route,
-}: NativeStackScreenProps<ProgramDirectorStackParamList | CoordinatorStackParamList, 'IupGeneration'>) {
+}: NativeStackScreenProps<
+  ProgramDirectorStackParamList | CoordinatorStackParamList,
+  'IupGeneration'
+>) {
   const { session } = useAuth();
   const isCoordinator = session?.role === ROLES.COORDINATOR;
   const { showToast } = useToast();
@@ -82,21 +106,31 @@ export default function IupGenerationScreen({
   const [goalBank, setGoalBank] = useState<GoalBankItem[]>([]);
   const [domains, setDomains] = useState<GoalDomain[]>(getStoredGoalDomains());
   const [slots, setSlots] = useState<Slots>({ station1: [null], station2: [null] });
-  const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<'assessment' | 'goals' | 'strategies'>('goals');
+  const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<
+    'assessment' | 'goals' | 'strategies'
+  >('goals');
 
   // Custom Strategies State
   const [reinforcementSchedule, setReinforcementSchedule] = useState('Fixed Ratio (FR-2)');
-  const [crisisProtocol, setCrisisProtocol] = useState('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
-  const [accommodations, setAccommodations] = useState('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
+  const [crisisProtocol, setCrisisProtocol] = useState(
+    'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
+  );
+  const [accommodations, setAccommodations] = useState(
+    'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
+  );
   const [reviewCycle, setReviewCycle] = useState('6 Weeks');
-  const [customIupValues, setCustomIupValues] = useState<Record<string, any>>({});
+  const [customIupValues, setCustomIupValues] = useState<Record<string, unknown>>({});
+  const [isFinalizedRecord, setIsFinalizedRecord] = useState(false);
 
   // Dropdown Selector State
   const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
   const [searchStudentText, setSearchStudentText] = useState('');
 
   // Goal Selector Modal State
-  const [selectorTarget, setSelectorTarget] = useState<{ station: StationKey; slotIndex: number } | null>(null);
+  const [selectorTarget, setSelectorTarget] = useState<{
+    station: StationKey;
+    slotIndex: number;
+  } | null>(null);
   const [goalSearch, setGoalSearch] = useState('');
   const [domainFilter, setDomainFilter] = useState('All');
 
@@ -105,7 +139,12 @@ export default function IupGenerationScreen({
     const activeNames = domains.filter((d) => d.active !== false).map((d) => d.name);
     const goalDomains = Array.from(new Set(goalBank.map((g) => g.domain).filter(Boolean)));
     const all = Array.from(new Set([...activeNames, ...goalDomains]));
-    return ['All', ...(all.length > 0 ? all : ['Communication', 'Motor', 'Social', 'Self-Help', 'Cognition', 'Adaptive'])];
+    return [
+      'All',
+      ...(all.length > 0
+        ? all
+        : ['Communication', 'Motor', 'Social', 'Self-Help', 'Cognition', 'Adaptive']),
+    ];
   }, [domains, goalBank]);
 
   // Immediately refresh goal bank and open selector
@@ -120,13 +159,15 @@ export default function IupGenerationScreen({
 
     try {
       const { data: res } = await getGoalBank({});
+      const resObj =
+        typeof res === 'object' && res !== null ? (res as Record<string, unknown>) : null;
       const loadedGoals = Array.isArray(res)
-        ? res
-        : Array.isArray((res as any)?.goals)
-        ? (res as any).goals
-        : Array.isArray((res as any)?.data)
-        ? (res as any).data
-        : [];
+        ? (res as GoalBankItem[])
+        : Array.isArray(resObj?.goals)
+          ? (resObj.goals as GoalBankItem[])
+          : Array.isArray(resObj?.data)
+            ? (resObj.data as GoalBankItem[])
+            : [];
       if (loadedGoals.length > 0) {
         setGoalBank(loadedGoals);
       }
@@ -143,12 +184,18 @@ export default function IupGenerationScreen({
     let loadedCandidates: IupCandidate[] = [];
     try {
       const response = await getIupCandidates();
-      const raw = (response as any)?.data ?? response;
+      const responseObj =
+        typeof response === 'object' && response !== null
+          ? (response as Record<string, unknown>)
+          : null;
+      const raw = responseObj?.data ?? response;
+      const rawObj =
+        typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
       loadedCandidates = Array.isArray(raw)
-        ? raw
-        : Array.isArray((raw as any)?.candidates)
-        ? (raw as any).candidates
-        : [];
+        ? (raw as IupCandidate[])
+        : Array.isArray(rawObj?.candidates)
+          ? (rawObj.candidates as IupCandidate[])
+          : [];
     } catch {
       loadedCandidates = [];
     }
@@ -157,12 +204,18 @@ export default function IupGenerationScreen({
 
     try {
       const response = await getGoalBank({});
-      const rawRes = response?.data || response?.goals || response;
+      const responseObj =
+        typeof response === 'object' && response !== null
+          ? (response as Record<string, unknown>)
+          : null;
+      const rawRes = responseObj?.data || responseObj?.goals || response;
+      const rawResObj =
+        typeof rawRes === 'object' && rawRes !== null ? (rawRes as Record<string, unknown>) : null;
       const loadedGoals = Array.isArray(rawRes)
-        ? rawRes
-        : Array.isArray((rawRes as any)?.goals)
-        ? (rawRes as any).goals
-        : [];
+        ? (rawRes as GoalBankItem[])
+        : Array.isArray(rawResObj?.goals)
+          ? (rawResObj.goals as GoalBankItem[])
+          : [];
       setGoalBank(loadedGoals.length > 0 ? loadedGoals : getStoredGoalBank());
     } catch {
       setGoalBank(getStoredGoalBank());
@@ -171,8 +224,14 @@ export default function IupGenerationScreen({
     setDomains(getStoredGoalDomains());
 
     const preId = (route.params as { studentId?: string })?.studentId;
-    if (preId && eligibleCandidates.some((c) => c.id === preId)) {
-      setSelectedStudentId(preId);
+    const match = preId
+      ? eligibleCandidates.find(
+          (c) => c.id === preId || normalizeStudentId(c.id) === normalizeStudentId(preId),
+        )
+      : null;
+
+    if (match) {
+      setSelectedStudentId(match.id);
     } else if (eligibleCandidates.length > 0) {
       setSelectedStudentId(eligibleCandidates[0].id);
     } else {
@@ -187,12 +246,20 @@ export default function IupGenerationScreen({
     const handleBankChange = async () => {
       try {
         const response = await getGoalBank({});
-        const rawRes = response?.data || response?.goals || response;
+        const responseObj =
+          typeof response === 'object' && response !== null
+            ? (response as Record<string, unknown>)
+            : null;
+        const rawRes = responseObj?.data || responseObj?.goals || response;
+        const rawResObj =
+          typeof rawRes === 'object' && rawRes !== null
+            ? (rawRes as Record<string, unknown>)
+            : null;
         const loadedGoals = Array.isArray(rawRes)
-          ? rawRes
-          : Array.isArray((rawRes as any)?.goals)
-          ? (rawRes as any).goals
-          : [];
+          ? (rawRes as GoalBankItem[])
+          : Array.isArray(rawResObj?.goals)
+            ? (rawResObj.goals as GoalBankItem[])
+            : [];
         setGoalBank(loadedGoals.length > 0 ? loadedGoals : getStoredGoalBank());
       } catch {
         setGoalBank(getStoredGoalBank());
@@ -244,44 +311,71 @@ export default function IupGenerationScreen({
 
   useEffect(() => {
     if (!selectedStudentId) return;
-    
-    // Clear slots and fields when student changes (2 goals assigned at a time)
+
+    // Clear slots and fields when student changes
     setSlots({ station1: [null], station2: [null] });
     setReinforcementSchedule('Fixed Ratio (FR-2)');
-    setCrisisProtocol('Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.');
-    setAccommodations('Visual schedule, 2-minute transition warnings, preferential seating near exit.');
+    setCrisisProtocol(
+      'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
+    );
+    setAccommodations(
+      'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
+    );
     setReviewCycle('6 Weeks');
     setCustomIupValues({});
     setLastSavedTimestamp(null);
 
-    // Restore cached draft if available
-    const cachedDraft = getStoredIupDraft(selectedStudentId);
-    if (cachedDraft) {
-      if (cachedDraft.slots) {
-        const s1 = Array.isArray((cachedDraft.slots as any).station1) ? (cachedDraft.slots as any).station1 : [];
-        const s2 = Array.isArray((cachedDraft.slots as any).station2) ? (cachedDraft.slots as any).station2 : [];
+    // Check if IUP is already finalized (permanent non-editable record)
+    const cachedDraft = getStoredIupDraft(selectedStudentId) as CachedIupRecord | null;
+    const lib = storage.getJSONSync<CachedIupRecord[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+    const inLib = lib.find(
+      (item) => item.studentId === selectedStudentId || item.id === selectedStudentId,
+    );
+    const finalized = Boolean(
+      cachedDraft?.isFinalized ||
+      cachedDraft?.status === 'finalized' ||
+      inLib?.isFinalized ||
+      inLib?.status === 'Active',
+    );
+    setIsFinalizedRecord(finalized);
+
+    // Restore cached draft or finalized library record if available
+    const activeRecord = cachedDraft || inLib;
+    if (activeRecord) {
+      if (activeRecord.slots) {
+        const slotsRecord = activeRecord.slots as Record<string, unknown>;
+        const s1 = Array.isArray(slotsRecord.station1)
+          ? (slotsRecord.station1 as (GoalBankItem | null)[])
+          : [];
+        const s2 = Array.isArray(slotsRecord.station2)
+          ? (slotsRecord.station2 as (GoalBankItem | null)[])
+          : [];
         setSlots({
-          station1: [s1[0] || null],
-          station2: [s2[0] || null],
+          station1: s1.length > 0 ? [s1[0] || null] : [null],
+          station2: s2.length > 0 ? [s2[0] || null] : [null],
         });
       }
-      if (cachedDraft.reinforcementSchedule) {
-        setReinforcementSchedule(String(cachedDraft.reinforcementSchedule));
+      if (activeRecord.reinforcementSchedule) {
+        setReinforcementSchedule(String(activeRecord.reinforcementSchedule));
       }
-      if (cachedDraft.crisisProtocol) {
-        setCrisisProtocol(String(cachedDraft.crisisProtocol));
+      if (activeRecord.crisisProtocol) {
+        setCrisisProtocol(String(activeRecord.crisisProtocol));
       }
-      if (cachedDraft.accommodations) {
-        setAccommodations(String(cachedDraft.accommodations));
+      if (activeRecord.accommodations) {
+        setAccommodations(String(activeRecord.accommodations));
       }
-      if (cachedDraft.reviewCycle) {
-        setReviewCycle(String(cachedDraft.reviewCycle));
+      if (activeRecord.reviewCycle) {
+        setReviewCycle(String(activeRecord.reviewCycle));
       }
-      if (cachedDraft.customFields) {
-        setCustomIupValues(cachedDraft.customFields as Record<string, any>);
+      if (activeRecord.customFields) {
+        setCustomIupValues(activeRecord.customFields);
       }
-      if (cachedDraft.saved_at) {
-        setLastSavedTimestamp(new Date(cachedDraft.saved_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      if (activeRecord.saved_at || activeRecord.finalizedAt) {
+        setLastSavedTimestamp(
+          new Date(
+            (activeRecord.saved_at || activeRecord.finalizedAt) as string,
+          ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        );
       }
     }
 
@@ -290,14 +384,21 @@ export default function IupGenerationScreen({
       .then(({ data }) => setContext(data))
       .catch(() => setContext(null));
 
-    // Fetch existing assigned goals to populate slots (max 2 goals: 1 per station)
+    // Fetch existing assigned goals to populate slots if not already restored from draft or library
     if (goalBank.length > 0) {
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
-          if (data?.goals) {
+          if (data?.goals && !finalized) {
             setSlots((prev) => {
-              const next: Slots = { station1: [null], station2: [null] };
-              data.goals.forEach((g: any) => {
+              // If user or activeRecord already has goals assigned in state, preserve them
+              const hasExistingGoals = [...prev.station1, ...prev.station2].some(Boolean);
+              if (hasExistingGoals) return prev;
+
+              const next: Slots = {
+                station1: [null],
+                station2: [null],
+              };
+              data.goals.forEach((g: { id?: string; station?: number }) => {
                 const gbGoal = goalBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
@@ -320,23 +421,59 @@ export default function IupGenerationScreen({
 
   const selectedCandidate = useMemo(
     () => completedCandidates.find((c) => c.id === selectedStudentId) || null,
-    [completedCandidates, selectedStudentId]
+    [completedCandidates, selectedStudentId],
   );
 
   const filteredCandidates = useMemo(() => {
     if (!searchStudentText.trim()) return completedCandidates;
     return completedCandidates.filter((c) =>
-      c.name.toLowerCase().includes(searchStudentText.toLowerCase())
+      c.name.toLowerCase().includes(searchStudentText.toLowerCase()),
     );
   }, [completedCandidates, searchStudentText]);
 
   const handleSelectGoal = async (goal: GoalBankItem) => {
     if (!selectorTarget || goal.active === false) return;
     const { station, slotIndex } = selectorTarget;
-    
+
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+
+    // Check duplicate goal assignment
+    const isDuplicate = [...slots.station1, ...slots.station2].some(
+      (existing) => existing && existing.id === goal.id,
+    );
+    if (isDuplicate) {
+      const msg = `"${goal.name}" is already assigned to this student.`;
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Duplicate Goal', msg);
+      return;
+    }
+
+    // Enforce exactly 2 goals at a time for this student (1 for Station 1 and 1 for Station 2)
+    const currentlyAssignedCount = [...slots.station1, ...slots.station2].filter(Boolean).length;
+    const isReplacing = Boolean(slots[station]?.[slotIndex]);
+    if (!isReplacing && currentlyAssignedCount >= 2) {
+      const msg =
+        'Goal Limit: You can select exactly 2 goals at a time for this student (1 for Station 1 and 1 for Station 2). Please replace or remove an existing goal.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Two-Goal Limit', msg);
+      return;
+    }
+
+    const currentStationSlots = [...(slots[station] || [null])];
+    while (currentStationSlots.length <= slotIndex) {
+      currentStationSlots.push(null);
+    }
+    currentStationSlots[slotIndex] = goal;
+
     const updatedSlots: Slots = {
       ...slots,
-      [station]: slots[station].map((item, idx) => (idx === slotIndex ? goal : item)),
+      [station]: currentStationSlots,
     };
     setSlots(updatedSlots);
 
@@ -353,13 +490,19 @@ export default function IupGenerationScreen({
           masteryCriteria: goal.masteryCriteria,
           station: stationNumber,
           slot: slotIndex,
+          source: 'iup_generation',
+          allowMultipleGoals: true,
         });
-        
-        const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+
+        const targetIupId =
+          selectedCandidate?.iupId || selectedCandidate?.iup_id || selectedStudentId;
         await saveIupDraft(targetIupId, {
           studentId: selectedStudentId,
           slots: updatedSlots,
-          goals: [...updatedSlots.station1, ...updatedSlots.station2].filter(Boolean).map(g => g?.id).filter(Boolean),
+          goals: [...updatedSlots.station1, ...updatedSlots.station2]
+            .filter(Boolean)
+            .map((g) => g?.id)
+            .filter(Boolean),
           reinforcementSchedule,
           crisisProtocol,
           accommodations,
@@ -367,7 +510,9 @@ export default function IupGenerationScreen({
           customFields: customIupValues,
           form_values: customIupValues,
         });
-        setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        setLastSavedTimestamp(
+          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        );
         showToast('Goal assigned and draft saved successfully.', 'success');
       } catch (err) {
         console.error('Failed to assign goal or save draft:', err);
@@ -380,6 +525,14 @@ export default function IupGenerationScreen({
   };
 
   const handleRemoveGoal = (station: StationKey, slotIndex: number) => {
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+
     Alert.alert('Remove Goal', 'Remove this goal from the IUP?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -392,11 +545,14 @@ export default function IupGenerationScreen({
             next[station][slotIndex] = null;
             return next;
           });
-          
+
           if (selectedStudentId) {
             try {
               const stationNumber = station === 'station1' ? 1 : 2;
-              await removeGoalFromSlot(selectedStudentId, { station: stationNumber, slot: slotIndex });
+              await removeGoalFromSlot(selectedStudentId, {
+                station: stationNumber,
+                slot: slotIndex,
+              });
             } catch (err) {
               console.error('Failed to remove goal from slot:', err);
             }
@@ -408,12 +564,21 @@ export default function IupGenerationScreen({
 
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
+    if (isFinalizedRecord) {
+      showToast('This finalized IUP is permanent and non-editable.', 'info');
+      return;
+    }
+
     try {
-      const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+      const targetIupId =
+        selectedCandidate?.iupId || selectedCandidate?.iup_id || selectedStudentId;
       await saveIupDraft(targetIupId, {
         studentId: selectedStudentId,
         slots,
-        goals: [...slots.station1, ...slots.station2].filter(Boolean).map(g => g?.id).filter(Boolean),
+        goals: [...slots.station1, ...slots.station2]
+          .filter(Boolean)
+          .map((g) => g?.id)
+          .filter(Boolean),
         reinforcementSchedule,
         crisisProtocol,
         accommodations,
@@ -421,7 +586,9 @@ export default function IupGenerationScreen({
         customFields: customIupValues,
         form_values: customIupValues,
       });
-      setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setLastSavedTimestamp(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      );
       showToast('The IUP draft has been saved successfully.', 'success');
     } catch {
       showToast('Unable to save draft.', 'error');
@@ -430,34 +597,55 @@ export default function IupGenerationScreen({
 
   const handleFinalize = async () => {
     if (!selectedStudentId) return;
+    if (isFinalizedRecord) {
+      showToast('This IUP has already been finalized and activated.', 'info');
+      return;
+    }
+
     const allAssigned = [...slots.station1, ...slots.station2].filter(Boolean);
-    if (allAssigned.length === 0) {
+    if (allAssigned.length !== 2) {
+      const msg =
+        'Please select exactly 2 goals (1 for Station 1 and 1 for Station 2) before finalizing the IUP.';
       if (typeof window !== 'undefined') {
-        window.alert('Please assign at least one target goal before finalizing the IUP.');
+        window.alert(msg);
       } else {
-        Alert.alert('Goal Assignment Required', 'Please assign at least one target goal before finalizing the IUP.');
+        Alert.alert('Two Goals Required', msg);
       }
       return;
     }
 
     const doFinalize = async () => {
       try {
-        const targetIupId = selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+        const targetIupId =
+          selectedCandidate?.iupId || selectedCandidate?.iup_id || selectedStudentId;
+        const studentName = context?.studentName || selectedCandidate?.name || 'Student';
+        const program = context?.program || selectedCandidate?.program || 'ABA Therapy';
+
         await finalizeIup(targetIupId, {
+          studentId: selectedStudentId,
+          studentName,
+          program,
           slots,
-          goals: allAssigned.map(g => g?.id).filter(Boolean),
+          goals: allAssigned.map((g) => g?.id).filter(Boolean),
           reinforcementSchedule,
           crisisProtocol,
           accommodations,
           reviewCycle,
           customFields: customIupValues,
           form_values: customIupValues,
+          isFinalized: true,
+          isPermanent: true,
+          editable: false,
+          status: 'finalized',
         });
-        const studentName = context?.studentName || selectedCandidate?.name || 'Student';
-        showToast(`IUP for ${studentName} has been finalized and activated successfully.`, 'success');
+        setIsFinalizedRecord(true);
+        showToast(
+          `IUP for ${studentName} has been finalized and activated successfully.`,
+          'success',
+        );
         Alert.alert(
           'IUP Finalized & Activated',
-          `The Individualized Unit Plan for ${studentName} has been finalized and activated successfully.`
+          `The Individualized Unit Plan for ${studentName} has been finalized and activated successfully.`,
         );
         // Remain on the IUP Generation page without navigating away
       } catch {
@@ -466,7 +654,9 @@ export default function IupGenerationScreen({
     };
 
     if (typeof window !== 'undefined' && window.confirm) {
-      const ok = window.confirm(`Finalize IUP for ${context?.studentName || selectedCandidate?.name}?\n\nThis will officially activate the Individualized Unit Plan and move the student to Active Therapy status.`);
+      const ok = window.confirm(
+        `Finalize IUP for ${context?.studentName || selectedCandidate?.name}?\n\nThis will officially activate the Individualized Unit Plan and move the student to Active Therapy status.`,
+      );
       if (ok) doFinalize();
     } else {
       Alert.alert(
@@ -475,7 +665,7 @@ export default function IupGenerationScreen({
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Finalize & Activate', style: 'default', onPress: doFinalize },
-        ]
+        ],
       );
     }
   };
@@ -490,7 +680,7 @@ export default function IupGenerationScreen({
 
     const lines = [
       '================================================================',
-      '        MELU\'E FOUNDATION — INDIVIDUALIZED UNIT PLAN (IUP)       ',
+      "        MELU'E FOUNDATION — INDIVIDUALIZED UNIT PLAN (IUP)       ",
       '================================================================',
       `STUDENT: ${studentName}`,
       `AGE: ${age}  |  DOB: ${dob}  |  PROGRAM: ${prog}`,
@@ -510,12 +700,16 @@ export default function IupGenerationScreen({
       '',
       'STATION 1 (Basic & Foundational Skills):',
       ...slots.station1.map((g, i) =>
-        g ? `  [Slot ${i + 1}] ${g.name} (${g.domain})\n         Type: ${g.goalType === 'task_analysis' ? 'Task Analysis' : 'Standard'} | Mastery: ${g.masteryCriteria}\n         Objective: ${g.description}` : `  [Slot ${i + 1}] (Unassigned)`
+        g
+          ? `  [Slot ${i + 1}] ${g.name} (${g.domain})\n         Type: ${g.goalType === 'task_analysis' ? 'Task Analysis' : 'Standard'} | Mastery: ${g.masteryCriteria}\n         Objective: ${g.description}`
+          : `  [Slot ${i + 1}] (Unassigned)`,
       ),
       '',
       'STATION 2 (Advanced & Generalization Skills):',
       ...slots.station2.map((g, i) =>
-        g ? `  [Slot ${i + 1}] ${g.name} (${g.domain})\n         Type: ${g.goalType === 'task_analysis' ? 'Task Analysis' : 'Standard'} | Mastery: ${g.masteryCriteria}\n         Objective: ${g.description}` : `  [Slot ${i + 1}] (Unassigned)`
+        g
+          ? `  [Slot ${i + 1}] ${g.name} (${g.domain})\n         Type: ${g.goalType === 'task_analysis' ? 'Task Analysis' : 'Standard'} | Mastery: ${g.masteryCriteria}\n         Objective: ${g.description}`
+          : `  [Slot ${i + 1}] (Unassigned)`,
       ),
       '',
       '----------------------------------------------------------------',
@@ -530,7 +724,8 @@ export default function IupGenerationScreen({
             '----------------------------------------------------------------',
             '4. ADDITIONAL INSTITUTIONAL FIELDS',
             ...Object.entries(customIupValues).map(
-              ([k, v]) => `• ${k}: ${typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v || '—')}`
+              ([k, v]) =>
+                `• ${k}: ${typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v || '—')}`,
             ),
           ]
         : []),
@@ -550,7 +745,9 @@ export default function IupGenerationScreen({
     (g) =>
       g.active !== false &&
       (domainFilter === 'All' || g.domain === domainFilter) &&
-      (!goalSearch || g.name.toLowerCase().includes(goalSearch.toLowerCase()) || g.description.toLowerCase().includes(goalSearch.toLowerCase()))
+      (!goalSearch ||
+        g.name.toLowerCase().includes(goalSearch.toLowerCase()) ||
+        g.description.toLowerCase().includes(goalSearch.toLowerCase())),
   );
 
   return (
@@ -602,7 +799,8 @@ export default function IupGenerationScreen({
             <Text style={styles.sectionLabel}>SELECT STUDENT</Text>
             {Boolean(lastSavedTimestamp) && (
               <Text style={styles.lastSavedText}>
-                <Feather name="check" size={11} color={colors.successGreen} /> Draft saved at {lastSavedTimestamp}
+                <Feather name="check" size={11} color={colors.successGreen} /> Draft saved at{' '}
+                {lastSavedTimestamp}
               </Text>
             )}
           </View>
@@ -617,7 +815,11 @@ export default function IupGenerationScreen({
                 <StudentAvatar
                   name={selectedCandidate?.name}
                   studentId={selectedCandidate?.id}
-                  photoUrl={(selectedCandidate as any)?.photoUrl || (selectedCandidate as any)?.headshotUrl || (selectedCandidate as any)?.photo}
+                  photoUrl={
+                    selectedCandidate?.photoUrl ||
+                    selectedCandidate?.headshotUrl ||
+                    selectedCandidate?.photo
+                  }
                   size={36}
                   style={{ marginRight: 10 }}
                 />
@@ -655,7 +857,9 @@ export default function IupGenerationScreen({
               </View>
               <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
                 {filteredCandidates.length === 0 ? (
-                  <Text style={styles.dropdownEmptyText}>No students ready for IUP or in session</Text>
+                  <Text style={styles.dropdownEmptyText}>
+                    No students ready for IUP or in session
+                  </Text>
                 ) : (
                   filteredCandidates.map((c) => {
                     const isSelected = c.id === selectedStudentId;
@@ -673,16 +877,22 @@ export default function IupGenerationScreen({
                         <StudentAvatar
                           name={c.name}
                           studentId={c.id}
-                          photoUrl={(c as any)?.photoUrl || (c as any)?.headshotUrl || (c as any)?.photo}
+                          photoUrl={c.photoUrl || c.headshotUrl || c.photo}
                           size={32}
                           style={{ marginRight: 8 }}
                         />
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              isSelected && styles.dropdownItemTextActive,
+                            ]}
+                          >
                             {c.name}
                           </Text>
                           <Text style={styles.dropdownItemSub}>
-                            {inSession ? 'In Session' : 'Ready for IUP'} · {c.program || 'ABA Therapy'}
+                            {inSession ? 'In Session' : 'Ready for IUP'} ·{' '}
+                            {c.program || 'ABA Therapy'}
                           </Text>
                         </View>
                         <View
@@ -709,6 +919,16 @@ export default function IupGenerationScreen({
           )}
         </View>
 
+        {/* Finalized Banner if record is permanent & active */}
+        {isFinalizedRecord && (
+          <View style={styles.finalizedBanner}>
+            <Feather name="lock" size={14} color="#1E40AF" />
+            <Text style={styles.finalizedBannerText}>
+              Finalized & Active IUP — Saved to IUP Library as a permanent, non-editable record.
+            </Text>
+          </View>
+        )}
+
         {/* Workbench Tab Navigation */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
@@ -720,8 +940,10 @@ export default function IupGenerationScreen({
               size={15}
               color={activeWorkbenchTab === 'goals' ? colors.navyText : colors.bodyText}
             />
-            <Text style={[styles.tabBtnText, activeWorkbenchTab === 'goals' && styles.tabBtnTextActive]}>
-              Goal Assignment ({assignedGoalCount}/2)
+            <Text
+              style={[styles.tabBtnText, activeWorkbenchTab === 'goals' && styles.tabBtnTextActive]}
+            >
+              Goal Assignment ({assignedGoalCount})
             </Text>
           </TouchableOpacity>
 
@@ -734,7 +956,12 @@ export default function IupGenerationScreen({
               size={15}
               color={activeWorkbenchTab === 'assessment' ? colors.navyText : colors.bodyText}
             />
-            <Text style={[styles.tabBtnText, activeWorkbenchTab === 'assessment' && styles.tabBtnTextActive]}>
+            <Text
+              style={[
+                styles.tabBtnText,
+                activeWorkbenchTab === 'assessment' && styles.tabBtnTextActive,
+              ]}
+            >
               Assessment Summary
             </Text>
           </TouchableOpacity>
@@ -748,7 +975,12 @@ export default function IupGenerationScreen({
               size={15}
               color={activeWorkbenchTab === 'strategies' ? colors.navyText : colors.bodyText}
             />
-            <Text style={[styles.tabBtnText, activeWorkbenchTab === 'strategies' && styles.tabBtnTextActive]}>
+            <Text
+              style={[
+                styles.tabBtnText,
+                activeWorkbenchTab === 'strategies' && styles.tabBtnTextActive,
+              ]}
+            >
               Implementation & Protocols
             </Text>
           </TouchableOpacity>
@@ -757,6 +989,20 @@ export default function IupGenerationScreen({
         {/* TAB 1: GOAL ASSIGNMENT */}
         {activeWorkbenchTab === 'goals' && (
           <View style={styles.tabContentWrap}>
+            {/* Helpful Assignment Header Banner */}
+            <View style={styles.goalsIntroBanner}>
+              <View style={styles.goalsIntroIconWrap}>
+                <Feather name="layers" size={16} color="#1E40AF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.goalsIntroTitle}>Goal Assignment (2 Goals Maximum)</Text>
+                <Text style={styles.goalsIntroText}>
+                  Assign exactly 2 individualized target objectives for this student: 1 target goal
+                  for Station 1 and 1 target goal for Station 2.
+                </Text>
+              </View>
+            </View>
+
             {/* Station 1 Card */}
             <View style={styles.card}>
               <View style={styles.stationHeader}>
@@ -764,15 +1010,26 @@ export default function IupGenerationScreen({
                   <Text style={styles.stationNumberText}>1</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>Station 1 — Basic Skills</Text>
-                  <Text style={styles.stationSub}>Foundational acquisition, receptive language, and early imitation</Text>
+                  <View style={styles.stationTitleRow}>
+                    <Text style={styles.cardTitle}>Station 1 — Basic Skills</Text>
+                    <View style={styles.stationCountBadge}>
+                      <Text style={styles.stationCountBadgeText}>
+                        {slots.station1.filter(Boolean).length} / {slots.station1.length} Assigned
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stationSub}>
+                    Foundational acquisition, receptive language, and early imitation
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.slotList}>
                 {slots.station1.map((goal, idx) => (
                   <View key={`s1-${idx}`} style={styles.slotContainer}>
-                    <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                    <View style={styles.slotHeaderRow}>
+                      <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                    </View>
                     {goal ? (
                       <View style={styles.filledGoalCard}>
                         <View style={{ flex: 1 }}>
@@ -792,7 +1049,9 @@ export default function IupGenerationScreen({
                           </Text>
                           <View style={styles.masteryRow}>
                             <Feather name="check-circle" size={12} color={colors.successGreen} />
-                            <Text style={styles.masteryText}>Mastery Criteria: {goal.masteryCriteria}</Text>
+                            <Text style={styles.masteryText}>
+                              Mastery Criteria: {goal.masteryCriteria}
+                            </Text>
                           </View>
                         </View>
                         <View style={styles.goalActions}>
@@ -845,15 +1104,26 @@ export default function IupGenerationScreen({
                   <Text style={[styles.stationNumberText, { color: '#1E40AF' }]}>2</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>Station 2 — Advanced Skills</Text>
-                  <Text style={styles.stationSub}>Expressive language, academic readiness, and generalization</Text>
+                  <View style={styles.stationTitleRow}>
+                    <Text style={styles.cardTitle}>Station 2 — Advanced Skills</Text>
+                    <View style={styles.stationCountBadge}>
+                      <Text style={styles.stationCountBadgeText}>
+                        {slots.station2.filter(Boolean).length} / {slots.station2.length} Assigned
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stationSub}>
+                    Expressive language, academic readiness, and generalization
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.slotList}>
                 {slots.station2.map((goal, idx) => (
                   <View key={`s2-${idx}`} style={styles.slotContainer}>
-                    <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                    <View style={styles.slotHeaderRow}>
+                      <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                    </View>
                     {goal ? (
                       <View style={styles.filledGoalCard}>
                         <View style={{ flex: 1 }}>
@@ -873,7 +1143,9 @@ export default function IupGenerationScreen({
                           </Text>
                           <View style={styles.masteryRow}>
                             <Feather name="check-circle" size={12} color={colors.successGreen} />
-                            <Text style={styles.masteryText}>Mastery Criteria: {goal.masteryCriteria}</Text>
+                            <Text style={styles.masteryText}>
+                              Mastery Criteria: {goal.masteryCriteria}
+                            </Text>
                           </View>
                         </View>
                         <View style={styles.goalActions}>
@@ -929,15 +1201,21 @@ export default function IupGenerationScreen({
               <View style={styles.demoGrid}>
                 <View style={styles.demoItem}>
                   <Text style={styles.demoLabel}>Student Name</Text>
-                  <Text style={styles.demoValue}>{context?.studentName || selectedCandidate?.name || '—'}</Text>
+                  <Text style={styles.demoValue}>
+                    {context?.studentName || selectedCandidate?.name || '—'}
+                  </Text>
                 </View>
                 <View style={styles.demoItem}>
                   <Text style={styles.demoLabel}>Age / DOB</Text>
-                  <Text style={styles.demoValue}>Age {context?.age ?? selectedCandidate?.age ?? '—'} · {context?.dob || '—'}</Text>
+                  <Text style={styles.demoValue}>
+                    Age {context?.age ?? selectedCandidate?.age ?? '—'} · {context?.dob || '—'}
+                  </Text>
                 </View>
                 <View style={styles.demoItem}>
                   <Text style={styles.demoLabel}>Program</Text>
-                  <Text style={styles.demoValue}>{context?.program || selectedCandidate?.program || 'ABA Therapy'}</Text>
+                  <Text style={styles.demoValue}>
+                    {context?.program || selectedCandidate?.program || 'ABA Therapy'}
+                  </Text>
                 </View>
                 <View style={styles.demoItem}>
                   <Text style={styles.demoLabel}>Enrolled Date</Text>
@@ -977,7 +1255,15 @@ export default function IupGenerationScreen({
                   <Text style={styles.contextSectionTitle}>Top Reinforcement Inventory</Text>
                 </View>
                 <View style={styles.reinforcerChipsWrap}>
-                  {(context?.topReinforcers || ['Bubbles', 'Musical Toy', 'Token Stars', 'Edible Treat', 'Spinning Wheel']).map((r, i) => (
+                  {(
+                    context?.topReinforcers || [
+                      'Bubbles',
+                      'Musical Toy',
+                      'Token Stars',
+                      'Edible Treat',
+                      'Spinning Wheel',
+                    ]
+                  ).map((r, i) => (
                     <View key={i} style={styles.reinforcerChip}>
                       <Text style={styles.reinforcerRank}>#{i + 1}</Text>
                       <Text style={styles.reinforcerChipText}>{r}</Text>
@@ -1018,7 +1304,9 @@ export default function IupGenerationScreen({
               </View>
 
               <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Environmental Accommodations & Visual Supports</Text>
+                <Text style={styles.fieldLabel}>
+                  Environmental Accommodations & Visual Supports
+                </Text>
                 <TextInput
                   style={styles.fieldInput}
                   value={accommodations}
@@ -1050,7 +1338,10 @@ export default function IupGenerationScreen({
                       onPress={() => setReviewCycle(cycle)}
                     >
                       <Text
-                        style={[styles.cycleChipText, reviewCycle === cycle && styles.cycleChipTextSelected]}
+                        style={[
+                          styles.cycleChipText,
+                          reviewCycle === cycle && styles.cycleChipTextSelected,
+                        ]}
                       >
                         {cycle}
                       </Text>
@@ -1078,9 +1369,15 @@ export default function IupGenerationScreen({
 
         {/* Bottom Action Bar */}
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleDraftSave}>
-            <Feather name="save" size={15} color={colors.navyText} />
-            <Text style={styles.saveDraftBtnText}>Save Draft</Text>
+          <TouchableOpacity
+            style={[styles.saveDraftBtn, isFinalizedRecord && { opacity: 0.6 }]}
+            onPress={handleDraftSave}
+            disabled={isFinalizedRecord}
+          >
+            <Feather name={isFinalizedRecord ? 'lock' : 'save'} size={15} color={colors.navyText} />
+            <Text style={styles.saveDraftBtnText}>
+              {isFinalizedRecord ? 'Draft Locked' : 'Save Draft'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.previewBtn} onPress={() => setPreviewOpen(true)}>
@@ -1088,22 +1385,41 @@ export default function IupGenerationScreen({
             <Text style={styles.previewBtnText}>Full Preview</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.finalizeBtn} onPress={handleFinalize}>
-            <Feather name="check-circle" size={16} color={colors.navyText} />
-            <Text style={styles.finalizeBtnText}>Finalize & Activate IUP</Text>
+          <TouchableOpacity
+            style={[styles.finalizeBtn, isFinalizedRecord && { backgroundColor: '#E2E8F0' }]}
+            onPress={handleFinalize}
+            disabled={isFinalizedRecord}
+          >
+            <Feather
+              name={isFinalizedRecord ? 'lock' : 'check-circle'}
+              size={16}
+              color={colors.navyText}
+            />
+            <Text style={styles.finalizeBtnText}>
+              {isFinalizedRecord ? 'Finalized & Active' : 'Finalize & Activate IUP'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
 
       {/* GOAL SELECTOR MODAL */}
-      <Modal visible={!!selectorTarget} animationType="slide" transparent onRequestClose={() => setSelectorTarget(null)}>
+      <Modal
+        visible={!!selectorTarget}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectorTarget(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeaderRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Goal Bank Selection</Text>
                 <Text style={styles.modalSub}>
-                  Assigning to {selectorTarget?.station === 'station1' ? 'Station 1 (Basic)' : 'Station 2 (Advanced)'} · Slot {(selectorTarget?.slotIndex ?? 0) + 1}
+                  Assigning to{' '}
+                  {selectorTarget?.station === 'station1'
+                    ? 'Station 1 (Basic)'
+                    : 'Station 2 (Advanced)'}{' '}
+                  · Slot {(selectorTarget?.slotIndex ?? 0) + 1}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1120,7 +1436,10 @@ export default function IupGenerationScreen({
                 <Feather name="settings" size={12} color={colors.navyText} />
                 <Text style={styles.manageGoalsLinkText}>Edit in Admin</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setSelectorTarget(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setSelectorTarget(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <Feather name="x" size={20} color={colors.navyText} />
               </TouchableOpacity>
             </View>
@@ -1141,11 +1460,17 @@ export default function IupGenerationScreen({
               {domainOptions.map((d) => (
                 <TouchableOpacity
                   key={d}
-                  style={[styles.domainFilterChip, domainFilter === d && styles.domainFilterChipActive]}
+                  style={[
+                    styles.domainFilterChip,
+                    domainFilter === d && styles.domainFilterChipActive,
+                  ]}
                   onPress={() => setDomainFilter(d)}
                 >
                   <Text
-                    style={[styles.domainFilterText, domainFilter === d && styles.domainFilterTextActive]}
+                    style={[
+                      styles.domainFilterText,
+                      domainFilter === d && styles.domainFilterTextActive,
+                    ]}
                   >
                     {d}
                   </Text>
@@ -1180,7 +1505,9 @@ export default function IupGenerationScreen({
               ))}
               {filteredGoals.length === 0 && (
                 <View style={styles.emptyResults}>
-                  <Text style={styles.emptyResultsText}>No goals found matching your search filter.</Text>
+                  <Text style={styles.emptyResultsText}>
+                    No goals found matching your search filter.
+                  </Text>
                 </View>
               )}
             </ScrollView>
@@ -1193,7 +1520,12 @@ export default function IupGenerationScreen({
       </Modal>
 
       {/* FULL IUP PREVIEW MODAL */}
-      <Modal visible={previewOpen} animationType="slide" transparent onRequestClose={() => setPreviewOpen(false)}>
+      <Modal
+        visible={previewOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPreviewOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { maxHeight: '90%' }]}>
             <View style={styles.modalHeaderRow}>
@@ -1201,28 +1533,46 @@ export default function IupGenerationScreen({
                 <Text style={styles.modalTitle}>
                   IUP Preview — {context?.studentName || selectedCandidate?.name || 'Student'}
                 </Text>
-                <Text style={styles.modalSub}>Individualized Behavior Intervention Plan Document</Text>
+                <Text style={styles.modalSub}>
+                  Individualized Behavior Intervention Plan Document
+                </Text>
               </View>
               <TouchableOpacity onPress={() => setPreviewOpen(false)}>
                 <Feather name="x" size={20} color={colors.navyText} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}>
+            <ScrollView
+              style={{ maxHeight: 420 }}
+              contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}
+            >
               <View style={styles.previewCard}>
                 <Text style={styles.previewSectionTitle}>Student & Demographic Baseline</Text>
-                <Text style={styles.previewText}>Age: {context?.age ?? selectedCandidate?.age ?? '—'} · DOB: {context?.dob || '—'}</Text>
-                <Text style={styles.previewText}>Program: {context?.program || selectedCandidate?.program || 'ABA Therapy'} · Enrolled: {context?.enrollmentDate || '—'}</Text>
+                <Text style={styles.previewText}>
+                  Age: {context?.age ?? selectedCandidate?.age ?? '—'} · DOB: {context?.dob || '—'}
+                </Text>
+                <Text style={styles.previewText}>
+                  Program: {context?.program || selectedCandidate?.program || 'ABA Therapy'} ·
+                  Enrolled: {context?.enrollmentDate || '—'}
+                </Text>
               </View>
 
               <View style={styles.previewCard}>
                 <Text style={styles.previewSectionTitle}>Clinical Assessment Summary</Text>
                 <Text style={styles.previewLabel}>Skills Strengths:</Text>
-                <Text style={styles.previewText}>{context?.skillsStrengths || 'Strong visual matching and receptive skills.'}</Text>
+                <Text style={styles.previewText}>
+                  {context?.skillsStrengths || 'Strong visual matching and receptive skills.'}
+                </Text>
                 <Text style={styles.previewLabel}>Behavioral Functions:</Text>
-                <Text style={styles.previewText}>{context?.behaviorFunctions || 'Escape-maintained during task transitions.'}</Text>
+                <Text style={styles.previewText}>
+                  {context?.behaviorFunctions || 'Escape-maintained during task transitions.'}
+                </Text>
                 <Text style={styles.previewLabel}>Top Reinforcers:</Text>
-                <Text style={styles.previewText}>{(context?.topReinforcers || ['Bubbles', 'Musical Toy', 'Token Stars']).join(', ')}</Text>
+                <Text style={styles.previewText}>
+                  {(context?.topReinforcers || ['Bubbles', 'Musical Toy', 'Token Stars']).join(
+                    ', ',
+                  )}
+                </Text>
               </View>
 
               <View style={styles.previewCard}>
@@ -1233,15 +1583,17 @@ export default function IupGenerationScreen({
                     <Text key={i} style={styles.previewGoalLine}>
                       {i + 1}. {g.name} ({g.domain}) — {g.masteryCriteria}
                     </Text>
-                  ) : null
+                  ) : null,
                 )}
-                <Text style={[styles.previewLabel, { marginTop: spacing.sm }]}>Station 2 (Advanced Skills):</Text>
+                <Text style={[styles.previewLabel, { marginTop: spacing.sm }]}>
+                  Station 2 (Advanced Skills):
+                </Text>
                 {slots.station2.map((g, i) =>
                   g ? (
                     <Text key={i} style={styles.previewGoalLine}>
                       {i + 1}. {g.name} ({g.domain}) — {g.masteryCriteria}
                     </Text>
-                  ) : null
+                  ) : null,
                 )}
               </View>
 
@@ -1271,7 +1623,10 @@ export default function IupGenerationScreen({
             </ScrollView>
 
             <View style={styles.previewFooter}>
-              <TouchableOpacity style={styles.previewCloseBtn} onPress={() => setPreviewOpen(false)}>
+              <TouchableOpacity
+                style={styles.previewCloseBtn}
+                onPress={() => setPreviewOpen(false)}
+              >
                 <Text style={styles.previewCloseBtnText}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1312,7 +1667,28 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  finalizedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    padding: 12,
+  },
+  finalizedBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E40AF',
+  },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -1347,7 +1723,11 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.bodyText, letterSpacing: 0.8 },
-  selectorHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  selectorHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   lastSavedText: { fontSize: 11, color: colors.successGreen, fontWeight: '500' },
 
   dropdownTriggerRow: { marginTop: spacing.xs },
@@ -1407,7 +1787,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.bgApp,
   },
   dropdownItemActive: { backgroundColor: '#FEF9C3' },
-  dropdownEmptyText: { padding: spacing.md, fontSize: 13, color: colors.mutedText, textAlign: 'center' },
+  dropdownEmptyText: {
+    padding: spacing.md,
+    fontSize: 13,
+    color: colors.mutedText,
+    textAlign: 'center',
+  },
   dropdownItemText: { fontSize: 14, fontWeight: '600', color: colors.navyText },
   dropdownItemTextActive: { color: colors.navyText, fontWeight: '700' },
   dropdownItemSub: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
@@ -1446,7 +1831,57 @@ const styles = StyleSheet.create({
   tabContentWrap: { gap: spacing.lg },
 
   /* Station Cards & Goal Slots */
+  goalsIntroBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  goalsIntroIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalsIntroTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF' },
+  goalsIntroText: { fontSize: 12, color: '#3B82F6', marginTop: 2, lineHeight: 17 },
+
   stationHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  stationCountBadge: {
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  stationCountBadgeText: { fontSize: 11, fontWeight: '700', color: colors.bodyText },
+
+  addSlotHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primaryYellow,
+    borderWidth: 1,
+    borderColor: colors.primaryYellowDark,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  addSlotHeaderBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
+
   stationNumberBadge: {
     width: 32,
     height: 32,
@@ -1460,7 +1895,34 @@ const styles = StyleSheet.create({
 
   slotList: { gap: spacing.md },
   slotContainer: { gap: spacing.xs },
+  slotHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  removeSlotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  removeSlotBtnText: { fontSize: 11, color: colors.mutedText, fontWeight: '500' },
   slotTag: { fontSize: 11, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase' },
+  addSlotFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.bgApp,
+    marginTop: spacing.xs,
+  },
+  addSlotFooterBtnText: { fontSize: 13, fontWeight: '700', color: colors.navyText },
   filledGoalCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1473,9 +1935,19 @@ const styles = StyleSheet.create({
   },
   goalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   goalName: { fontSize: 14, fontWeight: '700', color: colors.navyText },
-  domainChip: { backgroundColor: '#E0E7FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
+  domainChip: {
+    backgroundColor: '#E0E7FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
   domainChipText: { fontSize: 10, fontWeight: '700', color: '#3730A3' },
-  taskChip: { backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
+  taskChip: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
   taskChipText: { fontSize: 10, fontWeight: '700', color: '#92400E' },
   goalDesc: { fontSize: 12, color: colors.bodyText, marginTop: 4 },
   masteryRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
@@ -1525,7 +1997,13 @@ const styles = StyleSheet.create({
 
   /* Assessment Summary Tab */
   demoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  demoItem: { flexGrow: 1, minWidth: 160, backgroundColor: colors.bgApp, padding: spacing.md, borderRadius: radius.md },
+  demoItem: {
+    flexGrow: 1,
+    minWidth: 160,
+    backgroundColor: colors.bgApp,
+    padding: spacing.md,
+    borderRadius: radius.md,
+  },
   demoLabel: { fontSize: 11, fontWeight: '600', color: colors.mutedText },
   demoValue: { fontSize: 13, fontWeight: '700', color: colors.navyText, marginTop: 2 },
   contextSection: { paddingVertical: spacing.xs, gap: spacing.xs },
@@ -1741,4 +2219,3 @@ const styles = StyleSheet.create({
   },
   previewExportBtnText: { fontWeight: '700', color: colors.navyText },
 });
-
