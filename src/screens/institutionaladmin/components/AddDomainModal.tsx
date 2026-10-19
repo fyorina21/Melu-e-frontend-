@@ -3,7 +3,7 @@ import { View, Text, Modal, TextInput, TouchableOpacity, StyleSheet } from 'reac
 import { Feather } from '@expo/vector-icons';
 import { radius, spacing } from '../../../theme/colors';
 
-interface AddDomainModalProps {
+export interface AddDomainModalProps {
   visible: boolean;
   title: string;
   subtitle: string;
@@ -54,6 +54,7 @@ export const AddDomainModal: React.FC<AddDomainModalProps> = React.memo(
                   style={styles.textInput}
                   value={value}
                   onChangeText={onChangeText}
+                  onSubmitEditing={() => value.trim() && onConfirm()}
                   placeholder={placeholder}
                   placeholderTextColor="#94A3B8"
                   autoFocus

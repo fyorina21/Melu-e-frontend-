@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, ActivityIndicator, Image } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  ActivityIndicator,
+  Image,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DobPicker from '../../components/DobPicker';
@@ -9,7 +19,12 @@ import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { useToast } from '../../context/ToastContext';
-import { getStaffOptions, getStudentOptions, type StaffOption, type StudentOption } from '../../api/optionsApi';
+import {
+  getStaffOptions,
+  getStudentOptions,
+  type StaffOption,
+  type StudentOption,
+} from '../../api/optionsApi';
 import { createStudentEnrollment, updateStudentProfile } from '../../api/coordinatorApi';
 import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 import DynamicFormFields from '../../components/DynamicFormFields';
@@ -143,11 +158,23 @@ function StepIndicator({ current, steps = STEPS }: { current: number; steps?: st
   );
 }
 
-function Chips({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+function Chips({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <View style={styles.chipRow}>
       {options.map((opt) => (
-        <TouchableOpacity key={opt} style={[styles.chip, value === opt && styles.chipSelected]} onPress={() => onChange(opt)}>
+        <TouchableOpacity
+          key={opt}
+          style={[styles.chip, value === opt && styles.chipSelected]}
+          onPress={() => onChange(opt)}
+        >
           <Text style={[styles.chipText, value === opt && styles.chipTextSelected]}>{opt}</Text>
         </TouchableOpacity>
       ))}
@@ -167,7 +194,17 @@ interface FieldProps {
   hint?: string;
 }
 
-function Field({ label, required, value, onChangeText, keyboardType, multiline, placeholder, maxWidth, hint }: FieldProps) {
+function Field({
+  label,
+  required,
+  value,
+  onChangeText,
+  keyboardType,
+  multiline,
+  placeholder,
+  maxWidth,
+  hint,
+}: FieldProps) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
@@ -225,30 +262,41 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const [therapists, setTherapists] = useState<StaffOption[]>([]);
   const [existingStudents, setExistingStudents] = useState<StudentOption[]>([]);
   const [saving, setSaving] = useState(false);
-  const [customSections, setCustomSections] = useState<string[]>(DEFAULT_ENROLLMENT_FORM.customSections || []);
+  const [customSections, setCustomSections] = useState<string[]>(
+    DEFAULT_ENROLLMENT_FORM.customSections || [],
+  );
   const [deletedSections, setDeletedSections] = useState<string[]>([]);
   const [formFields, setFormFields] = useState<any[]>(DEFAULT_ENROLLMENT_FORM.fields || []);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
 
-  const getFieldConfig = useCallback((idOrPattern: string | RegExp) => {
-    if (!formFields || formFields.length === 0) return null;
-    return formFields.find((f: any) => {
-      if (typeof idOrPattern === 'string') {
-        return f.id === idOrPattern || f.label?.toLowerCase().trim() === idOrPattern.toLowerCase().trim();
-      }
-      return idOrPattern.test(f.id) || idOrPattern.test(f.label);
-    });
-  }, [formFields]);
+  const getFieldConfig = useCallback(
+    (idOrPattern: string | RegExp) => {
+      if (!formFields || formFields.length === 0) return null;
+      return formFields.find((f: any) => {
+        if (typeof idOrPattern === 'string') {
+          return (
+            f.id === idOrPattern ||
+            f.label?.toLowerCase().trim() === idOrPattern.toLowerCase().trim()
+          );
+        }
+        return idOrPattern.test(f.id) || idOrPattern.test(f.label);
+      });
+    },
+    [formFields],
+  );
 
-  const isFieldVisible = useCallback((labelOrId: string, defaultVisible = true) => {
-    const f = formFields.find(
-      (item) =>
-        item.id === labelOrId ||
-        item.label?.toLowerCase().trim() === labelOrId.toLowerCase().trim()
-    );
-    if (!f) return defaultVisible;
-    return f.visible !== false;
-  }, [formFields]);
+  const isFieldVisible = useCallback(
+    (labelOrId: string, defaultVisible = true) => {
+      const f = formFields.find(
+        (item) =>
+          item.id === labelOrId ||
+          item.label?.toLowerCase().trim() === labelOrId.toLowerCase().trim(),
+      );
+      if (!f) return defaultVisible;
+      return f.visible !== false;
+    },
+    [formFields],
+  );
 
   const photoCfg = getFieldConfig(/photo/i) || getFieldConfig('f_photo');
   const nameCfg = getFieldConfig(/full.*name|^name$/i) || getFieldConfig('f1');
@@ -262,9 +310,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const diagCfg = getFieldConfig(/diagnosis/i) || getFieldConfig('f_diagnosis');
   const notesCfg = getFieldConfig(/medical.*notes|notes.*allerg/i) || getFieldConfig('f7');
 
-  const genderOpts = (genderCfg?.options && genderCfg.options.length > 0) ? genderCfg.options : DEFAULT_GENDERS;
-  const programOpts = (programCfg?.options && programCfg.options.length > 0) ? programCfg.options : DEFAULT_PROGRAM_TYPES;
-  const therapyOpts = (therapyCfg?.options && therapyCfg.options.length > 0) ? therapyCfg.options : DEFAULT_THERAPY_GROUPS;
+  const genderOpts =
+    genderCfg?.options && genderCfg.options.length > 0 ? genderCfg.options : DEFAULT_GENDERS;
+  const programOpts =
+    programCfg?.options && programCfg.options.length > 0
+      ? programCfg.options
+      : DEFAULT_PROGRAM_TYPES;
+  const therapyOpts =
+    therapyCfg?.options && therapyCfg.options.length > 0
+      ? therapyCfg.options
+      : DEFAULT_THERAPY_GROUPS;
 
   const showPhoto = photoCfg ? photoCfg.visible !== false : true;
   const showName = nameCfg ? nameCfg.visible !== false : true;
@@ -278,7 +333,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const showDiag = diagCfg ? diagCfg.visible !== false : true;
   const showNotes = notesCfg ? notesCfg.visible !== false : true;
 
-  const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
+  const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
   const updateProgram = (val: string) => {
     set('program', val);
@@ -409,7 +465,11 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     if (customValues[id] !== undefined && customValues[id] !== null && customValues[id] !== '') {
       return customValues[id];
     }
-    if (customValues[label] !== undefined && customValues[label] !== null && customValues[label] !== '') {
+    if (
+      customValues[label] !== undefined &&
+      customValues[label] !== null &&
+      customValues[label] !== ''
+    ) {
       return customValues[label];
     }
 
@@ -429,7 +489,11 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     }
 
     // 5. Student Name
-    if (normId === 'f1' || /student.*name|full.*name|^name$/i.test(normId) || /student.*name|full.*name|^name$/i.test(normLabel)) {
+    if (
+      normId === 'f1' ||
+      /student.*name|full.*name|^name$/i.test(normId) ||
+      /student.*name|full.*name|^name$/i.test(normLabel)
+    ) {
       return form.name;
     }
 
@@ -444,17 +508,29 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     }
 
     // 8. Parent Name
-    if (normId === 'f4' || /parent.*name|guardian/i.test(normId) || /parent.*name|guardian/i.test(normLabel)) {
+    if (
+      normId === 'f4' ||
+      /parent.*name|guardian/i.test(normId) ||
+      /parent.*name|guardian/i.test(normLabel)
+    ) {
       return form.parentName;
     }
 
     // 9. Parent Phone
-    if (normId === 'f5' || /parent.*phone|^phone$/i.test(normId) || /parent.*phone|^phone$/i.test(normLabel)) {
+    if (
+      normId === 'f5' ||
+      /parent.*phone|^phone$/i.test(normId) ||
+      /parent.*phone|^phone$/i.test(normLabel)
+    ) {
       return form.parentPhone;
     }
 
     // 10. Parent Email
-    if (normId === 'f6' || /parent.*email|^email$/i.test(normId) || /parent.*email|^email$/i.test(normLabel)) {
+    if (
+      normId === 'f6' ||
+      /parent.*email|^email$/i.test(normId) ||
+      /parent.*email|^email$/i.test(normLabel)
+    ) {
       return form.parentEmail;
     }
 
@@ -480,7 +556,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         const available = teachers.find((t) => (t.assignedStudents?.length ?? 0) < MAX_CASELOAD);
         setForm((prev) => ({
           ...prev,
-          therapist: teachers.some((t) => t.name === prev.therapist) ? prev.therapist : (available?.name || ''),
+          therapist: teachers.some((t) => t.name === prev.therapist)
+            ? prev.therapist
+            : available?.name || '',
         }));
       })
       .catch(() => setTherapists([]));
@@ -510,22 +588,31 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 f.section ||
                 (/parent|guardian|mother|father|family|contact/i.test(f.label)
                   ? 'Parent Info'
-                  : /medical|allerg|doctor|health|insurance|medication|hospital|physician|diet/i.test(f.label)
-                  ? 'Medical Info'
-                  : 'Student Info'),
+                  : /medical|allerg|doctor|health|insurance|medication|hospital|physician|diet/i.test(
+                        f.label,
+                      )
+                    ? 'Medical Info'
+                    : 'Student Info'),
             }));
             setFormFields(normalizedFields);
 
             // Synchronize options if available
-            const pField = normalizedFields.find((f: any) => f.id === 'f_program' || /program/i.test(f.label));
-            const gField = normalizedFields.find((f: any) => f.id === 'f_gender' || /gender/i.test(f.label));
-            const tField = normalizedFields.find((f: any) => f.id === 'f_therapy' || /therapy/i.test(f.label));
+            const pField = normalizedFields.find(
+              (f: any) => f.id === 'f_program' || /program/i.test(f.label),
+            );
+            const gField = normalizedFields.find(
+              (f: any) => f.id === 'f_gender' || /gender/i.test(f.label),
+            );
+            const tField = normalizedFields.find(
+              (f: any) => f.id === 'f_therapy' || /therapy/i.test(f.label),
+            );
 
             setForm((prev) => ({
               ...prev,
               program: prev.program || (pField?.options?.[0] ?? DEFAULT_PROGRAM_TYPES[0]),
               gender: prev.gender || (gField?.options?.[0] ?? DEFAULT_GENDERS[0]),
-              therapyGroup: prev.therapyGroup || (tField?.options?.[0] ?? DEFAULT_THERAPY_GROUPS[0]),
+              therapyGroup:
+                prev.therapyGroup || (tField?.options?.[0] ?? DEFAULT_THERAPY_GROUPS[0]),
             }));
 
             setCustomValues((prev) => {
@@ -533,17 +620,35 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               normalizedFields.forEach((f: any) => {
                 const normId = String(f.id || '').toLowerCase();
                 const normLabel = String(f.label || '').toLowerCase();
-                if (normId === 'f_program' || /program/i.test(normId) || /program/i.test(normLabel)) {
-                  if (!updated[f.id]) updated[f.id] = form.program || pField?.options?.[0] || DEFAULT_PROGRAM_TYPES[0];
-                  if (!updated[f.label]) updated[f.label] = form.program || pField?.options?.[0] || DEFAULT_PROGRAM_TYPES[0];
+                if (
+                  normId === 'f_program' ||
+                  /program/i.test(normId) ||
+                  /program/i.test(normLabel)
+                ) {
+                  if (!updated[f.id])
+                    updated[f.id] =
+                      form.program || pField?.options?.[0] || DEFAULT_PROGRAM_TYPES[0];
+                  if (!updated[f.label])
+                    updated[f.label] =
+                      form.program || pField?.options?.[0] || DEFAULT_PROGRAM_TYPES[0];
                 }
                 if (normId === 'f_gender' || /gender/i.test(normId) || /gender/i.test(normLabel)) {
-                  if (!updated[f.id]) updated[f.id] = form.gender || gField?.options?.[0] || DEFAULT_GENDERS[0];
-                  if (!updated[f.label]) updated[f.label] = form.gender || gField?.options?.[0] || DEFAULT_GENDERS[0];
+                  if (!updated[f.id])
+                    updated[f.id] = form.gender || gField?.options?.[0] || DEFAULT_GENDERS[0];
+                  if (!updated[f.label])
+                    updated[f.label] = form.gender || gField?.options?.[0] || DEFAULT_GENDERS[0];
                 }
-                if (normId === 'f_therapy' || /therapy/i.test(normId) || /therapy/i.test(normLabel)) {
-                  if (!updated[f.id]) updated[f.id] = form.therapyGroup || tField?.options?.[0] || DEFAULT_THERAPY_GROUPS[0];
-                  if (!updated[f.label]) updated[f.label] = form.therapyGroup || tField?.options?.[0] || DEFAULT_THERAPY_GROUPS[0];
+                if (
+                  normId === 'f_therapy' ||
+                  /therapy/i.test(normId) ||
+                  /therapy/i.test(normLabel)
+                ) {
+                  if (!updated[f.id])
+                    updated[f.id] =
+                      form.therapyGroup || tField?.options?.[0] || DEFAULT_THERAPY_GROUPS[0];
+                  if (!updated[f.label])
+                    updated[f.label] =
+                      form.therapyGroup || tField?.options?.[0] || DEFAULT_THERAPY_GROUPS[0];
                 }
               });
               return updated;
@@ -561,7 +666,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       loadFormConfig();
-    }, [loadFormConfig])
+    }, [loadFormConfig]),
   );
 
   useEffect(() => {
@@ -581,16 +686,17 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     return onDeletedStaffChanged(loadFormConfig);
   }, [loadFormConfig]);
 
-  const caseloadOf = (name: string) => therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
+  const caseloadOf = (name: string) =>
+    therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
   const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
   const therapistNames = therapists.map((t) => t.name);
 
   const baseSteps = ['Student Info', 'Parent Info', 'Medical Info'];
   const fieldSections = Array.from(
-    new Set(formFields.map((f: any) => f.section).filter(Boolean))
+    new Set(formFields.map((f: any) => f.section).filter(Boolean)),
   ) as string[];
   const allSections = Array.from(
-    new Set([...baseSteps, ...customSections, ...fieldSections])
+    new Set([...baseSteps, ...customSections, ...fieldSections]),
   ).filter((s) => !deletedSections.includes(s));
   const steps = [...allSections, 'Assign Therapist', 'Review'];
   const currentStep = steps[step] || steps[0] || 'Student Info';
@@ -603,7 +709,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         return;
       }
       if (isFull(form.therapist)) {
-        showToast(`${form.therapist} is at maximum capacity (2 students). Choose another therapist.`, 'error');
+        showToast(
+          `${form.therapist} is at maximum capacity (2 students). Choose another therapist.`,
+          'error',
+        );
         return;
       }
       if (step < steps.length - 1) setStep(step + 1);
@@ -617,7 +726,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
     // 3. Dynamic step validation based on formFields configuration
     const currentStepFields = formFields.filter(
-      (f: any) => f.visible !== false && f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim()
+      (f: any) =>
+        f.visible !== false && f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim(),
     );
 
     for (const f of currentStepFields) {
@@ -659,7 +769,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       if (studentAge === null || studentAge < 3 || studentAge > 19) {
         showToast(
           `Student age (${studentAge ?? 'unknown'} yrs) must be between 3 and 19 years old for enrollment`,
-          'error'
+          'error',
         );
         return;
       }
@@ -673,12 +783,24 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     // Fallback if formFields hasn't loaded
     if (currentStepFields.length === 0) {
       if (currentStep === 'Student Info') {
-        if (!form.name.trim()) { showToast('Student name is required', 'error'); return; }
-        if (!form.dob.trim()) { showToast('Date of birth is required', 'error'); return; }
+        if (!form.name.trim()) {
+          showToast('Student name is required', 'error');
+          return;
+        }
+        if (!form.dob.trim()) {
+          showToast('Date of birth is required', 'error');
+          return;
+        }
       }
       if (currentStep === 'Parent Info') {
-        if (!form.parentName.trim()) { showToast('Parent name is required', 'error'); return; }
-        if (!form.parentPhone.trim()) { showToast('Parent phone is required', 'error'); return; }
+        if (!form.parentName.trim()) {
+          showToast('Parent name is required', 'error');
+          return;
+        }
+        if (!form.parentPhone.trim()) {
+          showToast('Parent phone is required', 'error');
+          return;
+        }
         if (!PHONE_RE.test(form.parentPhone.trim())) {
           showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
           return;
@@ -770,7 +892,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     if (studentAge === null || studentAge < 3 || studentAge > 19) {
       showToast(
         `Student must be between 3 and 19 years old for enrollment (current age: ${studentAge ?? 'unknown'} yrs)`,
-        'error'
+        'error',
       );
       setSaving(false);
       return;
@@ -794,7 +916,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       programType: form.program,
       program_type: form.program.toLowerCase().includes('pull') ? 'pulled_out' : 'regular',
       therapyGroup: form.therapyGroup,
-      therapy_group: form.therapyGroup.toLowerCase().includes('function') ? 'functional_living' : 'basic',
+      therapy_group: form.therapyGroup.toLowerCase().includes('function')
+        ? 'functional_living'
+        : 'basic',
       gender: form.gender,
       parentName: form.parentName.trim() || 'Guardian',
       guardian_name: form.parentName.trim() || 'Guardian',
@@ -819,13 +943,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
       // Mark student as Active upon registration/enrollment
       markStudentActive(createdId, form.name.trim());
-      registerStudentStatuses([{
-        id: createdId,
-        name: form.name.trim(),
-        fullName: form.name.trim(),
-        status: 'active',
-        rawStatus: 'active',
-      }]);
+      registerStudentStatuses([
+        {
+          id: createdId,
+          name: form.name.trim(),
+          fullName: form.name.trim(),
+          status: 'active',
+          rawStatus: 'active',
+        },
+      ]);
 
       if (createdId) {
         try {
@@ -842,7 +968,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         id: createdData?.id,
         name: form.name.trim(),
         fullName: form.name.trim(),
-        photo: createdData?.headshotUrl || createdData?.photoUrl || createdData?.photo || photoPayload,
+        photo:
+          createdData?.headshotUrl || createdData?.photoUrl || createdData?.photo || photoPayload,
         photoBase64: form.photoBase64,
         photoUri: form.photoUri,
       });
@@ -887,7 +1014,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const customSectionEntries: Array<{ title: string; rows: [string, string][] }> = customSections
     .map((sec: string) => {
       const secFields = formFields.filter(
-        (f) => f.section?.toLowerCase().trim() === sec.toLowerCase().trim() && f.visible !== false
+        (f) => f.section?.toLowerCase().trim() === sec.toLowerCase().trim() && f.visible !== false,
       );
       const rows: [string, string][] = [];
       secFields.forEach((f) => {
@@ -900,12 +1027,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     })
     .filter((entry: { title: string; rows: [string, string][] }) => entry.rows.length > 0);
 
-  const capturedKeys = new Set(
-    formFields.map((f) => f.id).concat(formFields.map((f) => f.label))
-  );
+  const capturedKeys = new Set(formFields.map((f) => f.id).concat(formFields.map((f) => f.label)));
   const remainingCustomRows = Object.entries(customValues)
     .filter(([k, v]) => !capturedKeys.has(k) && v !== '' && v !== undefined && v !== false)
-    .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)] as [string, string]);
+    .map(
+      ([k, v]) => [k, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)] as [string, string],
+    );
 
   const calculatedAge = calculateAge(form.dob);
 
@@ -919,11 +1046,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               [genderCfg?.label || 'Gender', form.gender || '—'],
               [
                 dobCfg?.label || 'Date of Birth',
-                form.dob ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}` : '—',
+                form.dob
+                  ? `${form.dob}${calculatedAge !== null ? ` (${calculatedAge} years old)` : ''}`
+                  : '—',
               ],
               [programCfg?.label || 'Program Type', form.program || '—'],
               [therapyCfg?.label || 'Therapy Group', form.therapyGroup || '—'],
-              [photoCfg?.label || 'Student Photo', form.photoUri || form.photoBase64 ? 'Photo Attached' : 'None'],
+              [
+                photoCfg?.label || 'Student Photo',
+                form.photoUri || form.photoBase64 ? 'Photo Attached' : 'None',
+              ],
             ].filter(([lbl]) => isFieldVisible(lbl)) as [string, string][],
           },
         ]
@@ -959,7 +1091,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Enrollment" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)} />
+      <AppNavbar
+        activeTab="Enrollment Wizard"
+        onTabPress={(t) => {
+          const r = PD_ROUTE_BY_TAB[t];
+          if (r && r !== 'StudentEnrollmentWizard') {
+            navigation?.navigate?.(r as never);
+          }
+        }}
+      />
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Enrollment Wizard</Text>
@@ -971,289 +1111,320 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
         <View style={styles.card}>
           <View style={styles.cardHeadingRow}>
-            <Text style={styles.cardHeading}>Step {step + 1}: {currentStep}</Text>
+            <Text style={styles.cardHeading}>
+              Step {step + 1}: {currentStep}
+            </Text>
           </View>
 
-          {currentStep === 'Student Info' && (() => {
-            const photoCfg = getFieldConfig(/photo/i) || getFieldConfig('f_photo');
-            const nameCfg = getFieldConfig(/full.*name|name/i) || getFieldConfig('f1');
-            const dobCfg = getFieldConfig(/birth|dob/i) || getFieldConfig('f2');
-            const genderCfg = getFieldConfig(/gender/i) || getFieldConfig('f_gender');
-            const programCfg = getFieldConfig(/program/i) || getFieldConfig('f_program');
-            const therapyCfg = getFieldConfig(/therapy/i) || getFieldConfig('f_therapy');
+          {currentStep === 'Student Info' &&
+            (() => {
+              const photoCfg = getFieldConfig(/photo/i) || getFieldConfig('f_photo');
+              const nameCfg = getFieldConfig(/full.*name|name/i) || getFieldConfig('f1');
+              const dobCfg = getFieldConfig(/birth|dob/i) || getFieldConfig('f2');
+              const genderCfg = getFieldConfig(/gender/i) || getFieldConfig('f_gender');
+              const programCfg = getFieldConfig(/program/i) || getFieldConfig('f_program');
+              const therapyCfg = getFieldConfig(/therapy/i) || getFieldConfig('f_therapy');
 
-            const showPhoto = photoCfg ? photoCfg.visible !== false : true;
-            const showName = nameCfg ? nameCfg.visible !== false : true;
-            const showDob = dobCfg ? dobCfg.visible !== false : true;
-            const showGender = genderCfg ? genderCfg.visible !== false : true;
-            const showProgram = programCfg ? programCfg.visible !== false : true;
-            const showTherapy = therapyCfg ? therapyCfg.visible !== false : true;
+              const showPhoto = photoCfg ? photoCfg.visible !== false : true;
+              const showName = nameCfg ? nameCfg.visible !== false : true;
+              const showDob = dobCfg ? dobCfg.visible !== false : true;
+              const showGender = genderCfg ? genderCfg.visible !== false : true;
+              const showProgram = programCfg ? programCfg.visible !== false : true;
+              const showTherapy = therapyCfg ? therapyCfg.visible !== false : true;
 
-            const genderOpts = (genderCfg?.options && genderCfg.options.length > 0) ? genderCfg.options : GENDERS;
-            const programOpts = (programCfg?.options && programCfg.options.length > 0) ? programCfg.options : PROGRAM_TYPES;
-            const therapyOpts = (therapyCfg?.options && therapyCfg.options.length > 0) ? therapyCfg.options : THERAPY_GROUPS;
+              const genderOpts =
+                genderCfg?.options && genderCfg.options.length > 0 ? genderCfg.options : GENDERS;
+              const programOpts =
+                programCfg?.options && programCfg.options.length > 0
+                  ? programCfg.options
+                  : PROGRAM_TYPES;
+              const therapyOpts =
+                therapyCfg?.options && therapyCfg.options.length > 0
+                  ? therapyCfg.options
+                  : THERAPY_GROUPS;
 
-            return (
-              <View style={styles.stepBody}>
-                {/* Student Photo Card with Camera & Upload buttons */}
-                {showPhoto && (
-                  <View style={styles.photoUploadCard}>
-                    <Text style={styles.fieldLabel}>{photoCfg?.label || 'Student Photo'}</Text>
-                    <View style={styles.photoRow}>
-                      <View style={styles.photoAvatarContainer}>
-                        {form.photoUri ? (
-                          <View style={styles.photoWrapper}>
-                            <Image source={{ uri: form.photoUri }} style={styles.photoImage} />
-                            <TouchableOpacity
-                              style={styles.photoRemoveBtn}
-                              onPress={handleRemovePhoto}
-                              accessibilityLabel="Remove photo"
-                            >
-                              <Feather name="x" size={12} color="#FFFFFF" />
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <View style={styles.photoPlaceholder}>
-                            <Feather name="user" size={32} color="#94A3B8" />
-                          </View>
-                        )}
+              return (
+                <View style={styles.stepBody}>
+                  {/* Student Photo Card with Camera & Upload buttons */}
+                  {showPhoto && (
+                    <View style={styles.photoUploadCard}>
+                      <Text style={styles.fieldLabel}>{photoCfg?.label || 'Student Photo'}</Text>
+                      <View style={styles.photoRow}>
+                        <View style={styles.photoAvatarContainer}>
+                          {form.photoUri ? (
+                            <View style={styles.photoWrapper}>
+                              <Image source={{ uri: form.photoUri }} style={styles.photoImage} />
+                              <TouchableOpacity
+                                style={styles.photoRemoveBtn}
+                                onPress={handleRemovePhoto}
+                                accessibilityLabel="Remove photo"
+                              >
+                                <Feather name="x" size={12} color="#FFFFFF" />
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <View style={styles.photoPlaceholder}>
+                              <Feather name="user" size={32} color="#94A3B8" />
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.photoButtonContainer}>
+                          <TouchableOpacity style={styles.cameraBtn} onPress={handleTakePhoto}>
+                            <Feather name="camera" size={15} color="#FFFFFF" />
+                            <Text style={styles.cameraBtnText}>Open Camera</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity style={styles.uploadBtn} onPress={handleChoosePhoto}>
+                            <Feather name="upload" size={15} color={colors.navyText} />
+                            <Text style={styles.uploadBtnText}>Upload Photo</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
+                      <Text style={styles.fieldHint}>
+                        {photoCfg?.helpText ||
+                          'Take a live picture with your camera or upload an image file from your device.'}
+                      </Text>
+                    </View>
+                  )}
 
-                      <View style={styles.photoButtonContainer}>
-                        <TouchableOpacity style={styles.cameraBtn} onPress={handleTakePhoto}>
-                          <Feather name="camera" size={15} color="#FFFFFF" />
-                          <Text style={styles.cameraBtnText}>Open Camera</Text>
-                        </TouchableOpacity>
+                  {showName && (
+                    <Field
+                      required={nameCfg ? Boolean(nameCfg.required) : true}
+                      label={nameCfg?.label || 'Student Full Name'}
+                      value={form.name}
+                      onChangeText={updateName}
+                      placeholder={nameCfg?.placeholder || 'e.g. Aiden Rivera'}
+                    />
+                  )}
 
-                        <TouchableOpacity style={styles.uploadBtn} onPress={handleChoosePhoto}>
-                          <Feather name="upload" size={15} color={colors.navyText} />
-                          <Text style={styles.uploadBtnText}>Upload Photo</Text>
-                        </TouchableOpacity>
+                  {showDob && (
+                    <View style={styles.field}>
+                      <View style={styles.fieldLabelRow}>
+                        <Text style={styles.fieldLabel}>
+                          {dobCfg?.label || 'Date of Birth'}
+                          {(dobCfg ? dobCfg.required !== false : true) && (
+                            <Text style={styles.requiredStar}> *</Text>
+                          )}
+                        </Text>
+                        {form.dob && calculateAge(form.dob) !== null ? (
+                          <View style={styles.ageBadge}>
+                            <Feather name="calendar" size={12} color="#0284C7" />
+                            <Text style={styles.ageBadgeText}>
+                              Calculated Age: {calculateAge(form.dob)}{' '}
+                              {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={styles.dobWrap}>
+                        <DobPicker
+                          value={form.dob || ''}
+                          maximumDate={new Date()}
+                          onChange={updateDob}
+                        />
                       </View>
                     </View>
-                    <Text style={styles.fieldHint}>
-                      {photoCfg?.helpText || 'Take a live picture with your camera or upload an image file from your device.'}
-                    </Text>
-                  </View>
-                )}
+                  )}
 
-                {showName && (
-                  <Field
-                    required={nameCfg ? Boolean(nameCfg.required) : true}
-                    label={nameCfg?.label || 'Student Full Name'}
-                    value={form.name}
-                    onChangeText={updateName}
-                    placeholder={nameCfg?.placeholder || 'e.g. Aiden Rivera'}
-                  />
-                )}
-
-                {showDob && (
-                  <View style={styles.field}>
-                    <View style={styles.fieldLabelRow}>
+                  {showGender && (
+                    <View style={styles.field}>
                       <Text style={styles.fieldLabel}>
-                        {dobCfg?.label || 'Date of Birth'}
-                        {(dobCfg ? dobCfg.required !== false : true) && <Text style={styles.requiredStar}> *</Text>}
+                        {genderCfg?.label || 'Gender'}
+                        {Boolean(genderCfg?.required) && (
+                          <Text style={styles.requiredStar}> *</Text>
+                        )}
                       </Text>
-                      {form.dob && calculateAge(form.dob) !== null ? (
-                        <View style={styles.ageBadge}>
-                          <Feather name="calendar" size={12} color="#0284C7" />
-                          <Text style={styles.ageBadgeText}>
-                            Calculated Age: {calculateAge(form.dob)} {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                      <Chips options={genderOpts} value={form.gender} onChange={updateGender} />
+                    </View>
+                  )}
+
+                  {showProgram && (
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>
+                        {programCfg?.label || 'Program Type'}
+                        {Boolean(programCfg?.required) && (
+                          <Text style={styles.requiredStar}> *</Text>
+                        )}
+                      </Text>
+                      <Chips options={programOpts} value={form.program} onChange={updateProgram} />
+                    </View>
+                  )}
+
+                  {showTherapy && (
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>
+                        {therapyCfg?.label || 'Therapy Group'}
+                        {Boolean(therapyCfg?.required) && (
+                          <Text style={styles.requiredStar}> *</Text>
+                        )}
+                      </Text>
+                      <Chips
+                        options={therapyOpts}
+                        value={form.therapyGroup}
+                        onChange={updateTherapyGroup}
+                      />
+                      {form.dob &&
+                      getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
+                        <View style={styles.ageWarningBox}>
+                          <Feather name="info" size={13} color="#D97706" />
+                          <Text style={styles.ageWarningText}>
+                            {getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob))}
                           </Text>
                         </View>
                       ) : null}
                     </View>
-                    <View style={styles.dobWrap}>
-                      <DobPicker
-                        value={form.dob || ''}
-                        maximumDate={new Date()}
-                        onChange={updateDob}
-                      />
-                    </View>
-                  </View>
-                )}
+                  )}
 
-                {showGender && (
-                  <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>
-                      {genderCfg?.label || 'Gender'}
-                      {Boolean(genderCfg?.required) && <Text style={styles.requiredStar}> *</Text>}
-                    </Text>
-                    <Chips options={genderOpts} value={form.gender} onChange={updateGender} />
-                  </View>
-                )}
-
-                {showProgram && (
-                  <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>
-                      {programCfg?.label || 'Program Type'}
-                      {Boolean(programCfg?.required) && <Text style={styles.requiredStar}> *</Text>}
-                    </Text>
-                    <Chips options={programOpts} value={form.program} onChange={updateProgram} />
-                  </View>
-                )}
-
-                {showTherapy && (
-                  <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>
-                      {therapyCfg?.label || 'Therapy Group'}
-                      {Boolean(therapyCfg?.required) && <Text style={styles.requiredStar}> *</Text>}
-                    </Text>
-                    <Chips options={therapyOpts} value={form.therapyGroup} onChange={updateTherapyGroup} />
-                    {form.dob && getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob)) ? (
-                      <View style={styles.ageWarningBox}>
-                        <Feather name="info" size={13} color="#D97706" />
-                        <Text style={styles.ageWarningText}>
-                          {getTherapyGroupAgeWarning(form.therapyGroup, calculateAge(form.dob))}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                )}
-
-                <DynamicFormFields
-                  formName="Enrollment Wizard"
-                  section="Student Info"
-                  initialFields={formFields.length ? formFields : undefined}
-                  values={customValues}
-                  onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                  excludeStandardLabels={[
-                    'Full Name',
-                    'Student Full Name',
-                    'Student Photo',
-                    'Photo',
-                    'Date of Birth',
-                    'Age',
-                    'Gender',
-                    'Program',
-                    'Program Type',
-                    'Therapy Group',
-                    ...(photoCfg?.label ? [photoCfg.label] : []),
-                    ...(nameCfg?.label ? [nameCfg.label] : []),
-                    ...(dobCfg?.label ? [dobCfg.label] : []),
-                    ...(genderCfg?.label ? [genderCfg.label] : []),
-                    ...(programCfg?.label ? [programCfg.label] : []),
-                    ...(therapyCfg?.label ? [therapyCfg.label] : []),
-                  ]}
-                />
-              </View>
-            );
-          })()}
-
-          {currentStep === 'Parent Info' && (() => {
-            const parentNameCfg = getFieldConfig(/parent.*name|guardian/i) || getFieldConfig('f4');
-            const phoneCfg = getFieldConfig(/phone/i) || getFieldConfig('f5');
-            const emailCfg = getFieldConfig(/email/i) || getFieldConfig('f6');
-
-            const showParentName = parentNameCfg ? parentNameCfg.visible !== false : true;
-            const showPhone = phoneCfg ? phoneCfg.visible !== false : true;
-            const showEmail = emailCfg ? emailCfg.visible !== false : true;
-
-            return (
-              <View style={styles.stepBody}>
-                {showParentName && (
-                  <Field
-                    required={parentNameCfg ? Boolean(parentNameCfg.required) : true}
-                    label={parentNameCfg?.label || 'Parent / Guardian Name'}
-                    value={form.parentName}
-                    onChangeText={updateParentName}
-                    placeholder={parentNameCfg?.placeholder || 'e.g. Maria Rivera'}
+                  <DynamicFormFields
+                    formName="Enrollment Wizard"
+                    section="Student Info"
+                    initialFields={formFields.length ? formFields : undefined}
+                    values={customValues}
+                    onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+                    excludeStandardLabels={[
+                      'Full Name',
+                      'Student Full Name',
+                      'Student Photo',
+                      'Photo',
+                      'Date of Birth',
+                      'Age',
+                      'Gender',
+                      'Program',
+                      'Program Type',
+                      'Therapy Group',
+                      ...(photoCfg?.label ? [photoCfg.label] : []),
+                      ...(nameCfg?.label ? [nameCfg.label] : []),
+                      ...(dobCfg?.label ? [dobCfg.label] : []),
+                      ...(genderCfg?.label ? [genderCfg.label] : []),
+                      ...(programCfg?.label ? [programCfg.label] : []),
+                      ...(therapyCfg?.label ? [therapyCfg.label] : []),
+                    ]}
                   />
-                )}
-                {showPhone && (
-                  <Field
-                    required={phoneCfg ? Boolean(phoneCfg.required) : true}
-                    label={phoneCfg?.label || 'Phone'}
-                    value={form.parentPhone}
-                    onChangeText={updateParentPhone}
-                    keyboardType="phone-pad"
-                    maxWidth
-                    placeholder={phoneCfg?.placeholder || '(555) 000-0000'}
+                </View>
+              );
+            })()}
+
+          {currentStep === 'Parent Info' &&
+            (() => {
+              const parentNameCfg =
+                getFieldConfig(/parent.*name|guardian/i) || getFieldConfig('f4');
+              const phoneCfg = getFieldConfig(/phone/i) || getFieldConfig('f5');
+              const emailCfg = getFieldConfig(/email/i) || getFieldConfig('f6');
+
+              const showParentName = parentNameCfg ? parentNameCfg.visible !== false : true;
+              const showPhone = phoneCfg ? phoneCfg.visible !== false : true;
+              const showEmail = emailCfg ? emailCfg.visible !== false : true;
+
+              return (
+                <View style={styles.stepBody}>
+                  {showParentName && (
+                    <Field
+                      required={parentNameCfg ? Boolean(parentNameCfg.required) : true}
+                      label={parentNameCfg?.label || 'Parent / Guardian Name'}
+                      value={form.parentName}
+                      onChangeText={updateParentName}
+                      placeholder={parentNameCfg?.placeholder || 'e.g. Maria Rivera'}
+                    />
+                  )}
+                  {showPhone && (
+                    <Field
+                      required={phoneCfg ? Boolean(phoneCfg.required) : true}
+                      label={phoneCfg?.label || 'Phone'}
+                      value={form.parentPhone}
+                      onChangeText={updateParentPhone}
+                      keyboardType="phone-pad"
+                      maxWidth
+                      placeholder={phoneCfg?.placeholder || '(555) 000-0000'}
+                    />
+                  )}
+                  {showEmail && (
+                    <Field
+                      required={emailCfg ? Boolean(emailCfg.required) : false}
+                      label={emailCfg?.label || 'Email'}
+                      value={form.parentEmail}
+                      onChangeText={updateParentEmail}
+                      keyboardType="email-address"
+                      maxWidth
+                      placeholder={emailCfg?.placeholder || 'guardian@example.com'}
+                      hint={emailCfg?.helpText || (emailCfg?.required ? undefined : 'Optional')}
+                    />
+                  )}
+
+                  <DynamicFormFields
+                    formName="Enrollment Wizard"
+                    section="Parent Info"
+                    initialFields={formFields.length ? formFields : undefined}
+                    values={customValues}
+                    onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+                    excludeStandardLabels={[
+                      'Parent / Guardian Name',
+                      'Parent Name',
+                      'Phone',
+                      'Parent Phone',
+                      'Email',
+                      'Parent Email',
+                      ...(parentNameCfg?.label ? [parentNameCfg.label] : []),
+                      ...(phoneCfg?.label ? [phoneCfg.label] : []),
+                      ...(emailCfg?.label ? [emailCfg.label] : []),
+                    ]}
                   />
-                )}
-                {showEmail && (
-                  <Field
-                    required={emailCfg ? Boolean(emailCfg.required) : false}
-                    label={emailCfg?.label || 'Email'}
-                    value={form.parentEmail}
-                    onChangeText={updateParentEmail}
-                    keyboardType="email-address"
-                    maxWidth
-                    placeholder={emailCfg?.placeholder || 'guardian@example.com'}
-                    hint={emailCfg?.helpText || (emailCfg?.required ? undefined : 'Optional')}
+                </View>
+              );
+            })()}
+
+          {currentStep === 'Medical Info' &&
+            (() => {
+              const diagCfg = getFieldConfig(/diagnosis/i) || getFieldConfig('f_diagnosis');
+              const notesCfg =
+                getFieldConfig(/medical.*notes|notes.*allerg/i) || getFieldConfig('f7');
+
+              const showDiag = diagCfg ? diagCfg.visible !== false : true;
+              const showNotes = notesCfg ? notesCfg.visible !== false : true;
+
+              return (
+                <View style={styles.stepBody}>
+                  {showDiag && (
+                    <Field
+                      required={diagCfg ? Boolean(diagCfg.required) : false}
+                      label={diagCfg?.label || 'Diagnosis'}
+                      value={form.diagnosis}
+                      onChangeText={updateDiagnosis}
+                      placeholder={diagCfg?.placeholder || 'e.g. Autism Spectrum Disorder'}
+                    />
+                  )}
+                  {showNotes && (
+                    <Field
+                      required={notesCfg ? Boolean(notesCfg.required) : false}
+                      label={notesCfg?.label || 'Medical Notes'}
+                      value={form.medicalNotes}
+                      onChangeText={updateMedicalNotes}
+                      multiline
+                      placeholder={notesCfg?.placeholder || 'Enter any relevant medical notes...'}
+                    />
+                  )}
+
+                  <DynamicFormFields
+                    formName="Enrollment Wizard"
+                    section="Medical Info"
+                    initialFields={formFields.length ? formFields : undefined}
+                    values={customValues}
+                    onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
+                    excludeStandardLabels={[
+                      'Diagnosis',
+                      'Medical Notes',
+                      ...(diagCfg?.label ? [diagCfg.label] : []),
+                      ...(notesCfg?.label ? [notesCfg.label] : []),
+                    ]}
                   />
-                )}
-
-                <DynamicFormFields
-                  formName="Enrollment Wizard"
-                  section="Parent Info"
-                  initialFields={formFields.length ? formFields : undefined}
-                  values={customValues}
-                  onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                  excludeStandardLabels={[
-                    'Parent / Guardian Name',
-                    'Parent Name',
-                    'Phone',
-                    'Parent Phone',
-                    'Email',
-                    'Parent Email',
-                    ...(parentNameCfg?.label ? [parentNameCfg.label] : []),
-                    ...(phoneCfg?.label ? [phoneCfg.label] : []),
-                    ...(emailCfg?.label ? [emailCfg.label] : []),
-                  ]}
-                />
-              </View>
-            );
-          })()}
-
-          {currentStep === 'Medical Info' && (() => {
-            const diagCfg = getFieldConfig(/diagnosis/i) || getFieldConfig('f_diagnosis');
-            const notesCfg = getFieldConfig(/medical.*notes|notes.*allerg/i) || getFieldConfig('f7');
-
-            const showDiag = diagCfg ? diagCfg.visible !== false : true;
-            const showNotes = notesCfg ? notesCfg.visible !== false : true;
-
-            return (
-              <View style={styles.stepBody}>
-                {showDiag && (
-                  <Field
-                    required={diagCfg ? Boolean(diagCfg.required) : false}
-                    label={diagCfg?.label || 'Diagnosis'}
-                    value={form.diagnosis}
-                    onChangeText={updateDiagnosis}
-                    placeholder={diagCfg?.placeholder || 'e.g. Autism Spectrum Disorder'}
-                  />
-                )}
-                {showNotes && (
-                  <Field
-                    required={notesCfg ? Boolean(notesCfg.required) : false}
-                    label={notesCfg?.label || 'Medical Notes'}
-                    value={form.medicalNotes}
-                    onChangeText={updateMedicalNotes}
-                    multiline
-                    placeholder={notesCfg?.placeholder || 'Enter any relevant medical notes...'}
-                  />
-                )}
-
-                <DynamicFormFields
-                  formName="Enrollment Wizard"
-                  section="Medical Info"
-                  initialFields={formFields.length ? formFields : undefined}
-                  values={customValues}
-                  onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-                  excludeStandardLabels={[
-                    'Diagnosis',
-                    'Medical Notes',
-                    ...(diagCfg?.label ? [diagCfg.label] : []),
-                    ...(notesCfg?.label ? [notesCfg.label] : []),
-                  ]}
-                />
-              </View>
-            );
-          })()}
+                </View>
+              );
+            })()}
 
           {/* Custom Info Types dynamically configured in Form Builder */}
-          {!['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'].includes(currentStep) && (
+          {!['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'].includes(
+            currentStep,
+          ) && (
             <View style={styles.stepBody}>
               <View style={styles.customSectionHeader}>
                 <Feather name="folder" size={16} color="#0284C7" />
@@ -1270,12 +1441,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
               />
               {formFields.filter(
-                (f) => f.visible !== false && f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim()
+                (f) =>
+                  f.visible !== false &&
+                  f.section?.toLowerCase().trim() === currentStep.toLowerCase().trim(),
               ).length === 0 && (
                 <View style={styles.emptyCustomStepBox}>
                   <Feather name="info" size={16} color="#64748B" />
                   <Text style={styles.emptyCustomStepText}>
-                    No custom fields have been added to "{currentStep}" yet. You can add and customize fields for this info type in the Form Builder.
+                    No custom fields have been added to "{currentStep}" yet. You can add and
+                    customize fields for this info type in the Form Builder.
                   </Text>
                 </View>
               )}
@@ -1285,8 +1459,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           {currentStep === 'Assign Therapist' && (
             <View style={styles.stepBody}>
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Therapist <Text style={styles.requiredStar}>*</Text></Text>
-                <Text style={styles.fieldHint}>Each therapist can be assigned up to {MAX_CASELOAD} students at a time.</Text>
+                <Text style={styles.fieldLabel}>
+                  Therapist <Text style={styles.requiredStar}>*</Text>
+                </Text>
+                <Text style={styles.fieldHint}>
+                  Each therapist can be assigned up to {MAX_CASELOAD} students at a time.
+                </Text>
                 {therapistNames.length ? (
                   <View style={styles.chipRow}>
                     {therapists.map((t) => {
@@ -1297,10 +1475,20 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                         <TouchableOpacity
                           key={t.name}
                           disabled={full}
-                          style={[styles.chip, selected && styles.chipSelected, full && styles.chipDisabled]}
+                          style={[
+                            styles.chip,
+                            selected && styles.chipSelected,
+                            full && styles.chipDisabled,
+                          ]}
                           onPress={() => set('therapist', t.name)}
                         >
-                          <Text style={[styles.chipText, selected && styles.chipTextSelected, full && styles.chipTextDisabled]}>
+                          <Text
+                            style={[
+                              styles.chipText,
+                              selected && styles.chipTextSelected,
+                              full && styles.chipTextDisabled,
+                            ]}
+                          >
                             {t.name} ({count}/{MAX_CASELOAD})
                           </Text>
                         </TouchableOpacity>
@@ -1316,7 +1504,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   </Text>
                 )}
                 {therapistNames.length > 0 && therapistNames.every(isFull) && (
-                  <Text style={styles.capacityWarning}>All therapists are at maximum capacity (2/2). Reassign a student before enrolling another.</Text>
+                  <Text style={styles.capacityWarning}>
+                    All therapists are at maximum capacity (2/2). Reassign a student before
+                    enrolling another.
+                  </Text>
                 )}
               </View>
             </View>
@@ -1324,7 +1515,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           {currentStep === 'Review' && (
             <View style={styles.stepBody}>
-              <Text style={styles.reviewIntro}>Please review the enrollment details before confirming.</Text>
+              <Text style={styles.reviewIntro}>
+                Please review the enrollment details before confirming.
+              </Text>
 
               <View style={styles.reviewCard}>
                 {form.photoUri ? (
@@ -1385,7 +1578,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 ) : (
                   <Feather name="check" size={16} color={colors.navyText} />
                 )}
-                <Text style={styles.nextBtnText}>{saving ? 'Submitting…' : 'Finish Enrollment'}</Text>
+                <Text style={styles.nextBtnText}>
+                  {saving ? 'Submitting…' : 'Finish Enrollment'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1393,7 +1588,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>ABA Therapy Management System — SCR-009 Enrollment Wizard</Text>
+        <Text style={styles.footerText}>
+          ABA Therapy Management System — SCR-009 Enrollment Wizard
+        </Text>
       </View>
 
       <CameraCaptureModal
@@ -1446,7 +1643,12 @@ const styles = StyleSheet.create({
   },
   progressRow: { flexDirection: 'row', alignItems: 'flex-start' },
   stepWrap: { flex: 1, alignItems: 'center' },
-  stepRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', paddingHorizontal: 2 },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    paddingHorizontal: 2,
+  },
   stepDot: {
     width: 30,
     height: 30,
@@ -1461,9 +1663,21 @@ const styles = StyleSheet.create({
   stepDotCurrent: { backgroundColor: C_YELLOW, borderColor: C_YELLOW, borderWidth: 1.5 },
   stepNum: { fontSize: 13, fontWeight: '700', color: '#9CA3AF' },
   stepNumCurrent: { color: '#1F2937' },
-  stepLine: { flex: 1, height: 3, borderRadius: 2, backgroundColor: '#E5E7EB', marginHorizontal: 6 },
+  stepLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 6,
+  },
   stepLineDone: { backgroundColor: C_SKY },
-  stepLabel: { fontSize: 10, fontWeight: '500', color: '#9CA3AF', marginTop: spacing.sm, textAlign: 'center' },
+  stepLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
   stepLabelCurrent: { color: '#1F2937', fontWeight: '700' },
 
   card: {
@@ -1474,7 +1688,12 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     ...makeShadow(1, 6, 0.06, '0, 0, 0', 1),
   },
-  cardHeadingRow: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: spacing.md, marginBottom: spacing.lg },
+  cardHeadingRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: spacing.md,
+    marginBottom: spacing.lg,
+  },
   cardHeading: { fontSize: 17, fontWeight: '700', color: '#1F2937', letterSpacing: 0.2 },
 
   stepBody: { gap: spacing.lg },
@@ -1707,22 +1926,59 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   reviewKey: { fontSize: 13, color: '#6B7280', flexShrink: 1 },
-  reviewValue: { fontSize: 13, fontWeight: '600', color: '#1F2937', flexShrink: 1, textAlign: 'right' },
+  reviewValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1F2937',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
 
-  actionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
   backBtn: {
-    flexDirection: 'row', gap: spacing.xs, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 10, paddingVertical: spacing.md, paddingHorizontal: spacing.md, alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
   },
   backBtnText: { fontWeight: '600', color: colors.navyText },
   secondaryBtn: {
-    flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: spacing.md, alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
   },
-  secondaryBtnText: { fontWeight: '600', fontSize: 12, color: colors.navyText, textAlign: 'center' },
+  secondaryBtnText: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: colors.navyText,
+    textAlign: 'center',
+  },
   nextBtn: {
-    flex: 1.6, flexDirection: 'row', gap: spacing.xs, backgroundColor: C_YELLOW, borderRadius: 10,
-    paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center',
+    flex: 1.6,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    backgroundColor: C_YELLOW,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...makeShadow(1, 3, 0.1, '0, 0, 0', 1),
   },
   nextBtnText: { fontWeight: '700', color: '#1F2937' },

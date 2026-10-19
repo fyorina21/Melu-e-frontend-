@@ -83,6 +83,7 @@ export const InlineAddFieldBox: React.FC<InlineAddFieldBoxProps> = React.memo(
               placeholderTextColor="#94A3B8"
               value={fieldLabel}
               onChangeText={onLabelChange}
+              onSubmitEditing={() => fieldLabel.trim() && onConfirm()}
             />
           </View>
           <View style={styles.inlineToggleCol}>
@@ -122,6 +123,7 @@ export const InlineAddFieldBox: React.FC<InlineAddFieldBoxProps> = React.memo(
               placeholderTextColor="#94A3B8"
               value={fieldOptions}
               onChangeText={onOptionsChange}
+              onSubmitEditing={() => fieldLabel.trim() && onConfirm()}
             />
           </View>
         )}

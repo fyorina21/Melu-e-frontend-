@@ -28,6 +28,11 @@ import {
 } from '../../api/SystemAdminApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import {
+  useUnsavedChanges,
+  usePreventUnsavedNavigation,
+} from '../../context/UnsavedChangesContext';
+import { confirmAction } from '../../utils/dialogs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList, Role } from '../../types';
 
@@ -105,6 +110,17 @@ export default function PermissionConfigurationScreen({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  const { setDirty: setContextDirty } = useUnsavedChanges();
+  usePreventUnsavedNavigation(navigation, dirty);
+
+  // Synchronize global unsaved context with local dirty state
+  useEffect(() => {
+    setContextDirty(dirty);
+    return () => {
+      setContextDirty(false);
+    };
+  }, [dirty, setContextDirty]);
 
   // Filter & Search Controls
   const [searchQuery, setSearchQuery] = useState('');
@@ -353,40 +369,36 @@ export default function PermissionConfigurationScreen({
 
   // Reset to Defaults with backend confirmation
   const handleResetDefault = () => {
-    Alert.alert(
-      'Reset Permissions to System Defaults?',
-      `Are you sure you want to reset all permissions for ${selectedRole.name}? This will enforce least-privilege system defaults on the server.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset to Default',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const res = await resetDefaultPermissions(selectedRoleId);
-              const serverPerms = res?.data?.permissions;
-              const defaults = mapBackendPermissionsToMatrix(serverPerms, selectedRole.name);
-              setMatrix(defaults);
-              setDirty(false);
+    confirmAction({
+      title: 'Reset Permissions to System Defaults?',
+      message: `Are you sure you want to reset all permissions for ${selectedRole.name}? This will enforce least-privilege system defaults on the server.`,
+      confirmLabel: 'Reset to Default',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await resetDefaultPermissions(selectedRoleId);
+          const serverPerms = res?.data?.permissions;
+          const defaults = mapBackendPermissionsToMatrix(serverPerms, selectedRole.name);
+          setMatrix(defaults);
+          setDirty(false);
 
-              // Record confirmed audit entry
-              const resetAudit: AuditEntry = {
-                id: String(Date.now()),
-                date: new Date().toLocaleString(),
-                user: session?.userName || 'System Admin',
-                resource: 'Role Permissions',
-                action: 'Reset to system defaults',
-                roleName: selectedRole.name,
-              };
-              setAuditTrail((prev) => [resetAudit, ...prev]);
-              showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
-            } catch {
-              showToast('Failed to reset permissions on server. No changes were applied.', 'error');
-            }
-          },
-        },
-      ],
-    );
+          // Record confirmed audit entry
+          const resetAudit: AuditEntry = {
+            id: String(Date.now()),
+            date: new Date().toLocaleString(),
+            user: session?.userName || 'System Admin',
+            resource: 'Role Permissions',
+            action: 'Reset to system defaults',
+            roleName: selectedRole.name,
+          };
+          setAuditTrail((prev) => [resetAudit, ...prev]);
+          showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
+        } catch {
+          showToast('Failed to reset permissions on server. No changes were applied.', 'error');
+        }
+      },
+    });
   };
 
   // Save Configuration Handler with backend authority & error handling
@@ -457,22 +469,18 @@ export default function PermissionConfigurationScreen({
         return;
       }
       if (dirty) {
-        Alert.alert(
-          'Unsaved Changes',
-          `You have unsaved changes for "${selectedRole.name}". Switching roles will discard these changes. Do you want to proceed?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Discard & Switch',
-              style: 'destructive',
-              onPress: () => {
-                setDirty(false);
-                setSelectedRoleId(id);
-                setDropdownOpen(false);
-              },
-            },
-          ],
-        );
+        confirmAction({
+          title: 'Unsaved Changes',
+          message: `You have unsaved changes for "${selectedRole.name}". Switching roles will discard these changes. Do you want to proceed?`,
+          confirmLabel: 'Discard & Switch',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            setSelectedRoleId(id);
+            setDropdownOpen(false);
+          },
+        });
       } else {
         setSelectedRoleId(id);
         setDropdownOpen(false);
@@ -487,21 +495,18 @@ export default function PermissionConfigurationScreen({
       if (!targetRoute) return;
 
       if (dirty) {
-        Alert.alert(
-          'Unsaved Changes',
-          'You have unsaved permission changes. Navigating away will discard them. Do you want to proceed?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Discard & Leave',
-              style: 'destructive',
-              onPress: () => {
-                setDirty(false);
-                navigation?.navigate?.(targetRoute);
-              },
-            },
-          ],
-        );
+        confirmAction({
+          title: 'Unsaved Changes',
+          message:
+            'You have unsaved permission changes. Navigating away will discard them. Do you want to proceed?',
+          confirmLabel: 'Discard & Leave',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            navigation?.navigate?.(targetRoute);
+          },
+        });
       } else {
         navigation?.navigate?.(targetRoute);
       }

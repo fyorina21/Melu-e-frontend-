@@ -262,8 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(async () => {
       const now = Date.now();
       const idleMs = now - lastActivityRef.current;
-      // Staff sessions timeout after 15 minutes of inactivity; parent sessions after 30 minutes (NFR-015)
-      const timeoutMs = session.role === 'parent' ? 30 * 60 * 1000 : 15 * 60 * 1000;
+      // Sessions timeout after 45 minutes of inactivity (NFR-015)
+      const timeoutMs = 45 * 60 * 1000;
 
       if (idleMs >= timeoutMs) {
         setSession(null);

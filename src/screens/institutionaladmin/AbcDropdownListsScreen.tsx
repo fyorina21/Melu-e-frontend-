@@ -7,8 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Modal,
-  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,6 +16,11 @@ import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getAbcLists, saveAbcList, resetAbcListsToDefault } from '../../api/institutionalAdminApi';
 import { useToast } from '../../context/ToastContext';
 import {
+  usePreventUnsavedNavigation,
+  useUnsavedChanges,
+} from '../../context/UnsavedChangesContext';
+import { confirmAction } from '../../utils/dialogs';
+import {
   getStoredAbcLists,
   setStoredAbcLists,
   resetStoredAbcLists,
@@ -26,50 +29,51 @@ import {
 
 type ListTab = 'Behaviors' | 'Antecedents' | 'Consequences' | 'Locations';
 
-const CATEGORY_OPTIONS = ['Physical', 'Safety', 'Verbal', 'Social'];
-
 export default function AbcDropdownListsScreen({
   navigation,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'AbcDropdownLists'>) {
   const { showToast } = useToast();
+  const { setDirty } = useUnsavedChanges();
   const [activeTab, setActiveTab] = useState<ListTab>('Behaviors');
   const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Wire internal navigation guard for unsaved changes
+  usePreventUnsavedNavigation(navigation, isDirty);
+
+  useEffect(() => {
+    setDirty(isDirty);
+    return () => setDirty(false);
+  }, [isDirty, setDirty]);
 
   // Datasets per tab initialized from abcListsStore
   const [behaviors, setBehaviors] = useState<AbcItem[]>(() => getStoredAbcLists().behaviors);
   const [antecedents, setAntecedents] = useState<AbcItem[]>(() => getStoredAbcLists().antecedents);
-  const [consequences, setConsequences] = useState<AbcItem[]>(() => getStoredAbcLists().consequences);
+  const [consequences, setConsequences] = useState<AbcItem[]>(
+    () => getStoredAbcLists().consequences,
+  );
   const [locations, setLocations] = useState<AbcItem[]>(() => getStoredAbcLists().locations);
 
   const toWire = (items: AbcItem[]) =>
     items.map((i) => ({
       id: i.id,
       name: i.name,
-      ...(i.definition ? { definition: i.definition } : {}),
-      ...(i.category ? { category: i.category } : {}),
-      ...(i.type ? { type: i.type } : {}),
       active: i.status === 'Active',
     }));
 
   const fromWire = (raw: unknown): AbcItem[] =>
     (Array.isArray(raw) ? raw : []).map((r: Record<string, unknown>) => ({
       id: String(r.id ?? ''),
-      name: String(r.name ?? ''),
-      definition: r.definition as string | undefined,
-      category: r.category as string | undefined,
-      type: r.type as string | undefined,
-      status: r.active === false ? 'Inactive' : 'Active',
+      name: String(r.name ?? r.label ?? ''),
+      status: r.active === false || r.status === 'Inactive' ? 'Inactive' : 'Active',
     }));
 
-  const applyLoaded = useCallback(
-    (data: Record<string, unknown>) => {
-      if (Array.isArray(data.Behaviors)) setBehaviors(fromWire(data.Behaviors));
-      if (Array.isArray(data.Antecedents)) setAntecedents(fromWire(data.Antecedents));
-      if (Array.isArray(data.Consequences)) setConsequences(fromWire(data.Consequences));
-      if (Array.isArray(data.Locations)) setLocations(fromWire(data.Locations));
-    },
-    []
-  );
+  const applyLoaded = useCallback((data: Record<string, unknown>) => {
+    if (Array.isArray(data.Behaviors)) setBehaviors(fromWire(data.Behaviors));
+    if (Array.isArray(data.Antecedents)) setAntecedents(fromWire(data.Antecedents));
+    if (Array.isArray(data.Consequences)) setConsequences(fromWire(data.Consequences));
+    if (Array.isArray(data.Locations)) setLocations(fromWire(data.Locations));
+  }, []);
 
   useEffect(() => {
     getAbcLists()
@@ -77,43 +81,44 @@ export default function AbcDropdownListsScreen({
       .catch(() => {});
   }, [applyLoaded]);
 
-  // Inline Add State (Behaviors tab)
-  const [isAddingBehavior, setIsAddingBehavior] = useState(false);
-  const [newBehaviorName, setNewBehaviorName] = useState('');
-  const [newBehaviorDefinition, setNewBehaviorDefinition] = useState('');
-  const [newBehaviorCategory, setNewBehaviorCategory] = useState('Physical');
-  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  // Inline Add State
+  const [addingTab, setAddingTab] = useState<ListTab | null>(null);
+  const [newName, setNewName] = useState('');
 
-  // Inline Edit State (shared across all tabs)
+  // Inline Edit State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState('');
-  const [editDefinition, setEditDefinition] = useState('');
-  const [editCategory, setEditCategory] = useState('');
   const [editStatus, setEditStatus] = useState<'Active' | 'Inactive'>('Active');
-  const [editCategoryDropdownOpen, setEditCategoryDropdownOpen] = useState(false);
 
   const startEdit = (item: AbcItem) => {
     setEditingId(item.id);
     setEditName(item.name);
-    setEditType(item.type ?? '');
-    setEditDefinition(item.definition ?? '');
-    setEditCategory(item.category ?? '');
     setEditStatus(item.status);
-    setEditCategoryDropdownOpen(false);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditCategoryDropdownOpen(false);
+  };
+
+  const startAdd = (tab: ListTab) => {
+    setAddingTab(tab);
+    setNewName('');
+  };
+
+  const cancelAdd = () => {
+    setAddingTab(null);
+    setNewName('');
   };
 
   const toggleItemStatus = (tab: ListTab, id: string) => {
     const updater = (prev: AbcItem[]) =>
       prev.map((item) =>
         item.id === id
-          ? { ...item, status: (item.status === 'Active' ? 'Inactive' : 'Active') as 'Active' | 'Inactive' }
-          : item
+          ? {
+              ...item,
+              status: (item.status === 'Active' ? 'Inactive' : 'Active') as 'Active' | 'Inactive',
+            }
+          : item,
       );
 
     if (tab === 'Behaviors') {
@@ -134,50 +139,32 @@ export default function AbcDropdownListsScreen({
       setStoredAbcLists({ locations: next });
     }
 
-    showToast('Status toggled — changes saved', 'info');
+    setIsDirty(true);
+    showToast('Status toggled — remember to save changes', 'info');
   };
 
-  // Generic inline Add State (Antecedents / Consequences / Locations tabs)
-  const [addingTab, setAddingTab] = useState<ListTab | null>(null);
-  const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState('');
-
-  const startAdd = (tab: ListTab) => {
-    setAddingTab(tab);
-    setNewName('');
-    setNewType('');
-  };
-
-  const cancelAdd = () => {
-    setAddingTab(null);
-    setNewName('');
-    setNewType('');
-  };
-
-  const commitAdd = (
-    list: AbcItem[],
-    setList: React.Dispatch<React.SetStateAction<AbcItem[]>>,
-    withType: boolean
-  ) => {
+  const commitAdd = (list: AbcItem[], setList: React.Dispatch<React.SetStateAction<AbcItem[]>>) => {
     if (!newName.trim()) return;
     const newItem: AbcItem = {
       id: Date.now().toString(),
       name: newName.trim(),
-      ...(withType ? { type: newType.trim() || 'General' } : {}),
       status: 'Active',
     };
     const next = [...list, newItem];
     setList(next);
-    if (activeTab === 'Antecedents') setStoredAbcLists({ antecedents: next });
+    if (activeTab === 'Behaviors') setStoredAbcLists({ behaviors: next });
+    else if (activeTab === 'Antecedents') setStoredAbcLists({ antecedents: next });
     else if (activeTab === 'Consequences') setStoredAbcLists({ consequences: next });
     else if (activeTab === 'Locations') setStoredAbcLists({ locations: next });
-    showToast('Item added — changes saved', 'info');
+
+    setIsDirty(true);
+    showToast('Item added', 'info');
     cancelAdd();
   };
 
   const commitEdit = (
     list: AbcItem[],
-    setList: React.Dispatch<React.SetStateAction<AbcItem[]>>
+    setList: React.Dispatch<React.SetStateAction<AbcItem[]>>,
   ) => {
     if (!editName.trim() || !editingId) return;
     const next = list.map((i) =>
@@ -186,92 +173,88 @@ export default function AbcDropdownListsScreen({
             ...i,
             name: editName.trim(),
             status: editStatus,
-            ...(i.type !== undefined ? { type: editType.trim() } : {}),
-            ...(i.definition !== undefined
-              ? { definition: editDefinition.trim() }
-              : {}),
-            ...(i.category !== undefined
-              ? { category: editCategory.trim() }
-              : {}),
           }
-        : i
+        : i,
     );
     setList(next);
     if (activeTab === 'Behaviors') setStoredAbcLists({ behaviors: next });
     else if (activeTab === 'Antecedents') setStoredAbcLists({ antecedents: next });
     else if (activeTab === 'Consequences') setStoredAbcLists({ consequences: next });
     else if (activeTab === 'Locations') setStoredAbcLists({ locations: next });
-    showToast('Changes applied and saved', 'info');
+
+    setIsDirty(true);
+    showToast('Item updated', 'info');
     setEditingId(null);
   };
 
-  // Add behavior logic
-  const handleSaveNewBehavior = () => {
-    if (!newBehaviorName.trim()) return;
-    const newItem: AbcItem = {
-      id: Date.now().toString(),
-      name: newBehaviorName.trim(),
-      definition: newBehaviorDefinition.trim(),
-      category: newBehaviorCategory,
-      status: 'Active',
-    };
-    const next = [...behaviors, newItem];
-    setBehaviors(next);
-    setStoredAbcLists({ behaviors: next });
-    showToast('Behavior added — changes saved', 'info');
-    setIsAddingBehavior(false);
-    setNewBehaviorName('');
-    setNewBehaviorDefinition('');
-    setNewBehaviorCategory('Physical');
-  };
+  const handleDeleteItem = (tab: ListTab, id: string) => {
+    let list: AbcItem[] = [];
+    let setList: React.Dispatch<React.SetStateAction<AbcItem[]>> = () => {};
 
-  const handleCancelAddBehavior = () => {
-    setIsAddingBehavior(false);
-    setCategoryDropdownOpen(false);
-  };
-
-  const handleDeleteBehavior = (id: string) => {
-    const next = behaviors.filter((item) => item.id !== id);
-    setBehaviors(next);
-    setStoredAbcLists({ behaviors: next });
-    showToast('Behavior removed — changes saved', 'info');
-  };
-
-  const handleDeleteAntecedent = (id: string) => {
-    const next = antecedents.filter((item) => item.id !== id);
-    setAntecedents(next);
-    setStoredAbcLists({ antecedents: next });
-    showToast('Antecedent removed — changes saved', 'info');
-  };
-
-  const handleDeleteConsequence = (id: string) => {
-    const next = consequences.filter((item) => item.id !== id);
-    setConsequences(next);
-    setStoredAbcLists({ consequences: next });
-    showToast('Consequence removed — changes saved', 'info');
-  };
-
-  const handleDeleteLocation = (id: string) => {
-    const next = locations.filter((item) => item.id !== id);
-    setLocations(next);
-    setStoredAbcLists({ locations: next });
-    showToast('Location removed — changes saved', 'info');
-  };
-
-  const handleResetToDefault = async () => {
-    try {
-      try {
-        await resetAbcListsToDefault();
-      } catch {}
-      const resetData = resetStoredAbcLists();
-      setBehaviors(resetData.behaviors);
-      setAntecedents(resetData.antecedents);
-      setConsequences(resetData.consequences);
-      setLocations(resetData.locations);
-      showToast('ABC lists reset to defaults', 'success');
-    } catch (err) {
-      showToast('Failed to reset ABC lists', 'error');
+    if (tab === 'Behaviors') {
+      list = behaviors;
+      setList = setBehaviors;
+    } else if (tab === 'Antecedents') {
+      list = antecedents;
+      setList = setAntecedents;
+    } else if (tab === 'Consequences') {
+      list = consequences;
+      setList = setConsequences;
+    } else if (tab === 'Locations') {
+      list = locations;
+      setList = setLocations;
     }
+
+    const item = list.find((i) => i.id === id);
+    const label = item?.name || 'this item';
+    const singular = tab.replace(/s$/, '');
+
+    confirmAction({
+      title: `Delete ${singular}`,
+      message: `Are you sure you want to remove "${label}" from ABC dropdown lists?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        const next = list.filter((i) => i.id !== id);
+        setList(next);
+        if (tab === 'Behaviors') setStoredAbcLists({ behaviors: next });
+        else if (tab === 'Antecedents') setStoredAbcLists({ antecedents: next });
+        else if (tab === 'Consequences') setStoredAbcLists({ consequences: next });
+        else if (tab === 'Locations') setStoredAbcLists({ locations: next });
+
+        setIsDirty(true);
+        showToast(`${singular} "${label}" removed`, 'info');
+      },
+    });
+  };
+
+  const handleResetToDefault = () => {
+    confirmAction({
+      title: 'Reset ABC Dropdown Lists',
+      message:
+        'Are you sure you want to restore the default ABC dropdown items? All customized behaviors, antecedents, consequences, and locations will be reverted.',
+      confirmLabel: 'Reset to Default',
+      destructive: true,
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          try {
+            await resetAbcListsToDefault();
+          } catch {}
+          const resetData = resetStoredAbcLists();
+          setBehaviors(resetData.behaviors);
+          setAntecedents(resetData.antecedents);
+          setConsequences(resetData.consequences);
+          setLocations(resetData.locations);
+          setIsDirty(false);
+          showToast('ABC lists reset to defaults', 'success');
+        } catch (err) {
+          showToast('Failed to reset ABC lists', 'error');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const handleSaveConfiguration = async () => {
@@ -288,6 +271,7 @@ export default function AbcDropdownListsScreen({
       } catch (apiErr) {
         console.warn('API save warning:', apiErr);
       }
+      setIsDirty(false);
       showToast('Configuration saved successfully', 'success');
     } catch (err) {
       showToast('Failed to save configuration', 'error');
@@ -296,30 +280,194 @@ export default function AbcDropdownListsScreen({
     }
   };
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="ABC Lists" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Sub Header / Breadcrumb */}
-        <View style={styles.topHeader}>
-          <View style={styles.titleRow}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack?.()}>
-              <Feather name="arrow-left" size={16} color="#334155" />
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.breadcrumbTitle}>ABC Dropdown Lists</Text>
-          </View>
-          <View style={styles.breadcrumbRow}>
-            <Feather name="settings" size={12} color="#64748B" />
-            <Text style={styles.breadcrumbText}> Clinical Configuration / ABC Dropdown Lists</Text>
-          </View>
+  const renderTable = (
+    tab: ListTab,
+    columnHeader: string,
+    list: AbcItem[],
+    setList: React.Dispatch<React.SetStateAction<AbcItem[]>>,
+    emptyIcon: 'activity' | 'zap' | 'shield' | 'map-pin',
+    emptyLabel: string,
+    emptySubLabel: string,
+  ) => {
+    return (
+      <View style={styles.table}>
+        <View style={styles.tableHeaderRow}>
+          <Text style={[styles.th, { flex: 6 }]}>{columnHeader}</Text>
+          <Text style={[styles.th, { flex: 3 }]}>STATUS</Text>
+          <Text style={[styles.th, { flex: 3, textAlign: 'right' }]}>ACTIONS</Text>
         </View>
 
+        {list.map((item) =>
+          editingId === item.id ? (
+            <View key={item.id} style={styles.tableRow}>
+              <View style={{ flex: 6, paddingRight: 12 }}>
+                <TextInput
+                  style={styles.tableInput}
+                  value={editName}
+                  onChangeText={setEditName}
+                  onSubmitEditing={() => commitEdit(list, setList)}
+                  autoFocus
+                  placeholder={columnHeader}
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <View style={{ flex: 3 }}>
+                <TouchableOpacity
+                  style={
+                    editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge
+                  }
+                  onPress={() =>
+                    setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))
+                  }
+                >
+                  <Text
+                    style={
+                      editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText
+                    }
+                  >
+                    {editStatus}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.actionsCol}>
+                <TouchableOpacity
+                  onPress={() => commitEdit(list, setList)}
+                  style={{ marginRight: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save edit"
+                >
+                  <Feather name="check" size={16} color="#22C55E" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={cancelEdit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel edit"
+                >
+                  <Feather name="x" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View key={item.id} style={styles.tableRow}>
+              <Text style={[styles.cellTextBold, { flex: 6 }]}>{item.name}</Text>
+              <View style={{ flex: 3 }}>
+                <TouchableOpacity
+                  style={
+                    item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge
+                  }
+                  onPress={() => toggleItemStatus(tab, item.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Status: ${item.status}. Click to toggle for ${item.name}`}
+                >
+                  <Text
+                    style={
+                      item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText
+                    }
+                  >
+                    {item.status}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.actionsCol}>
+                <TouchableOpacity
+                  style={{ marginRight: 12 }}
+                  onPress={() => toggleItemStatus(tab, item.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Toggle active status for ${item.name}`}
+                >
+                  <Feather
+                    name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
+                    size={20}
+                    color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ marginRight: 12 }}
+                  onPress={() => startEdit(item)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}`}
+                >
+                  <Feather name="edit-2" size={15} color="#0284C7" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDeleteItem(tab, item.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${item.name}`}
+                >
+                  <Feather name="trash-2" size={15} color="#F87171" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ),
+        )}
+
+        {list.length === 0 && addingTab !== tab && (
+          <View style={styles.emptyTableState}>
+            <Feather name={emptyIcon} size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+            <Text style={styles.emptyTableText}>{emptyLabel}</Text>
+            <Text style={styles.emptyTableSubText}>{emptySubLabel}</Text>
+          </View>
+        )}
+
+        {/* Inline Add Row */}
+        {addingTab === tab && (
+          <View key="add-row" style={styles.tableRow}>
+            <View style={{ flex: 6, paddingRight: 12 }}>
+              <TextInput
+                style={styles.tableInput}
+                placeholder={`New ${columnHeader.toLowerCase()}`}
+                placeholderTextColor="#94A3B8"
+                value={newName}
+                onChangeText={setNewName}
+                onSubmitEditing={() => commitAdd(list, setList)}
+                autoFocus
+              />
+            </View>
+            <View style={{ flex: 3 }}>
+              <View style={styles.statusActiveBadge}>
+                <Text style={styles.statusActiveText}>Active</Text>
+              </View>
+            </View>
+            <View style={styles.actionsCol}>
+              <TouchableOpacity
+                style={{ marginRight: 12 }}
+                onPress={() => commitAdd(list, setList)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm add"
+              >
+                <Feather name="check" size={16} color="#22C55E" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={cancelAdd}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel add"
+              >
+                <Feather name="x" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <AppNavbar
+        activeTab="ABC Lists"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Page Description */}
         <View style={styles.pageHeader}>
           <Text style={styles.mainTitle}>ABC Dropdown Lists</Text>
           <Text style={styles.subtitle}>
-            SCR-ADMIN-003 · Manage behavior, antecedent, consequence, and location options
+            Manage behavior, antecedent, consequence, and location options
           </Text>
         </View>
 
@@ -331,517 +479,97 @@ export default function AbcDropdownListsScreen({
               style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
               onPress={() => {
                 setActiveTab(tab);
-                setIsAddingBehavior(false);
+                setAddingTab(null);
+                setEditingId(null);
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`${tab} tab`}
             >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab}
-              </Text>
+              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Dynamic Card Table */}
         <View style={styles.card}>
-          {/* TAB 1: BEHAVIORS */}
-          {activeTab === 'Behaviors' && (
-            <View style={styles.table}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.th, { flex: 3 }]}>BEHAVIOR NAME</Text>
-                <Text style={[styles.th, { flex: 4 }]}>DEFINITION</Text>
-                <Text style={[styles.th, { flex: 2 }]}>CATEGORY</Text>
-                <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
-                <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
-              </View>
+          {activeTab === 'Behaviors' &&
+            renderTable(
+              'Behaviors',
+              'BEHAVIOR NAME',
+              behaviors,
+              setBehaviors,
+              'activity',
+              'No behaviors configured yet.',
+              'Click "+ Add Behavior" below to define target or interfering behaviors.',
+            )}
 
-              {behaviors.map((item) => (
-                editingId === item.id ? (
-                  <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
-                    <View style={{ flex: 3, paddingRight: 8 }}>
-                      <TextInput
-                        style={styles.tableInput}
-                        value={editName}
-                        onChangeText={setEditName}
-                        autoFocus
-                      />
-                    </View>
-                    <View style={{ flex: 4, paddingRight: 8 }}>
-                      <TextInput
-                        style={styles.tableInput}
-                        value={editDefinition}
-                        onChangeText={setEditDefinition}
-                        placeholder="Definition"
-                        placeholderTextColor="#94A3B8"
-                      />
-                    </View>
-                    <View style={{ flex: 2, paddingRight: 8, zIndex: 100 }}>
-                      <TouchableOpacity
-                        style={styles.dropdownTrigger}
-                        onPress={() => setEditCategoryDropdownOpen(!editCategoryDropdownOpen)}
-                      >
-                        <Text style={styles.dropdownText}>{editCategory || 'Physical'}</Text>
-                        <Feather name="chevron-down" size={14} color="#0F172A" />
-                      </TouchableOpacity>
-                      {editCategoryDropdownOpen && (
-                        <View style={styles.dropdownMenu}>
-                          {CATEGORY_OPTIONS.map((cat) => (
-                            <TouchableOpacity
-                              key={cat}
-                              style={[styles.dropdownItem, editCategory === cat && styles.dropdownItemActive]}
-                              onPress={() => { setEditCategory(cat); setEditCategoryDropdownOpen(false); }}
-                            >
-                              <Text style={styles.dropdownItemText}>{cat}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
-                      >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {editStatus}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity onPress={() => commitEdit(behaviors, setBehaviors)} style={{ marginRight: 10 }}>
-                        <Feather name="check" size={16} color="#22C55E" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={cancelEdit}>
-                        <Feather name="x" size={16} color="#94A3B8" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View key={item.id} style={styles.tableRow}>
-                    <Text style={[styles.cellTextBold, { flex: 3 }]}>{item.name}</Text>
-                    <Text style={[styles.cellText, { flex: 4 }]}>{item.definition}</Text>
-                    <Text style={[styles.cellText, { flex: 2 }]}>{item.category}</Text>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => toggleItemStatus('Behaviors', item.id)}
-                      >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {item.status}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity
-                        style={{ marginRight: 10 }}
-                        onPress={() => toggleItemStatus('Behaviors', item.id)}
-                        accessibilityLabel="Toggle Active Status"
-                      >
-                        <Feather
-                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
-                          size={18}
-                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
-                        <Feather name="edit-2" size={15} color="#0284C7" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteBehavior(item.id)}>
-                        <Feather name="trash-2" size={15} color="#F87171" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )
-              ))}
+          {activeTab === 'Antecedents' &&
+            renderTable(
+              'Antecedents',
+              'ANTECEDENT NAME',
+              antecedents,
+              setAntecedents,
+              'zap',
+              'No antecedents configured yet.',
+              'Click "+ Add Antecedent" below to define trigger events.',
+            )}
 
-              {/* Inline Add Row */}
-              {isAddingBehavior && (
-                <View style={[styles.tableRow, { zIndex: 100 }]}>
-                  <View style={{ flex: 3, paddingRight: 8 }}>
-                    <TextInput
-                      style={styles.tableInput}
-                      placeholder="Behavior name"
-                      placeholderTextColor="#94A3B8"
-                      value={newBehaviorName}
-                      onChangeText={setNewBehaviorName}
-                      autoFocus
-                    />
-                  </View>
-                  <View style={{ flex: 4, paddingRight: 8 }}>
-                    <TextInput
-                      style={styles.tableInput}
-                      placeholder="Definition"
-                      placeholderTextColor="#94A3B8"
-                      value={newBehaviorDefinition}
-                      onChangeText={setNewBehaviorDefinition}
-                    />
-                  </View>
-                  <View style={{ flex: 2, paddingRight: 8, zIndex: 100 }}>
-                    <TouchableOpacity
-                      style={styles.dropdownTrigger}
-                      onPress={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-                    >
-                      <Text style={styles.dropdownText}>{newBehaviorCategory}</Text>
-                      <Feather name="chevron-down" size={14} color="#0F172A" />
-                    </TouchableOpacity>
+          {activeTab === 'Consequences' &&
+            renderTable(
+              'Consequences',
+              'CONSEQUENCE NAME',
+              consequences,
+              setConsequences,
+              'shield',
+              'No consequences configured yet.',
+              'Click "+ Add Consequence" below to define response interventions.',
+            )}
 
-                    {categoryDropdownOpen && (
-                      <View style={styles.dropdownMenu}>
-                        {CATEGORY_OPTIONS.map((cat) => (
-                          <TouchableOpacity
-                            key={cat}
-                            style={[
-                              styles.dropdownItem,
-                              newBehaviorCategory === cat && styles.dropdownItemActive,
-                            ]}
-                            onPress={() => {
-                              setNewBehaviorCategory(cat);
-                              setCategoryDropdownOpen(false);
-                            }}
-                          >
-                            <Text style={styles.dropdownItemText}>{cat}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ flex: 2 }}>
-                    <View style={styles.statusActiveBadge}>
-                      <Text style={styles.statusActiveText}>Active</Text>
-                    </View>
-                  </View>
-                  <View style={styles.actionsCol}>
-                    <TouchableOpacity
-                      style={{ marginRight: 10 }}
-                      onPress={handleSaveNewBehavior}
-                    >
-                      <Feather name="check" size={16} color="#22C55E" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setIsAddingBehavior(false)}>
-                      <Feather name="x" size={16} color="#94A3B8" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* TAB 2: ANTECEDENTS */}
-          {activeTab === 'Antecedents' && (
-            <View style={styles.table}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.th, { flex: 4 }]}>NAME</Text>
-                <Text style={[styles.th, { flex: 3 }]}>TYPE</Text>
-                <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
-                <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
-              </View>
-              {antecedents.map((item) => (
-                editingId === item.id ? (
-                  <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
-                    <View style={{ flex: 4, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
-                    </View>
-                    <View style={{ flex: 3, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editType} onChangeText={setEditType} placeholder="Type" placeholderTextColor="#94A3B8" />
-                    </View>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
-                      >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {editStatus}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(antecedents, setAntecedents)}>
-                        <Feather name="check" size={16} color="#22C55E" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={cancelEdit}>
-                        <Feather name="x" size={16} color="#94A3B8" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View key={item.id} style={styles.tableRow}>
-                    <Text style={[styles.cellTextBold, { flex: 4 }]}>{item.name}</Text>
-                    <Text style={[styles.cellText, { flex: 3 }]}>{item.type}</Text>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => toggleItemStatus('Antecedents', item.id)}
-                      >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {item.status}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity
-                        style={{ marginRight: 10 }}
-                        onPress={() => toggleItemStatus('Antecedents', item.id)}
-                        accessibilityLabel="Toggle Active Status"
-                      >
-                        <Feather
-                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
-                          size={18}
-                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
-                        <Feather name="edit-2" size={15} color="#0284C7" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteAntecedent(item.id)}>
-                        <Feather name="trash-2" size={15} color="#F87171" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )
-              ))}
-              {addingTab === 'Antecedents' && (
-                <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
-                  <View style={{ flex: 4, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newName} onChangeText={setNewName} placeholder="Antecedent name" placeholderTextColor="#94A3B8" autoFocus />
-                  </View>
-                  <View style={{ flex: 3, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newType} onChangeText={setNewType} placeholder="Type" placeholderTextColor="#94A3B8" />
-                  </View>
-                  <View style={{ flex: 2 }} />
-                  <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitAdd(antecedents, setAntecedents, true)}>
-                      <Feather name="check" size={16} color="#22C55E" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelAdd}>
-                      <Feather name="x" size={16} color="#94A3B8" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* TAB 3: CONSEQUENCES */}
-          {activeTab === 'Consequences' && (
-            <View style={styles.table}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.th, { flex: 4 }]}>NAME</Text>
-                <Text style={[styles.th, { flex: 3 }]}>TYPE</Text>
-                <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
-                <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
-              </View>
-              {consequences.map((item) => (
-                editingId === item.id ? (
-                  <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
-                    <View style={{ flex: 4, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
-                    </View>
-                    <View style={{ flex: 3, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editType} onChangeText={setEditType} placeholder="Type" placeholderTextColor="#94A3B8" />
-                    </View>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
-                      >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {editStatus}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(consequences, setConsequences)}>
-                        <Feather name="check" size={16} color="#22C55E" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={cancelEdit}>
-                        <Feather name="x" size={16} color="#94A3B8" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View key={item.id} style={styles.tableRow}>
-                    <Text style={[styles.cellTextBold, { flex: 4 }]}>{item.name}</Text>
-                    <Text style={[styles.cellText, { flex: 3 }]}>{item.type}</Text>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => toggleItemStatus('Consequences', item.id)}
-                      >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {item.status}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity
-                        style={{ marginRight: 10 }}
-                        onPress={() => toggleItemStatus('Consequences', item.id)}
-                        accessibilityLabel="Toggle Active Status"
-                      >
-                        <Feather
-                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
-                          size={18}
-                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
-                        <Feather name="edit-2" size={15} color="#0284C7" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteConsequence(item.id)}>
-                        <Feather name="trash-2" size={15} color="#F87171" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )
-              ))}
-              {addingTab === 'Consequences' && (
-                <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
-                  <View style={{ flex: 4, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newName} onChangeText={setNewName} placeholder="Consequence name" placeholderTextColor="#94A3B8" autoFocus />
-                  </View>
-                  <View style={{ flex: 3, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newType} onChangeText={setNewType} placeholder="Type" placeholderTextColor="#94A3B8" />
-                  </View>
-                  <View style={{ flex: 2 }} />
-                  <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitAdd(consequences, setConsequences, true)}>
-                      <Feather name="check" size={16} color="#22C55E" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelAdd}>
-                      <Feather name="x" size={16} color="#94A3B8" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* TAB 4: LOCATIONS */}
-          {activeTab === 'Locations' && (
-            <View style={styles.table}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.th, { flex: 5 }]}>LOCATION NAME</Text>
-                <Text style={[styles.th, { flex: 2 }]}>STATUS</Text>
-                <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>ACTIONS</Text>
-              </View>
-              {locations.map((item) => (
-                editingId === item.id ? (
-                  <View key={item.id} style={[styles.tableRow, { zIndex: 100 }]}>
-                    <View style={{ flex: 5, paddingRight: 8 }}>
-                      <TextInput style={styles.tableInput} value={editName} onChangeText={setEditName} autoFocus />
-                    </View>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={editStatus === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => setEditStatus((prev) => (prev === 'Active' ? 'Inactive' : 'Active'))}
-                      >
-                        <Text style={editStatus === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {editStatus}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitEdit(locations, setLocations)}>
-                        <Feather name="check" size={16} color="#22C55E" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={cancelEdit}>
-                        <Feather name="x" size={16} color="#94A3B8" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View key={item.id} style={styles.tableRow}>
-                    <Text style={[styles.cellTextBold, { flex: 5 }]}>{item.name}</Text>
-                    <View style={{ flex: 2 }}>
-                      <TouchableOpacity
-                        style={item.status === 'Active' ? styles.statusActiveBadge : styles.statusInactiveBadge}
-                        onPress={() => toggleItemStatus('Locations', item.id)}
-                      >
-                        <Text style={item.status === 'Active' ? styles.statusActiveText : styles.statusInactiveText}>
-                          {item.status}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.actionsCol}>
-                      <TouchableOpacity
-                        style={{ marginRight: 10 }}
-                        onPress={() => toggleItemStatus('Locations', item.id)}
-                        accessibilityLabel="Toggle Active Status"
-                      >
-                        <Feather
-                          name={item.status === 'Active' ? 'toggle-right' : 'toggle-left'}
-                          size={18}
-                          color={item.status === 'Active' ? '#10B981' : '#94A3B8'}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ marginRight: 10 }} onPress={() => startEdit(item)}>
-                        <Feather name="edit-2" size={15} color="#0284C7" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteLocation(item.id)}>
-                        <Feather name="trash-2" size={15} color="#F87171" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )
-              ))}
-              {addingTab === 'Locations' && (
-                <View key="add" style={[styles.tableRow, { zIndex: 100 }]}>
-                  <View style={{ flex: 5, paddingRight: 8 }}>
-                    <TextInput style={styles.tableInput} value={newName} onChangeText={setNewName} placeholder="Location name" placeholderTextColor="#94A3B8" autoFocus />
-                  </View>
-                  <View style={{ flex: 2 }} />
-                  <View style={styles.actionsCol}>
-                    <TouchableOpacity style={{ marginRight: 10 }} onPress={() => commitAdd(locations, setLocations, false)}>
-                      <Feather name="check" size={16} color="#22C55E" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelAdd}>
-                      <Feather name="x" size={16} color="#94A3B8" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
+          {activeTab === 'Locations' &&
+            renderTable(
+              'Locations',
+              'LOCATION NAME',
+              locations,
+              setLocations,
+              'map-pin',
+              'No locations configured yet.',
+              'Click "+ Add Location" below to define classroom or clinic settings.',
+            )}
         </View>
 
-        {/* Add Behavior Link Button */}
-        {activeTab === 'Behaviors' && !isAddingBehavior && (
+        {/* Add Item Link Button */}
+        {addingTab !== activeTab && (
           <TouchableOpacity
             style={styles.addInlineBtn}
-            onPress={() => setIsAddingBehavior(true)}
+            onPress={() => startAdd(activeTab)}
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${activeTab.replace(/s$/, '')}`}
           >
             <Feather name="plus" size={14} color="#0284C7" />
-            <Text style={styles.addInlineBtnText}>Add Behavior</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Add links for the other tabs */}
-        {activeTab === 'Antecedents' && addingTab !== 'Antecedents' && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => startAdd('Antecedents')}>
-            <Feather name="plus" size={14} color="#0284C7" />
-            <Text style={styles.addInlineBtnText}>Add Antecedent</Text>
-          </TouchableOpacity>
-        )}
-        {activeTab === 'Consequences' && addingTab !== 'Consequences' && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => startAdd('Consequences')}>
-            <Feather name="plus" size={14} color="#0284C7" />
-            <Text style={styles.addInlineBtnText}>Add Consequence</Text>
-          </TouchableOpacity>
-        )}
-        {activeTab === 'Locations' && addingTab !== 'Locations' && (
-          <TouchableOpacity style={styles.addInlineBtn} onPress={() => startAdd('Locations')}>
-            <Feather name="plus" size={14} color="#0284C7" />
-            <Text style={styles.addInlineBtnText}>Add Location</Text>
+            <Text style={styles.addInlineBtnText}>Add {activeTab.replace(/s$/, '')}</Text>
           </TouchableOpacity>
         )}
 
         {/* Bottom Action Controls */}
         <View style={styles.bottomControls}>
-          <TouchableOpacity style={[styles.saveConfigBtn, saving && styles.saveBtnDisabled]} onPress={handleSaveConfiguration} disabled={saving}>
+          <TouchableOpacity
+            style={[styles.saveConfigBtn, saving && styles.saveBtnDisabled]}
+            onPress={handleSaveConfiguration}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Save ABC configuration"
+          >
             <Feather name="save" size={14} color="#0F172A" />
             <Text style={styles.saveConfigBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.resetBtn} onPress={handleResetToDefault}>
+          <TouchableOpacity
+            style={[styles.resetBtn, saving && { opacity: 0.5 }]}
+            onPress={handleResetToDefault}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Reset ABC dropdown lists to defaults"
+          >
             <Feather name="refresh-cw" size={14} color="#EF4444" />
             <Text style={styles.resetBtnText}>Reset to Default</Text>
           </TouchableOpacity>
@@ -903,7 +631,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    overflow: 'visible',
+    overflow: 'hidden',
   },
 
   table: { width: '100%' },
@@ -914,6 +642,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
   },
   th: {
     fontSize: 11,
@@ -928,11 +657,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-    position: 'relative',
   },
 
-  cellTextBold: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  cellText: { fontSize: 13, color: '#334155' },
+  cellTextBold: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
 
   statusActiveBadge: {
     alignSelf: 'flex-start',
@@ -956,7 +683,7 @@ const styles = StyleSheet.create({
   statusInactiveText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
 
   actionsCol: {
-    flex: 2,
+    flex: 3,
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
@@ -970,50 +697,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     fontSize: 13,
     backgroundColor: '#F8FAFC',
-    color: '#0F172A',
-  },
-
-  dropdownTrigger: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#0284C7',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
-  },
-  dropdownText: { fontSize: 13, color: '#0F172A' },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 36,
-    left: 0,
-    right: 8,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 6,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)' }
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          elevation: 4,
-        }),
-    zIndex: 999,
-  },
-  dropdownItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  dropdownItemActive: {
-    backgroundColor: '#BAE6FD',
-  },
-  dropdownItemText: {
-    fontSize: 13,
     color: '#0F172A',
   },
 
@@ -1067,4 +750,22 @@ const styles = StyleSheet.create({
     color: '#EF4444',
   },
   saveBtnDisabled: { opacity: 0.6 },
+  emptyTableState: {
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTableText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  emptyTableSubText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 4,
+    textAlign: 'center',
+  },
 });

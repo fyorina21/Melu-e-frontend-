@@ -14,7 +14,14 @@ const DEFAULT_CONFIGS: Record<string, any> = {
         required: true,
         visible: true,
         section: 'MASS',
-        options: ['0 - Never', '1 - Almost Never', '2 - Seldom (Removed)', '3 - Sometimes', '4 - Usually', '5 - Always'].filter(o => !o.includes('Seldom')),
+        options: [
+          '0 - Never',
+          '1 - Almost Never',
+          '2 - Seldom (Removed)',
+          '3 - Sometimes',
+          '4 - Usually',
+          '5 - Always',
+        ].filter((o) => !o.includes('Seldom')),
       })),
       ...Array.from({ length: 8 }, (_, i) => ({
         id: `F${i + 1}`,
@@ -32,9 +39,30 @@ const DEFAULT_CONFIGS: Record<string, any> = {
     customSections: [],
     deletedSections: [],
     fields: [
-      { id: 'P1', type: 'Radio', label: 'P1: Bubbles', required: true, visible: true, section: 'Visual' },
-      { id: 'P2', type: 'Radio', label: 'P2: Light spinner', required: true, visible: true, section: 'Visual' },
-      { id: 'P3', type: 'Radio', label: 'P3: Music box', required: true, visible: true, section: 'Auditory' },
+      {
+        id: 'P1',
+        type: 'Radio',
+        label: 'P1: Bubbles',
+        required: true,
+        visible: true,
+        section: 'Visual',
+      },
+      {
+        id: 'P2',
+        type: 'Radio',
+        label: 'P2: Light spinner',
+        required: true,
+        visible: true,
+        section: 'Visual',
+      },
+      {
+        id: 'P3',
+        type: 'Radio',
+        label: 'P3: Music box',
+        required: true,
+        visible: true,
+        section: 'Auditory',
+      },
     ],
   },
   'Sensory Assessment': {
@@ -55,11 +83,51 @@ const DEFAULT_CONFIGS: Record<string, any> = {
     customSections: [],
     deletedSections: [],
     fields: [
-      { id: 'A1', type: 'Radio', label: 'A1: Matches identical objects', required: true, visible: true, section: 'Visual Performance', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
-      { id: 'B1', type: 'Radio', label: 'B1: Gross motor imitation', required: true, visible: true, section: 'Motor Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
-      { id: 'C1', type: 'Radio', label: 'C1: Vocal imitation', required: true, visible: true, section: 'Vocal Imitation', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
-      { id: 'D1', type: 'Radio', label: 'D1: Follows instructions', required: true, visible: true, section: 'Receptive Language', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
-      { id: 'H1', type: 'Radio', label: 'H1: Traces lines', required: true, visible: true, section: 'Writing', options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'] },
+      {
+        id: 'A1',
+        type: 'Radio',
+        label: 'A1: Matches identical objects',
+        required: true,
+        visible: true,
+        section: 'Visual Performance',
+        options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'],
+      },
+      {
+        id: 'B1',
+        type: 'Radio',
+        label: 'B1: Gross motor imitation',
+        required: true,
+        visible: true,
+        section: 'Motor Imitation',
+        options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'],
+      },
+      {
+        id: 'C1',
+        type: 'Radio',
+        label: 'C1: Vocal imitation',
+        required: true,
+        visible: true,
+        section: 'Vocal Imitation',
+        options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'],
+      },
+      {
+        id: 'D1',
+        type: 'Radio',
+        label: 'D1: Follows instructions',
+        required: true,
+        visible: true,
+        section: 'Receptive Language',
+        options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'],
+      },
+      {
+        id: 'H1',
+        type: 'Radio',
+        label: 'H1: Traces lines',
+        required: true,
+        visible: true,
+        section: 'Writing',
+        options: ['0 — Not Demonstrated', '1 — Emerging', '2 — Mastered', 'N/A'],
+      },
     ],
   },
   'Enrollment Wizard': {
@@ -67,27 +135,67 @@ const DEFAULT_CONFIGS: Record<string, any> = {
     customSections: [],
     deletedSections: [],
     fields: [
-      { id: 'f1', type: 'Text', label: 'Full Name', required: true, visible: true, section: 'Student Info' },
-      { id: 'f2', type: 'Date', label: 'Date of Birth', required: true, visible: true, section: 'Student Info' },
-      { id: 'f4', type: 'Text', label: 'Parent / Guardian Name', required: true, visible: true, section: 'Parent Info' },
-      { id: 'f7', type: 'Text', label: 'Medical Notes & Allergies', required: false, visible: true, section: 'Medical Info' },
-      { id: 'f8', type: 'Text', label: 'Transportation Required', required: false, visible: true, section: 'Student Info' },
+      {
+        id: 'f1',
+        type: 'Text',
+        label: 'Full Name',
+        required: true,
+        visible: true,
+        section: 'Student Info',
+      },
+      {
+        id: 'f2',
+        type: 'Date',
+        label: 'Date of Birth',
+        required: true,
+        visible: true,
+        section: 'Student Info',
+      },
+      {
+        id: 'f4',
+        type: 'Text',
+        label: 'Parent / Guardian Name',
+        required: true,
+        visible: true,
+        section: 'Parent Info',
+      },
+      {
+        id: 'f7',
+        type: 'Text',
+        label: 'Medical Notes & Allergies',
+        required: false,
+        visible: true,
+        section: 'Medical Info',
+      },
+      {
+        id: 'f8',
+        type: 'Text',
+        label: 'Transportation Required',
+        required: false,
+        visible: true,
+        section: 'Student Info',
+      },
     ],
   },
   'IUP Form': {
     isDefault: true,
     customSections: [],
     deletedSections: [],
-    fields: [
-      { id: 'i1', type: 'Text', label: 'Student Name', required: true, visible: true },
-    ],
+    fields: [{ id: 'i1', type: 'Text', label: 'Student Name', required: true, visible: true }],
   },
   'Behavior Incident Form': {
     isDefault: true,
     customSections: [],
     deletedSections: [],
     fields: [
-      { id: 'b_loc', type: 'Dropdown', label: 'Location', required: true, visible: true, options: ['Classroom', 'Playground', 'Cafeteria'] },
+      {
+        id: 'b_loc',
+        type: 'Dropdown',
+        label: 'Location',
+        required: true,
+        visible: true,
+        options: ['Classroom', 'Playground', 'Cafeteria'],
+      },
       { id: 'b_beh', type: 'Dropdown', label: 'Behavior Type', required: true, visible: true },
       { id: 'b_int', type: 'Dropdown', label: 'Intensity', required: true, visible: true },
       { id: 'b_dur', type: 'Number', label: 'Duration (mins)', required: true, visible: true },
@@ -100,7 +208,16 @@ const store: Record<string, any> = {};
 vi.mock('../../api/institutionalAdminApi', () => ({
   getFormConfig: vi.fn(async (formName: string) => {
     if (!store[formName]) {
-      store[formName] = JSON.parse(JSON.stringify(DEFAULT_CONFIGS[formName] || { isDefault: true, fields: [], customSections: [], deletedSections: [] }));
+      store[formName] = JSON.parse(
+        JSON.stringify(
+          DEFAULT_CONFIGS[formName] || {
+            isDefault: true,
+            fields: [],
+            customSections: [],
+            deletedSections: [],
+          },
+        ),
+      );
     }
     return { data: JSON.parse(JSON.stringify(store[formName])) };
   }),
@@ -113,7 +230,16 @@ vi.mock('../../api/institutionalAdminApi', () => ({
     return { data: JSON.parse(JSON.stringify(store[formName])) };
   }),
   resetFormToDefault: vi.fn(async (formName: string) => {
-    store[formName] = JSON.parse(JSON.stringify(DEFAULT_CONFIGS[formName] || { isDefault: true, fields: [], customSections: [], deletedSections: [] }));
+    store[formName] = JSON.parse(
+      JSON.stringify(
+        DEFAULT_CONFIGS[formName] || {
+          isDefault: true,
+          fields: [],
+          customSections: [],
+          deletedSections: [],
+        },
+      ),
+    );
     return { data: { status: 'ok' } };
   }),
 }));
@@ -128,10 +254,7 @@ import {
   COMMON_INFO_TYPES,
   getDomainLetterForAblls,
 } from './formBuilderConfig';
-import {
-  buildAbllsDomainsFromConfig,
-  getItemScoreOptions,
-} from '../assessments/abllsConfigHelper';
+import { buildAbllsDomainsFromConfig, getItemScoreOptions } from '../assessments/abllsConfigHelper';
 
 describe('FormBuilder Assessment Integration', () => {
   beforeEach(async () => {
@@ -206,12 +329,27 @@ describe('FormBuilder Assessment Integration', () => {
       required: true,
       visible: true,
       section: 'MASS',
-      options: ['0 - Never', '1 - Rarely', '2 - Sometimes', '3 - Frequently', '4 - Usually', '5 - Always'],
+      options: [
+        '0 - Never',
+        '1 - Rarely',
+        '2 - Sometimes',
+        '3 - Frequently',
+        '4 - Usually',
+        '5 - Always',
+      ],
     };
 
     await saveFormConfig('Behavioral Assessment', {
       fields: [...initialConfig.fields, newField],
-      history: [{ date: '2026-09-19', user: 'Admin A', field: newField.label, oldValue: 'None', newValue: 'Added' }],
+      history: [
+        {
+          date: '2026-09-19',
+          user: 'Admin A',
+          field: newField.label,
+          oldValue: 'None',
+          newValue: 'Added',
+        },
+      ],
       isDefault: false,
     });
 
@@ -226,9 +364,19 @@ describe('FormBuilder Assessment Integration', () => {
       { id: 'M2', type: 'Radio' as const, label: 'Item 2', required: true, visible: true },
       { id: 'F1', type: 'Radio' as const, label: 'Item 3', required: true, visible: true },
     ];
-    expect(getNextIdForSection('Behavioral Assessment', 'MASS (Motivation Assessment)', existingBehFields)).toBe('M3');
-    expect(getNextIdForSection('Behavioral Assessment', 'FAST (Functional Analysis)', existingBehFields)).toBe('F2');
-    expect(getNextIdForSection('Behavioral Assessment', 'ABC Tracking', existingBehFields)).toBe('ABC-1');
+    expect(
+      getNextIdForSection(
+        'Behavioral Assessment',
+        'MASS (Motivation Assessment)',
+        existingBehFields,
+      ),
+    ).toBe('M3');
+    expect(
+      getNextIdForSection('Behavioral Assessment', 'FAST (Functional Analysis)', existingBehFields),
+    ).toBe('F2');
+    expect(getNextIdForSection('Behavioral Assessment', 'ABC Tracking', existingBehFields)).toBe(
+      'ABC-1',
+    );
 
     const existingPrefFields = [
       { id: 'P1', type: 'Radio' as const, label: 'Item 1', required: true, visible: true },
@@ -240,7 +388,9 @@ describe('FormBuilder Assessment Integration', () => {
       { id: 'SEN-001', type: 'Radio' as const, label: 'Item 1', required: true, visible: true },
       { id: 'SEN-002', type: 'Radio' as const, label: 'Item 2', required: true, visible: true },
     ];
-    expect(getNextIdForSection('Sensory Assessment', 'Tactile', existingSensoryFields)).toBe('SEN-003');
+    expect(getNextIdForSection('Sensory Assessment', 'Tactile', existingSensoryFields)).toBe(
+      'SEN-003',
+    );
   });
 
   it('provides COMMON_SKILL_TYPES including Visual Performance and Motor Imitation', () => {
@@ -255,7 +405,14 @@ describe('FormBuilder Assessment Integration', () => {
     expect(getNextIdForSection('IUP Form', 'Visual Performance', emptyFields)).toBe('VP-1');
 
     const withOneField = [
-      { id: 'VP-1', type: 'Radio', label: 'Item 1', required: true, visible: true, section: 'Visual Performance' },
+      {
+        id: 'VP-1',
+        type: 'Radio',
+        label: 'Item 1',
+        required: true,
+        visible: true,
+        section: 'Visual Performance',
+      },
     ];
     expect(getNextIdForSection('IUP Form', 'Visual Performance', withOneField)).toBe('VP-2');
 
@@ -264,7 +421,14 @@ describe('FormBuilder Assessment Integration', () => {
     // Section with parentheses like "Requesting (Mands)" must never crash regex
     expect(getNextIdForSection('IUP Form', 'Requesting (Mands)', emptyFields)).toBe('RM-1');
     const withRmField = [
-      { id: 'RM-1', type: 'Radio', label: 'Item 1', required: true, visible: true, section: 'Requesting (Mands)' },
+      {
+        id: 'RM-1',
+        type: 'Radio',
+        label: 'Item 1',
+        required: true,
+        visible: true,
+        section: 'Requesting (Mands)',
+      },
     ];
     expect(getNextIdForSection('IUP Form', 'Requesting (Mands)', withRmField)).toBe('RM-2');
 
@@ -312,7 +476,14 @@ describe('FormBuilder Assessment Integration', () => {
     expect(getNextIdForSection('ABLLS Assessment Form', 'Visual Imitation', [])).toBe('J1');
 
     const existingJ = [
-      { id: 'J1', type: 'Radio', label: 'J1: Imitates hand movements', required: true, visible: true, section: 'Visual Imitation' },
+      {
+        id: 'J1',
+        type: 'Radio',
+        label: 'J1: Imitates hand movements',
+        required: true,
+        visible: true,
+        section: 'Visual Imitation',
+      },
     ];
     expect(getNextIdForSection('ABLLS Assessment Form', 'Visual Imitation', existingJ)).toBe('J2');
   });
@@ -406,10 +577,10 @@ describe('FormBuilder Assessment Integration', () => {
     const renamedNewSkill = 'Tactile Skills';
     const { data: beforeRenameNew } = await getFormConfig('ABLLS Assessment Form');
     const updatedNewFields = beforeRenameNew.fields.map((f: any) =>
-      f.section === newSkillDomain ? { ...f, section: renamedNewSkill } : f
+      f.section === newSkillDomain ? { ...f, section: renamedNewSkill } : f,
     );
     const updatedCustomSections = beforeRenameNew.customSections.map((s: string) =>
-      s === newSkillDomain ? renamedNewSkill : s
+      s === newSkillDomain ? renamedNewSkill : s,
     );
 
     await saveFormConfig('ABLLS Assessment Form', {
@@ -422,7 +593,11 @@ describe('FormBuilder Assessment Integration', () => {
     const { data: afterRenameNew } = await getFormConfig('ABLLS Assessment Form');
     expect(afterRenameNew.customSections).toContain('Tactile Skills');
     expect(afterRenameNew.customSections).not.toContain('Tactile Discrimination');
-    const renamedNewDomains = buildAbllsDomainsFromConfig(afterRenameNew.fields, afterRenameNew.customSections, afterRenameNew.deletedSections);
+    const renamedNewDomains = buildAbllsDomainsFromConfig(
+      afterRenameNew.fields,
+      afterRenameNew.customSections,
+      afterRenameNew.deletedSections,
+    );
     expect(renamedNewDomains.map((d) => d.name)).toContain('Tactile Skills');
 
     // 3. Edit (rename) an OLD preset skill type: 'Motor Imitation' -> 'Gross & Fine Motor Skills'
@@ -430,7 +605,7 @@ describe('FormBuilder Assessment Integration', () => {
     const renamedOldSkill = 'Gross & Fine Motor Skills';
     const { data: beforeRenameOld } = await getFormConfig('ABLLS Assessment Form');
     const updatedOldFields = beforeRenameOld.fields.map((f: any) =>
-      f.section === oldSkill ? { ...f, section: renamedOldSkill } : f
+      f.section === oldSkill ? { ...f, section: renamedOldSkill } : f,
     );
     const customSectionsWithOld = [...(beforeRenameOld.customSections || []), renamedOldSkill];
     const deletedSectionsWithOld = [...(beforeRenameOld.deletedSections || []), oldSkill];
@@ -449,7 +624,7 @@ describe('FormBuilder Assessment Integration', () => {
     const domainsAfterOldRename = buildAbllsDomainsFromConfig(
       afterRenameOld.fields,
       afterRenameOld.customSections,
-      afterRenameOld.deletedSections
+      afterRenameOld.deletedSections,
     );
     const domainNamesAfterOldRename = domainsAfterOldRename.map((d) => d.name);
     expect(domainNamesAfterOldRename).toContain('Gross & Fine Motor Skills');
@@ -457,8 +632,12 @@ describe('FormBuilder Assessment Integration', () => {
 
     // 4. Delete the new skill type ('Tactile Skills')
     const { data: beforeDeleteNew } = await getFormConfig('ABLLS Assessment Form');
-    const fieldsAfterDeleteNew = beforeDeleteNew.fields.filter((f: any) => f.section !== 'Tactile Skills');
-    const customAfterDeleteNew = beforeDeleteNew.customSections.filter((s: string) => s !== 'Tactile Skills');
+    const fieldsAfterDeleteNew = beforeDeleteNew.fields.filter(
+      (f: any) => f.section !== 'Tactile Skills',
+    );
+    const customAfterDeleteNew = beforeDeleteNew.customSections.filter(
+      (s: string) => s !== 'Tactile Skills',
+    );
 
     await saveFormConfig('ABLLS Assessment Form', {
       fields: fieldsAfterDeleteNew,
@@ -472,14 +651,16 @@ describe('FormBuilder Assessment Integration', () => {
     const domainsAfterDeleteNew = buildAbllsDomainsFromConfig(
       afterDeleteNew.fields,
       afterDeleteNew.customSections,
-      afterDeleteNew.deletedSections
+      afterDeleteNew.deletedSections,
     );
     expect(domainsAfterDeleteNew.map((d) => d.name)).not.toContain('Tactile Skills');
 
     // 5. Delete an OLD skill type ('Writing')
     const oldToDelete = 'Writing';
     const { data: beforeDeleteOld } = await getFormConfig('ABLLS Assessment Form');
-    const fieldsAfterDeleteOld = beforeDeleteOld.fields.filter((f: any) => f.section !== oldToDelete);
+    const fieldsAfterDeleteOld = beforeDeleteOld.fields.filter(
+      (f: any) => f.section !== oldToDelete,
+    );
     const deletedSectionsWithWriting = [...(beforeDeleteOld.deletedSections || []), oldToDelete];
 
     await saveFormConfig('ABLLS Assessment Form', {
@@ -494,7 +675,7 @@ describe('FormBuilder Assessment Integration', () => {
     const domainsAfterDeleteOld = buildAbllsDomainsFromConfig(
       afterDeleteOld.fields,
       afterDeleteOld.customSections,
-      afterDeleteOld.deletedSections
+      afterDeleteOld.deletedSections,
     );
     expect(domainsAfterDeleteOld.map((d) => d.name)).not.toContain('Writing');
 
@@ -512,7 +693,11 @@ describe('FormBuilder Assessment Integration', () => {
     const existingFields = initialConfig?.fields || [];
 
     // 3. Generate sequential ID for new info type "Emergency Contact Info"
-    const firstFieldId = getNextIdForSection('Enrollment Wizard', 'Emergency Contact Info', existingFields);
+    const firstFieldId = getNextIdForSection(
+      'Enrollment Wizard',
+      'Emergency Contact Info',
+      existingFields,
+    );
     expect(firstFieldId).toBe('ECI-1');
 
     const newField = {
@@ -524,7 +709,10 @@ describe('FormBuilder Assessment Integration', () => {
       section: 'Emergency Contact Info',
     };
 
-    const secondFieldId = getNextIdForSection('Enrollment Wizard', 'Emergency Contact Info', [...existingFields, newField]);
+    const secondFieldId = getNextIdForSection('Enrollment Wizard', 'Emergency Contact Info', [
+      ...existingFields,
+      newField,
+    ]);
     expect(secondFieldId).toBe('ECI-2');
 
     const newField2 = {
@@ -549,14 +737,22 @@ describe('FormBuilder Assessment Integration', () => {
     // 5. Verify getFormConfig reflects the new info type and its fields
     const { data: savedConfig } = await getFormConfig('Enrollment Wizard');
     expect(savedConfig.customSections).toContain('Emergency Contact Info');
-    expect(savedConfig.fields.some((f: any) => f.id === 'ECI-1' && f.section === 'Emergency Contact Info')).toBe(true);
-    expect(savedConfig.fields.some((f: any) => f.id === 'ECI-2' && f.section === 'Emergency Contact Info')).toBe(true);
+    expect(
+      savedConfig.fields.some(
+        (f: any) => f.id === 'ECI-1' && f.section === 'Emergency Contact Info',
+      ),
+    ).toBe(true);
+    expect(
+      savedConfig.fields.some(
+        (f: any) => f.id === 'ECI-2' && f.section === 'Emergency Contact Info',
+      ),
+    ).toBe(true);
 
     // 6. Verify step computation for StudentEnrollmentWizard
     const baseSteps = ['Student Info', 'Parent Info', 'Medical Info'];
     const activeBaseSteps = baseSteps.filter((s) => !savedConfig.deletedSections?.includes(s));
     const activeCustomSections = (savedConfig.customSections || []).filter(
-      (s: string) => !savedConfig.deletedSections?.includes(s)
+      (s: string) => !savedConfig.deletedSections?.includes(s),
     );
     const activeInfoTypes = [...activeBaseSteps, ...activeCustomSections];
     const wizardSteps = [...activeInfoTypes, 'Assign Therapist', 'Review'];
@@ -580,7 +776,11 @@ describe('FormBuilder Assessment Integration', () => {
     const existingFields = initialConfig?.fields || [];
 
     // 2. Add a new Info Type called "Current Status" and add a single field to it
-    const currentStatusFieldId = getNextIdForSection('Enrollment Wizard', 'Current Status', existingFields);
+    const currentStatusFieldId = getNextIdForSection(
+      'Enrollment Wizard',
+      'Current Status',
+      existingFields,
+    );
     expect(currentStatusFieldId).toBe('CS-1');
 
     const newFieldCurrentStatus = {
@@ -605,7 +805,11 @@ describe('FormBuilder Assessment Integration', () => {
     const allFields = updatedConfig.fields;
 
     // Helper implementing the DynamicFormFields section filtering logic
-    const filterForSection = (targetSection: string, fieldsToFilter: any[], excludeLabels: string[] = []) => {
+    const filterForSection = (
+      targetSection: string,
+      fieldsToFilter: any[],
+      excludeLabels: string[] = [],
+    ) => {
       return fieldsToFilter.filter((f) => {
         if (excludeLabels.some((l) => l.toLowerCase() === f.label.toLowerCase())) {
           return false;
@@ -691,11 +895,21 @@ describe('FormBuilder Assessment Integration', () => {
     await resetFormToDefault('Enrollment Wizard');
   });
 
-  it('restricts FIELD_TYPES to strictly Text, Number, Date, Dropdown, Radio, File and persists input specifications', async () => {
-    // 1. Verify FIELD_TYPES contains only the 6 required types
-    expect(FIELD_TYPES).toEqual(['Text', 'Number', 'Date', 'Dropdown', 'Radio', 'File']);
-    expect(FIELD_TYPES).not.toContain('Checkbox');
-    expect(FIELD_TYPES).not.toContain('TextArea');
+  it('supports expanded FIELD_TYPES catalog including TextArea, Checkbox, Switch, Phone, Image, and File and persists input specifications', async () => {
+    // 1. Verify FIELD_TYPES contains the core and expanded types
+    expect(FIELD_TYPES).toContain('Text');
+    expect(FIELD_TYPES).toContain('TextArea');
+    expect(FIELD_TYPES).toContain('Number');
+    expect(FIELD_TYPES).toContain('Date');
+    expect(FIELD_TYPES).toContain('Dropdown');
+    expect(FIELD_TYPES).toContain('Radio');
+    expect(FIELD_TYPES).toContain('Checkbox');
+    expect(FIELD_TYPES).toContain('Switch');
+    expect(FIELD_TYPES).toContain('Phone');
+    expect(FIELD_TYPES).toContain('Image');
+    expect(FIELD_TYPES).toContain('File');
+    expect(FIELD_TYPES).not.toContain('SectionHeader');
+    expect(FIELD_TYPES).not.toContain('Divider');
 
     // 2. Verify creating fields of each type with input specifications (options for Dropdown/Radio, placeholder for Number/Date/File/Text)
     const { data: initialConfig } = await getFormConfig('Behavioral Assessment');
@@ -791,7 +1005,7 @@ describe('FormBuilder Assessment Integration', () => {
     const modifiedFields = initialConfig.fields.map((f: any) =>
       f.label === 'Location'
         ? { ...f, options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway'] }
-        : f
+        : f,
     );
 
     const customFields = [

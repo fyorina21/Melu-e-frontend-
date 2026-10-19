@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../../../theme/colors';
-import { type LevelItem, COLOR_SWATCHES } from '../types';
+import { type LevelItem, COLOR_SWATCHES, COLOR_SWATCH_LABELS } from '../types';
 
 interface PromptLevelsTableProps {
   levels: LevelItem[];
@@ -63,19 +63,32 @@ export const PromptLevelsTable: React.FC<PromptLevelsTableProps> = React.memo(
   }) => {
     const renderSwatches = (selected: string, onSelect: (c: string) => void) => (
       <View style={styles.swatchRow}>
-        {COLOR_SWATCHES.map((c) => (
-          <TouchableOpacity
-            key={c}
-            onPress={() => onSelect(c)}
-            style={[
-              styles.swatch,
-              { backgroundColor: c },
-              selected === c ? styles.swatchSelected : styles.swatchUnselected,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={`Select color ${c}`}
-          />
-        ))}
+        {COLOR_SWATCHES.map((c) => {
+          const isSelected = selected.toLowerCase() === c.toLowerCase();
+          const label = COLOR_SWATCH_LABELS[c] || c;
+          return (
+            <TouchableOpacity
+              key={c}
+              onPress={() => onSelect(c)}
+              style={[
+                styles.swatch,
+                { backgroundColor: c },
+                isSelected ? styles.swatchSelected : styles.swatchUnselected,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Select color ${label}${isSelected ? ' (Selected)' : ''}`}
+              accessibilityState={{ selected: isSelected }}
+            >
+              {isSelected && (
+                <Feather
+                  name="check"
+                  size={12}
+                  color={c === '#F59E0B' || c === '#EAB308' ? '#0F172A' : '#FFFFFF'}
+                />
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
 
@@ -368,10 +381,20 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     textAlign: 'center',
   },
-  swatchRow: { flexDirection: 'row', gap: 6, justifyContent: 'center' },
-  swatch: { width: 20, height: 20, borderRadius: 10, borderWidth: 2 },
-  swatchSelected: { borderColor: '#1A2233', transform: [{ scale: 1.1 }] },
-  swatchUnselected: { borderColor: 'transparent' },
+  swatchRow: { flexDirection: 'row', gap: 6, justifyContent: 'center', flexWrap: 'wrap' },
+  swatch: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchSelected: {
+    borderColor: '#0F172A',
+    transform: [{ scale: 1.15 }],
+  },
+  swatchUnselected: { borderColor: 'rgba(255,255,255,0.7)' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'center' },
   badgeActive: { backgroundColor: '#DBEAFE' },
   badgeText: { fontSize: 11, fontWeight: '700', color: '#2563EB' },

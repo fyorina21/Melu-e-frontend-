@@ -6,11 +6,12 @@ import { TimePickerSelector } from './TimePickerSelector';
 
 interface SessionBlocksTableProps {
   blocks: ScheduleBlock[];
-  onOpenPicker: (blockId: string, subField: 'startTime' | 'endTime') => void;
+  onOpenPicker?: (blockId: string, subField: 'startTime' | 'endTime') => void;
+  onTimeChange?: (blockId: string, subField: 'startTime' | 'endTime', time: any) => void;
 }
 
 export const SessionBlocksTable: React.FC<SessionBlocksTableProps> = React.memo(
-  ({ blocks, onOpenPicker }) => {
+  ({ blocks, onOpenPicker, onTimeChange }) => {
     return (
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Session Block Definitions</Text>
@@ -28,14 +29,16 @@ export const SessionBlocksTable: React.FC<SessionBlocksTableProps> = React.memo(
               <View style={[styles.colTime, styles.timeColPadding]}>
                 <TimePickerSelector
                   value={b.startTime}
-                  onPress={() => onOpenPicker(b.id, 'startTime')}
+                  onChange={(t) => onTimeChange?.(b.id, 'startTime', t)}
+                  onPress={() => onOpenPicker?.(b.id, 'startTime')}
                   accessibilityLabel={`${b.name} start time`}
                 />
               </View>
               <View style={styles.colTime}>
                 <TimePickerSelector
                   value={b.endTime}
-                  onPress={() => onOpenPicker(b.id, 'endTime')}
+                  onChange={(t) => onTimeChange?.(b.id, 'endTime', t)}
+                  onPress={() => onOpenPicker?.(b.id, 'endTime')}
                   accessibilityLabel={`${b.name} end time`}
                 />
               </View>

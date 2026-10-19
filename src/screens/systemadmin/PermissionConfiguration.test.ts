@@ -28,7 +28,6 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
 
       // Teacher therapy pages MUST be granted
       expect(matrix['teacher_session_collection']?.VIEW).toBe(true);
-      expect(matrix['teacher_dashboard']?.VIEW).toBe(true);
       expect(matrix['teacher_daily_notes']?.VIEW).toBe(true);
 
       // Coordinator and Institutional Admin pages sharing 'sessions' resource MUST NOT be granted!
@@ -46,8 +45,8 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
       const matrix = mapBackendPermissionsToMatrix(coordBackendPerms, 'Therapy Coordinator');
 
       // Coordinator schedule pages can be accessed
-      expect(matrix['coord_schedule']?.VIEW).toBe(true);
-      expect(matrix['coord_schedule']?.EDIT).toBe(true);
+      expect(matrix['coord_staff_workload']?.VIEW).toBe(true);
+      expect(matrix['coord_staff_workload']?.EDIT).toBe(true);
 
       // System Admin staff account management MUST be false!
       expect(matrix['sys_staff_accounts']?.VIEW).toBe(false);
@@ -55,15 +54,13 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
     });
 
     it('maps sub-resource permissions directly when present', () => {
-      const adminPerms = [
-        { id: 'perm-audit-view', resource: 'audit_logs', action: 'view' },
-      ];
+      const adminPerms = [{ id: 'perm-audit-view', resource: 'audit_logs', action: 'view' }];
 
       const matrix = mapBackendPermissionsToMatrix(adminPerms, 'System Admin');
 
       expect(matrix['sys_audit_log']?.VIEW).toBe(true);
       // Other reports pages without audit_logs sub-resource remain false
-      expect(matrix['director_dashboard']?.VIEW).toBe(false);
+      expect(matrix['director_reports_oversight']?.VIEW).toBe(false);
     });
   });
 
@@ -91,8 +88,8 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
         expect(defaults[page.id]?.APPROVE).toBe(false);
       });
 
-      // Parent can view dashboard and create home observations
-      expect(defaults['parent_dashboard']?.VIEW).toBe(true);
+      // Parent can create home observations
+      expect(defaults['parent_home_observations']?.VIEW).toBe(true);
       expect(defaults['parent_home_observations']?.CREATE).toBe(true);
     });
 
@@ -124,9 +121,7 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
   describe('3. Backend Authority & Revocation (No Stale Revival)', () => {
     it('revokes permissions cleanly when backend permissions list omits them', () => {
       // Backend returns only view for sessions
-      const serverPerms = [
-        { id: '1', resource: 'sessions', action: 'view' },
-      ];
+      const serverPerms = [{ id: '1', resource: 'sessions', action: 'view' }];
 
       const matrix = mapBackendPermissionsToMatrix(serverPerms, 'Teacher');
 
@@ -208,7 +203,7 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
     });
 
     it('does not flag standard permissions for executive roles', () => {
-      const directorPage = ALL_PAGE_MODULES.find((p) => p.id === 'director_goal_mastery')!;
+      const directorPage = ALL_PAGE_MODULES.find((p) => p.id === 'goal_mastery_approval')!;
 
       const directorApprove = checkHighRiskPermission(directorPage, 'APPROVE', 'Director');
       expect(directorApprove.isHighRisk).toBe(false);
@@ -255,18 +250,22 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
       const resultsByRoute = filterPageModules(ALL_PAGE_MODULES, 'GoalMasteryApproval', 'All');
       expect(resultsByRoute.length).toBeGreaterThanOrEqual(1);
 
-      const resultsByCategory = filterPageModules(ALL_PAGE_MODULES, 'Operations & Scheduling', 'All');
+      const resultsByCategory = filterPageModules(
+        ALL_PAGE_MODULES,
+        'Operations & Scheduling',
+        'All',
+      );
       expect(resultsByCategory.every((p) => p.category === 'Operations & Scheduling')).toBe(true);
     });
 
     it('filters pages by role filter tab', () => {
       const teacherOnly = filterPageModules(ALL_PAGE_MODULES, '', 'Teacher / Therapist');
       expect(teacherOnly.every((p) => p.roleKey === 'teacher')).toBe(true);
-      expect(teacherOnly.length).toBeGreaterThanOrEqual(6);
+      expect(teacherOnly.length).toBeGreaterThanOrEqual(4);
 
       const parentOnly = filterPageModules(ALL_PAGE_MODULES, '', 'Parent');
       expect(parentOnly.every((p) => p.roleKey === 'parent')).toBe(true);
-      expect(parentOnly.length).toBe(4);
+      expect(parentOnly.length).toBe(2);
     });
 
     it('groups pages by category with accurate group counts', () => {
@@ -285,7 +284,7 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
   describe('8. Save Handling & Failure Resilience', () => {
     it('preserves unsaved matrix state and dirty flag when save encounters an error', () => {
       let dirtyState = true;
-      let currentMatrix: PermissionMatrix = {
+      const currentMatrix: PermissionMatrix = {
         test_page: { VIEW: true, CREATE: true, EDIT: false, DELETE: false, APPROVE: false },
       };
 

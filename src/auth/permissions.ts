@@ -68,14 +68,33 @@ export function hasPermission(
 }
 
 /** Check if ANY action is granted for a module (i.e., the module is accessible). */
-export function hasModuleAccess(modules: string[] | undefined, moduleId: ModuleId): boolean {
-  if (!modules || modules.length === 0) return false;
-  return modules.some((m) => {
-    if (typeof m !== 'string') return false;
-    const raw = m.trim().toLowerCase();
-    const canonical = (RESOURCE_ALIAS_MAP[raw] ?? raw).toLowerCase();
-    return canonical === moduleId.toLowerCase() || raw === moduleId.toLowerCase();
-  });
+export function hasModuleAccess(
+  modules: string[] | undefined,
+  moduleId: ModuleId,
+  permissions?: string[] | undefined,
+): boolean {
+  if (modules && modules.length > 0) {
+    const matched = modules.some((m) => {
+      if (typeof m !== 'string') return false;
+      const raw = m.trim().toLowerCase();
+      const canonical = (RESOURCE_ALIAS_MAP[raw] ?? raw).toLowerCase();
+      return canonical === moduleId.toLowerCase() || raw === moduleId.toLowerCase();
+    });
+    if (matched) return true;
+  }
+
+  // Also check individual permissions (e.g. "reports:view", "staff_members:view", "students:view")
+  if (permissions && permissions.length > 0) {
+    return permissions.some((p) => {
+      if (typeof p !== 'string') return false;
+      const [rawRes] = p.trim().toLowerCase().split(':');
+      if (!rawRes) return false;
+      const canonical = (RESOURCE_ALIAS_MAP[rawRes] ?? rawRes).toLowerCase();
+      return canonical === moduleId.toLowerCase() || rawRes === moduleId.toLowerCase();
+    });
+  }
+
+  return false;
 }
 
 /**

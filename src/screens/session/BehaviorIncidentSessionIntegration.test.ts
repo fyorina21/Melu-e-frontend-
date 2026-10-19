@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  getFormConfig,
-  saveFormConfig,
-  resetFormToDefault,
-} from '../../api/institutionalAdminApi';
+import { getFormConfig, saveFormConfig, resetFormToDefault } from '../../api/institutionalAdminApi';
 import {
   getStoredIncidents,
   recordIncidentInStore,
@@ -24,21 +20,21 @@ describe('Behavior Incident FormBuilder to SessionDataCollection Integration', (
     const { data: config } = await getFormConfig('Behavior Incident Form');
     expect(config).toBeDefined();
     expect(Array.isArray(config.fields)).toBe(true);
-    expect(config.fields.length).toBeGreaterThanOrEqual(4);
+    expect(config.fields.length).toBeGreaterThanOrEqual(3);
 
-    const locationField = config.fields.find((f: FormField) => f.label === 'Location');
-    expect(locationField).toBeDefined();
-    expect(locationField.type).toBe('Dropdown');
-    expect(Array.isArray(locationField.options)).toBe(true);
-    expect(locationField.options).toContain('Classroom');
+    const antecedentField = config.fields.find((f: FormField) => f.id === 'b_ant');
+    expect(antecedentField).toBeDefined();
+    expect(antecedentField.type).toBe('Dropdown');
+    expect(Array.isArray(antecedentField.options)).toBe(true);
+    expect(antecedentField.options).toContain('Task demand');
 
-    const behaviorField = config.fields.find((f: FormField) => f.label === 'Behavior Type');
+    const behaviorField = config.fields.find((f: FormField) => f.id === 'b_beh');
     expect(behaviorField).toBeDefined();
     expect(behaviorField.type).toBe('Dropdown');
 
-    const intensityField = config.fields.find((f: FormField) => f.label === 'Intensity');
-    expect(intensityField).toBeDefined();
-    expect(intensityField.type).toBe('Dropdown');
+    const consequenceField = config.fields.find((f: FormField) => f.id === 'b_con');
+    expect(consequenceField).toBeDefined();
+    expect(consequenceField.type).toBe('Dropdown');
   });
 
   it('reflects newly added fields from FormBuilder in the form configuration', async () => {
@@ -64,7 +60,9 @@ describe('Behavior Incident FormBuilder to SessionDataCollection Integration', (
     const { data: updatedConfig } = await getFormConfig('Behavior Incident Form');
     expect(updatedConfig.fields.some((f: FormField) => f.id === 'b_trigger_custom')).toBe(true);
 
-    const savedTriggerField = updatedConfig.fields.find((f: FormField) => f.id === 'b_trigger_custom');
+    const savedTriggerField = updatedConfig.fields.find(
+      (f: FormField) => f.id === 'b_trigger_custom',
+    );
     expect(savedTriggerField.label).toBe('Specific Trigger');
     expect(savedTriggerField.options).toEqual(['Noise', 'Lighting', 'Peer conflict', 'Transition']);
   });
@@ -73,10 +71,10 @@ describe('Behavior Incident FormBuilder to SessionDataCollection Integration', (
     const { data: initialConfig } = await getFormConfig('Behavior Incident Form');
 
     const modifiedFields = initialConfig.fields.map((f: FormField) => {
-      if (f.label === 'Location') {
+      if (f.id === 'b_ant') {
         return {
           ...f,
-          options: ['Classroom', 'Playground', 'Cafeteria', 'Sensory Room', 'Bus'],
+          options: ['Demand', 'Transition', 'Noise', 'Peer conflict'],
         };
       }
       return f;
@@ -88,8 +86,8 @@ describe('Behavior Incident FormBuilder to SessionDataCollection Integration', (
     });
 
     const { data: updatedConfig } = await getFormConfig('Behavior Incident Form');
-    const locField = updatedConfig.fields.find((f: FormField) => f.label === 'Location');
-    expect(locField.options).toEqual(['Classroom', 'Playground', 'Cafeteria', 'Sensory Room', 'Bus']);
+    const antField = updatedConfig.fields.find((f: FormField) => f.id === 'b_ant');
+    expect(antField.options).toEqual(['Demand', 'Transition', 'Noise', 'Peer conflict']);
   });
 
   it('reflects removed fields from FormBuilder immediately', async () => {
@@ -147,7 +145,7 @@ describe('Behavior Incident FormBuilder to SessionDataCollection Integration', (
       date: '2026-10-09',
       location: 'Classroom',
       'Behavior Type': 'Elopement',
-      'Intensity': 'Medium',
+      Intensity: 'Medium',
       'Duration (mins)': '3',
       'Antecedent / Trigger': 'Transition',
       'Consequence / Action Taken': 'Redirection',

@@ -5,6 +5,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../src/api/queryClient';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ToastProvider } from '../src/context/ToastContext';
+import { ConfirmDialogProvider } from '../src/context/ConfirmDialogContext';
+import { UnsavedChangesProvider } from '../src/context/UnsavedChangesContext';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 export default function RootLayout() {
@@ -37,6 +39,19 @@ export default function RootLayout() {
       originalWarn.apply(console, args);
     };
 
+    // Inject runtime font-display: swap for any dynamically generated web font styles
+    if (typeof document !== 'undefined' && !document.getElementById('font-swap-enforcer')) {
+      const fontStyle = document.createElement('style');
+      fontStyle.id = 'font-swap-enforcer';
+      fontStyle.textContent = `
+        @font-face { font-family: 'Ionicons'; font-display: swap; }
+        @font-face { font-family: 'ionicons'; font-display: swap; }
+        @font-face { font-family: 'Feather'; font-display: swap; }
+        @font-face { font-family: 'feather'; font-display: swap; }
+      `;
+      document.head.appendChild(fontStyle);
+    }
+
     return () => {
       window.removeEventListener('unload', noopUnload);
       window.removeEventListener('pageshow', handlePageShow);
@@ -49,7 +64,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <UnsavedChangesProvider>
+              <ConfirmDialogProvider>
+                <Stack screenOptions={{ headerShown: false }} />
+              </ConfirmDialogProvider>
+            </UnsavedChangesProvider>
           </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>
