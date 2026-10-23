@@ -74,8 +74,24 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 autoComplete="email"
                 textContentType="emailAddress"
-                returnKeyType="next"
-                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                returnKeyType="go"
+                onSubmitEditing={() => {
+                  if (password.trim()) {
+                    handleSignIn();
+                  } else {
+                    passwordInputRef.current?.focus();
+                  }
+                }}
+                // @ts-ignore
+                onKeyPress={(e: any) => {
+                  if (e?.nativeEvent?.key === 'Enter' || e?.key === 'Enter') {
+                    if (password.trim()) {
+                      handleSignIn();
+                    } else {
+                      passwordInputRef.current?.focus();
+                    }
+                  }
+                }}
                 blurOnSubmit={false}
                 value={email}
                 onChangeText={setEmail}
@@ -103,6 +119,12 @@ export default function LoginScreen() {
                 textContentType="password"
                 returnKeyType="go"
                 onSubmitEditing={handleSignIn}
+                // @ts-ignore
+                onKeyPress={(e: any) => {
+                  if (e?.nativeEvent?.key === 'Enter' || e?.key === 'Enter') {
+                    handleSignIn();
+                  }
+                }}
                 value={password}
                 onChangeText={setPassword}
                 editable={!submitting}

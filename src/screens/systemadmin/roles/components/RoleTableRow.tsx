@@ -19,6 +19,8 @@ interface RoleTableRowProps {
   onSaveEdit: () => void;
   onConfigurePermissions: () => void;
   onDeleteRole: () => void;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export default function RoleTableRow({
@@ -32,6 +34,8 @@ export default function RoleTableRow({
   onSaveEdit,
   onConfigurePermissions,
   onDeleteRole,
+  canEdit = true,
+  canDelete = true,
 }: RoleTableRowProps) {
   if (isEditing) {
     return (
@@ -97,9 +101,11 @@ export default function RoleTableRow({
       </View>
 
       <View style={styles.actionsCell}>
-        <IconButton onPress={onStartEdit} disabled={isBusy} label={`Edit ${role.name}`}>
-          <Feather name="edit-2" size={16} color={colors.primaryBlue} />
-        </IconButton>
+        {canEdit && (
+          <IconButton onPress={onStartEdit} disabled={isBusy} label={`Edit ${role.name}`}>
+            <Feather name="edit-2" size={16} color={colors.primaryBlue} />
+          </IconButton>
+        )}
 
         <IconButton
           onPress={onConfigurePermissions}
@@ -109,7 +115,7 @@ export default function RoleTableRow({
           <Feather name="shield" size={16} color="#0284C7" />
         </IconButton>
 
-        {!role.system && (
+        {!role.system && canDelete && (
           <IconButton onPress={onDeleteRole} disabled={isBusy} label={`Delete ${role.name}`}>
             <Feather name="trash-2" size={16} color={colors.statusRevisionText} />
           </IconButton>

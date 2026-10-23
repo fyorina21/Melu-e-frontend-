@@ -70,7 +70,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <View
         style={[styles.container, { pointerEvents: 'none' }]}
-        pointerEvents="none"
         accessibilityRole="alert"
         accessibilityLiveRegion="polite"
         // @ts-ignore

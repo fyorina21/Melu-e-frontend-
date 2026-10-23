@@ -61,20 +61,18 @@ export const LiveSessionDetailModal: React.FC<LiveSessionDetailModalProps> = Rea
                   </Text>
                 </View>
 
-                <Text style={styles.sectionLabel}>STUDENTS</Text>
+                <Text style={styles.sectionLabel}>STUDENTS ({session.students.length})</Text>
                 <View style={styles.chipRow}>
-                  {session.students.map((st) => (
-                    <View
-                      key={st}
-                      style={[
-                        styles.studentChip,
-                        { flexDirection: 'row', alignItems: 'center', gap: 6 },
-                      ]}
-                    >
-                      <StudentAvatar name={st} size={16} />
-                      <Text style={styles.studentChipText}>{st}</Text>
-                    </View>
-                  ))}
+                  {session.students.length > 0 ? (
+                    session.students.map((st) => (
+                      <View key={st} style={styles.studentChip}>
+                        <StudentAvatar name={st} size={18} />
+                        <Text style={styles.studentChipText}>{st}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.noStudentsText}>No active students assigned</Text>
+                  )}
                 </View>
 
                 <Text style={styles.sectionLabel}>GOALS BEING WORKED ON</Text>
@@ -237,17 +235,23 @@ const styles = StyleSheet.create({
   studentChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    gap: 6,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: `${SKY}1A`,
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: `${SKY}40`,
+    borderColor: '#BFDBFE',
   },
   studentChipText: {
-    color: SKY,
+    color: '#1E40AF',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  noStudentsText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   goalRow: {
     flexDirection: 'row',

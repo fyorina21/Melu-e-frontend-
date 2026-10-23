@@ -36,7 +36,7 @@ const GuardedAssessmentSummaryReport = withModuleGuard(
 const GuardedAssessmentDashboard = withModuleGuard(AssessmentDashboardScreen, 'assessments');
 const GuardedSessionDataCollection = withModuleGuard(SessionDataCollectionScreen, 'sessions');
 const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
-const GuardedGoalDomainDefinitions = withModuleGuard(GoalDomainDefinitionsScreen, 'admin');
+const GuardedGoalDomainDefinitions = withModuleGuard(GoalDomainDefinitionsScreen, 'iups');
 
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 

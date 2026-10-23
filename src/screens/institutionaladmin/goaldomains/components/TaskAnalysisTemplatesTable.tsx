@@ -56,6 +56,7 @@ export const TaskAnalysisTemplatesTable: React.FC<TaskAnalysisTemplatesTableProp
               <TouchableOpacity
                 onPress={() => onEdit(t)}
                 style={{ padding: 4 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Edit template ${t.name}`}
               >
@@ -64,6 +65,7 @@ export const TaskAnalysisTemplatesTable: React.FC<TaskAnalysisTemplatesTableProp
               <TouchableOpacity
                 onPress={() => onDelete(t)}
                 style={{ padding: 4 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Delete template ${t.name}`}
               >
@@ -75,6 +77,7 @@ export const TaskAnalysisTemplatesTable: React.FC<TaskAnalysisTemplatesTableProp
 
         {templates.length === 0 && (
           <View style={styles.emptyContainer}>
+            <Feather name="list" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
             <Text style={styles.emptyText}>No task analysis templates configured yet.</Text>
           </View>
         )}

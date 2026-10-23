@@ -10,7 +10,6 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
-  Alert,
   Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -21,6 +20,11 @@ import { IA_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import {
   getGoalDomains,
   saveGoalDomains,
+  deleteGoalDomainApi,
+  getGoalsApi,
+  createGoalApi,
+  updateGoalApi,
+  deleteGoalApi,
   getTaskAnalysisTemplates,
   saveTaskAnalysisTemplate,
   deleteTaskAnalysisTemplate,
@@ -30,20 +34,74 @@ import {
   type TaskAnalysisStep,
   type TaskAnalysisTemplate,
   type GoalBankItem,
+  getStoredGoalDomains,
   getStoredGoalBank,
+  setStoredGoalBank,
+  getDeletedGoalIds,
   saveGoalItem,
   deleteGoalItem,
 } from '../../stores/goalBankStore';
 import ScreenLoader from '../../components/ScreenLoader';
 import { colors, radius, spacing } from '../../theme/colors';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
+import {
+  usePreventUnsavedNavigation,
+  useUnsavedChanges,
+} from '../../context/UnsavedChangesContext';
+import {
+  moveItemInList,
+  validateDomainSubmission,
+  validateTemplateSubmission,
+} from './goaldomains/goalDomainsHelper';
 
 export { GoalDomain };
+
+export function formatMasteryCriteria(criteria: any): string {
+  if (!criteria) return '80% accuracy across 3 consecutive sessions';
+  if (typeof criteria === 'string') {
+    const trimmed = criteria.trim();
+    return trimmed ? trimmed : '80% accuracy across 3 consecutive sessions';
+  }
+  if (typeof criteria === 'object') {
+    if (criteria.description && typeof criteria.description === 'string')
+      return criteria.description;
+    if (criteria.text && typeof criteria.text === 'string') return criteria.text;
+    if (criteria.accuracy !== undefined && criteria.sessions !== undefined) {
+      return `${criteria.accuracy}% accuracy across ${criteria.sessions} consecutive sessions`;
+    }
+    if (criteria.accuracy !== undefined) {
+      return `${criteria.accuracy}% accuracy`;
+    }
+    return '80% accuracy across 3 consecutive sessions';
+  }
+  return String(criteria);
+}
 
 export default function GoalDomainDefinitionsScreen({
   navigation,
   route,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'GoalDomainDefinitions'>) {
-  const [activeSection, setActiveSection] = useState<'domains' | 'goals' | 'templates'>('domains');
+  const { showToast } = useToast();
+  const { setDirty } = useUnsavedChanges();
+  const [isDirty, setIsDirty] = useState(false);
+  usePreventUnsavedNavigation(navigation, isDirty);
+
+  useEffect(() => {
+    setDirty(isDirty);
+    return () => setDirty(false);
+  }, [isDirty, setDirty]);
+
+  const initialSection: 'domains' | 'goals' =
+    (route?.params as any)?.defaultSection === 'goals' ? 'goals' : 'domains';
+  const [activeSection, setActiveSection] = useState<'domains' | 'goals'>(initialSection);
+
+  useEffect(() => {
+    const targetSection = (route?.params as any)?.defaultSection;
+    if (targetSection === 'goals' || targetSection === 'domains') {
+      setActiveSection(targetSection);
+    }
+  }, [route?.params, route?.name]);
 
   // Domains State
   const [domains, setDomains] = useState<GoalDomain[]>([]);
@@ -52,6 +110,12 @@ export default function GoalDomainDefinitionsScreen({
   const [showAddDomainForm, setShowAddDomainForm] = useState(false);
   const [newDomainName, setNewDomainName] = useState('');
   const [newDomainDesc, setNewDomainDesc] = useState('');
+
+  // Cascade Delete Domain State
+  const [cascadeDomain, setCascadeDomain] = useState<GoalDomain | null>(null);
+  const [cascadeGoals, setCascadeGoals] = useState<GoalBankItem[]>([]);
+  const [showCascadeModal, setShowCascadeModal] = useState<boolean>(false);
+  const [showCascadeGoalList, setShowCascadeGoalList] = useState<boolean>(false);
 
   // Target Goals State
   const [goals, setGoals] = useState<GoalBankItem[]>([]);
@@ -62,11 +126,13 @@ export default function GoalDomainDefinitionsScreen({
   const [goalFormName, setGoalFormName] = useState('');
   const [goalFormDomain, setGoalFormDomain] = useState('Communication');
   const [goalFormDesc, setGoalFormDesc] = useState('');
-  const [goalFormMastery, setGoalFormMastery] = useState('80% accuracy across 3 consecutive sessions');
+  const [goalFormMastery, setGoalFormMastery] = useState(
+    '80% accuracy across 3 consecutive sessions',
+  );
   const [goalFormType, setGoalFormType] = useState<'standard' | 'task_analysis'>('standard');
   const [goalFormActive, setGoalFormActive] = useState(true);
 
-  // Task Analysis Templates State
+  // Task Analysis Templates State (Hidden / unmounted from Goals domain management)
   const [templates, setTemplates] = useState<TaskAnalysisTemplate[]>([]);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
@@ -77,26 +143,67 @@ export default function GoalDomainDefinitionsScreen({
   const [overallMastery, setOverallMastery] = useState('80');
 
   const loadAll = useCallback(async () => {
-    // Settle endpoints independently
-    const [domainRes, templateRes] = await Promise.allSettled([
-      getGoalDomains(),
-      getTaskAnalysisTemplates(),
-    ]);
+    // Settle endpoints independently (Target goals belong to Goals model / Goal Domain persistence endpoint, NOT task analysis templates)
+    const [domainRes, goalsRes] = await Promise.allSettled([getGoalDomains(), getGoalsApi()]);
 
     if (domainRes.status === 'fulfilled') {
-      setDomains(Array.isArray(domainRes.value.data) ? domainRes.value.data : []);
+      const rawDomains = Array.isArray(domainRes.value.data) ? domainRes.value.data : [];
+      setDomains(
+        rawDomains.map((d: any) => ({
+          id: String(d.id),
+          name: typeof d.name === 'string' ? d.name : String(d.name || ''),
+          description:
+            typeof d.description === 'string' ? d.description : d.description?.text || '',
+          active: d.active !== false && d.is_active !== false,
+        })),
+      );
     } else {
-      setDomains([]);
+      setDomains(getStoredGoalDomains());
     }
 
-    if (templateRes.status === 'fulfilled') {
-      setTemplates(Array.isArray(templateRes.value.data) ? templateRes.value.data : []);
-    } else {
-      setTemplates([]);
-    }
+    setTemplates([]);
 
-    setGoals(getStoredGoalBank());
+    const localGoals = getStoredGoalBank().map((lg) => ({
+      ...lg,
+      masteryCriteria: formatMasteryCriteria(lg.masteryCriteria),
+    }));
+    if (goalsRes.status === 'fulfilled' && Array.isArray(goalsRes.value)) {
+      const deletedIds = getDeletedGoalIds();
+      const backendGoals: GoalBankItem[] = goalsRes.value
+        .map((bg: any) => ({
+          id: String(bg.id),
+          name:
+            typeof bg.name === 'string'
+              ? bg.name
+              : bg.name?.name || String(bg.name || 'Untitled Goal'),
+          domain:
+            typeof bg.domain === 'string' && bg.domain
+              ? bg.domain
+              : typeof bg.goal_domain?.name === 'string'
+                ? bg.goal_domain.name
+                : typeof bg.goal_domain === 'string'
+                  ? bg.goal_domain
+                  : 'Communication',
+          description:
+            typeof bg.description === 'string'
+              ? bg.description
+              : bg.description?.text || bg.description?.description || '',
+          goalType: (bg.goal_type === 'task_analysis' ? 'task_analysis' : 'standard') as
+            'task_analysis' | 'standard',
+          masteryCriteria: formatMasteryCriteria(bg.mastery_criteria),
+          active: bg.is_active !== false,
+          status: (bg.is_active !== false ? 'active' : 'inactive') as 'active' | 'inactive',
+          usageCount: bg.usage_count || 0,
+        }))
+        .filter((g) => !deletedIds.includes(g.id));
+
+      setGoals(backendGoals);
+      setStoredGoalBank(backendGoals);
+    } else {
+      setGoals(localGoals);
+    }
     setLoading(false);
+    setIsDirty(false);
   }, []);
 
   useEffect(() => {
@@ -115,30 +222,18 @@ export default function GoalDomainDefinitionsScreen({
 
   // Domain Handlers
   const handleMoveDomainUp = (index: number) => {
-    if (index === 0) return;
-    setDomains((prev) => {
-      const list = [...prev];
-      const temp = list[index - 1];
-      list[index - 1] = list[index];
-      list[index] = temp;
-      return list;
-    });
+    setDomains((prev) => moveItemInList(prev, index, 'up'));
+    setIsDirty(true);
   };
 
   const handleMoveDomainDown = (index: number) => {
-    if (index === domains.length - 1) return;
-    setDomains((prev) => {
-      const list = [...prev];
-      const temp = list[index + 1];
-      list[index + 1] = list[index];
-      list[index] = temp;
-      return list;
-    });
+    setDomains((prev) => moveItemInList(prev, index, 'down'));
+    setIsDirty(true);
   };
 
   const handleConfirmAddDomain = () => {
     if (!newDomainName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a domain name.');
+      showToast('Please enter a domain name', 'error');
       return;
     }
     const newEntry: GoalDomain = {
@@ -151,37 +246,109 @@ export default function GoalDomainDefinitionsScreen({
     setNewDomainName('');
     setNewDomainDesc('');
     setShowAddDomainForm(false);
+    setIsDirty(true);
+    showToast(`Domain "${newEntry.name}" added — click Save to persist`, 'info');
   };
 
   const handleUpdateDomainField = (id: string, field: 'name' | 'description', val: string) => {
-    setDomains((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: val } : d))
-    );
+    setDomains((prev) => prev.map((d) => (d.id === id ? { ...d, [field]: val } : d)));
+    setIsDirty(true);
   };
 
   const handleDeleteDomain = (id: string) => {
-    Alert.alert('Delete Domain', 'Are you sure you want to delete this goal domain?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => setDomains((prev) => prev.filter((d) => d.id !== id)),
-      },
-    ]);
-  };
+    const domain = domains.find((d) => d.id === id);
+    if (!domain) return;
+    const domainName = domain.name;
 
-  const handleSaveDomains = async () => {
-    const activeCount = domains.filter((d) => d.active !== false).length;
-    if (activeCount === 0) {
-      Alert.alert('Validation Error', 'At least one active domain is required.');
+    // Check for associated target goals under this domain
+    const associated = goals.filter(
+      (g) =>
+        (g as any).domainId === id ||
+        (g as any).domain_id === id ||
+        (g as any).domainName?.toLowerCase() === domainName.toLowerCase() ||
+        g.domain?.toLowerCase() === domainName.toLowerCase(),
+    );
+
+    if (associated.length > 0) {
+      setCascadeDomain(domain);
+      setCascadeGoals(associated);
+      setShowCascadeGoalList(true); // Always display target goals preview list in cascade modal
+      setShowCascadeModal(true);
       return;
     }
+
+    // Standard delete if no target goals exist under this domain
+    confirmAction({
+      title: 'Delete Domain',
+      message: `Are you sure you want to delete "${domainName}"?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        const next = domains.filter((d) => d.id !== id);
+        setDomains(next);
+        setIsDirty(true);
+        try {
+          await deleteGoalDomainApi(id);
+        } catch {
+          // Local state already updated
+        }
+        showToast(`Domain "${domainName}" removed`, 'success');
+      },
+    });
+  };
+
+  const handleConfirmCascadeDelete = async () => {
+    if (!cascadeDomain) return;
+    const domainId = cascadeDomain.id;
+    const domainName = cascadeDomain.name;
+
+    // 1. Delete all associated target goals from Goal Bank and storage + backend
+    cascadeGoals.forEach((g) => {
+      deleteGoalItem(g.id);
+      deleteGoalApi(g.id).catch(() => {});
+    });
+    setGoals(getStoredGoalBank());
+
+    // 2. Remove domain from local state
+    const nextDomains = domains.filter((d) => d.id !== domainId);
+    setDomains(nextDomains);
+    setIsDirty(true);
+
+    // 3. Persist deletion to API with cascade=true
+    try {
+      await deleteGoalDomainApi(domainId, true);
+    } catch {
+      // Local state is already updated
+    }
+
+    setShowCascadeModal(false);
+    setCascadeDomain(null);
+    setCascadeGoals([]);
+    showToast(
+      `Domain "${domainName}" and ${cascadeGoals.length} associated target goal(s) deleted`,
+      'success',
+    );
+  };
+
+  const [savingDomains, setSavingDomains] = useState(false);
+
+  const handleSaveDomains = async () => {
+    const validation = validateDomainSubmission(domains);
+    if (!validation.valid) {
+      showToast(validation.error || 'At least one active domain is required', 'error');
+      return;
+    }
+    setSavingDomains(true);
     try {
       await saveGoalDomains(domains as unknown as Payload[]);
       await loadAll();
-      Alert.alert('Success', 'Goal Domains saved and updated in Goal Banks & IUP Generation.');
+      setIsDirty(false);
+      showToast('Goal Domains saved and updated in Goal Banks & IUP Generation', 'success');
     } catch {
-      Alert.alert('Success', 'Goal Domains configuration saved.');
+      setIsDirty(false);
+      showToast('Goal Domains configuration saved', 'success');
+    } finally {
+      setSavingDomains(false);
     }
   };
 
@@ -192,7 +359,7 @@ export default function GoalDomainDefinitionsScreen({
       setGoalFormName(goal.name);
       setGoalFormDomain(goal.domain || domains[0]?.name || 'Communication');
       setGoalFormDesc(goal.description);
-      setGoalFormMastery(goal.masteryCriteria || '80% accuracy across 3 consecutive sessions');
+      setGoalFormMastery(formatMasteryCriteria(goal.masteryCriteria));
       setGoalFormType(goal.goalType || 'standard');
       setGoalFormActive(goal.active !== false);
     } else {
@@ -207,48 +374,113 @@ export default function GoalDomainDefinitionsScreen({
     setShowGoalEditor(true);
   };
 
-  const handleSaveGoal = () => {
+  const handleSaveGoal = async () => {
     if (!goalFormName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a Goal Name.');
+      showToast('Please enter a Goal Name', 'error');
       return;
     }
-    const item = saveGoalItem({
-      id: editingGoal?.id,
+
+    const matchedDomain =
+      domains.find((d) => d.name.toLowerCase() === goalFormDomain.trim().toLowerCase()) ||
+      domains[0];
+    const goalDomainId = matchedDomain?.id;
+
+    const payload = {
       name: goalFormName.trim(),
-      domain: goalFormDomain,
       description: goalFormDesc.trim(),
-      masteryCriteria: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
-      goalType: goalFormType,
-      active: goalFormActive,
-      status: goalFormActive ? 'active' : 'inactive',
-    });
+      goal_domain_id: goalDomainId,
+      goal_type: goalFormType,
+      is_active: goalFormActive,
+      mastery_criteria: {
+        description: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
+      },
+    };
+
+    let savedItem: GoalBankItem;
+    try {
+      if (editingGoal?.id && /^[0-9a-f-]{36}$/i.test(editingGoal.id)) {
+        const res = await updateGoalApi(editingGoal.id, payload);
+        const bg = res.data;
+        savedItem = {
+          id: String(bg.id || editingGoal.id),
+          name: bg.name || goalFormName.trim(),
+          domain: bg.goal_domain?.name || goalFormDomain,
+          description: bg.description || goalFormDesc.trim(),
+          masteryCriteria: formatMasteryCriteria(bg.mastery_criteria || goalFormMastery),
+          goalType: bg.goal_type || goalFormType,
+          active: bg.is_active !== false,
+          status: bg.is_active !== false ? 'active' : 'inactive',
+          usageCount: bg.usage_count || editingGoal.usageCount || 0,
+        };
+      } else {
+        const res = await createGoalApi(payload);
+        const bg = res.data;
+        savedItem = {
+          id: String(bg.id),
+          name: bg.name || goalFormName.trim(),
+          domain: bg.goal_domain?.name || goalFormDomain,
+          description: bg.description || goalFormDesc.trim(),
+          masteryCriteria: formatMasteryCriteria(bg.mastery_criteria || goalFormMastery),
+          goalType: bg.goal_type || goalFormType,
+          active: bg.is_active !== false,
+          status: bg.is_active !== false ? 'active' : 'inactive',
+          usageCount: bg.usage_count || 0,
+        };
+      }
+      saveGoalItem(savedItem);
+      showToast(`Goal "${savedItem.name}" saved to database and IUP Generation`, 'success');
+    } catch (apiErr: any) {
+      console.warn('Backend goal save failed, saving locally:', apiErr);
+      savedItem = saveGoalItem({
+        id: editingGoal?.id,
+        name: goalFormName.trim(),
+        domain: goalFormDomain,
+        description: goalFormDesc.trim(),
+        masteryCriteria: goalFormMastery.trim() || '80% accuracy across 3 consecutive sessions',
+        goalType: goalFormType,
+        active: goalFormActive,
+        status: goalFormActive ? 'active' : 'inactive',
+      });
+      showToast(`Goal "${savedItem.name}" saved locally and updated in IUP Generation`, 'info');
+    }
+
     setGoals(getStoredGoalBank());
     setShowGoalEditor(false);
     setEditingGoal(null);
-    Alert.alert('Success', `Goal "${item.name}" saved and updated in IUP Generation.`);
   };
 
   const handleDeleteGoal = (goal: GoalBankItem) => {
-    Alert.alert('Delete Goal', `Are you sure you want to delete "${goal.name}" from the Goal Bank and IUP Generation?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteGoalItem(goal.id);
-          setGoals(getStoredGoalBank());
-        },
+    confirmAction({
+      title: 'Delete Goal',
+      message: `Are you sure you want to delete "${goal.name}" from the Goal Bank and IUP Generation?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        deleteGoalItem(goal.id);
+        setGoals(getStoredGoalBank());
+        try {
+          await deleteGoalApi(goal.id);
+        } catch {
+          // Local deletion already completed
+        }
+        showToast(`Goal "${goal.name}" deleted`, 'info');
       },
-    ]);
+    });
   };
 
-  const handleToggleGoalActive = (goal: GoalBankItem) => {
+  const handleToggleGoalActive = async (goal: GoalBankItem) => {
+    const nextActive = !goal.active;
     saveGoalItem({
       ...goal,
-      active: !goal.active,
-      status: !goal.active ? 'active' : 'inactive',
+      active: nextActive,
+      status: nextActive ? 'active' : 'inactive',
     });
     setGoals(getStoredGoalBank());
+    if (/^[0-9a-f-]{36}$/i.test(goal.id)) {
+      try {
+        await updateGoalApi(goal.id, { is_active: nextActive });
+      } catch {}
+    }
   };
 
   const filteredGoals = useMemo(() => {
@@ -256,7 +488,8 @@ export default function GoalDomainDefinitionsScreen({
     return goals.filter((g) => {
       if (selectedGoalDomain !== 'All' && g.domain !== selectedGoalDomain) return false;
       if (term) {
-        const match = `${g.name} ${g.description} ${g.masteryCriteria} ${g.domain}`.toLowerCase();
+        const match =
+          `${g.name || ''} ${g.description || ''} ${formatMasteryCriteria(g.masteryCriteria)} ${g.domain || ''}`.toLowerCase();
         if (!match.includes(term)) return false;
       }
       return true;
@@ -285,37 +518,28 @@ export default function GoalDomainDefinitionsScreen({
 
   const addTemplateStep = () => {
     setFormSteps((prev) => [...prev, { id: `s-${Date.now()}`, description: '' }]);
+    setIsDirty(true);
   };
 
   const updateTemplateStepDesc = (id: string, description: string) => {
-    setFormSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, description } : s))
-    );
+    setFormSteps((prev) => prev.map((s) => (s.id === id ? { ...s, description } : s)));
+    setIsDirty(true);
   };
 
   const deleteTemplateStep = (id: string) => {
     setFormSteps((prev) => prev.filter((s) => s.id !== id));
+    setIsDirty(true);
   };
 
   const moveTemplateStep = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= formSteps.length) return;
-    setFormSteps((prev) => {
-      const updated = [...prev];
-      const temp = updated[index];
-      updated[index] = updated[targetIndex];
-      updated[targetIndex] = temp;
-      return updated;
-    });
+    setFormSteps((prev) => moveItemInList(prev, index, direction));
+    setIsDirty(true);
   };
 
   const handleSaveTemplate = async () => {
-    if (!formName.trim()) {
-      Alert.alert('Validation Error', 'Template Name is required.');
-      return;
-    }
-    if (formSteps.length === 0) {
-      Alert.alert('Validation Error', 'At least one step is required.');
+    const validation = validateTemplateSubmission(formName, formSteps);
+    if (!validation.valid) {
+      showToast(validation.error || 'Please fill in all template fields', 'error');
       return;
     }
 
@@ -332,48 +556,55 @@ export default function GoalDomainDefinitionsScreen({
     try {
       await saveTaskAnalysisTemplate(editingTemplateId, payload as unknown as Payload);
       await loadAll();
-    } catch {}
+      setIsDirty(false);
+      showToast(`Task analysis template "${payload.name}" saved`, 'success');
+    } catch {
+      setIsDirty(false);
+      showToast('Saved task analysis template locally', 'info');
+    }
     setShowTemplateEditor(false);
     setEditingTemplateId(null);
   };
 
   const handleDeleteTemplate = (template: TaskAnalysisTemplate) => {
-    Alert.alert(
-      `Delete "${template.name}"?`,
-      'Remove this Task Analysis template from the institutional library?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteTaskAnalysisTemplate(template.id);
-              await loadAll();
-            } catch {}
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: `Delete "${template.name}"?`,
+      message: 'Remove this Task Analysis template from the institutional library?',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteTaskAnalysisTemplate(template.id);
+          await loadAll();
+          setIsDirty(false);
+          showToast(`Template "${template.name}" deleted`, 'info');
+        } catch {
+          showToast('Failed to delete template', 'error');
+        }
+      },
+    });
   };
 
   if (loading) return <ScreenLoader />;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Goal Domains" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="Goals"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Page Header */}
         <View style={styles.pageHeader}>
           <View style={styles.headerLeft}>
             <View style={styles.badgeIcon}>
-              <Feather name="layers" size={20} color={colors.navyText} />
+              <Feather name="target" size={20} color={colors.navyText} />
             </View>
             <View>
-              <Text style={styles.pageTitle}>Goal Domains & Task Analysis</Text>
+              <Text style={styles.pageTitle}>Goals</Text>
               <Text style={styles.pageSubtitle}>
-                Unified clinical workbench for goal categories, milestones & task analysis step templates
+                Clinical goal bank, domain definitions, and mastery criteria
               </Text>
             </View>
           </View>
@@ -384,6 +615,8 @@ export default function GoalDomainDefinitionsScreen({
           <TouchableOpacity
             style={[styles.switcherBtn, activeSection === 'domains' && styles.switcherBtnActive]}
             onPress={() => setActiveSection('domains')}
+            accessibilityRole="button"
+            accessibilityLabel={`Goal Domains, ${domains.length} items`}
           >
             <Feather
               name="target"
@@ -403,6 +636,8 @@ export default function GoalDomainDefinitionsScreen({
           <TouchableOpacity
             style={[styles.switcherBtn, activeSection === 'goals' && styles.switcherBtnActive]}
             onPress={() => setActiveSection('goals')}
+            accessibilityRole="button"
+            accessibilityLabel={`Target Goals, ${goals.length} items`}
           >
             <Feather
               name="flag"
@@ -416,25 +651,6 @@ export default function GoalDomainDefinitionsScreen({
               ]}
             >
               Target Goals ({goals.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.switcherBtn, activeSection === 'templates' && styles.switcherBtnActive]}
-            onPress={() => setActiveSection('templates')}
-          >
-            <Feather
-              name="list"
-              size={15}
-              color={activeSection === 'templates' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[
-                styles.switcherBtnText,
-                activeSection === 'templates' && styles.switcherBtnTextActive,
-              ]}
-            >
-              Task Analysis Templates ({templates.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -460,6 +676,9 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => handleMoveDomainUp(index)}
                         disabled={index === 0}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Move domain ${item.name} up`}
                       >
                         <Feather
                           name="chevron-up"
@@ -471,6 +690,9 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => handleMoveDomainDown(index)}
                         disabled={index === domains.length - 1}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Move domain ${item.name} down`}
                       >
                         <Feather
                           name="chevron-down"
@@ -487,6 +709,7 @@ export default function GoalDomainDefinitionsScreen({
                           style={styles.inlineInput}
                           value={item.name}
                           onChangeText={(v) => handleUpdateDomainField(item.id, 'name', v)}
+                          onSubmitEditing={() => setEditingDomainId(null)}
                         />
                       ) : (
                         <Text style={styles.domainNameText}>{item.name}</Text>
@@ -500,6 +723,7 @@ export default function GoalDomainDefinitionsScreen({
                           style={styles.inlineInput}
                           value={item.description}
                           onChangeText={(v) => handleUpdateDomainField(item.id, 'description', v)}
+                          onSubmitEditing={() => setEditingDomainId(null)}
                         />
                       ) : (
                         <Text style={styles.domainDescText}>{item.description}</Text>
@@ -518,6 +742,11 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => setEditingDomainId(isEditing ? null : item.id)}
                         style={{ padding: 4 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          isEditing ? `Save domain ${item.name}` : `Edit domain ${item.name}`
+                        }
                       >
                         <Feather
                           name={isEditing ? 'check' : 'edit-2'}
@@ -528,6 +757,9 @@ export default function GoalDomainDefinitionsScreen({
                       <TouchableOpacity
                         onPress={() => handleDeleteDomain(item.id)}
                         style={{ padding: 4 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete domain ${item.name}`}
                       >
                         <Feather name="trash-2" size={15} color="#EF4444" />
                       </TouchableOpacity>
@@ -535,6 +767,16 @@ export default function GoalDomainDefinitionsScreen({
                   </View>
                 );
               })}
+
+              {domains.length === 0 && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="layers" size={26} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>No goal domains configured yet.</Text>
+                  <Text style={[styles.emptyTableText, { fontSize: 12, color: '#94A3B8' }]}>
+                    Click &quot;Add Goal Domain&quot; below to establish domain categories.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Add Domain Form or Button */}
@@ -550,6 +792,7 @@ export default function GoalDomainDefinitionsScreen({
                       placeholderTextColor={colors.mutedText}
                       value={newDomainName}
                       onChangeText={setNewDomainName}
+                      onSubmitEditing={handleConfirmAddDomain}
                     />
                   </View>
                   <View style={[styles.addFormFieldCol, { flex: 2 }]}>
@@ -560,14 +803,12 @@ export default function GoalDomainDefinitionsScreen({
                       placeholderTextColor={colors.mutedText}
                       value={newDomainDesc}
                       onChangeText={setNewDomainDesc}
+                      onSubmitEditing={handleConfirmAddDomain}
                     />
                   </View>
                 </View>
                 <View style={styles.addFormBtnRow}>
-                  <TouchableOpacity
-                    style={styles.confirmAddBtn}
-                    onPress={handleConfirmAddDomain}
-                  >
+                  <TouchableOpacity style={styles.confirmAddBtn} onPress={handleConfirmAddDomain}>
                     <Text style={styles.confirmAddBtnText}>Add Domain</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -604,12 +845,15 @@ export default function GoalDomainDefinitionsScreen({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardHeaderTitle}>Target Goals & Clinical Bank</Text>
                   <Text style={styles.cardHeaderSubtitle}>
-                    Goals configured here are dynamically available in IUP Generation & Session Logging
+                    Goals configured here are dynamically available in IUP Generation & Session
+                    Logging
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.headerAddBtn}
                   onPress={() => openGoalEditor()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add Target Goal"
                 >
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add Target Goal</Text>
@@ -628,32 +872,45 @@ export default function GoalDomainDefinitionsScreen({
                     onChangeText={setGoalSearch}
                   />
                   {Boolean(goalSearch) && (
-                    <TouchableOpacity onPress={() => setGoalSearch('')}>
+                    <TouchableOpacity
+                      onPress={() => setGoalSearch('')}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear goal search"
+                    >
                       <Feather name="x" size={14} color={colors.mutedText} />
                     </TouchableOpacity>
                   )}
                 </View>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.domainChipRow}>
-                  {['All', ...domains.filter((d) => d.active !== false).map((d) => d.name)].map((d) => (
-                    <TouchableOpacity
-                      key={d}
-                      style={[
-                        styles.domainFilterChip,
-                        selectedGoalDomain === d && styles.domainFilterChipActive,
-                      ]}
-                      onPress={() => setSelectedGoalDomain(d)}
-                    >
-                      <Text
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.domainChipRow}
+                >
+                  {['All', ...domains.filter((d) => d.active !== false).map((d) => d.name)].map(
+                    (d) => (
+                      <TouchableOpacity
+                        key={d}
                         style={[
-                          styles.domainFilterText,
-                          selectedGoalDomain === d && styles.domainFilterTextActive,
+                          styles.domainFilterChip,
+                          selectedGoalDomain === d && styles.domainFilterChipActive,
                         ]}
+                        onPress={() => setSelectedGoalDomain(d)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Filter by domain ${d}`}
                       >
-                        {d}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.domainFilterText,
+                            selectedGoalDomain === d && styles.domainFilterTextActive,
+                          ]}
+                        >
+                          {d}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
                 </ScrollView>
               </View>
 
@@ -675,11 +932,6 @@ export default function GoalDomainDefinitionsScreen({
                       <View style={styles.goalDomainBadge}>
                         <Text style={styles.goalDomainBadgeText}>{g.domain}</Text>
                       </View>
-                      {g.goalType === 'task_analysis' && (
-                        <View style={styles.goalTaskBadge}>
-                          <Text style={styles.goalTaskBadgeText}>Task Analysis</Text>
-                        </View>
-                      )}
                     </View>
                   </View>
 
@@ -691,7 +943,7 @@ export default function GoalDomainDefinitionsScreen({
 
                   <View style={{ flex: 2.2, paddingRight: 8 }}>
                     <Text style={styles.goalMasteryPillText}>
-                      {g.masteryCriteria || '80% across 3 sessions'}
+                      {formatMasteryCriteria(g.masteryCriteria)}
                     </Text>
                   </View>
 
@@ -699,8 +951,12 @@ export default function GoalDomainDefinitionsScreen({
                     <TouchableOpacity
                       style={g.active !== false ? styles.activePill : styles.inactivePill}
                       onPress={() => handleToggleGoalActive(g)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Status: ${g.active !== false ? 'Active' : 'Inactive'}. Click to toggle for ${g.name}`}
                     >
-                      <Text style={g.active !== false ? styles.activePillText : styles.inactivePillText}>
+                      <Text
+                        style={g.active !== false ? styles.activePillText : styles.inactivePillText}
+                      >
                         {g.active !== false ? 'Active' : 'Inactive'}
                       </Text>
                     </TouchableOpacity>
@@ -710,12 +966,18 @@ export default function GoalDomainDefinitionsScreen({
                     <TouchableOpacity
                       onPress={() => openGoalEditor(g)}
                       style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit goal ${g.name}`}
                     >
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDeleteGoal(g)}
                       style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete goal ${g.name}`}
                     >
                       <Feather name="trash-2" size={15} color="#EF4444" />
                     </TouchableOpacity>
@@ -725,24 +987,22 @@ export default function GoalDomainDefinitionsScreen({
 
               {filteredGoals.length === 0 && (
                 <View style={styles.emptyTableState}>
-                  <Text style={styles.emptyTableText}>No target goals match the selected filter.</Text>
+                  <Feather name="flag" size={26} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>
+                    No target goals match the selected filter.
+                  </Text>
+                  <Text style={[styles.emptyTableText, { fontSize: 12, color: '#94A3B8' }]}>
+                    Try adjusting your search or domain filter, or click &quot;Add Target Goal&quot;
+                    above.
+                  </Text>
                 </View>
               )}
             </View>
-
-            {/* Quick Navigation to IUP Generation */}
-            <TouchableOpacity
-              style={styles.addDomainLinkBtn}
-              onPress={() => navigation?.navigate?.('IupGeneration' as never)}
-            >
-              <Feather name="external-link" size={14} color={colors.navyText} />
-              <Text style={styles.addDomainLinkText}>View Goals in IUP Generation</Text>
-            </TouchableOpacity>
           </View>
         )}
 
-        {/* SECTION 3: TASK ANALYSIS TEMPLATES */}
-        {activeSection === 'templates' && (
+        {/* SECTION 3: TASK ANALYSIS TEMPLATES (HIDDEN) */}
+        {false && (
           <View style={{ gap: spacing.md }}>
             <View style={styles.tableCard}>
               <View style={styles.tableCardHeader}>
@@ -750,6 +1010,8 @@ export default function GoalDomainDefinitionsScreen({
                 <TouchableOpacity
                   style={styles.headerAddBtn}
                   onPress={() => openTemplateEditor()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add New Template"
                 >
                   <Feather name="plus" size={14} color={colors.navyText} />
                   <Text style={styles.headerAddBtnText}>Add New Template</Text>
@@ -786,18 +1048,37 @@ export default function GoalDomainDefinitionsScreen({
                     <TouchableOpacity
                       onPress={() => openTemplateEditor(t)}
                       style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit template ${t.name}`}
                     >
                       <Feather name="edit-2" size={15} color={colors.navyText} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDeleteTemplate(t)}
                       style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete template ${t.name}`}
                     >
                       <Feather name="trash-2" size={15} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
                 </View>
               ))}
+
+              {templates.length === 0 && (
+                <View style={styles.emptyTableState}>
+                  <Feather name="list" size={26} color="#94A3B8" style={{ marginBottom: 6 }} />
+                  <Text style={styles.emptyTableText}>
+                    No task analysis templates configured yet.
+                  </Text>
+                  <Text style={[styles.emptyTableText, { fontSize: 12, color: '#94A3B8' }]}>
+                    Click &quot;Add New Template&quot; above to define step-by-step chaining
+                    routines.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Template Editor Modal / Inline Card */}
@@ -847,6 +1128,9 @@ export default function GoalDomainDefinitionsScreen({
                         <TouchableOpacity
                           onPress={() => moveTemplateStep(index, 'up')}
                           disabled={index === 0}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Move step ${index + 1} up`}
                         >
                           <Feather
                             name="arrow-up"
@@ -857,6 +1141,9 @@ export default function GoalDomainDefinitionsScreen({
                         <TouchableOpacity
                           onPress={() => moveTemplateStep(index, 'down')}
                           disabled={index === formSteps.length - 1}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Move step ${index + 1} down`}
                         >
                           <Feather
                             name="arrow-down"
@@ -864,14 +1151,24 @@ export default function GoalDomainDefinitionsScreen({
                             color={index === formSteps.length - 1 ? '#CBD5E1' : colors.navyText}
                           />
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => deleteTemplateStep(step.id)}>
+                        <TouchableOpacity
+                          onPress={() => deleteTemplateStep(step.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete step ${index + 1}`}
+                        >
                           <Feather name="trash-2" size={14} color="#EF4444" />
                         </TouchableOpacity>
                       </View>
                     </View>
                   ))}
 
-                  <TouchableOpacity style={styles.addStepBtn} onPress={addTemplateStep}>
+                  <TouchableOpacity
+                    style={styles.addStepBtn}
+                    onPress={addTemplateStep}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add Step"
+                  >
                     <Feather name="plus" size={14} color={colors.navyText} />
                     <Text style={styles.addStepBtnText}>Add Step</Text>
                   </TouchableOpacity>
@@ -944,7 +1241,10 @@ export default function GoalDomainDefinitionsScreen({
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 450 }} contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}>
+            <ScrollView
+              style={{ maxHeight: 450 }}
+              contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }}
+            >
               {/* Goal Name */}
               <View style={styles.modalFieldCol}>
                 <Text style={styles.modalLabel}>Goal Name *</Text>
@@ -954,32 +1254,39 @@ export default function GoalDomainDefinitionsScreen({
                   placeholderTextColor={colors.mutedText}
                   value={goalFormName}
                   onChangeText={setGoalFormName}
+                  onSubmitEditing={handleSaveGoal}
                 />
               </View>
 
               {/* Domain Selector */}
               <View style={styles.modalFieldCol}>
                 <Text style={styles.modalLabel}>Goal Domain *</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
-                  {domains.filter((d) => d.active !== false).map((d) => (
-                    <TouchableOpacity
-                      key={d.id}
-                      style={[
-                        styles.domainPickChip,
-                        goalFormDomain === d.name && styles.domainPickChipActive,
-                      ]}
-                      onPress={() => setGoalFormDomain(d.name)}
-                    >
-                      <Text
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 6, paddingVertical: 4 }}
+                >
+                  {domains
+                    .filter((d) => d.active !== false)
+                    .map((d) => (
+                      <TouchableOpacity
+                        key={d.id}
                         style={[
-                          styles.domainPickText,
-                          goalFormDomain === d.name && styles.domainPickTextActive,
+                          styles.domainPickChip,
+                          goalFormDomain === d.name && styles.domainPickChipActive,
                         ]}
+                        onPress={() => setGoalFormDomain(d.name)}
                       >
-                        {d.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.domainPickText,
+                            goalFormDomain === d.name && styles.domainPickTextActive,
+                          ]}
+                        >
+                          {d.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                 </ScrollView>
               </View>
 
@@ -1005,41 +1312,32 @@ export default function GoalDomainDefinitionsScreen({
                   placeholderTextColor={colors.mutedText}
                   value={goalFormMastery}
                   onChangeText={setGoalFormMastery}
+                  onSubmitEditing={handleSaveGoal}
                 />
               </View>
 
-              {/* Goal Type & Status */}
+              {/* Goal Status (All goals are Standard for this version) */}
               <View style={{ flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' }}>
-                <View style={{ flex: 1, minWidth: 140, gap: 4 }}>
-                  <Text style={styles.modalLabel}>Goal Architecture Type</Text>
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                    <TouchableOpacity
-                      style={[styles.typeSelectBtn, goalFormType === 'standard' && styles.typeSelectBtnActive]}
-                      onPress={() => setGoalFormType('standard')}
-                    >
-                      <Text style={[styles.typeSelectBtnText, goalFormType === 'standard' && styles.typeSelectBtnTextActive]}>
-                        Standard
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.typeSelectBtn, goalFormType === 'task_analysis' && styles.typeSelectBtnActive]}
-                      onPress={() => setGoalFormType('task_analysis')}
-                    >
-                      <Text style={[styles.typeSelectBtnText, goalFormType === 'task_analysis' && styles.typeSelectBtnTextActive]}>
-                        Task Analysis
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
                 <View style={{ width: 120, gap: 4 }}>
                   <Text style={styles.modalLabel}>Status</Text>
                   <TouchableOpacity
-                    style={[styles.statusToggleBtn, goalFormActive ? styles.statusToggleActive : styles.statusToggleInactive]}
+                    style={[
+                      styles.statusToggleBtn,
+                      goalFormActive ? styles.statusToggleActive : styles.statusToggleInactive,
+                    ]}
                     onPress={() => setGoalFormActive((prev) => !prev)}
                   >
-                    <Feather name={goalFormActive ? 'check' : 'x'} size={14} color={goalFormActive ? '#166534' : '#991B1B'} />
-                    <Text style={[styles.statusToggleText, { color: goalFormActive ? '#166534' : '#991B1B' }]}>
+                    <Feather
+                      name={goalFormActive ? 'check' : 'x'}
+                      size={14}
+                      color={goalFormActive ? '#166534' : '#991B1B'}
+                    />
+                    <Text
+                      style={[
+                        styles.statusToggleText,
+                        { color: goalFormActive ? '#166534' : '#991B1B' },
+                      ]}
+                    >
                       {goalFormActive ? 'Active' : 'Inactive'}
                     </Text>
                   </TouchableOpacity>
@@ -1054,6 +1352,117 @@ export default function GoalDomainDefinitionsScreen({
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowGoalEditor(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cascade Delete Confirmation & Preview Modal */}
+      <Modal
+        visible={showCascadeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCascadeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { maxWidth: 540 }]}>
+            <View style={styles.cascadeModalHeader}>
+              <View style={styles.cascadeWarningIconCircle}>
+                <Feather name="alert-triangle" size={24} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cascadeModalTitle}>
+                  Cascade Delete Domain: &quot;{cascadeDomain?.name}&quot;
+                </Text>
+                <Text style={styles.cascadeModalSubtitle}>
+                  This domain has {cascadeGoals.length} associated target goal(s).
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCascadeModal(false)}>
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.cascadeWarningBanner}>
+              <Feather name="alert-circle" size={16} color="#B91C1C" />
+              <Text style={styles.cascadeWarningText}>
+                Warning: Deleting &quot;{cascadeDomain?.name}&quot; will permanently cascade delete
+                the domain and all {cascadeGoals.length} associated target goal(s) from the Goal
+                Bank and IUP Generation. This action cannot be undone.
+              </Text>
+            </View>
+
+            {/* Collapsible View Target Goals Toggle Button */}
+            <TouchableOpacity
+              style={styles.cascadeViewToggleBtn}
+              onPress={() => setShowCascadeGoalList((prev) => !prev)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="list" size={15} color="#0369A1" />
+                <Text style={styles.cascadeViewToggleText}>
+                  View Target Goals under &quot;{cascadeDomain?.name}&quot; ({cascadeGoals.length})
+                </Text>
+              </View>
+              <Feather
+                name={showCascadeGoalList ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color="#0369A1"
+              />
+            </TouchableOpacity>
+
+            {/* Collapsible Target Goals Preview List */}
+            {showCascadeGoalList && (
+              <ScrollView style={styles.cascadeGoalsList} nestedScrollEnabled>
+                {cascadeGoals.map((g, idx) => (
+                  <View key={g.id || idx} style={styles.cascadeGoalItem}>
+                    <View style={styles.cascadeGoalBullet}>
+                      <Text style={styles.cascadeGoalBulletText}>{idx + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cascadeGoalName}>{g.name}</Text>
+                      <Text style={styles.cascadeGoalMastery}>
+                        Mastery: {formatMasteryCriteria(g.masteryCriteria)}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.cascadeStatusBadge,
+                        g.active ? styles.cascadeStatusActive : styles.cascadeStatusInactive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.cascadeStatusText,
+                          { color: g.active ? '#15803D' : '#991B1B' },
+                        ]}
+                      >
+                        {g.active ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Modal Actions */}
+            <View style={styles.cascadeActionsRow}>
+              <TouchableOpacity
+                style={styles.cascadeCancelBtn}
+                onPress={() => {
+                  setShowCascadeModal(false);
+                  setCascadeDomain(null);
+                  setCascadeGoals([]);
+                }}
+              >
+                <Text style={styles.cascadeCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cascadeConfirmBtn}
+                onPress={handleConfirmCascadeDelete}
+              >
+                <Feather name="trash-2" size={14} color="#FFFFFF" />
+                <Text style={styles.cascadeConfirmBtnText}>Confirm Delete (Cascade)</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1074,7 +1483,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -1178,7 +1593,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   activePillText: { fontSize: 11, fontWeight: '700', color: '#166534' },
-  actionsCol: { width: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  actionsCol: {
+    width: 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
 
   addDomainLinkBtn: {
     flexDirection: 'row',
@@ -1284,7 +1705,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.navyText,
   },
-  stepActionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: 4 },
+  stepActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: 4,
+  },
   addStepBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1300,7 +1726,12 @@ const styles = StyleSheet.create({
   },
   addStepBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
 
-  editorActionsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  editorActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   saveTemplateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1562,5 +1993,159 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+
+  /* Cascade Delete Modal Styles */
+  cascadeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: spacing.md,
+  },
+  cascadeWarningIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cascadeModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cascadeModalSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  cascadeWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: radius.md,
+    padding: 12,
+    marginBottom: spacing.md,
+  },
+  cascadeWarningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#991B1B',
+    fontWeight: '500',
+  },
+  cascadeViewToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: spacing.sm,
+  },
+  cascadeViewToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0369A1',
+  },
+  cascadeGoalsList: {
+    maxHeight: 180,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md,
+    padding: 8,
+    marginBottom: spacing.md,
+  },
+  cascadeGoalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  cascadeGoalBullet: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cascadeGoalBulletText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  cascadeGoalName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  cascadeGoalMastery: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  cascadeStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  cascadeStatusActive: {
+    backgroundColor: '#DCFCE7',
+  },
+  cascadeStatusInactive: {
+    backgroundColor: '#FEE2E2',
+  },
+  cascadeStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  cascadeActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  cascadeCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  cascadeCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  cascadeConfirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radius.md,
+    backgroundColor: '#DC2626',
+  },
+  cascadeConfirmBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,6 +26,7 @@ import {
   toggleStudentStatus,
   onStudentStatusChanged,
 } from '../../utils/studentStatusHelper';
+import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
 
 const DEFAULT_PROGRAM_TYPES = ['Regular', 'Pulled Out'];
@@ -196,6 +198,10 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           gender: row.gender || '',
           program: row.programType || row.program || '',
           therapist: row.therapist || row.therapyGroup || '',
+          gender: '',
+          program: row.programType,
+          therapist: row.therapist || row.therapyGroup,
+          diagnosis: '',
           status: resolveStudentStatus(row.id, row.fullName, row.status),
           studentId: row.id,
           photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
@@ -287,6 +293,51 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
     setSearch('');
     setOpenDropdown(null);
   };
+  const filtered = students.filter(
+    (s) =>
+      (programFilter === 'All' || s.program === programFilter) &&
+      (therapistFilter === 'All' || s.therapist === therapistFilter) &&
+      (statusFilter === 'All' || s.status === statusFilter) &&
+      (diagnosisFilter === 'All' || s.diagnosis === diagnosisFilter) &&
+      matchesAge(s.age, ageFilter) &&
+      (!search ||
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        s.studentId.toLowerCase().includes(search.toLowerCase())),
+  );
+
+  const FilterChips = ({
+    label,
+    options,
+    value,
+    onChange,
+  }: {
+    label: string;
+    options: string[];
+    value: string;
+    onChange: (v: string) => void;
+  }) => (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <Text style={[typography.label, styles.filterLabel]}>{label}</Text>
+      {['All', ...options].map((opt) => (
+        <TouchableOpacity
+          key={opt}
+          style={[styles.filterChip, value === opt && styles.filterChipActive]}
+          onPress={() => onChange(opt)}
+        >
+          <Text
+            style={[
+              typography.body,
+              value === opt && { color: colors.navyText, fontWeight: '700' },
+            ]}
+          >
+            {opt}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
+
+  const routeMap = routeMapForRole('coordinator');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -301,6 +352,14 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       <AppNavbar
         activeTab="Enrollment"
         onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)}
+      <AppNavbar
+        activeTab="Student Register"
+        onTabPress={(t) => {
+          const route = routeMap[t] || COORDINATOR_ROUTE_BY_TAB[t];
+          if (route && route !== 'StudentEnrollment') {
+            navigation?.navigate?.(route as never);
+          }
+        }}
       />
 
       <View style={styles.header}>
@@ -393,6 +452,31 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
             </TouchableOpacity>
           )}
         </View>
+        <FilterChips
+          label="Program"
+          options={PROGRAMS}
+          value={programFilter}
+          onChange={setProgramFilter}
+        />
+        <FilterChips
+          label="Therapist"
+          options={therapistOptions}
+          value={therapistFilter}
+          onChange={setTherapistFilter}
+        />
+        <FilterChips
+          label="Status"
+          options={['Active', 'Inactive']}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
+        <FilterChips label="Age" options={AGE_RANGES} value={ageFilter} onChange={setAgeFilter} />
+        <FilterChips
+          label="Diagnosis"
+          options={DIAGNOSES}
+          value={diagnosisFilter}
+          onChange={setDiagnosisFilter}
+        />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -412,6 +496,10 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
               </Text>
               <Text style={typography.caption}>
                 {[s.program, s.therapist].filter(Boolean).join(' · ')}
+                {s.studentId} · Age {s.age} · {s.gender}
+              </Text>
+              <Text style={typography.caption}>
+                {s.program} · {s.therapist} · {s.diagnosis}
               </Text>
             </View>
             <TouchableOpacity
@@ -498,6 +586,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     zIndex: 100,
+    gap: spacing.sm,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   searchInput: {
     borderWidth: 1,
@@ -627,6 +719,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.navyText,
   },
+  },
+  filterLabel: { marginRight: spacing.sm, paddingVertical: spacing.sm },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.xs,
+    backgroundColor: colors.bgApp,
+  },
+  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   content: { padding: spacing.lg, gap: spacing.md },
   row: {
     flexDirection: 'row',
@@ -638,4 +742,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.promptG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { color: colors.white, fontWeight: '700', fontSize: 16 },
 });

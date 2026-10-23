@@ -9,20 +9,20 @@ interface RoleManagementHeaderProps {
   onConfigurePermissions: () => void;
   onAddRole: () => void;
   addingRole: boolean;
+  canCreate?: boolean;
 }
 
 export default function RoleManagementHeader({
   onConfigurePermissions,
   onAddRole,
   addingRole,
+  canCreate = true,
 }: RoleManagementHeaderProps) {
   return (
     <View style={styles.container}>
       <View style={styles.textCol}>
         <Text style={typography.h2}>Role Management</Text>
-        <Text style={typography.caption}>
-          SCR-SYS-002 • Configure staff roles and their descriptions
-        </Text>
+        <Text style={typography.caption}>Configure staff roles and their descriptions</Text>
       </View>
 
       <View style={styles.actionsRow}>
@@ -41,19 +41,21 @@ export default function RoleManagementHeader({
           </TouchableOpacity>
         </Tooltip>
 
-        <Tooltip label="Add a new custom staff role">
-          <TouchableOpacity
-            style={[styles.btn, styles.addBtn]}
-            onPress={onAddRole}
-            accessibilityRole="button"
-            accessibilityLabel="Add Role"
-            disabled={addingRole}
-            {...(Platform.OS === 'web' ? { title: 'Add a new custom staff role' } : {})}
-          >
-            <Feather name="plus" size={14} color={colors.primaryBlue} />
-            <Text style={styles.addBtnText}>Add Role</Text>
-          </TouchableOpacity>
-        </Tooltip>
+        {canCreate && (
+          <Tooltip label="Add a new custom staff role">
+            <TouchableOpacity
+              style={[styles.btn, styles.addBtn]}
+              onPress={onAddRole}
+              accessibilityRole="button"
+              accessibilityLabel="Add Role"
+              disabled={addingRole}
+              {...(Platform.OS === 'web' ? { title: 'Add a new custom staff role' } : {})}
+            >
+              <Feather name="plus" size={14} color={colors.primaryBlue} />
+              <Text style={styles.addBtnText}>Add Role</Text>
+            </TouchableOpacity>
+          </Tooltip>
+        )}
       </View>
     </View>
   );

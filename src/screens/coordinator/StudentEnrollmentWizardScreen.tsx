@@ -664,6 +664,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           therapist: enriched.some(
             (t) => t.name === prev.therapist && (t.assignedStudents?.length ?? 0) < MAX_CASELOAD,
           )
+          therapist: teachers.some((t) => t.name === prev.therapist)
             ? prev.therapist
             : available?.name || '',
         }));
@@ -1273,6 +1274,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       <AppNavbar
         activeTab="Enrollment"
         onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)}
+        activeTab="Enrollment Wizard"
+        onTabPress={(t) => {
+          const r = PD_ROUTE_BY_TAB[t];
+          if (r && r !== 'StudentEnrollmentWizard') {
+            navigation?.navigate?.(r as never);
+          }
+        }}
       />
 
       <View style={styles.header}>
@@ -1354,6 +1362,49 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                             <Text style={styles.uploadBtnText}>Upload Photo</Text>
                           </TouchableOpacity>
                         </View>
+                      </View>
+                      <Text style={styles.fieldHint}>
+                        {photoCfg?.helpText ||
+                          'Take a live picture with your camera or upload an image file from your device.'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {showName && (
+                    <Field
+                      required={nameCfg ? Boolean(nameCfg.required) : true}
+                      label={nameCfg?.label || 'Student Full Name'}
+                      value={form.name}
+                      onChangeText={updateName}
+                      placeholder={nameCfg?.placeholder || 'e.g. Aiden Rivera'}
+                    />
+                  )}
+
+                  {showDob && (
+                    <View style={styles.field}>
+                      <View style={styles.fieldLabelRow}>
+                        <Text style={styles.fieldLabel}>
+                          {dobCfg?.label || 'Date of Birth'}
+                          {(dobCfg ? dobCfg.required !== false : true) && (
+                            <Text style={styles.requiredStar}> *</Text>
+                          )}
+                        </Text>
+                        {form.dob && calculateAge(form.dob) !== null ? (
+                          <View style={styles.ageBadge}>
+                            <Feather name="calendar" size={12} color="#0284C7" />
+                            <Text style={styles.ageBadgeText}>
+                              Calculated Age: {calculateAge(form.dob)}{' '}
+                              {calculateAge(form.dob) === 1 ? 'year' : 'years'} old
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={styles.dobWrap}>
+                        <DobPicker
+                          value={form.dob || ''}
+                          maximumDate={new Date()}
+                          onChange={updateDob}
+                        />
                       </View>
                       <Text style={styles.fieldHint}>
                         {photoCfg?.helpText ||

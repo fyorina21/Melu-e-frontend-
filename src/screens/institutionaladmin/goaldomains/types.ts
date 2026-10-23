@@ -3,7 +3,6 @@ export interface GoalDomain {
   name: string;
   description: string;
   active: boolean;
-  [key: string]: unknown;
 }
 
 export interface TaskAnalysisStep {

@@ -1,39 +1,64 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { InstitutionalAdminStackParamList } from '../types';
-import FormBuilderScreen from '../screens/institutionaladmin/FormBuilderScreen';
-import TrialLoggingFormatScreen from '../screens/institutionaladmin/TrialLoggingFormatScreen';
-import AbcDropdownListsScreen from '../screens/institutionaladmin/AbcDropdownListsScreen';
-import ScheduleCapacityConfigScreen from '../screens/institutionaladmin/ScheduleCapacityConfigScreen';
-import GoalDomainDefinitionsScreen from '../screens/institutionaladmin/GoalDomainDefinitionsScreen';
-import TaskAnalysisTemplatesScreen from '../screens/institutionaladmin/TaskAnalysisTemplatesScreen';
+import ScreenLoader from '../components/ScreenLoader';
 import { ErrorBoundary, withErrorBoundary } from '../components/ErrorBoundary';
 import { withModuleGuard } from '../auth/withModuleGuard';
+
+const FormBuilderScreen = lazy(() => import('../screens/institutionaladmin/FormBuilderScreen'));
+const TrialLoggingFormatScreen = lazy(
+  () => import('../screens/institutionaladmin/TrialLoggingFormatScreen'),
+);
+const AbcDropdownListsScreen = lazy(
+  () => import('../screens/institutionaladmin/AbcDropdownListsScreen'),
+);
+const ScheduleCapacityConfigScreen = lazy(
+  () => import('../screens/institutionaladmin/ScheduleCapacityConfigScreen'),
+);
+const GoalDomainDefinitionsScreen = lazy(
+  () => import('../screens/institutionaladmin/GoalDomainDefinitionsScreen'),
+);
+const TaskAnalysisTemplatesScreen = lazy(
+  () => import('../screens/institutionaladmin/TaskAnalysisTemplatesScreen'),
+);
+
+function withLazySuspense<P extends object>(
+  Component: React.ComponentType<P>,
+  fallback = <ScreenLoader />,
+) {
+  return function LazyWrapper(props: P) {
+    return (
+      <Suspense fallback={fallback}>
+        <Component {...props} />
+      </Suspense>
+    );
+  };
+}
 
 const Stack = createNativeStackNavigator<InstitutionalAdminStackParamList>();
 
 const SafeFormBuilder = withModuleGuard(
-  withErrorBoundary(FormBuilderScreen, 'Form Builder'),
+  withErrorBoundary(withLazySuspense(FormBuilderScreen), 'Form Builder'),
   'admin',
 );
 const SafeTrialLoggingFormat = withModuleGuard(
-  withErrorBoundary(TrialLoggingFormatScreen, 'Trial Logging Format'),
+  withErrorBoundary(withLazySuspense(TrialLoggingFormatScreen), 'Trial Logging Format'),
   'sessions',
 );
 const SafeAbcDropdownLists = withModuleGuard(
-  withErrorBoundary(AbcDropdownListsScreen, 'ABC Dropdown Lists'),
+  withErrorBoundary(withLazySuspense(AbcDropdownListsScreen), 'ABC Dropdown Lists'),
   'behavior_incidents',
 );
 const SafeScheduleCapacityConfig = withModuleGuard(
-  withErrorBoundary(ScheduleCapacityConfigScreen, 'Session Schedule & Capacity'),
+  withErrorBoundary(withLazySuspense(ScheduleCapacityConfigScreen), 'Session Schedule & Capacity'),
   'staff',
 );
 const SafeGoalDomainDefinitions = withModuleGuard(
-  withErrorBoundary(GoalDomainDefinitionsScreen, 'Goal Domains & Task Analysis'),
+  withErrorBoundary(withLazySuspense(GoalDomainDefinitionsScreen), 'Goal Domains & Task Analysis'),
   'iups',
 );
 const SafeTaskAnalysisTemplates = withModuleGuard(
-  withErrorBoundary(TaskAnalysisTemplatesScreen, 'Task Analysis Templates'),
+  withErrorBoundary(withLazySuspense(TaskAnalysisTemplatesScreen), 'Task Analysis Templates'),
   'iups',
 );
 

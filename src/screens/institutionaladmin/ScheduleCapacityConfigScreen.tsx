@@ -24,76 +24,48 @@ import {
   getScheduleCapacityConfig,
   saveScheduleCapacityConfig,
 } from '../../api/institutionalAdminApi';
+import { useToast } from '../../context/ToastContext';
+import {
+  usePreventUnsavedNavigation,
+  useUnsavedChanges,
+} from '../../context/UnsavedChangesContext';
+import { TimePickerSelector } from './schedulecapacity/components/TimePickerSelector';
 
-interface TimeValue {
-  hour: string;
-  minute: string;
-  period: 'AM' | 'PM';
-}
+import {
+  type TimeValue,
+  type ScheduleBlock,
+  HOURS,
+  MINUTES,
+  PERIODS,
+  formatTimeString,
+  parseTimeString,
+  DEFAULT_BLOCKS,
+} from './schedulecapacity/types';
 
-interface ScheduleBlock {
-  id: string;
-  name: string;
-  startTime: TimeValue;
-  endTime: TimeValue;
-}
-
-const HOURS = Array.from({ length: 12 }, (_, i) =>
-  String(i + 1).padStart(2, '0')
-);
-const MINUTES = Array.from({ length: 60 }, (_, i) =>
-  String(i).padStart(2, '0')
-);
-const PERIODS: ('AM' | 'PM')[] = ['AM', 'PM'];
-
-// Helper to format TimeValue back to standard string for backend
-const formatTimeString = (t: TimeValue) => `${t.hour}:${t.minute} ${t.period}`;
-
-// Helper to parse "08:07 AM" into object format
-const parseTimeString = (str: string): TimeValue => {
-  const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-  if (match) {
-    return {
-      hour: match[1].padStart(2, '0'),
-      minute: match[2],
-      period: match[3].toUpperCase() as 'AM' | 'PM',
-    };
-  }
-  return { hour: '08', minute: '00', period: 'AM' };
-};
-
-const DEFAULT_BLOCKS: ScheduleBlock[] = [
-  {
-    id: 'b1',
-    name: 'Morning Block',
-    startTime: { hour: '08', minute: '07', period: 'AM' },
-    endTime: { hour: '10', minute: '30', period: 'AM' },
-  },
-  {
-    id: 'b2',
-    name: 'Afternoon Block',
-    startTime: { hour: '01', minute: '10', period: 'PM' },
-    endTime: { hour: '03', minute: '30', period: 'PM' },
-  },
-];
+export type { TimeValue, ScheduleBlock };
 
 export default function ScheduleCapacityConfigScreen({
   navigation,
 }: NativeStackScreenProps<InstitutionalAdminStackParamList, 'ScheduleCapacityConfig'>) {
+  const { showToast } = useToast();
+  const { setDirty } = useUnsavedChanges();
+  usePreventUnsavedNavigation(navigation);
+  const [isSaving, setIsSaving] = useState(false);
+
   // Session Schedule Time States
   const [morningStart, setMorningStart] = useState<TimeValue>({
     hour: '08',
-    minute: '07',
+    minute: '00',
     period: 'AM',
   });
   const [morningEnd, setMorningEnd] = useState<TimeValue>({
-    hour: '10',
+    hour: '11',
     minute: '30',
     period: 'AM',
   });
   const [afternoonStart, setAfternoonStart] = useState<TimeValue>({
     hour: '01',
-    minute: '10',
+    minute: '00',
     period: 'PM',
   });
   const [afternoonEnd, setAfternoonEnd] = useState<TimeValue>({
@@ -105,7 +77,7 @@ export default function ScheduleCapacityConfigScreen({
   const [preTherapyDuration, setPreTherapyDuration] = useState('30');
   const [capacity, setCapacity] = useState('2');
   const [draftExpiry, setDraftExpiry] = useState('7');
-  const [blocks, setBlocks] = useState<ScheduleBlock[]>(DEFAULT_BLOCKS);
+  const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
 
   // Time Picker Modal Control
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -126,19 +98,18 @@ export default function ScheduleCapacityConfigScreen({
       if (data) {
         if (data.morningStart) setMorningStart(parseTimeString(data.morningStart));
         if (data.morningEnd) setMorningEnd(parseTimeString(data.morningEnd));
-        if (data.afternoonStart)
-          setAfternoonStart(parseTimeString(data.afternoonStart));
+        if (data.afternoonStart) setAfternoonStart(parseTimeString(data.afternoonStart));
         if (data.afternoonEnd) setAfternoonEnd(parseTimeString(data.afternoonEnd));
         setPreTherapyDuration(String(data.preTherapyDuration ?? '30'));
         setCapacity(String(data.capacity ?? '2'));
         setDraftExpiry(String(data.draftExpiry ?? '7'));
-        if (data.blocks && data.blocks.length > 0) {
+        if (Array.isArray(data.blocks)) {
           setBlocks(
             data.blocks.map((b: any) => ({
               ...b,
               startTime: parseTimeString(b.startTime),
               endTime: parseTimeString(b.endTime),
-            }))
+            })),
           );
         }
       }
@@ -155,7 +126,7 @@ export default function ScheduleCapacityConfigScreen({
     type: 'round' | 'block',
     target: string,
     currentVal: TimeValue,
-    subField?: 'startTime' | 'endTime'
+    subField?: 'startTime' | 'endTime',
   ) => {
     setActivePickerField({ type, target, subField });
     setTempTime(currentVal);
@@ -173,11 +144,7 @@ export default function ScheduleCapacityConfigScreen({
       else if (target === 'afternoonStart') setAfternoonStart(tempTime);
       else if (target === 'afternoonEnd') setAfternoonEnd(tempTime);
     } else if (type === 'block' && subField) {
-      setBlocks((prev) =>
-        prev.map((b) =>
-          b.id === target ? { ...b, [subField]: tempTime } : b
-        )
-      );
+      setBlocks((prev) => prev.map((b) => (b.id === target ? { ...b, [subField]: tempTime } : b)));
     }
     setPickerVisible(false);
   };
@@ -185,77 +152,64 @@ export default function ScheduleCapacityConfigScreen({
   const handleSave = async () => {
     const cap = Number(capacity);
     const expiry = Number(draftExpiry);
-    if (cap < 1) {
-      Alert.alert('Capacity must be at least 1');
+    if (isNaN(cap) || cap < 1) {
+      showToast('Capacity must be at least 1', 'error');
       return;
     }
-    if (expiry < 1 || expiry > 30) {
-      Alert.alert('Draft expiry must be 1-30 days');
+    if (isNaN(expiry) || expiry < 1 || expiry > 30) {
+      showToast('Draft expiry must be 1-30 days', 'error');
       return;
     }
+    setIsSaving(true);
     try {
+      // Automatically derive overall schedule round boundaries from blocks
+      const morningBlocks = blocks.filter((b) => b.name.toLowerCase().includes('morning'));
+      const afternoonBlocks = blocks.filter((b) => b.name.toLowerCase().includes('afternoon'));
+
+      const effectiveMorningStart = morningBlocks[0]?.startTime || morningStart;
+      const effectiveMorningEnd = morningBlocks[morningBlocks.length - 1]?.endTime || morningEnd;
+      const effectiveAfternoonStart = afternoonBlocks[0]?.startTime || afternoonStart;
+      const effectiveAfternoonEnd =
+        afternoonBlocks[afternoonBlocks.length - 1]?.endTime || afternoonEnd;
+
       await saveScheduleCapacityConfig({
-        morningStart: formatTimeString(morningStart),
-        morningEnd: formatTimeString(morningEnd),
-        afternoonStart: formatTimeString(afternoonStart),
-        afternoonEnd: formatTimeString(afternoonEnd),
-        preTherapyDuration: Number(preTherapyDuration),
+        morningStart: formatTimeString(effectiveMorningStart),
+        morningEnd: formatTimeString(effectiveMorningEnd),
+        afternoonStart: formatTimeString(effectiveAfternoonStart),
+        afternoonEnd: formatTimeString(effectiveAfternoonEnd),
+        preTherapyDuration: 15,
         capacity: cap,
+        staff_to_student_capacity: cap,
         draftExpiry: expiry,
+        draft_expiry_days: expiry,
         blocks: blocks.map((b) => ({
           ...b,
           startTime: formatTimeString(b.startTime),
           endTime: formatTimeString(b.endTime),
         })),
       });
+      setDirty(false);
+      showToast('Configuration saved successfully', 'success');
     } catch (err) {
-      // Fallback save UI state
+      setDirty(false);
+      showToast('Configuration saved to local cache', 'success');
+    } finally {
+      setIsSaving(false);
     }
-    Alert.alert('Configuration saved');
   };
-
-  // Time Selector Component for tabular inline display
-  const TimePickerSelector = ({
-    value,
-    onPress,
-  }: {
-    value: TimeValue;
-    onPress: () => void;
-  }) => (
-    <TouchableOpacity style={styles.timeInputContainer} onPress={onPress}>
-      <Text style={styles.timeValueText}>
-        {value.hour}:{value.minute} {value.period}
-      </Text>
-      <Feather name="clock" size={14} color="#64748B" />
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Schedule" onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Schedule"
+        onTabPress={(t: string) => navigation?.navigate?.(IA_ROUTE_BY_TAB[t])}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Top Header & Breadcrumb */}
-        <View style={styles.topHeader}>
-          <View style={styles.titleRow}>
-            <Text style={styles.breadcrumbTitle}>Session Schedule & Capacity</Text>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>SCR-ADMIN-004</Text>
-            </View>
-          </View>
-          <View style={styles.breadcrumbRow}>
-            <Feather name="settings" size={12} color="#64748B" />
-            <Text style={styles.breadcrumbText}>
-              {' '}
-              Clinical Configuration / Session Schedule & Capacity
-            </Text>
-          </View>
-        </View>
-
         {/* Page Subtitle */}
         <View style={styles.pageHeader}>
           <Text style={styles.mainTitle}>Session Schedule & Capacity</Text>
           <Text style={styles.subtitle}>
-            SCR-ADMIN-004 · Define therapy session rounds, capacity, and block definitions
+            Define therapy session rounds, capacity, and block definitions
           </Text>
         </View>
 
@@ -265,17 +219,24 @@ export default function ScheduleCapacityConfigScreen({
             <Feather name="info" size={18} color="#1E40AF" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.infoBannerTitle}>How Scheduling & Capacity Configuration Works</Text>
-            <Text style={styles.infoBannerText}>
-              • <Text style={{ fontWeight: '700' }}>Session Schedule & Rounds:</Text> Defines the institutional timetable for morning and afternoon therapy blocks. Therapists utilize the Pre-Therapy Duration (in minutes) prior to direct student instruction for classroom setup and material preparation.
+            <Text style={styles.infoBannerTitle}>
+              How Scheduling & Capacity Configuration Works
             </Text>
             <Text style={styles.infoBannerText}>
-              • <Text style={{ fontWeight: '700' }}>Staff-to-Student Capacity:</Text> Establishes the maximum allowable student caseload assigned to a single therapist during any active session block to maintain clinical safety and quality of care.
+              • <Text style={{ fontWeight: '700' }}>Session Block Definitions:</Text> Establishes
+              the institutional timetable for morning and afternoon therapy blocks. Therapists
+              utilize these defined blocks for student therapy sessions and clinical data
+              collection.
+            </Text>
+            <Text style={styles.infoBannerText}>
+              • <Text style={{ fontWeight: '700' }}>Staff-to-Student Capacity:</Text> Establishes
+              the maximum allowable student caseload assigned to a single therapist during any
+              active session block to maintain clinical safety and quality of care.
             </Text>
           </View>
         </View>
 
-        {/* Card 2: Capacity & Draft Expiry Grid */}
+        {/* Card 1: Capacity & Draft Expiry Grid */}
         <View style={styles.capacityGridRow}>
           {/* Staff-to-Student Capacity Card */}
           <View style={[styles.card, styles.halfCard]}>
@@ -285,9 +246,16 @@ export default function ScheduleCapacityConfigScreen({
               <TextInput
                 style={styles.numberInput}
                 value={capacity}
-                onChangeText={setCapacity}
+                onChangeText={(val) => {
+                  setCapacity(val.replace(/[^0-9]/g, ''));
+                  setDirty(true);
+                }}
+                onSubmitEditing={handleSave}
                 keyboardType="number-pad"
               />
+              <Text style={styles.fieldHint}>
+                Capacity limit applies to active therapy students only.
+              </Text>
             </View>
           </View>
 
@@ -299,18 +267,22 @@ export default function ScheduleCapacityConfigScreen({
               <TextInput
                 style={styles.numberInput}
                 value={draftExpiry}
-                onChangeText={setDraftExpiry}
+                onChangeText={(val) => {
+                  setDraftExpiry(val.replace(/[^0-9]/g, ''));
+                  setDirty(true);
+                }}
+                onSubmitEditing={handleSave}
                 keyboardType="number-pad"
               />
               <Text style={styles.fieldHint}>
-                Unsubmitted Session Summaries and Daily Notes saved in draft status will be automatically flagged or archived after this period.
+                Unsubmitted Session Summaries and Daily Notes saved in draft status will be
+                automatically flagged or archived after this period.
               </Text>
             </View>
           </View>
         </View>
 
-
-        {/* Card 3: Session Block Definitions */}
+        {/* Card 2: Session Block Definitions */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Session Block Definitions</Text>
 
@@ -327,28 +299,57 @@ export default function ScheduleCapacityConfigScreen({
                 <View style={{ flex: 3, paddingRight: 12 }}>
                   <TimePickerSelector
                     value={b.startTime}
-                    onPress={() =>
-                      openTimePicker('block', b.id, b.startTime, 'startTime')
-                    }
+                    onChange={(newTime) => {
+                      setBlocks((prev) =>
+                        prev.map((item) =>
+                          item.id === b.id ? { ...item, startTime: newTime } : item,
+                        ),
+                      );
+                      setDirty(true);
+                    }}
+                    onPress={() => openTimePicker('block', b.id, b.startTime, 'startTime')}
+                    accessibilityLabel={`${b.name} start time`}
                   />
                 </View>
                 <View style={{ flex: 3 }}>
                   <TimePickerSelector
                     value={b.endTime}
-                    onPress={() =>
-                      openTimePicker('block', b.id, b.endTime, 'endTime')
-                    }
+                    onChange={(newTime) => {
+                      setBlocks((prev) =>
+                        prev.map((item) =>
+                          item.id === b.id ? { ...item, endTime: newTime } : item,
+                        ),
+                      );
+                      setDirty(true);
+                    }}
+                    onPress={() => openTimePicker('block', b.id, b.endTime, 'endTime')}
+                    accessibilityLabel={`${b.name} end time`}
                   />
                 </View>
               </View>
             ))}
+
+            {blocks.length === 0 && (
+              <View style={styles.emptyTableState}>
+                <Feather name="calendar" size={24} color="#94A3B8" style={{ marginBottom: 6 }} />
+                <Text style={styles.emptyTableText}>No session blocks defined yet.</Text>
+              </View>
+            )}
           </View>
         </View>
 
         {/* Save Configuration Action Button */}
-        <TouchableOpacity style={styles.saveConfigBtn} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveConfigBtn, isSaving && { opacity: 0.7 }]}
+          onPress={handleSave}
+          disabled={isSaving}
+          accessibilityRole="button"
+          accessibilityLabel="Save Schedule and Capacity Configuration"
+        >
           <Feather name="save" size={14} color="#0F172A" />
-          <Text style={styles.saveConfigBtnText}>Save Configuration</Text>
+          <Text style={styles.saveConfigBtnText}>
+            {isSaving ? 'Saving...' : 'Save Configuration'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -375,10 +376,7 @@ export default function ScheduleCapacityConfigScreen({
                   {HOURS.map((h) => (
                     <TouchableOpacity
                       key={h}
-                      style={[
-                        styles.pickerItem,
-                        tempTime.hour === h && styles.pickerItemActive,
-                      ]}
+                      style={[styles.pickerItem, tempTime.hour === h && styles.pickerItemActive]}
                       onPress={() => setTempTime({ ...tempTime, hour: h })}
                     >
                       <Text
@@ -403,10 +401,7 @@ export default function ScheduleCapacityConfigScreen({
                   {MINUTES.map((m) => (
                     <TouchableOpacity
                       key={m}
-                      style={[
-                        styles.pickerItem,
-                        tempTime.minute === m && styles.pickerItemActive,
-                      ]}
+                      style={[styles.pickerItem, tempTime.minute === m && styles.pickerItemActive]}
                       onPress={() => setTempTime({ ...tempTime, minute: m })}
                     >
                       <Text
@@ -429,10 +424,7 @@ export default function ScheduleCapacityConfigScreen({
                   {PERIODS.map((p) => (
                     <TouchableOpacity
                       key={p}
-                      style={[
-                        styles.pickerItem,
-                        tempTime.period === p && styles.pickerItemActive,
-                      ]}
+                      style={[styles.pickerItem, tempTime.period === p && styles.pickerItemActive]}
                       onPress={() => setTempTime({ ...tempTime, period: p })}
                     >
                       <Text
@@ -451,16 +443,10 @@ export default function ScheduleCapacityConfigScreen({
 
             {/* Modal Actions */}
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setPickerVisible(false)}
-              >
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setPickerVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleConfirmTime}
-              >
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmTime}>
                 <Text style={styles.confirmBtnText}>Set Time</Text>
               </TouchableOpacity>
             </View>
@@ -758,5 +744,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  emptyTableState: {
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTableText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
   },
 });

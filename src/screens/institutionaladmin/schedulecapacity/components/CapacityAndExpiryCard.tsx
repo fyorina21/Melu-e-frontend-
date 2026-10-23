@@ -27,7 +27,7 @@ export const CapacityAndExpiryCard: React.FC<CapacityAndExpiryCardProps> = React
               placeholderTextColor="#94A3B8"
             />
             <Text style={styles.fieldHint}>
-              Recommended standard ratio is 2 students per therapist.
+              Capacity limit applies to active therapy students only.
             </Text>
           </View>
         </View>

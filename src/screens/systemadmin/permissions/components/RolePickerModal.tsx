@@ -9,7 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../../../theme/colors';
+import { colors, radius, spacing, makeShadow } from '../../../../theme/colors';
 import { typography } from '../../../../theme/typography';
 import type { PermissionRole } from '../permissionTypes';
 
@@ -112,10 +112,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     gap: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    ...makeShadow(4, 12, 0.15, '0, 0, 0', 8),
   },
   rolePickerHeader: {
     flexDirection: 'row',

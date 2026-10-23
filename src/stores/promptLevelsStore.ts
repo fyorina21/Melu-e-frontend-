@@ -42,14 +42,29 @@ function readPersisted(): {
   levels: PromptLevelConfigItem[] | null;
   consecutive: number;
   streamCount: number;
+  layout: 'Horizontal' | 'Vertical' | 'Card Grid';
+  independence: number;
+  autoSuggest: boolean;
 } {
   const parsed = storage.getJSONSync<any>(STORAGE_KEY, null);
-  if (!parsed) return { levels: null, consecutive: 5, streamCount: 5 };
+  if (!parsed) {
+    return {
+      levels: null,
+      consecutive: 5,
+      streamCount: 5,
+      layout: 'Horizontal',
+      independence: 80,
+      autoSuggest: true,
+    };
+  }
   const rows = parsed?.promptLevels;
   const levels = Array.isArray(rows) && rows.length > 0 ? rows.map(toItem) : null;
   const consecutive = typeof parsed?.consecutive === 'number' ? parsed.consecutive : 5;
   const streamCount = typeof parsed?.streamCount === 'number' ? parsed.streamCount : 5;
-  return { levels, consecutive, streamCount };
+  const layout = parsed?.layout || 'Horizontal';
+  const independence = typeof parsed?.independence === 'number' ? parsed.independence : 80;
+  const autoSuggest = parsed?.autoSuggest !== false;
+  return { levels, consecutive, streamCount, layout, independence, autoSuggest };
 }
 
 const initial = readPersisted();
@@ -58,26 +73,70 @@ export interface PromptLevelsState {
   promptLevels: PromptLevelConfigItem[];
   consecutive: number;
   streamCount: number;
+  layout: 'Horizontal' | 'Vertical' | 'Card Grid';
+  independence: number;
+  autoSuggest: boolean;
   setPromptLevels: (
     next: PromptLevelConfigItem[],
     consecutive?: number,
     streamCount?: number,
+    layout?: 'Horizontal' | 'Vertical' | 'Card Grid',
+    independence?: number,
+    autoSuggest?: boolean,
   ) => void;
-  syncFromApi: (rows: any[], consecutive?: number, streamCount?: number) => PromptLevelConfigItem[];
+  syncFromApi: (
+    rows: any[],
+    consecutive?: number,
+    streamCount?: number,
+    layout?: 'Horizontal' | 'Vertical' | 'Card Grid',
+    independence?: number,
+    autoSuggest?: boolean,
+  ) => PromptLevelConfigItem[];
 }
 
 export const usePromptLevelsStore = create<PromptLevelsState>((set, get) => ({
   promptLevels: initial.levels ?? DEFAULT_PROMPT_LEVELS.map((c) => ({ ...c })),
   consecutive: initial.consecutive,
   streamCount: initial.streamCount,
-  setPromptLevels: (next, consecutive = get().consecutive, streamCount = get().streamCount) => {
-    storage.setJSONSync(STORAGE_KEY, { promptLevels: next, consecutive, streamCount });
-    set({ promptLevels: next.map((c) => ({ ...c })), consecutive, streamCount });
+  layout: initial.layout,
+  independence: initial.independence,
+  autoSuggest: initial.autoSuggest,
+  setPromptLevels: (
+    next,
+    consecutive = get().consecutive,
+    streamCount = get().streamCount,
+    layout = get().layout,
+    independence = get().independence,
+    autoSuggest = get().autoSuggest,
+  ) => {
+    storage.setJSONSync(STORAGE_KEY, {
+      promptLevels: next,
+      consecutive,
+      streamCount,
+      layout,
+      independence,
+      autoSuggest,
+    });
+    set({
+      promptLevels: next.map((c) => ({ ...c })),
+      consecutive,
+      streamCount,
+      layout,
+      independence,
+      autoSuggest,
+    });
   },
-  syncFromApi: (rows, consecutive = get().consecutive, streamCount = get().streamCount) => {
+  syncFromApi: (
+    rows,
+    consecutive = get().consecutive,
+    streamCount = get().streamCount,
+    layout = get().layout,
+    independence = get().independence,
+    autoSuggest = get().autoSuggest,
+  ) => {
     if (Array.isArray(rows)) {
       const items = rows.map((r, idx) => toItem(r, idx));
-      get().setPromptLevels(items, consecutive, streamCount);
+      get().setPromptLevels(items, consecutive, streamCount, layout, independence, autoSuggest);
       return items;
     }
     return get().promptLevels;
@@ -90,21 +149,34 @@ export function getPromptLevels(): PromptLevelConfigItem[] {
 }
 
 export function getTrialConfig() {
-  const { consecutive, streamCount } = usePromptLevelsStore.getState();
-  return { consecutive, streamCount };
+  const { consecutive, streamCount, layout, independence, autoSuggest } =
+    usePromptLevelsStore.getState();
+  return { consecutive, streamCount, layout, independence, autoSuggest };
 }
 
 export function setPromptLevels(
   next: PromptLevelConfigItem[],
   consecutive: number = usePromptLevelsStore.getState().consecutive,
   streamCount: number = usePromptLevelsStore.getState().streamCount,
+  layout: 'Horizontal' | 'Vertical' | 'Card Grid' = usePromptLevelsStore.getState().layout,
+  independence: number = usePromptLevelsStore.getState().independence,
+  autoSuggest: boolean = usePromptLevelsStore.getState().autoSuggest,
 ): void {
-  usePromptLevelsStore.getState().setPromptLevels(next, consecutive, streamCount);
+  usePromptLevelsStore
+    .getState()
+    .setPromptLevels(next, consecutive, streamCount, layout, independence, autoSuggest);
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(
         new CustomEvent('melue_prompt_levels_changed', {
-          detail: { promptLevels: next, consecutive, streamCount },
+          detail: {
+            promptLevels: next,
+            consecutive,
+            streamCount,
+            layout,
+            independence,
+            autoSuggest,
+          },
         }),
       );
     } catch {}
@@ -115,8 +187,13 @@ export function syncPromptLevelsFromApi(
   rows: any[],
   consecutive: number = usePromptLevelsStore.getState().consecutive,
   streamCount: number = usePromptLevelsStore.getState().streamCount,
+  layout: 'Horizontal' | 'Vertical' | 'Card Grid' = usePromptLevelsStore.getState().layout,
+  independence: number = usePromptLevelsStore.getState().independence,
+  autoSuggest: boolean = usePromptLevelsStore.getState().autoSuggest,
 ): PromptLevelConfigItem[] {
-  return usePromptLevelsStore.getState().syncFromApi(rows, consecutive, streamCount);
+  return usePromptLevelsStore
+    .getState()
+    .syncFromApi(rows, consecutive, streamCount, layout, independence, autoSuggest);
 }
 
 export function getPromptLevelOrder(): Record<string, number> {

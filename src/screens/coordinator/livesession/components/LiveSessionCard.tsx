@@ -35,20 +35,32 @@ export const LiveSessionCard: React.FC<LiveSessionCardProps> = React.memo(
           </View>
         </View>
 
-        <View style={styles.chipRow}>
-          {session.students.map((st) => (
-            <TouchableOpacity
-              key={st}
-              style={[styles.studentChip, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
-              onPress={() => onSelectStudent(st)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={`View student ${st}`}
-            >
-              <StudentAvatar name={st} size={16} />
-              <Text style={styles.studentChipText}>{st}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={styles.studentsSection}>
+          <Text style={styles.studentsHeaderLabel}>
+            Active Students ({session.students.length})
+          </Text>
+          <View style={styles.chipRow}>
+            {session.students.length > 0 ? (
+              session.students.map((st) => {
+                const studentId = session.studentDetails?.find((d) => d.name === st)?.id || st;
+                return (
+                  <TouchableOpacity
+                    key={st}
+                    style={styles.studentChip}
+                    onPress={() => onSelectStudent(studentId)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View student ${st}`}
+                  >
+                    <StudentAvatar name={st} studentId={studentId} size={18} />
+                    <Text style={styles.studentChipText}>{st}</Text>
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <Text style={styles.noStudentsText}>No active students assigned</Text>
+            )}
+          </View>
         </View>
 
         <View style={styles.metricsRow}>
@@ -144,26 +156,41 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  studentsSection: {
+    gap: 6,
+  },
+  studentsHeaderLabel: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   studentChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    gap: 6,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: `${SKY}1A`,
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: `${SKY}40`,
+    borderColor: '#BFDBFE',
   },
   studentChipText: {
-    color: SKY,
+    color: '#1E40AF',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  noStudentsText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   metricsRow: {
     flexDirection: 'row',

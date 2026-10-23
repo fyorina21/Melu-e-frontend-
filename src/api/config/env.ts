@@ -13,8 +13,27 @@ const PLACEHOLDER_HOST = 'REPLACE_WITH_REAL_API_HOST';
 
 const DEFAULT_API_URL = 'http://localhost:3000';
 
+const getFallbackApiUrl = (): string => {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  // In production web (non-localhost), dynamically use origin or production API URL
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1')
+  ) {
+    if (window.location.hostname.endsWith('melue.foundation')) {
+      return 'https://api.melue.foundation';
+    }
+    return window.location.origin;
+  }
+  return DEFAULT_API_URL;
+};
+
 export const env = {
-  apiUrl: process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL,
+  apiUrl: getFallbackApiUrl(),
   apiVersion: 'v1',
   apiTimeoutMs: process.env.VITEST ? 2000 : 10_000,
 } as const;

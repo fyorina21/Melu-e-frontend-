@@ -2,13 +2,22 @@
 // Lists only that role's links and supports collapsing to an icon rail or hiding on mobile.
 
 import React, { useContext } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Image,
+  ScrollView,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NavigationState } from '@react-navigation/native';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
-import { ROLE_TABS, ROLE_LABELS, routeMapForRole } from './appNavConfig';
+import { ROLE_TABS, ROLE_LABELS, routeMapForRole, getTabsForSession } from './appNavConfig';
 import { SidebarNavContext } from '../navigation/SidebarNavContext';
 import { useBreakpoint } from '../utils/useBreakpoint';
+import { useAuth } from '../context/AuthContext';
 import type { Role } from '../types';
 
 function activeRouteName(state: NavigationState | undefined): string | undefined {
@@ -20,24 +29,81 @@ function activeRouteName(state: NavigationState | undefined): string | undefined
 }
 
 const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
+  Dashboard: 'home',
+  'Director Dashboard': 'home',
+  'Coordinator Dashboard': 'home',
+  'Teacher Dashboard': 'home',
+  'PD Dashboard': 'home',
+  'Parent Dashboard': 'home',
+  Overview: 'home',
+  Home: 'home',
+  Notifications: 'bell',
   'Staff Accounts': 'users',
   'Staff account management': 'users',
+  'Staff Management': 'users',
   'Role Management': 'shield',
   'Permission Configuration': 'lock',
   'Audit Log': 'activity',
+  Goals: 'target',
   'Goal Domains': 'target',
+  'Task Analysis': 'check-square',
+  'Task Analysis Templates': 'check-square',
   'Schedule & Capacity': 'calendar',
   'ABC Dropdown Lists': 'list',
   'Trial Logging Format': 'check-circle',
   'Form Builder': 'file-plus',
+  'Reports & Oversight': 'bar-chart-2',
+  'Report & Oversight': 'bar-chart-2',
+  Reports: 'bar-chart-2',
+  'Report Builder': 'file-text',
+  'Clinical Progress Charts': 'trending-up',
+  'Staff Scheduling': 'clock',
+  'Operational Management': 'calendar',
+  'Staff Management & Linking': 'users',
+  'Room Resource Scheduling': 'map-pin',
+  'Live Sessions': 'video',
+  Session: 'play-circle',
+  'Active Therapy': 'play-circle',
+  'Daily Notes': 'file-text',
+  'Session Summary': 'clipboard',
+  'Session Summary Review': 'clipboard',
+  Assessments: 'clipboard',
+  'Assessment Dashboard': 'clipboard',
+  'Assessment Review': 'check-circle',
+  'Assessment Summary Report': 'file-text',
+  'IUP Creation & Goal Assignment': 'plus-circle',
+  'Goal Mastery Approval': 'award',
+  'IUP Library Management': 'book',
+  'Clinical Quality Monitoring': 'activity',
+  'ABC Log': 'alert-triangle',
+  Parents: 'message-circle',
+  'Parent Communication': 'message-circle',
+  Messages: 'message-circle',
+  Progress: 'trending-up',
+  Observations: 'eye',
+  'Student Progress': 'trending-up',
+  'Enrollment Wizard': 'user-plus',
+  'Student Enrollment Wizard': 'user-plus',
+  'Student Register': 'user-check',
+  'Registered Student': 'user-check',
+  'Registered Students': 'user-check',
+  'Student Registration': 'user-check',
+  'Student Caseload Management': 'users',
+  'Student Profile': 'user',
 };
+
+import { useUnsavedChanges } from '../context/UnsavedChangesContext';
+import { confirmAction } from '../utils/dialogs';
 
 export default function RoleSidebar({ role }: { role: Role }) {
   const { navRef, version, isCollapsed, toggleSidebar, setIsCollapsed } =
     useContext(SidebarNavContext);
+  const { session } = useAuth();
+  const { isDirty, setDirty } = useUnsavedChanges();
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
-  const tabs = ROLE_TABS[role] ?? [];
+  const defaultTabs = ROLE_TABS[role] ?? [];
+  const tabs = getTabsForSession(session, defaultTabs);
   const routeMap = routeMapForRole(role);
 
   const current = activeRouteName(navRef.current?.getState());
@@ -47,6 +113,24 @@ export default function RoleSidebar({ role }: { role: Role }) {
   const handlePress = (tab: string) => {
     const route = routeMap?.[tab];
     if (route) {
+      if (isDirty) {
+        confirmAction({
+          title: 'Unsaved Changes',
+          message:
+            'You have unsaved changes on this page. If you leave now, your modifications will be lost. Are you sure you want to navigate away?',
+          confirmLabel: 'Leave without saving',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            navRef.current?.navigate(route as never);
+            if (isCompact) {
+              setIsCollapsed(true);
+            }
+          },
+        });
+        return;
+      }
       navRef.current?.navigate(route as never);
       if (isCompact) {
         setIsCollapsed(true);
@@ -74,7 +158,11 @@ export default function RoleSidebar({ role }: { role: Role }) {
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         </View>
-        <View style={styles.listCollapsed}>
+        <ScrollView
+          style={styles.listCollapsedScroll}
+          contentContainerStyle={styles.listCollapsed}
+          showsVerticalScrollIndicator={false}
+        >
           {tabs.map((tab) => {
             const active = tab === activeTab;
             const iconName = TAB_ICONS[tab] ?? 'circle';
@@ -96,7 +184,7 @@ export default function RoleSidebar({ role }: { role: Role }) {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -122,7 +210,7 @@ export default function RoleSidebar({ role }: { role: Role }) {
           </View>
         )}
         <Text style={styles.roleLabel} numberOfLines={1}>
-          {ROLE_LABELS[role]}
+          {ROLE_LABELS[role] || (session as any)?.roleTitle || session?.role || 'Staff'}
         </Text>
         <TouchableOpacity
           onPress={toggleSidebar}
@@ -133,7 +221,11 @@ export default function RoleSidebar({ role }: { role: Role }) {
           <Feather name={isCompact ? 'x' : 'chevron-left'} size={18} color={colors.mutedText} />
         </TouchableOpacity>
       </View>
-      <View style={styles.list}>
+      <ScrollView
+        style={styles.listScroll}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+      >
         {tabs.map((tab) => {
           const active = tab === activeTab;
           const iconName = TAB_ICONS[tab] ?? 'circle';
@@ -158,7 +250,7 @@ export default function RoleSidebar({ role }: { role: Role }) {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -246,13 +338,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  listScroll: {
+    flex: 1,
+  },
   list: {
     gap: spacing.xs,
+    paddingBottom: spacing.lg,
+  },
+  listCollapsedScroll: {
+    flex: 1,
+    width: '100%',
   },
   listCollapsed: {
     gap: spacing.sm,
     width: '100%',
     alignItems: 'center',
+    paddingBottom: spacing.lg,
   },
   item: {
     flexDirection: 'row',

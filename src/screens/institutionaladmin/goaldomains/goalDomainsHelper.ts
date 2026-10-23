@@ -13,7 +13,9 @@ export function moveItemInList<T>(list: T[], index: number, direction: 'up' | 'd
   return updated;
 }
 
-export function validateDomainSubmission(domains: GoalDomain[]): {
+export function validateDomainSubmission<T extends { active?: boolean }>(
+  domains: T[],
+): {
   valid: boolean;
   error?: string;
 } {

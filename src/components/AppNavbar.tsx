@@ -22,6 +22,8 @@ import { colors, radius, spacing, makeShadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import IconButton from './IconButton';
 import { useAuth } from '../context/AuthContext';
+import { useUnsavedChanges } from '../context/UnsavedChangesContext';
+import { confirmAction } from '../utils/dialogs';
 import {
   ROLE_TABS,
   ROLE_LABELS,
@@ -55,6 +57,7 @@ interface AppNavbarProps {
 
 export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: AppNavbarProps) {
   const { session, logout, switchRole } = useAuth();
+  const { isDirty, setDirty } = useUnsavedChanges();
   const navigation = useNavigation();
   const { isCollapsed, toggleSidebar } = useSidebarNav();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,7 +69,7 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
   const role = (session?.role ?? 'teacher') as Role;
-  const isSidebarNav = role === 'system_admin' || role === 'institutional_admin';
+  const isSidebarNav = true;
 
   // Automatically fetch unread count from backend if not provided as a prop
   React.useEffect(() => {
@@ -182,6 +185,21 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     setDropdownGroup(null);
     setMenuOpen(false);
     setDrawerOpen(false);
+    if (isDirty) {
+      confirmAction({
+        title: 'Unsaved Changes',
+        message:
+          'You have unsaved changes on this page. If you log out now, your modifications will be lost. Are you sure you want to log out?',
+        confirmLabel: 'Discard & Log Out',
+        cancelLabel: 'Keep Editing',
+        destructive: true,
+        onConfirm: () => {
+          setDirty(false);
+          logout();
+        },
+      });
+      return;
+    }
     logout();
   };
 
@@ -189,12 +207,31 @@ export default function AppNavbar({ activeTab, onTabPress, unreadCount = 0 }: Ap
     setDropdownGroup(null);
     setDrawerOpen(false);
     setMenuOpen(false);
-    const route = routeByTab?.[tab];
-    if (route) {
-      navigation?.navigate?.(route as never);
-    } else {
-      onTabPress?.(tab);
+    const proceed = () => {
+      const route = routeByTab?.[tab];
+      if (route) {
+        navigation?.navigate?.(route as never);
+      } else {
+        onTabPress?.(tab);
+      }
+    };
+
+    if (isDirty) {
+      confirmAction({
+        title: 'Unsaved Changes',
+        message:
+          'You have unsaved changes. Navigating to another page will discard your modifications. Do you want to leave?',
+        confirmLabel: 'Discard Changes',
+        cancelLabel: 'Stay on Page',
+        destructive: true,
+        onConfirm: () => {
+          setDirty(false);
+          proceed();
+        },
+      });
+      return;
     }
+    proceed();
   };
 
   const handleGroupPress = (group: NavGroupTab, event?: any) => {

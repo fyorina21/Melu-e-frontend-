@@ -122,7 +122,7 @@ describe('CustomRoleRouting & Permission Configuration', () => {
 
       // Reports module
       expect(matrix['director_reports_oversight']?.VIEW).toBe(true);
-      expect(matrix['director_dashboard']?.VIEW).toBe(true);
+      expect(matrix['director_report_builder']?.VIEW).toBe(true);
 
       // Admin module
       expect(matrix['sys_role_management']?.VIEW).toBe(true);

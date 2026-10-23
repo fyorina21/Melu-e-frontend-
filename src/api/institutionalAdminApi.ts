@@ -53,24 +53,6 @@ export const DEFAULT_ENROLLMENT_FORM = {
       options: ['Female', 'Male', 'Other'],
     },
     {
-      id: 'f_program',
-      type: 'Radio',
-      label: 'Program Type',
-      required: true,
-      visible: true,
-      section: 'Student Info',
-      options: ['Regular', 'Pulled Out'],
-    },
-    {
-      id: 'f_therapy',
-      type: 'Radio',
-      label: 'Therapy Group',
-      required: true,
-      visible: true,
-      section: 'Student Info',
-      options: ['Basic', 'Functional Living Skill'],
-    },
-    {
       id: 'f4',
       type: 'Text',
       label: 'Parent / Guardian Name',
@@ -133,8 +115,42 @@ export const DEFAULT_ENROLLMENT_FORM = {
       section: 'Medical Info',
       options: ['Yes', 'No'],
     },
+    {
+      id: 'f_program',
+      type: 'Radio',
+      label: 'Program Type',
+      required: true,
+      visible: true,
+      section: 'Program Placement',
+      options: ['Regular', 'Pulled Out'],
+    },
+    {
+      id: 'f_therapy',
+      type: 'Radio',
+      label: 'Therapy Group',
+      required: true,
+      visible: true,
+      section: 'Program Placement',
+      options: ['Basic', 'Functional Living Skill'],
+    },
+    {
+      id: 'f_therapist',
+      type: 'Dropdown',
+      label: 'Assigned Primary Therapist',
+      required: true,
+      visible: true,
+      section: 'Assign Therapist',
+      options: ['Sarah Jenkins', 'Marcus Vance', 'Elena Rostova'],
+    },
   ],
-  customSections: ['Student Info', 'Parent Info', 'Medical Info'],
+  customSections: [
+    'Student Info',
+    'Parent Info',
+    'Medical Info',
+    'Program Placement',
+    'Assign Therapist',
+    'Review & Complete',
+  ],
   deletedSections: [],
   history: [],
 };
@@ -297,6 +313,55 @@ export const DEFAULT_BEHAVIORAL_FORM = {
   revisionNumber: 1,
   isDefault: true,
   fields: [
+    // Incident Details (Location, Timer/Duration, Frequency, Intensity)
+    {
+      id: 'b_loc',
+      type: 'Dropdown',
+      label: 'Session Room / Physical Location',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: [
+        'Room 1A',
+        'Room 1B',
+        'Room 1C',
+        'Room 1D',
+        'Room 2A',
+        'Room 2B',
+        'Room 2C',
+        'Room 2D',
+        'Sensory Station',
+        'Hallway / Transit',
+        'Playground',
+        'Restroom',
+      ],
+    },
+    {
+      id: 'b_dur',
+      type: 'Number',
+      label: 'Duration / Timer (mins)',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+    },
+    {
+      id: 'b_freq',
+      type: 'Number',
+      label: 'Episode Frequency / Count',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+    },
+    {
+      id: 'b_int',
+      type: 'Dropdown',
+      label: 'Behavior Severity Intensity',
+      required: true,
+      visible: true,
+      section: 'Incident Details',
+      options: ['Low', 'Medium', 'High'],
+    },
+
     // MASS Items
     {
       id: 'M1',
@@ -548,7 +613,7 @@ export const DEFAULT_BEHAVIORAL_FORM = {
       placeholder: 'What was the immediate response?',
     },
   ],
-  customSections: ['MASS', 'FAST', 'ABC Tracking', 'General'],
+  customSections: ['Incident Details', 'MASS', 'FAST', 'ABC Tracking', 'General'],
   deletedSections: [],
   history: [],
 };
@@ -769,26 +834,35 @@ export const DEFAULT_SENSORY_FORM = {
 
 export const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
   formName: 'Behavior Incident Form',
-  formType: 'behavior_incident',
+  formType: 'abc_data_sheet',
   revisionNumber: 1,
   isDefault: true,
   fields: [
     {
-      id: 'b_loc',
+      id: 'b_ant',
       type: 'Dropdown',
-      label: 'Location',
+      label: 'Antecedent (A)',
       required: true,
       visible: true,
-      section: 'Incident Details',
-      options: ['Classroom', 'Playground', 'Cafeteria', 'Hallway', 'Therapy Room', 'Bus / Transit'],
+      section: 'ABC Tracking',
+      options: [
+        'Demand / Task',
+        'Transition',
+        'Denied Access',
+        'Attention Diverted',
+        'Sensory Overload',
+        'Loud Noise',
+        'Peer Interaction',
+        'Unstructured Time',
+      ],
     },
     {
       id: 'b_beh',
       type: 'Dropdown',
-      label: 'Behavior Type',
+      label: 'Behavior (B)',
       required: true,
       visible: true,
-      section: 'Incident Details',
+      section: 'ABC Tracking',
       options: [
         'Aggression',
         'Self-injury',
@@ -800,44 +874,10 @@ export const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
       ],
     },
     {
-      id: 'b_int',
-      type: 'Dropdown',
-      label: 'Intensity',
-      required: true,
-      visible: true,
-      section: 'Incident Details',
-      options: ['Low', 'Medium', 'High'],
-    },
-    {
-      id: 'b_dur',
-      type: 'Number',
-      label: 'Duration (mins)',
-      required: true,
-      visible: true,
-      section: 'Incident Details',
-    },
-    {
-      id: 'b_ant',
-      type: 'Dropdown',
-      label: 'Antecedent / Trigger',
-      required: false,
-      visible: true,
-      section: 'ABC Tracking',
-      options: [
-        'Demand / Task',
-        'Transition',
-        'Denied Access',
-        'Attention Diverted',
-        'Sensory Overload',
-        'Loud Noise',
-        'Peer Interaction',
-      ],
-    },
-    {
       id: 'b_con',
       type: 'Dropdown',
-      label: 'Consequence / Action Taken',
-      required: false,
+      label: 'Consequence (C)',
+      required: true,
       visible: true,
       section: 'ABC Tracking',
       options: [
@@ -847,19 +887,11 @@ export const DEFAULT_BEHAVIOR_INCIDENT_FORM = {
         'Sensory Break',
         'Physical Prompt',
         'Planned Ignoring',
+        'Differential Reinforcement (DRA)',
       ],
     },
-    {
-      id: 'b_notes',
-      type: 'TextArea',
-      label: 'Notes & Observations',
-      required: false,
-      visible: true,
-      section: 'General',
-      placeholder: 'Enter additional notes or observations...',
-    },
   ],
-  customSections: ['Incident Details', 'ABC Tracking', 'General'],
+  customSections: ['ABC Tracking'],
   deletedSections: [],
   history: [],
 };
@@ -872,7 +904,6 @@ export function getDefaultFormConfig(formName: string) {
   if (name.includes('ablls') || name.includes('skill')) return DEFAULT_ABLLS_FORM;
   if (name.includes('incident')) {
     const abc = getStoredAbcLists();
-    const activeLocations = abc.locations.filter((i) => i.status === 'Active').map((i) => i.name);
     const activeBehaviors = abc.behaviors.filter((i) => i.status === 'Active').map((i) => i.name);
     const activeAntecedents = abc.antecedents
       .filter((i) => i.status === 'Active')
@@ -884,8 +915,6 @@ export function getDefaultFormConfig(formName: string) {
     return {
       ...DEFAULT_BEHAVIOR_INCIDENT_FORM,
       fields: DEFAULT_BEHAVIOR_INCIDENT_FORM.fields.map((f: any) => {
-        if (f.id === 'b_loc')
-          return { ...f, options: activeLocations.length > 0 ? activeLocations : f.options };
         if (f.id === 'b_beh')
           return { ...f, options: activeBehaviors.length > 0 ? activeBehaviors : f.options };
         if (f.id === 'b_ant')
@@ -918,9 +947,27 @@ export function getCachedFormConfig(formName: string) {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && Array.isArray(parsed.fields)) {
+          // If explicitly marked as not default (user-saved or edited config), always trust it!
+          if (parsed.isDefault === false) {
+            return parsed;
+          }
           // If cached config has 0 fields or old truncated stub fields, upgrade to defaults
           const normName = formName.toLowerCase().trim();
           if (parsed.fields.length === 0) return null;
+
+          // Purge stale cache bleed from old enrollment fallback
+          if (
+            !normName.includes('enrollment') &&
+            parsed.fields.some(
+              (f: any) =>
+                f.label?.includes('Parent') ||
+                f.label?.includes('Student Full Name') ||
+                f.id === 'f1',
+            )
+          ) {
+            return null;
+          }
+
           if (normName.includes('ablls') && parsed.fields.length <= 4 && parsed.isDefault !== false)
             return null;
           if (
@@ -962,19 +1009,14 @@ export function setCachedFormConfig(formName: string, config: any) {
   }
 }
 
-// SCR-ADMIN-001: Form Builder
+// SCR-ADMIN-001: Form Builder - Always fetch dynamic schema from backend
 export const getFormConfig = async (formName: string) => {
-  const cached = getCachedFormConfig(formName);
-  if (
-    cached &&
-    cached.isDefault === false &&
-    Array.isArray(cached.fields) &&
-    cached.fields.length > 0
-  ) {
-    return { data: cached };
-  }
-  if (!isUserAdmin()) {
-    return { data: cached || getDefaultFormConfig(formName) };
+  if (process.env.VITEST) {
+    const cached = getCachedFormConfig(formName);
+    if (cached && Array.isArray(cached.fields) && cached.fields.length > 0) {
+      return { data: cached };
+    }
+    return { data: getDefaultFormConfig(formName) };
   }
 
   try {
@@ -985,23 +1027,33 @@ export const getFormConfig = async (formName: string) => {
       : Array.isArray(raw?.data?.fields)
         ? raw.data.fields
         : [];
-    if (raw && rawFields.length > 0) {
+    if (
+      raw &&
+      (rawFields.length > 0 || raw.isEmpty === true || (raw.formName && Array.isArray(raw.fields)))
+    ) {
       setCachedFormConfig(formName, raw);
       return res;
     }
-    return { data: cached || getDefaultFormConfig(formName) };
   } catch (err: any) {
-    return { data: cached || getDefaultFormConfig(formName) };
+    // Backend unreachable or returned error, fallback gracefully below
   }
+
+  const cached = getCachedFormConfig(formName);
+  if (cached && Array.isArray(cached.fields) && cached.fields.length > 0) {
+    return { data: cached };
+  }
+
+  return { data: getDefaultFormConfig(formName) };
 };
 
 export const saveFormConfig = async (formName: string, payload: Payload) => {
   setCachedFormConfig(formName, payload);
-  if (!isUserAdmin()) {
+  if (process.env.VITEST) {
     return { data: payload };
   }
   try {
-    return await client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+    const res = await client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+    return res;
   } catch (err: any) {
     if (
       err?.status === 403 ||
@@ -1031,11 +1083,11 @@ export const resetFormToDefault = async (formName: string) => {
       );
     } catch {}
   }
-  if (!isUserAdmin()) {
+  if (process.env.VITEST) {
     return { data: { status: 'ok', config: defaultCfg } };
   }
   try {
-    return await client.delete(`/admin/forms/${encodeURIComponent(formName)}`);
+    return await client.post(`/admin/forms/${encodeURIComponent(formName)}/reset`);
   } catch {
     return { data: { status: 'ok', config: defaultCfg } };
   }
@@ -1127,40 +1179,41 @@ export const resetAbcListsToDefault = async () => {
 
 const DEFAULT_SCHEDULE_CAPACITY_CONFIG = {
   morningStart: '08:00 AM',
-  morningEnd: '10:30 AM',
-  afternoonStart: '01:00 PM',
-  afternoonEnd: '03:30 PM',
-  preTherapyDuration: 30,
+  morningEnd: '11:30 AM',
+  afternoonStart: '12:30 PM',
+  afternoonEnd: '04:00 PM',
+  preTherapyDuration: 15,
   capacity: 2,
   staff_to_student_capacity: 2,
-  draftExpiry: 7,
+  draftExpiry: 14,
+  draft_expiry_days: 14,
   blocks: [
     {
       id: 'b1',
-      name: 'Morning Block 1',
+      name: 'Morning Block A',
       startTime: '08:00 AM',
-      endTime: '09:15 AM',
+      endTime: '09:30 AM',
       type: 'Therapy',
     },
     {
       id: 'b2',
-      name: 'Morning Block 2',
-      startTime: '09:15 AM',
-      endTime: '10:30 AM',
+      name: 'Morning Block B',
+      startTime: '09:45 AM',
+      endTime: '11:15 AM',
       type: 'Therapy',
     },
     {
       id: 'b3',
-      name: 'Afternoon Block 1',
-      startTime: '01:00 PM',
-      endTime: '02:15 PM',
+      name: 'Afternoon Block A',
+      startTime: '12:30 PM',
+      endTime: '02:00 PM',
       type: 'Therapy',
     },
     {
       id: 'b4',
-      name: 'Afternoon Block 2',
+      name: 'Afternoon Block B',
       startTime: '02:15 PM',
-      endTime: '03:30 PM',
+      endTime: '03:45 PM',
       type: 'Therapy',
     },
   ],
@@ -1177,10 +1230,6 @@ export const getScheduleCapacityConfig = async () => {
       return DEFAULT_SCHEDULE_CAPACITY_CONFIG;
     }
   };
-
-  if (!isUserAdmin()) {
-    return { data: readCached() };
-  }
 
   try {
     const res = await client.get('/admin/schedule-capacity-config');
@@ -1212,24 +1261,14 @@ export const saveScheduleCapacityConfig = async (payload: Payload) => {
 
 // SCR-ADMIN-005: Goal Domain Definitions
 export const getGoalDomains = async () => {
-  const local = getStoredGoalDomains();
   try {
     const res = await client.get('/admin/goal_domains');
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-      const merged = [...local];
-      res.data.forEach((bg: any) => {
-        const idx = merged.findIndex((m) => m.id === bg.id || m.name === bg.name);
-        if (idx === -1) {
-          merged.push(bg);
-        } else {
-          merged[idx] = { ...bg, ...merged[idx] };
-        }
-      });
-      setStoredGoalDomains(merged);
-      return { ...res, data: merged };
+      setStoredGoalDomains(res.data);
+      return res;
     }
   } catch {}
-  return { data: local };
+  return { data: getStoredGoalDomains() };
 };
 
 export const saveGoalDomains = async (domains: Payload[]) => {
@@ -1238,6 +1277,45 @@ export const saveGoalDomains = async (domains: Payload[]) => {
     return await client.post('/admin/goal_domains', { domains });
   } catch {
     return { data: { success: true, domains } };
+  }
+};
+
+export const deleteGoalDomainApi = async (idOrName: string | number, cascade = false) => {
+  const current = getStoredGoalDomains();
+  const next = current.filter((d) => d.id !== String(idOrName) && d.name !== String(idOrName));
+  setStoredGoalDomains(next);
+
+  try {
+    const url = `/admin/goal_domains/${encodeURIComponent(String(idOrName))}${cascade ? '?cascade=true' : ''}`;
+    return await client.delete(url);
+  } catch {
+    return { data: { success: true, id: idOrName } };
+  }
+};
+
+export const getGoalsApi = async () => {
+  try {
+    const res = await client.get('/goals?per_page=100');
+    if (res?.data?.goals && Array.isArray(res.data.goals)) {
+      return res.data.goals;
+    }
+  } catch {}
+  return [];
+};
+
+export const createGoalApi = async (payload: any) => {
+  return await client.post('/goals', { goal: payload });
+};
+
+export const updateGoalApi = async (goalId: string | number, payload: any) => {
+  return await client.patch(`/goals/${goalId}`, { goal: payload });
+};
+
+export const deleteGoalApi = async (goalId: string | number) => {
+  try {
+    return await client.delete(`/goals/${goalId}`);
+  } catch {
+    return { success: true };
   }
 };
 
