@@ -243,19 +243,24 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
   });
 
   describe('7. Filtering & Category Grouping', () => {
-    it('filters pages by free-text search across name, route, and category', () => {
+    it('filters pages by free-text search across name, route, screen, and category', () => {
       const resultsByName = filterPageModules(ALL_PAGE_MODULES, 'Session Data', 'All');
       expect(resultsByName.some((p) => p.id === 'teacher_session_collection')).toBe(true);
 
       const resultsByRoute = filterPageModules(ALL_PAGE_MODULES, 'GoalMasteryApproval', 'All');
       expect(resultsByRoute.length).toBeGreaterThanOrEqual(1);
 
+      const resultsByScreen = filterPageModules(ALL_PAGE_MODULES, 'SCR-009', 'All');
+      expect(resultsByScreen.some((p) => p.id === 'pd_enrollment_wizard')).toBe(true);
+
       const resultsByCategory = filterPageModules(
         ALL_PAGE_MODULES,
-        'Operations & Scheduling',
+        'Operations, Staffing & Scheduling',
         'All',
       );
-      expect(resultsByCategory.every((p) => p.category === 'Operations & Scheduling')).toBe(true);
+      expect(
+        resultsByCategory.every((p) => p.category === 'Operations, Staffing & Scheduling'),
+      ).toBe(true);
     });
 
     it('filters pages by role filter tab', () => {
@@ -268,16 +273,30 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
       expect(parentOnly.length).toBe(2);
     });
 
-    it('groups pages by category with accurate group counts', () => {
+    it('groups pages by the 8 canonical SRS categories with exact page counts', () => {
       const grouped = groupPagesByCategory(ALL_PAGE_MODULES);
 
-      expect(grouped['Executive Oversight']).toBeDefined();
-      expect(grouped['Therapy & Daily Clinical']).toBeDefined();
-      expect(grouped['Administration']).toBeDefined();
-      expect(grouped['Parent Portal']).toBeDefined();
+      expect(grouped['Student Intake & Enrollment']).toBeDefined();
+      expect(grouped['6-Week Baseline Assessments']).toBeDefined();
+      expect(grouped['IUP & Goal Curriculum Management']).toBeDefined();
+      expect(grouped['Active Therapy & Clinical Delivery']).toBeDefined();
+      expect(grouped['Operations, Staffing & Scheduling']).toBeDefined();
+      expect(grouped['Family Engagement & Parent Portal']).toBeDefined();
+      expect(grouped['Executive Reports & Clinical Oversight']).toBeDefined();
+      expect(grouped['Administration & Governance']).toBeDefined();
+
+      expect(grouped['Student Intake & Enrollment'].length).toBe(2);
+      expect(grouped['6-Week Baseline Assessments'].length).toBe(3);
+      expect(grouped['IUP & Goal Curriculum Management'].length).toBe(4);
+      expect(grouped['Active Therapy & Clinical Delivery'].length).toBe(6);
+      expect(grouped['Operations, Staffing & Scheduling'].length).toBe(3);
+      expect(grouped['Family Engagement & Parent Portal'].length).toBe(3);
+      expect(grouped['Executive Reports & Clinical Oversight'].length).toBe(2);
+      expect(grouped['Administration & Governance'].length).toBe(8);
 
       const totalGrouped = Object.values(grouped).reduce((acc, list) => acc + list.length, 0);
       expect(totalGrouped).toBe(ALL_PAGE_MODULES.length);
+      expect(totalGrouped).toBe(31);
     });
   });
 

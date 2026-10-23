@@ -23,7 +23,9 @@ export interface AppPageModule {
   role: string;
   roleKey: Role;
   category: string;
+  subCategory?: string;
   route: string;
+  screen?: string;
   backendResource: string;
   subResource?: string;
   description: string;
@@ -62,355 +64,528 @@ export const blankActions = (): Record<ActionType, boolean> => ({
   APPROVE: false,
 });
 
-// Canonical application pages organized by clinical/administrative categories
-export const ALL_PAGE_MODULES: AppPageModule[] = [
-  // --- EXECUTIVE OVERSIGHT ---
-  {
-    id: 'director_reports_oversight',
-    name: 'Reports & Executive Oversight',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Executive Oversight',
-    route: 'ReportsOversight',
-    backendResource: 'reports',
-    subResource: 'oversight',
-    description: 'Clinical reports oversight, bi-annual reviews, and session record exports',
-  },
-  {
-    id: 'director_report_builder',
-    name: 'Custom Report Builder',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Executive Oversight',
-    route: 'ReportBuilder',
-    backendResource: 'reports',
-    description: 'Custom report generation, multi-metric filtering, and PDF generation',
-  },
+export const CATEGORY_ORDER = [
+  'Student Intake & Enrollment',
+  '6-Week Baseline Assessments',
+  'IUP & Goal Curriculum Management',
+  'Active Therapy & Clinical Delivery',
+  'Operations, Staffing & Scheduling',
+  'Family Engagement & Parent Portal',
+  'Executive Reports & Clinical Oversight',
+  'Administration & Governance',
+] as const;
 
-  // --- INTAKE & REGISTRATION ---
+export type CategoryName = (typeof CATEGORY_ORDER)[number];
+
+export interface CategoryInfo {
+  index: number;
+  title: string;
+  pageCount: number;
+  description: string;
+}
+
+export const CATEGORY_METADATA: Record<string, CategoryInfo> = {
+  'Student Intake & Enrollment': {
+    index: 1,
+    title: 'Student Intake & Enrollment',
+    pageCount: 2,
+    description:
+      'Covers student lifecycle entry, initial demographic and diagnostic data capture, and roster management.',
+  },
+  '6-Week Baseline Assessments': {
+    index: 2,
+    title: '6-Week Baseline Assessments',
+    pageCount: 3,
+    description:
+      'Dedicated to the initial evaluation phase (ABLLS, MASS/FAST, ABC, and Preferences) that precedes IUP generation.',
+  },
+  'IUP & Goal Curriculum Management': {
+    index: 3,
+    title: 'IUP & Goal Curriculum Management',
+    pageCount: 4,
+    description:
+      'Focuses on curriculum design, goal repositories, and individual intervention plans.',
+  },
+  'Active Therapy & Clinical Delivery': {
+    index: 4,
+    title: 'Active Therapy & Clinical Delivery',
+    pageCount: 6,
+    description:
+      'Consolidates real-time therapy room execution, trial data logging, incident capture, supervisory review, and multi-teacher goal mastery verification.',
+  },
+  'Operations, Staffing & Scheduling': {
+    index: 5,
+    title: 'Operations, Staffing & Scheduling',
+    pageCount: 3,
+    description:
+      'Covers operational scheduling, physical therapy stations/rooms, and staff assignment limits.',
+  },
+  'Family Engagement & Parent Portal': {
+    index: 6,
+    title: 'Family Engagement & Parent Portal',
+    pageCount: 3,
+    description:
+      'Consolidates all two-way parent communication, home logs, and family-facing visibility.',
+  },
+  'Executive Reports & Clinical Oversight': {
+    index: 7,
+    title: 'Executive Reports & Clinical Oversight',
+    pageCount: 2,
+    description: 'Director-level analytics, bi-annual reviews, and long-term reporting.',
+  },
+  'Administration & Governance': {
+    index: 8,
+    title: 'Administration & Governance',
+    pageCount: 8,
+    description:
+      'Separated logically into Institutional Admin (Clinical Parameters) and System Admin (IT Security & Access).',
+  },
+};
+
+export const CATEGORY_FILTER_OPTIONS: string[] = ['All Categories', ...CATEGORY_ORDER];
+
+// Canonical application pages organized strictly across the 8 SRS modules
+export const ALL_PAGE_MODULES: AppPageModule[] = [
+  // =========================================================================
+  // 1. Student Intake & Enrollment (2 pages)
+  // Covers student lifecycle entry, initial demographic and diagnostic data capture, and roster management (SRS §3.2).
+  // =========================================================================
   {
     id: 'pd_enrollment_wizard',
     name: 'Student Enrollment Wizard',
     role: 'Program Director',
     roleKey: 'program_director',
-    category: 'Intake & Registration',
+    category: 'Student Intake & Enrollment',
     route: 'StudentEnrollmentWizard',
+    screen: 'SCR-009',
     backendResource: 'students',
     subResource: 'enrollments',
-    description: 'Multi-step student onboarding questionnaire and clinical profile wizard',
+    description:
+      'Multi-step student onboarding questionnaire, document uploads (birth certificate, diagnosis papers), baseline photo/video, and clinical profile setup.',
   },
   {
     id: 'coord_student_registration',
     name: 'Student Register & Roster List',
     role: 'Therapy Coordinator',
     roleKey: 'coordinator',
-    category: 'Intake & Registration',
+    category: 'Student Intake & Enrollment',
     route: 'StudentEnrollment',
+    screen: 'SCR-006',
     backendResource: 'students',
     subResource: 'enrollments',
-    description: 'Student register and roster list, search, filter, and enrollment status',
+    description:
+      'Student register, roster search, cohort filtering (Regular/Pulled Out, Basic/Functional Living), and enrollment status management.',
   },
 
-  // --- GOAL MANAGEMENT ---
-  {
-    id: 'pd_iup_generation',
-    name: 'IUP Creation & Goal Assignment',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Goal Management',
-    route: 'IupGeneration',
-    backendResource: 'iups',
-    description: 'Generate individualized IUPs, assign baseline criteria and SMART goals',
-  },
-  {
-    id: 'pd_iup_library',
-    name: 'IUP Library Management',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Goal Management',
-    route: 'IupLibrary',
-    backendResource: 'iups',
-    description: 'Curriculum repository, standardized goal banks, and template library',
-  },
-  {
-    id: 'pd_student_caseload',
-    name: 'Student Caseload Management',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Goal Management',
-    route: 'StudentCaseload',
-    backendResource: 'iups',
-    description: 'Caseload allocation, therapist capacity, and tier readiness queue',
-  },
-  {
-    id: 'pd_clinical_quality',
-    name: 'Clinical Quality & Goal Bank',
-    role: 'Program Director',
-    roleKey: 'program_director',
-    category: 'Goal Management',
-    route: 'GoalBankManagement',
-    backendResource: 'iups',
-    subResource: 'goals',
-    description: 'Clinical quality monitoring, program integrity, and goal bank catalog',
-  },
-
-  // --- CLINICAL VERIFICATION ---
-  {
-    id: 'goal_mastery_approval',
-    name: 'Goal Mastery Approval',
-    role: 'Program Director / Director',
-    roleKey: 'program_director',
-    category: 'Clinical Verification',
-    route: 'GoalMasteryApproval',
-    backendResource: 'goals',
-    description: 'Multi-therapist goal mastery verification and executive approval sign-off',
-  },
-
-  // --- OPERATIONS & SCHEDULING ---
-  {
-    id: 'director_scheduling',
-    name: 'Staff Scheduling & Capacity',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Operations & Scheduling',
-    route: 'DirectorScheduling',
-    backendResource: 'staff',
-    subResource: 'staff_scheduling',
-    description: 'Facility capacity limits, therapist schedules, and student blocks',
-  },
-  {
-    id: 'coord_staff_workload',
-    name: 'Staff Workload & Therapist Linking',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'WorkloadDashboard',
-    backendResource: 'staff',
-    description: 'Therapist case assignments, student pairing, and workload distribution',
-  },
-  {
-    id: 'coord_room_scheduling',
-    name: 'Room Resource Scheduling',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Operations & Scheduling',
-    route: 'RoomResourceScheduling',
-    backendResource: 'staff',
-    subResource: 'session_block_definitions',
-    description: 'Facility therapy rooms, sensory stations, and space availability',
-  },
-
-  // --- THERAPY & DAILY CLINICAL ---
-  {
-    id: 'teacher_session_collection',
-    name: 'Session Data Collection',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'SessionDataCollection',
-    backendResource: 'sessions',
-    subResource: 'trials',
-    description: 'Active therapy interface: prompt hierarchy, trial recording, timers, tokens',
-  },
-  {
-    id: 'teacher_daily_notes',
-    name: 'Daily Session Notes',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'DailyNotes',
-    backendResource: 'sessions',
-    description: 'Draft qualitative clinical notes, incident logs, and submit for review',
-  },
-  {
-    id: 'coord_live_sessions',
-    name: 'Live Session Monitoring',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Therapy & Daily Clinical',
-    route: 'LiveSessionMonitoring',
-    backendResource: 'sessions',
-    description: 'Real-time observation of active therapy rooms and therapist trial logs',
-  },
-  {
-    id: 'coord_session_summary',
-    name: 'Session Summary Review',
-    role: 'Therapy Coordinator',
-    roleKey: 'coordinator',
-    category: 'Therapy & Daily Clinical',
-    route: 'SessionSummaryReview',
-    backendResource: 'sessions',
-    subResource: 'session_summaries',
-    description: 'Review, approve, or request revision on therapist daily session notes',
-  },
-  {
-    id: 'teacher_abc_log',
-    name: 'ABC Behavior Incident Log',
-    role: 'Teacher / Therapist',
-    roleKey: 'teacher',
-    category: 'Therapy & Daily Clinical',
-    route: 'AbcLog',
-    backendResource: 'behavior_incidents',
-    subResource: 'abc_lists',
-    description: 'Antecedent, Behavior, Consequence event tracking and behavior logs',
-  },
-
-  // --- ASSESSMENTS ---
+  // =========================================================================
+  // 2. 6-Week Baseline Assessments (3 pages)
+  // Dedicated to the initial evaluation phase (ABLLS, MASS/FAST, ABC, and Preferences) that precedes IUP generation (SRS §3.3).
+  // =========================================================================
   {
     id: 'teacher_assessments',
     name: 'Assessment Dashboard',
     role: 'Teacher / Therapist',
     roleKey: 'teacher',
-    category: 'Assessments',
+    category: '6-Week Baseline Assessments',
     route: 'AssessmentDashboard',
+    screen: 'SCR-010 / SCR-TEA-002 / SCR-TEA-003',
     backendResource: 'assessments',
-    description: 'Conduct baseline assessments: ABLLS-R, FAST, MASS, and preference tests',
+    description:
+      'Launch and conduct baseline evaluations: ABLLS-R skill domains, MASS/FAST behavioral questionnaires, and Sensory/Preference inventories.',
   },
   {
     id: 'pd_assessment_review',
     name: 'Assessment Review & Sign-Off',
     role: 'Program Director',
     roleKey: 'program_director',
-    category: 'Assessments',
+    category: '6-Week Baseline Assessments',
     route: 'AssessmentReview',
+    screen: 'SCR-PD-002',
     backendResource: 'assessments',
-    description: 'Review and verify teacher assessment submissions and preferences',
+    description:
+      'Program Director review pipeline to verify teacher assessment data, score distributions, and approve transition to "Ready for IUP".',
   },
   {
     id: 'pd_assessment_summary',
     name: 'Assessment Summary Report',
     role: 'Program Director',
     roleKey: 'program_director',
-    category: 'Assessments',
+    category: '6-Week Baseline Assessments',
     route: 'AssessmentSummaryReport',
+    screen: 'SCR-015',
     backendResource: 'assessments',
-    description: 'Comprehensive 6-week assessment report review and export generation',
+    description:
+      'Comprehensive 6-week assessment report generation, Skills Radar charts, behavior function breakdowns, and PDF export.',
   },
 
-  // --- FAMILY & MESSAGES ---
+  // =========================================================================
+  // 3. IUP & Goal Curriculum Management (4 pages)
+  // Focuses on curriculum design, goal repositories, and individual intervention plans (SRS §3.4, §3.5).
+  // =========================================================================
   {
-    id: 'director_parent_comm',
-    name: 'Parent Communication Hub',
-    role: 'Director',
-    roleKey: 'director',
-    category: 'Family & Messages',
-    route: 'ParentCommunication',
-    backendResource: 'parent_portal',
-    subResource: 'parent_communications',
-    description: 'Executive parent messaging hub and escalated family incident resolution',
+    id: 'pd_iup_generation',
+    name: 'IUP Creation & Goal Assignment',
+    role: 'Program Director',
+    roleKey: 'program_director',
+    category: 'IUP & Goal Curriculum Management',
+    route: 'IupGeneration',
+    screen: 'SCR-PD-003',
+    backendResource: 'iups',
+    description:
+      'Formulate individualized intervention plans informed by 6-week assessment metrics; assign up to 2 goals per station.',
+  },
+  {
+    id: 'pd_iup_library',
+    name: 'IUP Library Management',
+    role: 'Program Director',
+    roleKey: 'program_director',
+    category: 'IUP & Goal Curriculum Management',
+    route: 'IupLibrary',
+    screen: 'SCR-PD-004',
+    backendResource: 'iups',
+    description:
+      'Central repository for IUP documents across Draft, Active, and Archived lifecycle states.',
+  },
+  {
+    id: 'pd_clinical_quality',
+    name: 'Goal Bank',
+    role: 'Program Director',
+    roleKey: 'program_director',
+    category: 'IUP & Goal Curriculum Management',
+    route: 'GoalBankManagement',
+    screen: 'SCR-PD-006',
+    backendResource: 'iups',
+    subResource: 'goals',
+    description:
+      'Standardized goal banks across developmental domains, task analysis multi-step templates, and program integrity auditing.',
+  },
+  {
+    id: 'pd_student_caseload',
+    name: 'Student Caseload Management',
+    role: 'Program Director',
+    roleKey: 'program_director',
+    category: 'IUP & Goal Curriculum Management',
+    route: 'StudentCaseload',
+    screen: 'SCR-PD-005',
+    backendResource: 'iups',
+    description:
+      'Student-level clinical goal slot allocation, active goal tracking per station, and station readiness transitions.',
   },
 
-  // --- ADMINISTRATION ---
+  // =========================================================================
+  // 4. Active Therapy & Clinical Delivery (6 pages)
+  // Consolidates real-time therapy room execution, trial data logging, incident capture, supervisory review, and multi-teacher goal mastery verification (SRS §3.6).
+  // =========================================================================
   {
-    id: 'ia_schedule_capacity',
-    name: 'Schedule & Capacity Configuration',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'ScheduleCapacityConfig',
-    backendResource: 'staff',
-    subResource: 'session_schedule_configs',
-    description: 'Configure facility working hours, room capacities, and student-staff ratios',
+    id: 'teacher_session_collection',
+    name: 'Session Data Collection',
+    role: 'Teacher / Therapist',
+    roleKey: 'teacher',
+    category: 'Active Therapy & Clinical Delivery',
+    route: 'SessionDataCollection',
+    screen: 'SCR-002',
+    backendResource: 'sessions',
+    subResource: 'trials',
+    description:
+      'Active touch-first therapy interface: FP/PP/G/+ prompt hierarchy, task analysis step recording, countdown timers, and token systems.',
   },
   {
-    id: 'ia_abc_dropdowns',
-    name: 'ABC Dropdown Lists',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'AbcDropdownLists',
+    id: 'teacher_daily_notes',
+    name: 'Daily Session Notes',
+    role: 'Teacher / Therapist',
+    roleKey: 'teacher',
+    category: 'Active Therapy & Clinical Delivery',
+    route: 'DailyNotes',
+    screen: 'SCR-TEA-004',
+    backendResource: 'sessions',
+    description:
+      'Draft qualitative clinical notes, record shift observations, log environmental factors, and submit for end-of-day sign-off.',
+  },
+  {
+    id: 'teacher_abc_log',
+    name: 'ABC Behavior Incident Log',
+    role: 'Teacher / Therapist',
+    roleKey: 'teacher',
+    category: 'Active Therapy & Clinical Delivery',
+    route: 'AbcLog',
+    screen: 'SCR-003',
     backendResource: 'behavior_incidents',
     subResource: 'abc_lists',
-    description: 'Standardize antecedent, behavior, and consequence choices facility-wide',
+    description:
+      'Antecedent, Behavior, Consequence incident logging, intensity/frequency scoring, and immediate behavior tracking.',
   },
   {
-    id: 'ia_trial_logging',
-    name: 'Trial Logging Format Config',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'TrialLoggingFormat',
+    id: 'coord_live_sessions',
+    name: 'Live Session Monitoring',
+    role: 'Therapy Coordinator',
+    roleKey: 'coordinator',
+    category: 'Active Therapy & Clinical Delivery',
+    route: 'LiveSessionMonitoring',
+    screen: 'SCR-TC-002',
     backendResource: 'sessions',
-    subResource: 'prompt_levels',
-    description: 'Configure prompt level hierarchies, scoring options, and data collection formats',
+    description:
+      'Real-time observation of active therapy stations, room occupancies, and live therapist trial stream monitoring.',
   },
   {
-    id: 'ia_form_builder',
-    name: 'Assessment & Form Builder',
-    role: 'Institutional Admin',
-    roleKey: 'institutional_admin',
-    category: 'Administration',
-    route: 'FormBuilder',
-    backendResource: 'admin',
-    subResource: 'form_configurations',
-    description: 'Interactive form designer, assessment question editors, and form sections',
+    id: 'coord_session_summary',
+    name: 'Session Summary Review',
+    role: 'Therapy Coordinator',
+    roleKey: 'coordinator',
+    category: 'Active Therapy & Clinical Delivery',
+    route: 'SessionSummaryReview',
+    screen: 'SCR-TC-003 / SCR-005',
+    backendResource: 'sessions',
+    subResource: 'session_summaries',
+    description:
+      'Therapy Coordinator review and approval workflow for submitted therapist daily session notes and trial summaries.',
   },
   {
-    id: 'sys_staff_accounts',
-    name: 'Staff Account Management',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'StaffAccountManagement',
-    backendResource: 'staff',
-    subResource: 'staff_members',
-    description: 'Staff account provisioning, passwords, credential verification, and status',
-  },
-  {
-    id: 'sys_role_management',
-    name: 'Role Management',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'RoleManagement',
-    backendResource: 'admin',
-    subResource: 'roles',
-    description: 'Create and configure custom system roles, descriptions, and user assignments',
-  },
-  {
-    id: 'sys_permissions',
-    name: 'Permission Configuration (RBAC)',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'PermissionConfiguration',
-    backendResource: 'admin',
-    subResource: 'clinical_configs',
-    description: 'Role-based access control matrix, page action permissions, and audit log',
-  },
-  {
-    id: 'sys_audit_log',
-    name: 'System Audit Log',
-    role: 'System Admin',
-    roleKey: 'system_admin',
-    category: 'Administration',
-    route: 'AuditLog',
-    backendResource: 'reports',
-    subResource: 'audit_logs',
-    description: 'Security and administrative audit trail with IP address and timestamp records',
+    id: 'goal_mastery_approval',
+    name: 'Goal Mastery Approval',
+    role: 'Program Director / Director',
+    roleKey: 'program_director',
+    category: 'Active Therapy & Clinical Delivery',
+    route: 'GoalMasteryApproval',
+    screen: 'SCR-004 / SCR-PD-009',
+    backendResource: 'goals',
+    description:
+      '3-teacher verification workflow (Primary + 2 Verifying Teachers) and Program Director / Director final mastery sign-off.',
   },
 
-  // --- PARENT PORTAL ---
+  // =========================================================================
+  // 5. Operations, Staffing & Scheduling (3 pages)
+  // Covers operational scheduling, physical therapy stations/rooms, and staff assignment limits (SRS §3.7).
+  // =========================================================================
+  {
+    id: 'director_scheduling',
+    name: 'Staff Scheduling & Capacity',
+    role: 'Director',
+    roleKey: 'director',
+    category: 'Operations, Staffing & Scheduling',
+    route: 'DirectorScheduling',
+    screen: 'SCR-DIR-002',
+    backendResource: 'staff',
+    subResource: 'staff_scheduling',
+    description:
+      'Calendar/grid view for morning/afternoon block scheduling, teacher-to-student capacity limits, and conflict detection.',
+  },
+  {
+    id: 'coord_staff_workload',
+    name: 'Staff Workload & Therapist Linking',
+    role: 'Therapy Coordinator',
+    roleKey: 'coordinator',
+    category: 'Operations, Staffing & Scheduling',
+    route: 'WorkloadDashboard',
+    screen: 'SCR-TC-005',
+    backendResource: 'staff',
+    description:
+      'Daily operational availability management, teacher absences, emergency caseload reassignment, and therapist-student pairings.',
+  },
+  {
+    id: 'coord_room_scheduling',
+    name: 'Room Resource Scheduling',
+    role: 'Therapy Coordinator',
+    roleKey: 'coordinator',
+    category: 'Operations, Staffing & Scheduling',
+    route: 'RoomResourceScheduling',
+    screen: 'Operational/Facility',
+    backendResource: 'staff',
+    subResource: 'session_block_definitions',
+    description:
+      'Physical room allocations across Stations 1 and 2, sensory gym availability, and station rotation scheduling.',
+  },
+
+  // =========================================================================
+  // 6. Family Engagement & Parent Portal (3 pages)
+  // Consolidates all two-way parent communication, home logs, and family-facing visibility (SRS §3.1, §4.1).
+  // =========================================================================
+  {
+    id: 'director_parent_comm',
+    name: 'Parent Communication',
+    role: 'Director',
+    roleKey: 'director',
+    category: 'Family Engagement & Parent Portal',
+    route: 'ParentCommunication',
+    screen: 'SCR-DIR-004 / SCR-TC-006 / SCR-PAR-004',
+    backendResource: 'parent_portal',
+    subResource: 'parent_communications',
+    description:
+      'Centralized family messaging, incident notifications, progress sharing, and escalated family communication management.',
+  },
   {
     id: 'parent_child_progress',
     name: 'Child Progress Tracker',
     role: 'Parent',
     roleKey: 'parent',
-    category: 'Parent Portal',
+    category: 'Family Engagement & Parent Portal',
     route: 'ChildProgress',
+    screen: 'SCR-PAR-002',
     backendResource: 'parent_portal',
-    description: 'Visual goal progress charts, mastered skills, and family-friendly updates',
+    description:
+      'Simplified, visual goal progress charts, mastered milestones, and non-technical updates tailored for parents.',
   },
   {
     id: 'parent_home_observations',
     name: 'Home Observation Log',
     role: 'Parent',
     roleKey: 'parent',
-    category: 'Parent Portal',
+    category: 'Family Engagement & Parent Portal',
     route: 'HomeObservationLog',
+    screen: 'SCR-PAR-003',
     backendResource: 'parent_portal',
     subResource: 'home_observations',
-    description: 'Log behaviors and skills observed at home with therapist feedback',
+    description:
+      'Interface for parents to record home-based behaviors, routine developments, and skill generalization with therapist feedback.',
+  },
+
+  // =========================================================================
+  // 7. Executive Reports & Clinical Oversight (2 pages)
+  // Director-level analytics, bi-annual reviews, and long-term reporting (SRS §3.8).
+  // =========================================================================
+  {
+    id: 'director_reports_oversight',
+    name: 'Reports & Executive Oversight',
+    role: 'Director',
+    roleKey: 'director',
+    category: 'Executive Reports & Clinical Oversight',
+    route: 'ReportsOversight',
+    screen: 'SCR-DIR-005',
+    backendResource: 'reports',
+    subResource: 'oversight',
+    description:
+      'Executive reporting hub: bi-annual progress reports, foundation overview KPIs, session attendance metrics, and compliance exports.',
+  },
+  {
+    id: 'director_report_builder',
+    name: 'Custom Report Builder',
+    role: 'Director',
+    roleKey: 'director',
+    category: 'Executive Reports & Clinical Oversight',
+    route: 'ReportBuilder',
+    screen: 'SCR-DIR-006 / SCR-PD-008',
+    backendResource: 'reports',
+    description:
+      'Multi-metric trend analysis, custom graph generation (ABLLS radar, trial distribution, behavior incidents), and filtered data extraction.',
+  },
+
+  // =========================================================================
+  // 8. Administration & Governance (8 pages)
+  // Separated logically into Institutional Admin (Clinical Parameters) and System Admin (IT Security & Access) as specified in SRS §3.9.
+  // =========================================================================
+  // --- A. Institutional Administration (Clinical & Operational Configuration) ---
+  {
+    id: 'ia_form_builder',
+    name: 'Assessment & Form Builder',
+    role: 'Institutional Admin',
+    roleKey: 'institutional_admin',
+    category: 'Administration & Governance',
+    subCategory: 'Institutional Administration',
+    route: 'FormBuilder',
+    screen: 'SCR-ADMIN-001',
+    backendResource: 'admin',
+    subResource: 'form_configurations',
+    description:
+      'Dynamic form designer for Enrollment, IUP, and ABLLS forms; custom field definitions and metadata header layouts.',
+  },
+  {
+    id: 'ia_trial_logging',
+    name: 'Trial Logging Format Config',
+    role: 'Institutional Admin',
+    roleKey: 'institutional_admin',
+    category: 'Administration & Governance',
+    subCategory: 'Institutional Administration',
+    route: 'TrialLoggingFormat',
+    screen: 'SCR-ADMIN-002',
+    backendResource: 'sessions',
+    subResource: 'prompt_levels',
+    description:
+      'Prompt hierarchy definitions (FP, PP, G, +), button colors, trial stream layouts (3–20 counts), and mastery threshold rules.',
+  },
+  {
+    id: 'ia_abc_dropdowns',
+    name: 'ABC Dropdown Lists',
+    role: 'Institutional Admin',
+    roleKey: 'institutional_admin',
+    category: 'Administration & Governance',
+    subCategory: 'Institutional Administration',
+    route: 'AbcDropdownLists',
+    screen: 'SCR-ADMIN-003',
+    backendResource: 'behavior_incidents',
+    subResource: 'abc_lists',
+    description:
+      'Facility-wide standardization of antecedent choices, consequence responses, behavior definitions, and severity options.',
+  },
+  {
+    id: 'ia_schedule_capacity',
+    name: 'Schedule & Capacity Configuration',
+    role: 'Institutional Admin',
+    roleKey: 'institutional_admin',
+    category: 'Administration & Governance',
+    subCategory: 'Institutional Administration',
+    route: 'ScheduleCapacityConfig',
+    screen: 'SCR-ADMIN-004',
+    backendResource: 'staff',
+    subResource: 'session_schedule_configs',
+    description:
+      'Round block timing (morning/afternoon), station durations, default staff-to-student ratios, and draft document expiry intervals.',
+  },
+
+  // --- B. System Administration (IT, Governance & Security) ---
+  {
+    id: 'sys_staff_accounts',
+    name: 'Staff Account Management',
+    role: 'System Admin',
+    roleKey: 'system_admin',
+    category: 'Administration & Governance',
+    subCategory: 'System Administration',
+    route: 'StaffAccountManagement',
+    screen: 'SCR-SYS-001',
+    backendResource: 'staff',
+    subResource: 'staff_members',
+    description:
+      'Staff credential provisioning, password reset dispatch, active/inactive status toggles, and user directory management.',
+  },
+  {
+    id: 'sys_role_management',
+    name: 'Role Management',
+    role: 'System Admin',
+    roleKey: 'system_admin',
+    category: 'Administration & Governance',
+    subCategory: 'System Administration',
+    route: 'RoleManagement',
+    screen: 'SCR-SYS-002',
+    backendResource: 'admin',
+    subResource: 'roles',
+    description:
+      'Role creation, assignment of multiple system roles per employee, role descriptions, and privilege presets.',
+  },
+  {
+    id: 'sys_permissions',
+    name: 'Permission Configuration (RBAC)',
+    role: 'System Admin',
+    roleKey: 'system_admin',
+    category: 'Administration & Governance',
+    subCategory: 'System Administration',
+    route: 'PermissionConfiguration',
+    screen: 'SCR-SYS-003',
+    backendResource: 'admin',
+    subResource: 'clinical_configs',
+    description:
+      'Granular matrix for View, Create, Edit, Delete, and Approve privileges per page and action endpoint.',
+  },
+  {
+    id: 'sys_audit_log',
+    name: 'System Audit Log',
+    role: 'System Admin',
+    roleKey: 'system_admin',
+    category: 'Administration & Governance',
+    subCategory: 'System Administration',
+    route: 'AuditLog',
+    screen: 'Audit & Compliance',
+    backendResource: 'reports',
+    subResource: 'audit_logs',
+    description:
+      'Immutable chronological log tracking sensitive PII access, configuration changes, user logins, timestamps, and IP addresses.',
   },
 ];
 
@@ -692,7 +867,11 @@ export function checkHighRiskPermission(
         reason: `Granting clinical APPROVAL privilege on "${page.name}" to role "${roleName}" bypasses supervisor verification.`,
       };
     }
-    if (page.category === 'Administration' || page.backendResource === 'admin') {
+    if (
+      page.category === 'Administration & Governance' ||
+      page.category.includes('Admin') ||
+      page.backendResource === 'admin'
+    ) {
       return {
         isHighRisk: true,
         reason: `Granting administrative access on "${page.name}" to non-admin role "${roleName}" violates separation of duties.`,
@@ -718,6 +897,7 @@ export function filterPageModules(
     list = list.filter(
       (p) =>
         p.category.toLowerCase() === fLower ||
+        (p.subCategory && p.subCategory.toLowerCase() === fLower) ||
         p.role.toLowerCase() === fLower ||
         p.role.toLowerCase().includes(fLower),
     );
@@ -729,7 +909,9 @@ export function filterPageModules(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.route.toLowerCase().includes(q) ||
+        (p.screen && p.screen.toLowerCase().includes(q)) ||
         p.category.toLowerCase().includes(q) ||
+        (p.subCategory && p.subCategory.toLowerCase().includes(q)) ||
         p.description.toLowerCase().includes(q) ||
         p.role.toLowerCase().includes(q),
     );
@@ -739,16 +921,33 @@ export function filterPageModules(
 }
 
 /**
- * Group pages by Category for clean table navigation.
+ * Group pages by Category for clean table navigation, preserving canonical order.
  */
 export function groupPagesByCategory(pages: AppPageModule[]): Record<string, AppPageModule[]> {
   const groups: Record<string, AppPageModule[]> = {};
+
+  // Initialize in canonical order
+  CATEGORY_ORDER.forEach((cat) => {
+    groups[cat] = [];
+  });
+
   pages.forEach((p) => {
     const cat = p.category || 'General';
-    groups[cat] = groups[cat] || [];
+    if (!groups[cat]) {
+      groups[cat] = [];
+    }
     groups[cat].push(p);
   });
-  return groups;
+
+  // Keep only groups that have matching pages
+  const result: Record<string, AppPageModule[]> = {};
+  Object.keys(groups).forEach((key) => {
+    if (groups[key].length > 0) {
+      result[key] = groups[key];
+    }
+  });
+
+  return result;
 }
 
 /**
