@@ -23,6 +23,8 @@ import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getIupLibrary, archiveIup } from '../../api/programDirectorApi';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 interface IupRecord {
@@ -49,6 +51,7 @@ interface IupRecord {
 export default function IupLibraryScreen({
   navigation,
 }: NativeStackScreenProps<ProgramDirectorStackParamList, 'IupLibrary'>) {
+  const { showToast } = useToast();
   const [list, setList] = useState<IupRecord[] | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -75,19 +78,32 @@ export default function IupLibraryScreen({
   }, [load]);
 
   const handleArchive = (iup: IupRecord) => {
-    Alert.alert(`Archive ${iup.studentName}'s IUP?`, 'This will mark the plan as Archived.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Archive',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await archiveIup(iup.id);
-            await load();
-          } catch {}
-        },
+    confirmAction({
+      title: `Archive ${iup.studentName}'s IUP?`,
+      message: 'This will mark the plan as Archived.',
+      confirmLabel: 'Archive',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await archiveIup(iup.id);
+          if (iup.studentId && iup.studentId !== iup.id) {
+            await archiveIup(iup.studentId);
+          }
+          setList((prev) =>
+            (prev || []).map((item) =>
+              item.id === iup.id || (iup.studentId && item.studentId === iup.studentId)
+                ? { ...item, status: 'Archived' }
+                : item,
+            ),
+          );
+          await load();
+          showToast(`${iup.studentName}'s IUP has been archived.`, 'success');
+        } catch {
+          showToast('Failed to archive IUP.', 'error');
+        }
       },
-    ]);
+    });
   };
 
   const buildExportText = (iup: any) => {
@@ -266,15 +282,6 @@ export default function IupLibraryScreen({
                     <View style={styles.versionBadge}>
                       <Text style={styles.versionBadgeText}>v{iup.version}</Text>
                     </View>
-                    {(iup.isPermanent ||
-                      iup.isFinalized ||
-                      iup.editable === false ||
-                      iup.status === 'Active') && (
-                      <View style={styles.permanentBadge}>
-                        <Feather name="lock" size={10} color="#15803D" style={{ marginRight: 3 }} />
-                        <Text style={styles.permanentBadgeText}>Permanent Record</Text>
-                      </View>
-                    )}
                   </View>
                   <Text style={styles.iupMeta}>
                     {iup.program} · Finalized: {iup.finalizedDate} · {iup.goalCount} Target Goals

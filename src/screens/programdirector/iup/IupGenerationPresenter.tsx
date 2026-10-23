@@ -74,6 +74,7 @@ export default function IupGenerationPresenter({
   onDomainFilterChange,
   onNavbarTabPress,
 }: IupGenerationPresenterProps) {
+  const hasAssignedGoal = (slots.station1?.some(Boolean) || slots.station2?.some(Boolean)) ?? false;
   const assignedGoalCount = [...slots.station1, ...slots.station2].filter(Boolean).length;
 
   return (
@@ -97,10 +98,12 @@ export default function IupGenerationPresenter({
             </View>
             <View style={styles.headerRightActions}>
               <TouchableOpacity
-                style={styles.headerOutlineBtn}
+                style={[styles.headerOutlineBtn, !hasAssignedGoal && { opacity: 0.5 }]}
                 onPress={onOpenPreview}
+                disabled={!hasAssignedGoal}
                 accessibilityRole="button"
                 accessibilityLabel="Preview IUP"
+                accessibilityState={{ disabled: !hasAssignedGoal }}
               >
                 <Feather name="eye" size={14} color={colors.navyText} />
                 <Text style={styles.headerOutlineBtnText}>Preview IUP</Text>
@@ -230,20 +233,24 @@ export default function IupGenerationPresenter({
           {/* Bottom Action Bar */}
           <View style={styles.bottomBar}>
             <TouchableOpacity
-              style={styles.saveDraftBtn}
+              style={[styles.saveDraftBtn, !hasAssignedGoal && { opacity: 0.5 }]}
               onPress={onDraftSave}
+              disabled={!hasAssignedGoal}
               accessibilityRole="button"
               accessibilityLabel="Save draft"
+              accessibilityState={{ disabled: !hasAssignedGoal }}
             >
               <Feather name="save" size={15} color={colors.navyText} />
               <Text style={styles.saveDraftBtnText}>Save Draft</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.previewBtn}
+              style={[styles.previewBtn, !hasAssignedGoal && { opacity: 0.5 }]}
               onPress={onOpenPreview}
+              disabled={!hasAssignedGoal}
               accessibilityRole="button"
               accessibilityLabel="Full preview"
+              accessibilityState={{ disabled: !hasAssignedGoal }}
             >
               <Feather name="eye" size={15} color={colors.navyText} />
               <Text style={styles.previewBtnText}>Full Preview</Text>

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { StaffOption } from '../../../api/optionsApi';
 import { colors, radius, spacing } from '../../../theme/colors';
 import { type WizardState, MAX_CASELOAD } from '../enrollmentWizardTypes';
+import { resolveEnrichedTherapists } from '../StudentEnrollmentWizardScreen';
 
 interface AssignTherapistStepProps {
   form: WizardState;
@@ -11,10 +12,14 @@ interface AssignTherapistStepProps {
 }
 
 export function AssignTherapistStep({ form, set, therapists }: AssignTherapistStepProps) {
+  const enrichedTherapists = React.useMemo(
+    () => resolveEnrichedTherapists(therapists),
+    [therapists],
+  );
   const caseloadOf = (name: string) =>
-    therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
+    enrichedTherapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
   const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
-  const therapistNames = therapists.map((t) => t.name);
+  const therapistNames = enrichedTherapists.map((t) => t.name);
 
   return (
     <View style={styles.container}>
@@ -27,7 +32,7 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
         </Text>
         {therapistNames.length ? (
           <View style={styles.chipRow}>
-            {therapists.map((t) => {
+            {enrichedTherapists.map((t) => {
               const count = t.assignedStudents?.length ?? 0;
               const full = count >= MAX_CASELOAD;
               const selected = form.therapist === t.name;

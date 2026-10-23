@@ -40,6 +40,17 @@ export function GoalAssignmentTab({
             <View key={`s1-${idx}`} style={styles.slotContainer}>
               <View style={styles.slotHeaderRow}>
                 <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                {slots.station1.length > 1 && onRemoveSlot && (
+                  <TouchableOpacity
+                    style={styles.removeSlotBtn}
+                    onPress={() => onRemoveSlot('station1', idx)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove Station 1 Slot ${idx + 1}`}
+                  >
+                    <Feather name="x" size={13} color={colors.mutedText} />
+                    <Text style={styles.removeSlotBtnText}>Remove Slot</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {goal ? (
                 <View style={styles.filledGoalCard}>
@@ -97,6 +108,17 @@ export function GoalAssignmentTab({
               )}
             </View>
           ))}
+          {onAddSlot && (
+            <TouchableOpacity
+              style={styles.addSlotFooterBtn}
+              onPress={() => onAddSlot('station1')}
+              accessibilityRole="button"
+              accessibilityLabel="Add Goal to Station 1"
+            >
+              <Feather name="plus-circle" size={15} color={colors.navyText} />
+              <Text style={styles.addSlotFooterBtnText}>+ Add Goal to Station 1</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -119,6 +141,17 @@ export function GoalAssignmentTab({
             <View key={`s2-${idx}`} style={styles.slotContainer}>
               <View style={styles.slotHeaderRow}>
                 <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                {slots.station2.length > 1 && onRemoveSlot && (
+                  <TouchableOpacity
+                    style={styles.removeSlotBtn}
+                    onPress={() => onRemoveSlot('station2', idx)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove Station 2 Slot ${idx + 1}`}
+                  >
+                    <Feather name="x" size={13} color={colors.mutedText} />
+                    <Text style={styles.removeSlotBtnText}>Remove Slot</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {goal ? (
                 <View style={styles.filledGoalCard}>
@@ -176,6 +209,17 @@ export function GoalAssignmentTab({
               )}
             </View>
           ))}
+          {onAddSlot && (
+            <TouchableOpacity
+              style={styles.addSlotFooterBtn}
+              onPress={() => onAddSlot('station2')}
+              accessibilityRole="button"
+              accessibilityLabel="Add Goal to Station 2"
+            >
+              <Feather name="plus-circle" size={15} color={colors.navyText} />
+              <Text style={styles.addSlotFooterBtnText}>+ Add Goal to Station 2</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>

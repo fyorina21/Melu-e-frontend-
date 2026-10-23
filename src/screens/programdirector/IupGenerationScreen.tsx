@@ -25,6 +25,7 @@ import { useAuth, ROLES } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import {
   getIupCandidates,
+  getIupLibrary,
   getIupContext,
   saveIupDraft,
   finalizeIup,
@@ -86,6 +87,52 @@ interface CachedIupRecord {
   customFields?: Record<string, unknown>;
   saved_at?: string;
   finalizedAt?: string;
+}
+
+function isStudentIupFinalizedAndActive(
+  student: { id?: string; studentId?: string; name?: string; fullName?: string },
+  libraryRecords: any[] = [],
+): boolean {
+  const sid = String(student.id || student.studentId || '').trim();
+  const sName = String(student.name || student.fullName || '')
+    .toLowerCase()
+    .trim();
+
+  // 1. Check stored local draft
+  if (sid) {
+    const draft = getStoredIupDraft(sid) as any;
+    if (draft?.isFinalized || draft?.status === 'finalized' || draft?.status === 'Active') {
+      return true;
+    }
+  }
+
+  // 2. Check IUP library in storage & fetched pool
+  const storedLib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+  const allRecords = [...libraryRecords, ...storedLib];
+
+  return allRecords.some((rec) => {
+    if (!rec) return false;
+    const recStatus = String(rec.status || '')
+      .toLowerCase()
+      .trim();
+    const isFinal = rec.isFinalized === true || recStatus === 'active' || recStatus === 'finalized';
+
+    if (!isFinal || recStatus === 'archived' || recStatus === 'draft') {
+      return false;
+    }
+
+    const recSid = String(rec.studentId || rec.student_id || rec.id || '').trim();
+    const recName = String(rec.studentName || rec.student_name || rec.name || '')
+      .toLowerCase()
+      .trim();
+
+    const idMatches =
+      Boolean(sid && recSid) &&
+      (sid === recSid || normalizeStudentId(sid) === normalizeStudentId(recSid));
+    const nameMatches = Boolean(sName && recName) && sName === recName;
+
+    return idMatches || nameMatches;
+  });
 }
 
 export default function IupGenerationScreen({
@@ -182,8 +229,15 @@ export default function IupGenerationScreen({
   const loadData = useCallback(async () => {
     setLoading(true);
     let loadedCandidates: IupCandidate[] = [];
-    try {
-      const response = await getIupCandidates();
+    let libraryList: any[] = [];
+
+    const [candidatesResponse, iupLibResponse] = await Promise.allSettled([
+      getIupCandidates(),
+      getIupLibrary().catch(() => null),
+    ]);
+
+    if (candidatesResponse.status === 'fulfilled' && candidatesResponse.value) {
+      const response = candidatesResponse.value;
       const responseObj =
         typeof response === 'object' && response !== null
           ? (response as Record<string, unknown>)
@@ -196,10 +250,20 @@ export default function IupGenerationScreen({
         : Array.isArray(rawObj?.candidates)
           ? (rawObj.candidates as IupCandidate[])
           : [];
-    } catch {
-      loadedCandidates = [];
     }
-    const eligibleCandidates = loadedCandidates.filter(isEligibleIupCandidate);
+
+    if (iupLibResponse.status === 'fulfilled' && iupLibResponse.value) {
+      const libRaw = iupLibResponse.value?.data || iupLibResponse.value?.iups;
+      if (Array.isArray(libRaw)) {
+        libraryList = libRaw;
+      }
+    }
+
+    // Filter out students who already have a finalized and active IUP
+    const eligibleCandidates = loadedCandidates
+      .filter(isEligibleIupCandidate)
+      .filter((c) => !isStudentIupFinalizedAndActive(c, libraryList));
+
     setCandidates(eligibleCandidates);
 
     try {
@@ -351,8 +415,8 @@ export default function IupGenerationScreen({
           ? (slotsRecord.station2 as (GoalBankItem | null)[])
           : [];
         setSlots({
-          station1: s1.length > 0 ? [s1[0] || null] : [null],
-          station2: s2.length > 0 ? [s2[0] || null] : [null],
+          station1: s1.length > 0 ? s1 : [null],
+          station2: s2.length > 0 ? s2 : [null],
         });
       }
       if (activeRecord.reinforcementSchedule) {
@@ -395,18 +459,22 @@ export default function IupGenerationScreen({
               if (hasExistingGoals) return prev;
 
               const next: Slots = {
-                station1: [null],
-                station2: [null],
+                station1: [],
+                station2: [],
               };
-              data.goals.forEach((g: { id?: string; station?: number }) => {
+              data.goals.forEach((g: { id?: string; station?: number; slot?: number }) => {
                 const gbGoal = goalBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
-                  if (next[stationKey][0] === null) {
-                    next[stationKey][0] = gbGoal;
+                  const slotIdx = typeof g.slot === 'number' ? g.slot : next[stationKey].length;
+                  while (next[stationKey].length <= slotIdx) {
+                    next[stationKey].push(null);
                   }
+                  next[stationKey][slotIdx] = gbGoal;
                 }
               });
+              if (next.station1.length === 0) next.station1 = [null];
+              if (next.station2.length === 0) next.station2 = [null];
               return next;
             });
           }
@@ -416,7 +484,9 @@ export default function IupGenerationScreen({
   }, [selectedStudentId, goalBank]);
 
   const completedCandidates = useMemo(() => {
-    return candidates.filter(isEligibleIupCandidate);
+    return candidates
+      .filter(isEligibleIupCandidate)
+      .filter((c) => !isStudentIupFinalizedAndActive(c));
   }, [candidates]);
 
   const selectedCandidate = useMemo(
@@ -451,17 +521,6 @@ export default function IupGenerationScreen({
       const msg = `"${goal.name}" is already assigned to this student.`;
       if (typeof window !== 'undefined') window.alert(msg);
       else Alert.alert('Duplicate Goal', msg);
-      return;
-    }
-
-    // Enforce exactly 2 goals at a time for this student (1 for Station 1 and 1 for Station 2)
-    const currentlyAssignedCount = [...slots.station1, ...slots.station2].filter(Boolean).length;
-    const isReplacing = Boolean(slots[station]?.[slotIndex]);
-    if (!isReplacing && currentlyAssignedCount >= 2) {
-      const msg =
-        'Goal Limit: You can select exactly 2 goals at a time for this student (1 for Station 1 and 1 for Station 2). Please replace or remove an existing goal.';
-      if (typeof window !== 'undefined') window.alert(msg);
-      else Alert.alert('Two-Goal Limit', msg);
       return;
     }
 
@@ -562,10 +621,79 @@ export default function IupGenerationScreen({
     ]);
   };
 
+  const handleAddSlot = (station: StationKey) => {
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+    setSlots((prev) => {
+      const nextIndex = prev[station].length;
+      const next = {
+        ...prev,
+        [station]: [...prev[station], null],
+      };
+      setTimeout(() => {
+        handleOpenGoalSelector(station, nextIndex);
+      }, 50);
+      return next;
+    });
+  };
+
+  const handleRemoveSlot = (station: StationKey, slotIndex: number) => {
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+    const hadGoal = Boolean(slots[station]?.[slotIndex]);
+    setSlots((prev) => {
+      const list = prev[station];
+      if (list.length <= 1) {
+        return {
+          ...prev,
+          [station]: [null],
+        };
+      }
+      return {
+        ...prev,
+        [station]: list.filter((_, idx) => idx !== slotIndex),
+      };
+    });
+
+    if (hadGoal && selectedStudentId) {
+      const stationNumber = station === 'station1' ? 1 : 2;
+      removeGoalFromSlot(selectedStudentId, {
+        station: stationNumber,
+        slot: slotIndex,
+      }).catch((err) => {
+        console.error('Failed to remove goal from slot:', err);
+      });
+    }
+  };
+
+  const hasAssignedGoal = (slots.station1?.some(Boolean) || slots.station2?.some(Boolean)) ?? false;
+
+  const handlePreviewOpen = () => {
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal to preview the IUP.', 'error');
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
     if (isFinalizedRecord) {
       showToast('This finalized IUP is permanent and non-editable.', 'info');
+      return;
+    }
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal before saving draft.', 'error');
       return;
     }
 
@@ -603,13 +731,12 @@ export default function IupGenerationScreen({
     }
 
     const allAssigned = [...slots.station1, ...slots.station2].filter(Boolean);
-    if (allAssigned.length !== 2) {
-      const msg =
-        'Please select exactly 2 goals (1 for Station 1 and 1 for Station 2) before finalizing the IUP.';
+    if (allAssigned.length === 0) {
+      const msg = 'Please assign at least one target goal before finalizing the IUP.';
       if (typeof window !== 'undefined') {
         window.alert(msg);
       } else {
-        Alert.alert('Two Goals Required', msg);
+        Alert.alert('Goal Assignment Required', msg);
       }
       return;
     }
@@ -645,9 +772,34 @@ export default function IupGenerationScreen({
         );
         Alert.alert(
           'IUP Finalized & Activated',
-          `The Individualized Unit Plan for ${studentName} has been finalized and activated successfully.`,
+          `The Individualized Unit Plan for ${studentName} has been finalized and activated. It has been moved to the IUP Library.`,
+          [
+            {
+              text: 'View in IUP Library',
+              onPress: () => navigation?.navigate?.('IupLibrary' as never),
+            },
+            {
+              text: 'OK',
+              style: 'cancel',
+            },
+          ],
         );
-        // Remain on the IUP Generation page without navigating away
+
+        // Remove finalized student from IUP Generation page
+        setCandidates((prev) => {
+          const remaining = prev.filter(
+            (c) =>
+              c.id !== selectedStudentId &&
+              normalizeStudentId(c.id) !== normalizeStudentId(selectedStudentId) &&
+              c.name.toLowerCase().trim() !== studentName.toLowerCase().trim(),
+          );
+          if (remaining.length > 0) {
+            setSelectedStudentId(remaining[0].id);
+          } else {
+            setSelectedStudentId(null);
+          }
+          return remaining;
+        });
       } catch {
         showToast('Failed to finalize IUP.', 'error');
       }
@@ -782,7 +934,12 @@ export default function IupGenerationScreen({
             </View>
           </View>
           <View style={styles.headerRightActions}>
-            <TouchableOpacity style={styles.headerOutlineBtn} onPress={() => setPreviewOpen(true)}>
+            <TouchableOpacity
+              style={[styles.headerOutlineBtn, !hasAssignedGoal && { opacity: 0.5 }]}
+              onPress={handlePreviewOpen}
+              disabled={!hasAssignedGoal}
+              accessibilityState={{ disabled: !hasAssignedGoal }}
+            >
               <Feather name="eye" size={14} color={colors.navyText} />
               <Text style={styles.headerOutlineBtnText}>Preview IUP</Text>
             </TouchableOpacity>
@@ -929,477 +1086,552 @@ export default function IupGenerationScreen({
           </View>
         )}
 
-        {/* Workbench Tab Navigation */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeWorkbenchTab === 'goals' && styles.tabBtnActive]}
-            onPress={() => setActiveWorkbenchTab('goals')}
-          >
-            <Feather
-              name="target"
-              size={15}
-              color={activeWorkbenchTab === 'goals' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[styles.tabBtnText, activeWorkbenchTab === 'goals' && styles.tabBtnTextActive]}
-            >
-              Goal Assignment ({assignedGoalCount})
+        {!selectedCandidate ? (
+          <View style={styles.emptyWorkbenchCard}>
+            <View style={styles.emptyWorkbenchIcon}>
+              <Feather name="check-circle" size={32} color={colors.successGreen} />
+            </View>
+            <Text style={styles.emptyWorkbenchTitle}>No Students Awaiting IUP Generation</Text>
+            <Text style={styles.emptyWorkbenchSub}>
+              All eligible students currently have finalized and activated IUPs. You can review,
+              search, and export permanent plans in the IUP Library.
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeWorkbenchTab === 'assessment' && styles.tabBtnActive]}
-            onPress={() => setActiveWorkbenchTab('assessment')}
-          >
-            <Feather
-              name="activity"
-              size={15}
-              color={activeWorkbenchTab === 'assessment' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeWorkbenchTab === 'assessment' && styles.tabBtnTextActive,
-              ]}
+            <TouchableOpacity
+              style={styles.goToLibraryBtn}
+              onPress={() => navigation?.navigate?.('IupLibrary' as never)}
+              accessibilityRole="button"
+              accessibilityLabel="View IUP Library"
             >
-              Assessment Summary
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeWorkbenchTab === 'strategies' && styles.tabBtnActive]}
-            onPress={() => setActiveWorkbenchTab('strategies')}
-          >
-            <Feather
-              name="sliders"
-              size={15}
-              color={activeWorkbenchTab === 'strategies' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeWorkbenchTab === 'strategies' && styles.tabBtnTextActive,
-              ]}
-            >
-              Implementation & Protocols
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* TAB 1: GOAL ASSIGNMENT */}
-        {activeWorkbenchTab === 'goals' && (
-          <View style={styles.tabContentWrap}>
-            {/* Helpful Assignment Header Banner */}
-            <View style={styles.goalsIntroBanner}>
-              <View style={styles.goalsIntroIconWrap}>
-                <Feather name="layers" size={16} color="#1E40AF" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.goalsIntroTitle}>Goal Assignment (2 Goals Maximum)</Text>
-                <Text style={styles.goalsIntroText}>
-                  Assign exactly 2 individualized target objectives for this student: 1 target goal
-                  for Station 1 and 1 target goal for Station 2.
+              <Feather name="book-open" size={15} color={colors.navyText} />
+              <Text style={styles.goToLibraryBtnText}>Go to IUP Library</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* Workbench Tab Navigation */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity
+                style={[styles.tabBtn, activeWorkbenchTab === 'goals' && styles.tabBtnActive]}
+                onPress={() => setActiveWorkbenchTab('goals')}
+              >
+                <Feather
+                  name="target"
+                  size={15}
+                  color={activeWorkbenchTab === 'goals' ? colors.navyText : colors.bodyText}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    activeWorkbenchTab === 'goals' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Goal Assignment ({assignedGoalCount})
                 </Text>
-              </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tabBtn, activeWorkbenchTab === 'assessment' && styles.tabBtnActive]}
+                onPress={() => setActiveWorkbenchTab('assessment')}
+              >
+                <Feather
+                  name="activity"
+                  size={15}
+                  color={activeWorkbenchTab === 'assessment' ? colors.navyText : colors.bodyText}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    activeWorkbenchTab === 'assessment' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Assessment Summary
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tabBtn, activeWorkbenchTab === 'strategies' && styles.tabBtnActive]}
+                onPress={() => setActiveWorkbenchTab('strategies')}
+              >
+                <Feather
+                  name="sliders"
+                  size={15}
+                  color={activeWorkbenchTab === 'strategies' ? colors.navyText : colors.bodyText}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    activeWorkbenchTab === 'strategies' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Implementation & Protocols
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Station 1 Card */}
-            <View style={styles.card}>
-              <View style={styles.stationHeader}>
-                <View style={styles.stationNumberBadge}>
-                  <Text style={styles.stationNumberText}>1</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.stationTitleRow}>
-                    <Text style={styles.cardTitle}>Station 1 — Basic Skills</Text>
-                    <View style={styles.stationCountBadge}>
-                      <Text style={styles.stationCountBadgeText}>
-                        {slots.station1.filter(Boolean).length} / {slots.station1.length} Assigned
+            {/* TAB 1: GOAL ASSIGNMENT */}
+            {activeWorkbenchTab === 'goals' && (
+              <View style={styles.tabContentWrap}>
+                {/* Station 1 Card */}
+                <View style={styles.card}>
+                  <View style={styles.stationHeader}>
+                    <View style={styles.stationNumberBadge}>
+                      <Text style={styles.stationNumberText}>1</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.stationTitleRow}>
+                        <Text style={styles.cardTitle}>Station 1 — Basic Skills</Text>
+                        <View style={styles.stationCountBadge}>
+                          <Text style={styles.stationCountBadgeText}>
+                            {slots.station1.filter(Boolean).length} / {slots.station1.length}{' '}
+                            Assigned
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.stationSub}>
+                        Foundational acquisition, receptive language, and early imitation
                       </Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.addSlotHeaderBtn}
+                      onPress={() => handleAddSlot('station1')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 1"
+                    >
+                      <Feather name="plus" size={13} color={colors.navyText} />
+                      <Text style={styles.addSlotHeaderBtnText}>Add Goal</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.stationSub}>
-                    Foundational acquisition, receptive language, and early imitation
-                  </Text>
-                </View>
-              </View>
 
-              <View style={styles.slotList}>
-                {slots.station1.map((goal, idx) => (
-                  <View key={`s1-${idx}`} style={styles.slotContainer}>
-                    <View style={styles.slotHeaderRow}>
-                      <Text style={styles.slotTag}>Slot {idx + 1}</Text>
-                    </View>
-                    {goal ? (
-                      <View style={styles.filledGoalCard}>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.goalTitleRow}>
-                            <Text style={styles.goalName}>{goal.name}</Text>
-                            <View style={styles.domainChip}>
-                              <Text style={styles.domainChipText}>{goal.domain}</Text>
-                            </View>
-                            {goal.goalType === 'task_analysis' && (
-                              <View style={styles.taskChip}>
-                                <Text style={styles.taskChipText}>Task Analysis</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.goalDesc} numberOfLines={2}>
-                            {goal.description}
-                          </Text>
-                          <View style={styles.masteryRow}>
-                            <Feather name="check-circle" size={12} color={colors.successGreen} />
-                            <Text style={styles.masteryText}>
-                              Mastery Criteria: {goal.masteryCriteria}
-                            </Text>
-                          </View>
+                  <View style={styles.slotList}>
+                    {slots.station1.map((goal, idx) => (
+                      <View key={`s1-${idx}`} style={styles.slotContainer}>
+                        <View style={styles.slotHeaderRow}>
+                          <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                          {slots.station1.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.removeSlotBtn}
+                              onPress={() => handleRemoveSlot('station1', idx)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove Station 1 Slot ${idx + 1}`}
+                            >
+                              <Feather name="x" size={13} color={colors.mutedText} />
+                              <Text style={styles.removeSlotBtnText}>Remove Slot</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
-                        <View style={styles.goalActions}>
+                        {goal ? (
+                          <View style={styles.filledGoalCard}>
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.goalTitleRow}>
+                                <Text style={styles.goalName}>{goal.name}</Text>
+                                <View style={styles.domainChip}>
+                                  <Text style={styles.domainChipText}>{goal.domain}</Text>
+                                </View>
+                                {goal.goalType === 'task_analysis' && (
+                                  <View style={styles.taskChip}>
+                                    <Text style={styles.taskChipText}>Task Analysis</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.goalDesc} numberOfLines={2}>
+                                {goal.description}
+                              </Text>
+                              <View style={styles.masteryRow}>
+                                <Feather
+                                  name="check-circle"
+                                  size={12}
+                                  color={colors.successGreen}
+                                />
+                                <Text style={styles.masteryText}>
+                                  Mastery Criteria: {goal.masteryCriteria}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.goalActions}>
+                              <TouchableOpacity
+                                style={styles.changeGoalBtn}
+                                onPress={() => handleOpenGoalSelector('station1', idx)}
+                              >
+                                <Feather name="refresh-cw" size={14} color={colors.navyText} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.removeGoalBtn}
+                                onPress={() => handleRemoveGoal('station1', idx)}
+                              >
+                                <Feather name="trash-2" size={14} color="#EF4444" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
                           <TouchableOpacity
-                            style={styles.changeGoalBtn}
-                            onPress={() => {
-                              if (typeof window !== 'undefined') {
-                                window.location.href = '/GoalDomainDefinitions';
-                              } else {
-                                navigation?.navigate?.('GoalDomainDefinitions' as never);
-                              }
-                            }}
-                          >
-                            <Feather name="edit-2" size={14} color={colors.navyText} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.changeGoalBtn}
+                            style={styles.emptyGoalSlot}
                             onPress={() => handleOpenGoalSelector('station1', idx)}
                           >
-                            <Feather name="refresh-cw" size={14} color={colors.navyText} />
+                            <View style={styles.plusIconWrap}>
+                              <Feather name="plus" size={16} color={colors.navyText} />
+                            </View>
+                            <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.removeGoalBtn}
-                            onPress={() => handleRemoveGoal('station1', idx)}
-                          >
-                            <Feather name="trash-2" size={14} color="#EF4444" />
-                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={styles.addSlotFooterBtn}
+                      onPress={() => handleAddSlot('station1')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 1"
+                    >
+                      <Feather name="plus-circle" size={15} color={colors.navyText} />
+                      <Text style={styles.addSlotFooterBtnText}>+ Add Goal to Station 1</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Station 2 Card */}
+                <View style={styles.card}>
+                  <View style={styles.stationHeader}>
+                    <View style={[styles.stationNumberBadge, { backgroundColor: '#DBEAFE' }]}>
+                      <Text style={[styles.stationNumberText, { color: '#1E40AF' }]}>2</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.stationTitleRow}>
+                        <Text style={styles.cardTitle}>Station 2 — Advanced Skills</Text>
+                        <View style={styles.stationCountBadge}>
+                          <Text style={styles.stationCountBadgeText}>
+                            {slots.station2.filter(Boolean).length} / {slots.station2.length}{' '}
+                            Assigned
+                          </Text>
                         </View>
                       </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.emptyGoalSlot}
-                        onPress={() => handleOpenGoalSelector('station1', idx)}
-                      >
-                        <View style={styles.plusIconWrap}>
-                          <Feather name="plus" size={16} color={colors.navyText} />
-                        </View>
-                        <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {/* Station 2 Card */}
-            <View style={styles.card}>
-              <View style={styles.stationHeader}>
-                <View style={[styles.stationNumberBadge, { backgroundColor: '#DBEAFE' }]}>
-                  <Text style={[styles.stationNumberText, { color: '#1E40AF' }]}>2</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.stationTitleRow}>
-                    <Text style={styles.cardTitle}>Station 2 — Advanced Skills</Text>
-                    <View style={styles.stationCountBadge}>
-                      <Text style={styles.stationCountBadgeText}>
-                        {slots.station2.filter(Boolean).length} / {slots.station2.length} Assigned
+                      <Text style={styles.stationSub}>
+                        Expressive language, academic readiness, and generalization
                       </Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.addSlotHeaderBtn}
+                      onPress={() => handleAddSlot('station2')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 2"
+                    >
+                      <Feather name="plus" size={13} color={colors.navyText} />
+                      <Text style={styles.addSlotHeaderBtnText}>Add Goal</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.stationSub}>
-                    Expressive language, academic readiness, and generalization
-                  </Text>
-                </View>
-              </View>
 
-              <View style={styles.slotList}>
-                {slots.station2.map((goal, idx) => (
-                  <View key={`s2-${idx}`} style={styles.slotContainer}>
-                    <View style={styles.slotHeaderRow}>
-                      <Text style={styles.slotTag}>Slot {idx + 1}</Text>
-                    </View>
-                    {goal ? (
-                      <View style={styles.filledGoalCard}>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.goalTitleRow}>
-                            <Text style={styles.goalName}>{goal.name}</Text>
-                            <View style={styles.domainChip}>
-                              <Text style={styles.domainChipText}>{goal.domain}</Text>
-                            </View>
-                            {goal.goalType === 'task_analysis' && (
-                              <View style={styles.taskChip}>
-                                <Text style={styles.taskChipText}>Task Analysis</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.goalDesc} numberOfLines={2}>
-                            {goal.description}
-                          </Text>
-                          <View style={styles.masteryRow}>
-                            <Feather name="check-circle" size={12} color={colors.successGreen} />
-                            <Text style={styles.masteryText}>
-                              Mastery Criteria: {goal.masteryCriteria}
-                            </Text>
-                          </View>
+                  <View style={styles.slotList}>
+                    {slots.station2.map((goal, idx) => (
+                      <View key={`s2-${idx}`} style={styles.slotContainer}>
+                        <View style={styles.slotHeaderRow}>
+                          <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                          {slots.station2.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.removeSlotBtn}
+                              onPress={() => handleRemoveSlot('station2', idx)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove Station 2 Slot ${idx + 1}`}
+                            >
+                              <Feather name="x" size={13} color={colors.mutedText} />
+                              <Text style={styles.removeSlotBtnText}>Remove Slot</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
-                        <View style={styles.goalActions}>
+                        {goal ? (
+                          <View style={styles.filledGoalCard}>
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.goalTitleRow}>
+                                <Text style={styles.goalName}>{goal.name}</Text>
+                                <View style={styles.domainChip}>
+                                  <Text style={styles.domainChipText}>{goal.domain}</Text>
+                                </View>
+                                {goal.goalType === 'task_analysis' && (
+                                  <View style={styles.taskChip}>
+                                    <Text style={styles.taskChipText}>Task Analysis</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.goalDesc} numberOfLines={2}>
+                                {goal.description}
+                              </Text>
+                              <View style={styles.masteryRow}>
+                                <Feather
+                                  name="check-circle"
+                                  size={12}
+                                  color={colors.successGreen}
+                                />
+                                <Text style={styles.masteryText}>
+                                  Mastery Criteria: {goal.masteryCriteria}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.goalActions}>
+                              <TouchableOpacity
+                                style={styles.changeGoalBtn}
+                                onPress={() => handleOpenGoalSelector('station2', idx)}
+                              >
+                                <Feather name="refresh-cw" size={14} color={colors.navyText} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.removeGoalBtn}
+                                onPress={() => handleRemoveGoal('station2', idx)}
+                              >
+                                <Feather name="trash-2" size={14} color="#EF4444" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
                           <TouchableOpacity
-                            style={styles.changeGoalBtn}
-                            onPress={() => {
-                              if (typeof window !== 'undefined') {
-                                window.location.href = '/GoalDomainDefinitions';
-                              } else {
-                                navigation?.navigate?.('GoalDomainDefinitions' as never);
-                              }
-                            }}
-                          >
-                            <Feather name="edit-2" size={14} color={colors.navyText} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.changeGoalBtn}
+                            style={styles.emptyGoalSlot}
                             onPress={() => handleOpenGoalSelector('station2', idx)}
                           >
-                            <Feather name="refresh-cw" size={14} color={colors.navyText} />
+                            <View style={styles.plusIconWrap}>
+                              <Feather name="plus" size={16} color={colors.navyText} />
+                            </View>
+                            <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.removeGoalBtn}
-                            onPress={() => handleRemoveGoal('station2', idx)}
-                          >
-                            <Feather name="trash-2" size={14} color="#EF4444" />
-                          </TouchableOpacity>
-                        </View>
+                        )}
                       </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.emptyGoalSlot}
-                        onPress={() => handleOpenGoalSelector('station2', idx)}
-                      >
-                        <View style={styles.plusIconWrap}>
-                          <Feather name="plus" size={16} color={colors.navyText} />
-                        </View>
-                        <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* TAB 2: ASSESSMENT SUMMARY */}
-        {activeWorkbenchTab === 'assessment' && (
-          <View style={styles.tabContentWrap}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Student Demographics & Intake Context</Text>
-              <View style={styles.demoGrid}>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Student Name</Text>
-                  <Text style={styles.demoValue}>
-                    {context?.studentName || selectedCandidate?.name || '—'}
-                  </Text>
-                </View>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Age / DOB</Text>
-                  <Text style={styles.demoValue}>
-                    Age {context?.age ?? selectedCandidate?.age ?? '—'} · {context?.dob || '—'}
-                  </Text>
-                </View>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Program</Text>
-                  <Text style={styles.demoValue}>
-                    {context?.program || selectedCandidate?.program || 'ABA Therapy'}
-                  </Text>
-                </View>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Enrolled Date</Text>
-                  <Text style={styles.demoValue}>{context?.enrollmentDate || '—'}</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Baseline Assessment Strengths & Needs</Text>
-
-              <View style={styles.contextSection}>
-                <View style={styles.contextHeaderRow}>
-                  <Feather name="award" size={15} color={colors.primaryYellowDark} />
-                  <Text style={styles.contextSectionTitle}>Skills & Strengths</Text>
-                </View>
-                <Text style={styles.contextText}>
-                  {context?.skillsStrengths ||
-                    'Demonstrates strong visual-spatial matching, basic receptive identification of familiar items, and cooperative response to high-preference items.'}
-                </Text>
-              </View>
-
-              <View style={styles.contextSection}>
-                <View style={styles.contextHeaderRow}>
-                  <Feather name="alert-triangle" size={15} color="#EF4444" />
-                  <Text style={styles.contextSectionTitle}>Behavioral Functions & Triggers</Text>
-                </View>
-                <Text style={styles.contextText}>
-                  {context?.behaviorFunctions ||
-                    'Primary function is escape/avoidance of novel non-preferred motor tasks. Exhibits mild vocal protest when demands escalate.'}
-                </Text>
-              </View>
-
-              <View style={styles.contextSection}>
-                <View style={styles.contextHeaderRow}>
-                  <Feather name="star" size={15} color="#F59E0B" />
-                  <Text style={styles.contextSectionTitle}>Top Reinforcement Inventory</Text>
-                </View>
-                <View style={styles.reinforcerChipsWrap}>
-                  {(
-                    context?.topReinforcers || [
-                      'Bubbles',
-                      'Musical Toy',
-                      'Token Stars',
-                      'Edible Treat',
-                      'Spinning Wheel',
-                    ]
-                  ).map((r, i) => (
-                    <View key={i} style={styles.reinforcerChip}>
-                      <Text style={styles.reinforcerRank}>#{i + 1}</Text>
-                      <Text style={styles.reinforcerChipText}>{r}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.contextSection}>
-                <View style={styles.contextHeaderRow}>
-                  <Feather name="feather" size={15} color="#8B5CF6" />
-                  <Text style={styles.contextSectionTitle}>Sensory Engagement Profile</Text>
-                </View>
-                <Text style={styles.contextText}>
-                  {context?.sensorySummary ||
-                    'Calmed by deep pressure stimulation. Benefits from scheduled 3-minute sensory gross motor movement between trial rounds.'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* TAB 3: IMPLEMENTATION STRATEGIES & PROTOCOLS */}
-        {activeWorkbenchTab === 'strategies' && (
-          <View style={styles.tabContentWrap}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Implementation Strategy Configuration</Text>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Reinforcement Schedule & Prompt Fading</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={reinforcementSchedule}
-                  onChangeText={setReinforcementSchedule}
-                  placeholder="e.g. FR-1 transitioning to VR-3 upon 80% accuracy"
-                  placeholderTextColor={colors.mutedText}
-                />
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>
-                  Environmental Accommodations & Visual Supports
-                </Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={accommodations}
-                  onChangeText={setAccommodations}
-                  placeholder="e.g. Visual timer, quiet study cubicle, token board"
-                  placeholderTextColor={colors.mutedText}
-                />
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Crisis De-escalation Protocol</Text>
-                <TextInput
-                  style={[styles.fieldInput, styles.fieldTextArea]}
-                  value={crisisProtocol}
-                  onChangeText={setCrisisProtocol}
-                  multiline
-                  placeholder="Steps to take during behavioral escalation..."
-                  placeholderTextColor={colors.mutedText}
-                />
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Clinical Progress Review Cycle</Text>
-                <View style={styles.cycleRow}>
-                  {['4 Weeks', '6 Weeks', '8 Weeks', 'Quarterly'].map((cycle) => (
+                    ))}
                     <TouchableOpacity
-                      key={cycle}
-                      style={[styles.cycleChip, reviewCycle === cycle && styles.cycleChipSelected]}
-                      onPress={() => setReviewCycle(cycle)}
+                      style={styles.addSlotFooterBtn}
+                      onPress={() => handleAddSlot('station2')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 2"
                     >
-                      <Text
-                        style={[
-                          styles.cycleChipText,
-                          reviewCycle === cycle && styles.cycleChipTextSelected,
-                        ]}
-                      >
-                        {cycle}
-                      </Text>
+                      <Feather name="plus-circle" size={15} color={colors.navyText} />
+                      <Text style={styles.addSlotFooterBtnText}>+ Add Goal to Station 2</Text>
                     </TouchableOpacity>
-                  ))}
+                  </View>
                 </View>
               </View>
+            )}
 
-              <DynamicFormFields
-                formName="IUP Form"
-                values={customIupValues}
-                onChange={(key, val) => setCustomIupValues((prev) => ({ ...prev, [key]: val }))}
-                excludeStandardLabels={[
-                  'Student Name',
-                  'Target Skill Domain',
-                  'Baseline Mastery (%)',
-                  'Target Objective',
-                  'Environmental Accommodations & Visual Supports',
-                  'Crisis De-escalation Protocol',
+            {/* TAB 2: ASSESSMENT SUMMARY */}
+            {activeWorkbenchTab === 'assessment' && (
+              <View style={styles.tabContentWrap}>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Student Demographics & Intake Context</Text>
+                  <View style={styles.demoGrid}>
+                    <View style={styles.demoItem}>
+                      <Text style={styles.demoLabel}>Student Name</Text>
+                      <Text style={styles.demoValue}>
+                        {context?.studentName || selectedCandidate?.name || '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.demoItem}>
+                      <Text style={styles.demoLabel}>Age / DOB</Text>
+                      <Text style={styles.demoValue}>
+                        Age {context?.age ?? selectedCandidate?.age ?? '—'} · {context?.dob || '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.demoItem}>
+                      <Text style={styles.demoLabel}>Program</Text>
+                      <Text style={styles.demoValue}>
+                        {context?.program || selectedCandidate?.program || 'ABA Therapy'}
+                      </Text>
+                    </View>
+                    <View style={styles.demoItem}>
+                      <Text style={styles.demoLabel}>Enrolled Date</Text>
+                      <Text style={styles.demoValue}>{context?.enrollmentDate || '—'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Baseline Assessment Strengths & Needs</Text>
+
+                  <View style={styles.contextSection}>
+                    <View style={styles.contextHeaderRow}>
+                      <Feather name="award" size={15} color={colors.primaryYellowDark} />
+                      <Text style={styles.contextSectionTitle}>Skills & Strengths</Text>
+                    </View>
+                    <Text style={styles.contextText}>
+                      {context?.skillsStrengths ||
+                        'Demonstrates strong visual-spatial matching, basic receptive identification of familiar items, and cooperative response to high-preference items.'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.contextSection}>
+                    <View style={styles.contextHeaderRow}>
+                      <Feather name="alert-triangle" size={15} color="#EF4444" />
+                      <Text style={styles.contextSectionTitle}>
+                        Behavioral Functions & Triggers
+                      </Text>
+                    </View>
+                    <Text style={styles.contextText}>
+                      {context?.behaviorFunctions ||
+                        'Primary function is escape/avoidance of novel non-preferred motor tasks. Exhibits mild vocal protest when demands escalate.'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.contextSection}>
+                    <View style={styles.contextHeaderRow}>
+                      <Feather name="star" size={15} color="#F59E0B" />
+                      <Text style={styles.contextSectionTitle}>Top Reinforcement Inventory</Text>
+                    </View>
+                    <View style={styles.reinforcerChipsWrap}>
+                      {(
+                        context?.topReinforcers || [
+                          'Bubbles',
+                          'Musical Toy',
+                          'Token Stars',
+                          'Edible Treat',
+                          'Spinning Wheel',
+                        ]
+                      ).map((r, i) => (
+                        <View key={i} style={styles.reinforcerChip}>
+                          <Text style={styles.reinforcerRank}>#{i + 1}</Text>
+                          <Text style={styles.reinforcerChipText}>{r}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.contextSection}>
+                    <View style={styles.contextHeaderRow}>
+                      <Feather name="feather" size={15} color="#8B5CF6" />
+                      <Text style={styles.contextSectionTitle}>Sensory Engagement Profile</Text>
+                    </View>
+                    <Text style={styles.contextText}>
+                      {context?.sensorySummary ||
+                        'Calmed by deep pressure stimulation. Benefits from scheduled 3-minute sensory gross motor movement between trial rounds.'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* TAB 3: IMPLEMENTATION STRATEGIES & PROTOCOLS */}
+            {activeWorkbenchTab === 'strategies' && (
+              <View style={styles.tabContentWrap}>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Implementation Strategy Configuration</Text>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Reinforcement Schedule & Prompt Fading</Text>
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={reinforcementSchedule}
+                      onChangeText={setReinforcementSchedule}
+                      placeholder="e.g. FR-1 transitioning to VR-3 upon 80% accuracy"
+                      placeholderTextColor={colors.mutedText}
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>
+                      Environmental Accommodations & Visual Supports
+                    </Text>
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={accommodations}
+                      onChangeText={setAccommodations}
+                      placeholder="e.g. Visual timer, quiet study cubicle, token board"
+                      placeholderTextColor={colors.mutedText}
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Crisis De-escalation Protocol</Text>
+                    <TextInput
+                      style={[styles.fieldInput, styles.fieldTextArea]}
+                      value={crisisProtocol}
+                      onChangeText={setCrisisProtocol}
+                      multiline
+                      placeholder="Steps to take during behavioral escalation..."
+                      placeholderTextColor={colors.mutedText}
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Clinical Progress Review Cycle</Text>
+                    <View style={styles.cycleRow}>
+                      {['4 Weeks', '6 Weeks', '8 Weeks', 'Quarterly'].map((cycle) => (
+                        <TouchableOpacity
+                          key={cycle}
+                          style={[
+                            styles.cycleChip,
+                            reviewCycle === cycle && styles.cycleChipSelected,
+                          ]}
+                          onPress={() => setReviewCycle(cycle)}
+                        >
+                          <Text
+                            style={[
+                              styles.cycleChipText,
+                              reviewCycle === cycle && styles.cycleChipTextSelected,
+                            ]}
+                          >
+                            {cycle}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <DynamicFormFields
+                    formName="IUP Form"
+                    values={customIupValues}
+                    onChange={(key, val) => setCustomIupValues((prev) => ({ ...prev, [key]: val }))}
+                    excludeStandardLabels={[
+                      'Student Name',
+                      'Target Skill Domain',
+                      'Baseline Mastery (%)',
+                      'Target Objective',
+                      'Environmental Accommodations & Visual Supports',
+                      'Crisis De-escalation Protocol',
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Bottom Action Bar */}
+            <View style={styles.bottomBar}>
+              <TouchableOpacity
+                style={[
+                  styles.saveDraftBtn,
+                  (isFinalizedRecord || !hasAssignedGoal) && { opacity: 0.5 },
                 ]}
-              />
+                onPress={handleDraftSave}
+                disabled={isFinalizedRecord || !hasAssignedGoal}
+                accessibilityState={{ disabled: isFinalizedRecord || !hasAssignedGoal }}
+              >
+                <Feather
+                  name={isFinalizedRecord ? 'lock' : 'save'}
+                  size={15}
+                  color={colors.navyText}
+                />
+                <Text style={styles.saveDraftBtnText}>
+                  {isFinalizedRecord ? 'Draft Locked' : 'Save Draft'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.previewBtn, !hasAssignedGoal && { opacity: 0.5 }]}
+                onPress={handlePreviewOpen}
+                disabled={!hasAssignedGoal}
+                accessibilityState={{ disabled: !hasAssignedGoal }}
+              >
+                <Feather name="eye" size={15} color={colors.navyText} />
+                <Text style={styles.previewBtnText}>Full Preview</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.finalizeBtn, isFinalizedRecord && { backgroundColor: '#E2E8F0' }]}
+                onPress={handleFinalize}
+                disabled={isFinalizedRecord}
+              >
+                <Feather
+                  name={isFinalizedRecord ? 'lock' : 'check-circle'}
+                  size={16}
+                  color={colors.navyText}
+                />
+                <Text style={styles.finalizeBtnText}>
+                  {isFinalizedRecord ? 'Finalized & Active' : 'Finalize & Activate IUP'}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          </>
         )}
-
-        {/* Bottom Action Bar */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={[styles.saveDraftBtn, isFinalizedRecord && { opacity: 0.6 }]}
-            onPress={handleDraftSave}
-            disabled={isFinalizedRecord}
-          >
-            <Feather name={isFinalizedRecord ? 'lock' : 'save'} size={15} color={colors.navyText} />
-            <Text style={styles.saveDraftBtnText}>
-              {isFinalizedRecord ? 'Draft Locked' : 'Save Draft'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.previewBtn} onPress={() => setPreviewOpen(true)}>
-            <Feather name="eye" size={15} color={colors.navyText} />
-            <Text style={styles.previewBtnText}>Full Preview</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.finalizeBtn, isFinalizedRecord && { backgroundColor: '#E2E8F0' }]}
-            onPress={handleFinalize}
-            disabled={isFinalizedRecord}
-          >
-            <Feather
-              name={isFinalizedRecord ? 'lock' : 'check-circle'}
-              size={16}
-              color={colors.navyText}
-            />
-            <Text style={styles.finalizeBtnText}>
-              {isFinalizedRecord ? 'Finalized & Active' : 'Finalize & Activate IUP'}
-            </Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
       {/* GOAL SELECTOR MODAL */}
@@ -1422,20 +1654,6 @@ export default function IupGenerationScreen({
                   · Slot {(selectorTarget?.slotIndex ?? 0) + 1}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={styles.manageGoalsLinkBtn}
-                onPress={() => {
-                  setSelectorTarget(null);
-                  if (typeof window !== 'undefined') {
-                    window.location.href = '/GoalDomainDefinitions';
-                  } else {
-                    navigation?.navigate?.('GoalDomainDefinitions' as never);
-                  }
-                }}
-              >
-                <Feather name="settings" size={12} color={colors.navyText} />
-                <Text style={styles.manageGoalsLinkText}>Edit in Admin</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setSelectorTarget(null)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2218,4 +2436,51 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   previewExportBtnText: { fontWeight: '700', color: colors.navyText },
+  emptyWorkbenchCard: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  emptyWorkbenchIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyWorkbenchTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+    textAlign: 'center',
+  },
+  emptyWorkbenchSub: {
+    fontSize: 14,
+    color: colors.mutedText,
+    textAlign: 'center',
+    maxWidth: 480,
+    lineHeight: 20,
+  },
+  goToLibraryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primaryYellow,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+  },
+  goToLibraryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
 });

@@ -215,7 +215,10 @@ function createHttpClient(): AxiosInstance {
       }
     } else {
       const isDirectorRoute =
-        config.url?.startsWith('/director') || config.url?.includes('/director/');
+        config.url?.startsWith('/director') ||
+        config.url?.includes('/director/') ||
+        config.url?.startsWith('/program_director') ||
+        config.url?.includes('/program_director/');
 
       const isAdminRoute =
         config.url?.startsWith('/sysadmin') ||
@@ -225,12 +228,12 @@ function createHttpClient(): AxiosInstance {
 
       let token = getAccessToken();
 
-      if (isDirectorRoute && !hasDirectorBackendRole()) {
+      if (isDirectorRoute && (!token || !hasDirectorBackendRole())) {
         const directorToken = await fetchDirectorToken();
         if (directorToken) {
           token = directorToken;
         }
-      } else if (isAdminRoute && !hasAdminBackendRole()) {
+      } else if (isAdminRoute && (!token || !hasAdminBackendRole())) {
         const adminToken = await fetchAdminToken();
         if (adminToken) {
           token = adminToken;
@@ -319,7 +322,11 @@ function createHttpClient(): AxiosInstance {
 
       // Transparent retry on 403 Forbidden for director & admin routes
       if (status === 403 && cfg && !cfg._retry && !isAuthUrl) {
-        const isDirectorRoute = cfg.url?.startsWith('/director') || cfg.url?.includes('/director/');
+        const isDirectorRoute =
+          cfg.url?.startsWith('/director') ||
+          cfg.url?.includes('/director/') ||
+          cfg.url?.startsWith('/program_director') ||
+          cfg.url?.includes('/program_director/');
 
         const isAdminRoute =
           cfg.url?.startsWith('/sysadmin') ||
@@ -358,7 +365,11 @@ function createHttpClient(): AxiosInstance {
 
       // Transparent retry on 401 Unauthorized for director routes
       if (status === 401 && cfg && !cfg._retry && !isAuthUrl) {
-        const isDirectorRoute = cfg.url?.startsWith('/director') || cfg.url?.includes('/director/');
+        const isDirectorRoute =
+          cfg.url?.startsWith('/director') ||
+          cfg.url?.includes('/director/') ||
+          cfg.url?.startsWith('/program_director') ||
+          cfg.url?.includes('/program_director/');
 
         if (isDirectorRoute) {
           cfg._retry = true;

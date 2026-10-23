@@ -821,78 +821,187 @@ export const getAssessmentsForReview = async (
   }
   const config = Object.keys(cleanParams).length > 0 ? { params: cleanParams } : undefined;
 
-  let rawList: any[] = [];
-  try {
-    const res = await client.get('/program_director/assessments', config);
-    const data = res?.data;
-    const list = Array.isArray(data)
+  // 1. Fetch real assessments, real students, and real pipeline in parallel
+  const [assessmentsRes, studentsRes, pipelineRes] = await Promise.allSettled([
+    client.get('/program_director/assessments', config),
+    client.get('/coordinator/students'),
+    client.get('/program_director/assessment_pipeline'),
+  ]);
+
+  let rawAssessments: any[] = [];
+  if (assessmentsRes.status === 'fulfilled' && assessmentsRes.value?.data) {
+    const data = assessmentsRes.value.data;
+    rawAssessments = Array.isArray(data)
       ? data
       : Array.isArray(data?.assessments)
         ? data.assessments
         : Array.isArray(data?.data)
           ? data.data
           : [];
-    if (list.length > 0) rawList = list;
-  } catch {}
-
-  const reviewedMap = getStoredReviewedMap();
-
-  if (rawList.length > 0) {
-    const merged = rawList.map((item: any) => {
-      const sId = String(item.studentId || item.student_id || item.id);
-      if (reviewedMap[sId]?.reviewed) {
-        return { ...item, status: 'Reviewed', reviewNotes: reviewedMap[sId].notes };
-      }
-      return item;
-    });
-    return { data: merged, assessments: merged };
   }
 
-  // Resilient fallback: build list from /options/students or DEFAULT_PD_STUDENTS
-  let studentPool = DEFAULT_PD_STUDENTS;
-  try {
-    const { data: sData } = await client.get<any[]>('/options/students');
-    if (Array.isArray(sData) && sData.length > 0) {
-      studentPool = sData.map((s: any, idx: number) => ({
-        id: String(s.id),
-        fullName: s.name || `Student ${idx + 1}`,
-        name: s.name || `Student ${idx + 1}`,
-        age: s.age || 6,
-        programType: s.program || 'Comprehensive ABA',
-        program: s.program || 'Comprehensive ABA',
-        therapyGroup: s.therapy_group || `Station ${(idx % 3) + 1}`,
-        therapist: DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length],
-        currentStage: idx % 2 === 0 ? 'assessment-complete' : 'in-assessment',
-        status: idx % 2 === 0 ? 'Assessment Completed' : 'In Assessment',
-        assessmentStatus: (idx % 2 === 0 ? 'completed' : 'in-progress') as
-          'completed' | 'in-progress',
-        sessionAssigned: idx % 2 === 0,
-      }));
+  let rawStudents: any[] = [];
+  if (studentsRes.status === 'fulfilled' && studentsRes.value?.data) {
+    const data = studentsRes.value.data;
+    rawStudents = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.students)
+        ? data.students
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+  }
+
+  if (rawStudents.length === 0) {
+    try {
+      const optRes = await client.get('/options/students');
+      if (Array.isArray(optRes?.data) && optRes.data.length > 0) {
+        rawStudents = optRes.data;
+      }
+    } catch {}
+  }
+
+  let rawPipeline: any[] = [];
+  if (pipelineRes.status === 'fulfilled' && pipelineRes.value?.data) {
+    const data = pipelineRes.value.data;
+    rawPipeline = Array.isArray(data?.pipeline)
+      ? data.pipeline
+      : Array.isArray(data?.students)
+        ? data.students
+        : Array.isArray(data)
+          ? data
+          : [];
+  }
+
+  // Build lookup map for real students
+  const studentMap = new Map<string, any>();
+  for (const s of rawStudents) {
+    const sId = String(s.id || s.studentId || s.student_id || '').trim();
+    if (sId) studentMap.set(sId, s);
+    const sName = String(s.fullName || s.name || '')
+      .toLowerCase()
+      .trim();
+    if (sName) studentMap.set(sName, s);
+  }
+
+  const reviewedMap = getStoredReviewedMap();
+  const itemsByStudent = new Map<string, any>();
+
+  // Process real assessment records
+  for (const a of rawAssessments) {
+    const sId = String(a.student_id || a.studentId || a.id || '').trim();
+    const sName = String(a.student_name || a.studentName || a.name || '').trim();
+    const student = studentMap.get(sId) || studentMap.get(sName.toLowerCase());
+
+    const isRev = Boolean(
+      (sId && reviewedMap[sId]?.reviewed) || (student && reviewedMap[String(student.id)]?.reviewed),
+    );
+    const progress = Number(a.assessment_progress ?? a.abllsPct ?? 0);
+    const rawStatus = String(a.status || '')
+      .toLowerCase()
+      .trim();
+
+    let status = 'Not Started';
+    if (isRev || rawStatus === 'reviewed' || rawStatus === 'approved') {
+      status = 'Reviewed';
+    } else if (
+      rawStatus === 'complete' ||
+      rawStatus === 'completed' ||
+      rawStatus === 'ready_for_iup' ||
+      progress >= 100
+    ) {
+      status = 'Complete';
+    } else if (rawStatus === 'in_progress' || rawStatus === 'in_assessment' || progress > 0) {
+      status = 'In Progress';
     }
-  } catch {}
 
-  const synthesized = studentPool.map((s, idx) => {
-    const sId = String(s.id);
-    const isRev = Boolean(reviewedMap[sId]?.reviewed);
-    const isComp = isRev || idx % 2 === 0;
-
-    return {
-      studentId: sId,
-      studentName: s.fullName || s.name,
-      age: s.age || 6,
-      program: s.program || s.programType || 'Comprehensive ABA',
-      therapyGroup: s.therapyGroup || 'Station 1 · Early Learners',
-      therapist: s.therapist || DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length],
-      status: isRev ? 'Reviewed' : isComp ? 'Complete' : 'In Progress',
-      abllsPct: isRev ? 100 : isComp ? 85 : 65,
-      behaviorStatus: 'completed',
-      sessionStatus: isComp ? 'assigned' : 'pending',
-      dateCompleted: isComp ? '2026-03-28' : null,
+    const item = {
+      studentId: sId || (student ? String(student.id || student.studentId) : ''),
+      studentName:
+        sName || (student ? String(student.fullName || student.name) : 'Unknown Student'),
+      age: Number(student?.age ?? a.age ?? 0),
+      program: String(
+        student?.programType ?? student?.program ?? a.program ?? a.program_type ?? 'Regular',
+      ),
+      therapyGroup: String(
+        student?.therapyGroup ?? student?.therapy_group ?? a.therapyGroup ?? a.therapy_group ?? '',
+      ),
+      therapist: String(
+        student?.therapist ??
+          student?.therapist_name ??
+          a.therapist ??
+          a.therapist_name ??
+          'Unassigned',
+      ),
+      status,
+      abllsPct: progress,
+      behaviorStatus: String(a.behavior_assessment ?? a.behaviorStatus ?? 'notStarted'),
+      sessionStatus: String(a.sessionStatus ?? ''),
+      dateCompleted: a.completed_at || a.completed_on || a.dateCompleted || null,
       reviewNotes: reviewedMap[sId]?.notes || '',
+      createdAt: a.created_at || null,
     };
-  });
 
-  return { data: synthesized, assessments: synthesized };
+    const key = item.studentId || item.studentName.toLowerCase();
+    const existing = itemsByStudent.get(key);
+    if (
+      !existing ||
+      item.abllsPct > existing.abllsPct ||
+      (item.createdAt && item.createdAt > existing.createdAt)
+    ) {
+      itemsByStudent.set(key, item);
+    }
+  }
+
+  // Include pipeline or real enrolled students who do not have an assessment record yet
+  for (const s of rawStudents) {
+    const sId = String(s.id || s.studentId || '').trim();
+    const sName = String(s.fullName || s.name || '').trim();
+    const key = sId || sName.toLowerCase();
+
+    if (!itemsByStudent.has(key)) {
+      const isRev = Boolean(reviewedMap[sId]?.reviewed);
+      const pipe = rawPipeline.find(
+        (p) =>
+          String(p.student_id || p.studentId || '').trim() === sId ||
+          String(p.student_name || p.studentName || '')
+            .toLowerCase()
+            .trim() === sName.toLowerCase(),
+      );
+
+      const progress = Number(pipe?.assessment_progress ?? 0);
+      let status = 'Not Started';
+      const pipeStatus = String(pipe?.status || '')
+        .toLowerCase()
+        .trim();
+
+      if (isRev) {
+        status = 'Reviewed';
+      } else if (pipeStatus === 'ready_for_iup' || pipeStatus === 'complete' || progress >= 100) {
+        status = 'Complete';
+      } else if (pipeStatus === 'in_assessment' || pipeStatus === 'in_progress' || progress > 0) {
+        status = 'In Progress';
+      }
+
+      itemsByStudent.set(key, {
+        studentId: sId,
+        studentName: sName,
+        age: Number(s.age ?? 0),
+        program: String(s.programType ?? s.program ?? 'Regular'),
+        therapyGroup: String(s.therapyGroup ?? s.therapy_group ?? ''),
+        therapist: String(s.therapist ?? s.therapist_name ?? 'Unassigned'),
+        status,
+        abllsPct: progress,
+        behaviorStatus: String(pipe?.behavior_assessment ?? 'notStarted'),
+        sessionStatus: '',
+        dateCompleted: null,
+        reviewNotes: reviewedMap[sId]?.notes || '',
+      });
+    }
+  }
+
+  const finalItems = Array.from(itemsByStudent.values());
+  return { data: finalItems, assessments: finalItems };
 };
 
 export const getAssessmentReport = async (studentId: string): Promise<{ data: any }> => {
@@ -2014,8 +2123,20 @@ export const removeGoalFromSlot = async (
 
   // 1. Update local caseload assignments
   const caseloadMap = getStoredCaseloadMap();
-  const studentSlots = caseloadMap[studentId] ? { ...caseloadMap[studentId] } : {};
+  let studentSlots: Record<string, any> = caseloadMap[studentId]
+    ? { ...caseloadMap[studentId] }
+    : {};
+
+  if (Object.keys(studentSlots).length === 0) {
+    try {
+      const { data } = await getStudentCaseload(studentId);
+      const rawSlots = data?.slots || data?.studentGoals || data || {};
+      studentSlots = { ...rawSlots };
+    } catch {}
+  }
+
   delete studentSlots[slotKey];
+  studentSlots[slotKey] = null;
   setStoredCaseload(studentId, studentSlots);
 
   // 2. Sync with local IUP draft
@@ -2032,6 +2153,26 @@ export const removeGoalFromSlot = async (
           .filter(Boolean)
           .map((g: any) => g.id),
       });
+    }
+  } catch {}
+
+  // 2.1 Sync with finalized IUP library if present
+  try {
+    const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+    let updatedLib = false;
+    lib.forEach((item) => {
+      if (
+        item &&
+        (item.studentId === studentId || item.id === studentId || item.student_id === studentId)
+      ) {
+        if (item.slots && Array.isArray(item.slots[stationKey])) {
+          item.slots[stationKey][slotIdx] = null;
+          updatedLib = true;
+        }
+      }
+    });
+    if (updatedLib) {
+      storage.setJSONSync(IUP_LIBRARY_STORAGE_KEY, lib);
     }
   } catch {}
 

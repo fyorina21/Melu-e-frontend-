@@ -518,11 +518,6 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                   { requireAllFour: true },
                 );
 
-              // Ensure IUP Generation is accessible only when both Skills and Behavior assessments are fully complete
-              const canAccessIup =
-                isSubmitted ||
-                canAccessIupGeneration(sid, s.ablls, s.behavior, skillsData, behaviorData);
-
               // Accurately calculate overall score from actual assessment progress across all 4 assessments
               const displayScore = isAllCompleted
                 ? 100
@@ -664,33 +659,6 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                             </Text>
                           </>
                         )}
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      testID={`iup-generation-btn-${s.id}`}
-                      style={[styles.launchBtn, canAccessIup ? styles.iupBtn : styles.disabledBtn]}
-                      disabled={!canAccessIup}
-                      onPress={() => {
-                        storage.setSync('last_assessment_student_id', s.id);
-                        storage.setItem('last_assessment_student_id', s.id).catch(() => {});
-                        (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
-                      }}
-                    >
-                      <View style={styles.btnContentRow}>
-                        <Feather
-                          name={canAccessIup ? 'file-text' : 'lock'}
-                          size={13}
-                          color={canAccessIup ? '#FFFFFF' : '#CBD5E1'}
-                        />
-                        <Text
-                          style={[
-                            styles.launchBtnTextLight,
-                            !canAccessIup && styles.disabledBtnText,
-                          ]}
-                        >
-                          IUP Generation {canAccessIup ? '→' : '(Locked)'}
-                        </Text>
                       </View>
                     </TouchableOpacity>
                   </View>

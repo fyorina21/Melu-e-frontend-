@@ -223,4 +223,31 @@ describe('IUP Generation Utilities & Models', () => {
     expect(caseloadB.data.goals.some((g: any) => g.id === 'g-alpha-1')).toBe(false);
     expect(caseloadB.data.goals.some((g: any) => g.id === 'g-alpha-2')).toBe(false);
   });
+
+  it('requires at least one assigned goal before Preview IUP and Save Draft become functional', () => {
+    const emptySlots: Slots = {
+      station1: [null],
+      station2: [null],
+    };
+    const hasAssignedGoalEmpty =
+      (emptySlots.station1?.some(Boolean) || emptySlots.station2?.some(Boolean)) ?? false;
+    expect(hasAssignedGoalEmpty).toBe(false);
+
+    const slotsWithGoal: Slots = {
+      station1: [
+        {
+          id: 'g-1',
+          name: 'Expressive Requesting',
+          domain: 'Communication',
+          description: 'Uses single words to request items',
+          goalType: 'standard',
+          masteryCriteria: '80%',
+        },
+      ],
+      station2: [null],
+    };
+    const hasAssignedGoalFilled =
+      (slotsWithGoal.station1?.some(Boolean) || slotsWithGoal.station2?.some(Boolean)) ?? false;
+    expect(hasAssignedGoalFilled).toBe(true);
+  });
 });

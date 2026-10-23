@@ -270,10 +270,24 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     });
   };
 
+  const hasAssignedGoal = (slots.station1?.some(Boolean) || slots.station2?.some(Boolean)) ?? false;
+
+  const handleOpenPreview = () => {
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal to preview the IUP.', 'error');
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
     if (!canEdit) {
       showToast('You do not have permission to edit or save IUP drafts.', 'error');
+      return;
+    }
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal before saving draft.', 'error');
       return;
     }
     try {
@@ -486,7 +500,7 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       onRemoveSlot={handleRemoveSlot}
       onDraftSave={handleDraftSave}
       onFinalize={handleFinalize}
-      onOpenPreview={() => setPreviewOpen(true)}
+      onOpenPreview={handleOpenPreview}
       onClosePreview={() => setPreviewOpen(false)}
       onExport={handleExport}
       onCloseExport={() => setExportContent(null)}

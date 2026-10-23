@@ -149,7 +149,6 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Student Caseload Management',
     'Clinical Quality Monitoring',
     'Parent Communication',
-    'Reports',
   ],
   institutional_admin: [
     'Goal Domains',
@@ -209,7 +208,6 @@ export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {
       items: ['Goal Mastery Approval', 'Clinical Quality Monitoring'],
     },
     'Parent Communication',
-    'Reports',
   ],
 };
 

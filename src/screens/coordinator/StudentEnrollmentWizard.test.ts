@@ -44,7 +44,15 @@ vi.mock('@react-navigation/native', () => ({
   useFocusEffect: vi.fn(),
 }));
 
-import { calculateAge, getTherapyGroupAgeWarning } from './StudentEnrollmentWizardScreen';
+import {
+  calculateAge,
+  getTherapyGroupAgeWarning,
+  resolveEnrichedTherapists,
+  assignStudentToTherapist,
+  THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+} from './StudentEnrollmentWizardScreen';
+import { storage } from '../../utils/storage';
+import { MAX_CASELOAD } from './enrollmentWizardTypes';
 import { DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 
 describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
@@ -68,7 +76,9 @@ describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
   it('returns appropriate age group warnings for Basic and Functional groups', () => {
     expect(getTherapyGroupAgeWarning('Basic', 2)).toContain('recommended for ages 3–12');
     expect(getTherapyGroupAgeWarning('Basic', 5)).toBeNull();
-    expect(getTherapyGroupAgeWarning('Functional Living Skill', 10)).toContain('recommended for ages 13–19');
+    expect(getTherapyGroupAgeWarning('Functional Living Skill', 10)).toContain(
+      'recommended for ages 13–19',
+    );
     expect(getTherapyGroupAgeWarning('Functional Living Skill', 15)).toBeNull();
   });
 
@@ -108,7 +118,11 @@ describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
       if (customValues[id] !== undefined && customValues[id] !== null && customValues[id] !== '') {
         return customValues[id];
       }
-      if (customValues[label] !== undefined && customValues[label] !== null && customValues[label] !== '') {
+      if (
+        customValues[label] !== undefined &&
+        customValues[label] !== null &&
+        customValues[label] !== ''
+      ) {
         return customValues[label];
       }
       if (normId === 'f_program' || /program/i.test(normId) || /program/i.test(normLabel)) {
@@ -131,5 +145,55 @@ describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
       (Array.isArray(val) && val.length === 0);
 
     expect(isMissing).toBe(false);
+  });
+
+  it('tracks therapist assigned students and updates caseload from 0/2 to 1/2 to 2/2', () => {
+    // Clear storage for fresh test
+    storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
+    storage.setJSONSync('melue_enrolled_students_cache', []);
+
+    const teachers = [
+      { id: 't-1', name: 'Abeba Tadesse', role: 'teacher' },
+      { id: 't-2', name: 'Dawit Bekele', role: 'teacher' },
+    ];
+
+    // Initially both therapists have 0 students (0/2)
+    let enriched = resolveEnrichedTherapists(teachers);
+    expect(enriched[0].assignedStudents?.length).toBe(0);
+    expect(enriched[1].assignedStudents?.length).toBe(0);
+
+    // Assign student 1 to Abeba Tadesse
+    assignStudentToTherapist('Abeba Tadesse', 'Student Alpha', 't-1');
+    enriched = resolveEnrichedTherapists(teachers);
+    expect(enriched[0].assignedStudents).toEqual(['Student Alpha']);
+    expect(enriched[0].assignedStudents?.length).toBe(1);
+    expect(enriched[0].assignedStudents!.length < MAX_CASELOAD).toBe(true);
+    expect(enriched[1].assignedStudents?.length).toBe(0);
+
+    // Assign student 2 to Abeba Tadesse (now at capacity 2/2)
+    assignStudentToTherapist('Abeba Tadesse', 'Student Beta', 't-1');
+    enriched = resolveEnrichedTherapists(teachers);
+    expect(enriched[0].assignedStudents).toEqual(['Student Alpha', 'Student Beta']);
+    expect(enriched[0].assignedStudents?.length).toBe(2);
+    expect(enriched[0].assignedStudents!.length >= MAX_CASELOAD).toBe(true);
+
+    // Clean up test data
+    storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
+  });
+
+  it('reflects students from enrolled students cache in therapist caseload', () => {
+    storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
+    storage.setJSONSync('melue_enrolled_students_cache', [
+      { id: 'stu-99', fullName: 'Hanna Tesfaye', therapist: 'Dawit Bekele' },
+    ]);
+
+    const teachers = [{ id: 't-2', name: 'Dawit Bekele', role: 'teacher' }];
+
+    const enriched = resolveEnrichedTherapists(teachers);
+    expect(enriched[0].assignedStudents?.length).toBe(1);
+    expect(enriched[0].assignedStudents).toContain('Hanna Tesfaye');
+
+    // Clean up
+    storage.setJSONSync('melue_enrolled_students_cache', []);
   });
 });

@@ -26,6 +26,7 @@ import {
   IUP_LIBRARY_STORAGE_KEY,
 } from '../../api/programDirectorApi';
 import storage from '../../utils/storage';
+import { confirmAction, notify } from '../../utils/dialogs';
 import { onMasteryChecksChanged } from '../../stores/goalMasteryStore';
 import type { ProgramDirectorStackParamList } from '../../types';
 import {
@@ -278,25 +279,24 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       const goal = studentGoals[slot];
       if (!goal) return;
 
-      Alert.alert('Remove Goal', `Remove "${goal.name}" from this slot?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            if (selectedStudentId) {
-              await removeGoalFromSlot(selectedStudentId, {
-                slot,
-                goalId: goal.id,
-              }).catch(() => {});
-            }
-            setStudentGoals((prev) => ({
-              ...prev,
-              [slot]: null,
-            }));
-          },
+      confirmAction({
+        title: 'Remove Goal',
+        message: `Remove "${goal.name}" from this slot?`,
+        confirmLabel: 'Remove',
+        destructive: true,
+        onConfirm: async () => {
+          if (selectedStudentId) {
+            await removeGoalFromSlot(selectedStudentId, {
+              slot,
+              goalId: goal.id,
+            }).catch(() => {});
+          }
+          setStudentGoals((prev) => ({
+            ...prev,
+            [slot]: null,
+          }));
         },
-      ]);
+      });
     },
     [studentGoals, selectedStudentId],
   );
@@ -308,7 +308,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
         (g) => g && (g.id === goal.id || g.name === goal.name),
       );
       if (alreadyAssigned) {
-        Alert.alert('Duplicate Goal', `"${goal.name}" is already assigned to this student.`);
+        notify('Duplicate Goal', `"${goal.name}" is already assigned to this student.`);
         return;
       }
 
@@ -326,29 +326,28 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       const newGoalWithStatus: GoalWithStatus = goalToWithStatus(slotPickerGoal, 'Active', 0);
 
       if (current) {
-        Alert.alert('Replace Goal', `Replace "${current.name}" with "${slotPickerGoal.name}"?`, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Replace',
-            onPress: async () => {
-              if (selectedStudentId) {
-                await assignGoalToSlot(selectedStudentId, {
-                  slot,
-                  goalId: slotPickerGoal.id,
-                  name: slotPickerGoal.name,
-                  domain: slotPickerGoal.domain,
-                  description: slotPickerGoal.description,
-                }).catch(() => {});
-              }
-              setStudentGoals((prev) => ({
-                ...prev,
-                [slot]: newGoalWithStatus,
-              }));
-              setSlotPickerOpen(false);
-              setSlotPickerGoal(null);
-            },
+        confirmAction({
+          title: 'Replace Goal',
+          message: `Replace "${current.name}" with "${slotPickerGoal.name}"?`,
+          confirmLabel: 'Replace',
+          onConfirm: async () => {
+            if (selectedStudentId) {
+              await assignGoalToSlot(selectedStudentId, {
+                slot,
+                goalId: slotPickerGoal.id,
+                name: slotPickerGoal.name,
+                domain: slotPickerGoal.domain,
+                description: slotPickerGoal.description,
+              }).catch(() => {});
+            }
+            setStudentGoals((prev) => ({
+              ...prev,
+              [slot]: newGoalWithStatus,
+            }));
+            setSlotPickerOpen(false);
+            setSlotPickerGoal(null);
           },
-        ]);
+        });
         return;
       }
 
@@ -359,7 +358,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       ).length;
 
       if (activeCount >= 2) {
-        Alert.alert(
+        notify(
           'Two-Goal Limit Reached',
           'Each student can have a maximum of two active assigned goals at a time. Please replace an existing goal or remove one to free up a slot.',
         );
@@ -376,7 +375,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
             description: slotPickerGoal.description,
           });
         } catch (err: any) {
-          Alert.alert('Assignment Error', err?.message || 'Failed to assign goal.');
+          notify('Assignment Error', err?.message || 'Failed to assign goal.');
           return;
         }
       }
