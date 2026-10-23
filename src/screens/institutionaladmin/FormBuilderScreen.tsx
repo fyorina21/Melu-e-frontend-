@@ -208,6 +208,44 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
       () => new Date().toISOString().split('T')[0],
     );
     const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
+    const [viewYear, setViewYear] = useState<number>(() => new Date().getFullYear());
+    const [viewMonth, setViewMonth] = useState<number>(() => new Date().getMonth());
+
+    const monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+
+    const handlePrevMonth = () => {
+      if (viewMonth === 0) {
+        setViewMonth(11);
+        setViewYear((y) => y - 1);
+      } else {
+        setViewMonth((m) => m - 1);
+      }
+    };
+
+    const handleNextMonth = () => {
+      if (viewMonth === 11) {
+        setViewMonth(0);
+        setViewYear((y) => y + 1);
+      } else {
+        setViewMonth((m) => m + 1);
+      }
+    };
 
     const formatDisplay = (isoDate: string, fmt: string) => {
       if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
@@ -225,7 +263,7 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
     };
 
     return (
-      <View style={styles.propertyPreviewBox}>
+      <View style={[styles.propertyPreviewBox, { maxWidth: 380, width: '100%' }]}>
         <Text style={styles.propertyPreviewHeader}>INTERACTIVE DATE PICKER PREVIEW</Text>
         <TouchableOpacity
           style={{
@@ -235,12 +273,14 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
             backgroundColor: '#FFFFFF',
             borderWidth: 1,
             borderColor: isCalendarOpen ? '#0284C7' : '#CBD5E1',
-            borderRadius: 6,
+            borderRadius: 8,
             paddingHorizontal: 12,
-            paddingVertical: 8,
+            minHeight: 44,
             marginTop: 4,
           }}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle Date Picker Preview"
           onPress={() => setIsCalendarOpen(!isCalendarOpen)}
         >
           <Text style={{ fontSize: 13, color: '#1E293B', fontWeight: '500' }}>
@@ -250,11 +290,11 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 4,
+              gap: 6,
               backgroundColor: '#E0F2FE',
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 4,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 6,
             }}
           >
             <Feather name="calendar" size={14} color="#0284C7" />
@@ -270,15 +310,22 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
               backgroundColor: '#FFFFFF',
               borderWidth: 1,
               borderColor: '#BAE6FD',
-              borderRadius: 8,
-              padding: 10,
-              marginTop: 6,
+              borderRadius: 12,
+              padding: 12,
+              marginTop: 8,
+              maxWidth: 360,
+              width: '100%',
+              shadowColor: '#0F172A',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.1,
+              shadowRadius: 12,
+              elevation: 8,
             }}
           >
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 6 }}>
-              QUICK DATE SELECTOR:
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 8 }}>
+              QUICK DATE PRESETS:
             </Text>
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
               {[
                 { label: 'Today', date: getToday() },
                 { label: 'Yesterday', date: getOffset(-1) },
@@ -289,9 +336,11 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
                 <TouchableOpacity
                   key={item.label}
                   style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 4,
+                    paddingHorizontal: 12,
+                    minHeight: 44,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: 8,
                     backgroundColor: selectedDate === item.date ? '#0284C7' : '#F1F5F9',
                   }}
                   onPress={() => {
@@ -301,7 +350,7 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: '600',
                       color: selectedDate === item.date ? '#FFFFFF' : '#334155',
                     }}
@@ -311,10 +360,164 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={{ fontSize: 11, color: '#0369A1', fontStyle: 'italic' }}>
-              Selected Date: {selectedDate} → Display:{' '}
-              {formatDisplay(selectedDate, placeholder || 'YYYY-MM-DD')}
-            </Text>
+
+            {/* Month / Year Nav */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 8,
+                paddingHorizontal: 4,
+              }}
+            >
+              <TouchableOpacity
+                onPress={handlePrevMonth}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
+                  backgroundColor: '#F0F9FF',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Previous month"
+              >
+                <Feather name="chevron-left" size={18} color="#0284C7" />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
+                {monthNames[viewMonth]} {viewYear}
+              </Text>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
+                  backgroundColor: '#F0F9FF',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+              >
+                <Feather name="chevron-right" size={18} color="#0284C7" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Days of week */}
+            <View
+              style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}
+            >
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                <View
+                  key={d}
+                  style={{
+                    width: '14.28%',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 24,
+                  }}
+                >
+                  <Text
+                    style={{
+                      textAlign: 'center',
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: '#94A3B8',
+                    }}
+                  >
+                    {d}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+                <View key={`empty-${idx}`} style={{ width: '14.28%', height: 44, minHeight: 44 }} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, idx) => {
+                const dayNum = idx + 1;
+                const mStr = String(viewMonth + 1).padStart(2, '0');
+                const dStr = String(dayNum).padStart(2, '0');
+                const dateIso = `${viewYear}-${mStr}-${dStr}`;
+                const isSelected = selectedDate === dateIso;
+                const isToday = getToday() === dateIso;
+
+                return (
+                  <TouchableOpacity
+                    key={dateIso}
+                    style={[
+                      {
+                        width: '14.28%',
+                        height: 44,
+                        minHeight: 44,
+                        minWidth: 40,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 8,
+                      },
+                      isSelected && { backgroundColor: '#0284C7' },
+                      isToday &&
+                        !isSelected && {
+                          borderWidth: 1.5,
+                          borderColor: '#38BDF8',
+                          backgroundColor: '#F0F9FF',
+                        },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Date ${dateIso}`}
+                    onPress={() => {
+                      setSelectedDate(dateIso);
+                      setIsCalendarOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        { fontSize: 13, color: '#334155', fontWeight: '500' },
+                        isSelected && { color: '#FFFFFF', fontWeight: '700' },
+                        isToday && !isSelected && { color: '#0284C7', fontWeight: '700' },
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: 10,
+                paddingTop: 8,
+                borderTopWidth: 1,
+                borderTopColor: '#F1F5F9',
+              }}
+            >
+              <Text style={{ fontSize: 11, color: '#0369A1', fontStyle: 'italic', flex: 1 }}>
+                Selected: {selectedDate} ({formatDisplay(selectedDate, placeholder || 'YYYY-MM-DD')}
+                )
+              </Text>
+              <TouchableOpacity
+                style={{
+                  minHeight: 44,
+                  paddingHorizontal: 12,
+                  borderRadius: 6,
+                  backgroundColor: '#F1F5F9',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+                onPress={() => setIsCalendarOpen(false)}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Close</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>

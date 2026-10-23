@@ -9,6 +9,8 @@ import {
   Switch,
   Image,
   Platform,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -502,144 +504,167 @@ const InteractiveDatePickerField: React.FC<{
         )}
       </View>
 
-      {showPicker && (
-        <View style={styles.datePickerDropdown}>
-          {/* Quick presets */}
-          <View style={styles.dateQuickPresetsRow}>
-            <TouchableOpacity
-              style={[
-                styles.datePresetChip,
-                pickedDate === getTodayStr() && styles.datePresetChipActive,
-              ]}
-              onPress={() => handleSelectDate(getTodayStr())}
-            >
-              <Text
-                style={[
-                  styles.datePresetChipText,
-                  pickedDate === getTodayStr() && styles.datePresetChipTextActive,
-                ]}
-              >
-                Today
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.datePresetChip,
-                pickedDate === getOffsetDateStr(-1) && styles.datePresetChipActive,
-              ]}
-              onPress={() => handleSelectDate(getOffsetDateStr(-1))}
-            >
-              <Text
-                style={[
-                  styles.datePresetChipText,
-                  pickedDate === getOffsetDateStr(-1) && styles.datePresetChipTextActive,
-                ]}
-              >
-                Yesterday
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.datePresetChip,
-                pickedDate === getOffsetDateStr(7) && styles.datePresetChipActive,
-              ]}
-              onPress={() => handleSelectDate(getOffsetDateStr(7))}
-            >
-              <Text
-                style={[
-                  styles.datePresetChipText,
-                  pickedDate === getOffsetDateStr(7) && styles.datePresetChipTextActive,
-                ]}
-              >
-                +7 Days
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.datePresetChip,
-                pickedDate === getOffsetDateStr(30) && styles.datePresetChipActive,
-              ]}
-              onPress={() => handleSelectDate(getOffsetDateStr(30))}
-            >
-              <Text
-                style={[
-                  styles.datePresetChipText,
-                  pickedDate === getOffsetDateStr(30) && styles.datePresetChipTextActive,
-                ]}
-              >
-                +30 Days
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Month/Year Navigation */}
-          <View style={styles.datePickerNavRow}>
-            <TouchableOpacity
-              onPress={handlePrevMonth}
-              style={styles.dateNavBtn}
-              accessibilityLabel="Previous month"
-            >
-              <Feather name="chevron-left" size={16} color="#0284C7" />
-            </TouchableOpacity>
-            <Text style={styles.dateNavMonthYear}>
-              {monthNames[viewMonth]} {viewYear}
-            </Text>
-            <TouchableOpacity
-              onPress={handleNextMonth}
-              style={styles.dateNavBtn}
-              accessibilityLabel="Next month"
-            >
-              <Feather name="chevron-right" size={16} color="#0284C7" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Day of Week Headers */}
-          <View style={styles.calendarWeekRow}>
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-              <Text key={d} style={styles.calendarWeekHead}>
-                {d}
-              </Text>
-            ))}
-          </View>
-
-          {/* Days Grid */}
-          <View style={styles.calendarDaysGrid}>
-            {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
-              <View key={`empty-${idx}`} style={styles.calendarDayCellEmpty} />
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, idx) => {
-              const dayNum = idx + 1;
-              const mStr = String(viewMonth + 1).padStart(2, '0');
-              const dStr = String(dayNum).padStart(2, '0');
-              const dateIso = `${viewYear}-${mStr}-${dStr}`;
-              const isSelected = pickedDate === dateIso;
-              const isToday = getTodayStr() === dateIso;
-
-              return (
-                <TouchableOpacity
-                  key={dateIso}
-                  style={[
-                    styles.calendarDayCell,
-                    isSelected && styles.calendarDayCellSelected,
-                    isToday && !isSelected && styles.calendarDayCellToday,
-                  ]}
-                  onPress={() => handleSelectDate(dateIso)}
-                >
-                  <Text
-                    style={[
-                      styles.calendarDayText,
-                      isSelected && styles.calendarDayTextSelected,
-                      isToday && !isSelected && styles.calendarDayTextToday,
-                    ]}
-                  >
-                    {dayNum}
+      <Modal
+        visible={showPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.datePickerModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPicker(false)}
+        >
+          <View style={styles.datePickerModalCard} onStartShouldSetResponder={() => true}>
+            {/* Modal Header */}
+            <View style={styles.datePickerModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={styles.datePickerIconCircle}>
+                  <Feather name="calendar" size={16} color="#0284C7" />
+                </View>
+                <View>
+                  <Text style={styles.datePickerModalTitle}>{field.label || 'Select Date'}</Text>
+                  <Text style={styles.datePickerModalSubtitle}>
+                    {pickedDate ? `Selected: ${pickedDate}` : 'Choose a date from calendar'}
                   </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.datePickerModalCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close date picker"
+                onPress={() => setShowPicker(false)}
+              >
+                <Feather name="x" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Presets */}
+            <View style={styles.dateQuickPresetsRow}>
+              {[
+                { label: 'Today', date: getTodayStr() },
+                { label: 'Yesterday', date: getOffsetDateStr(-1) },
+                { label: '+7 Days', date: getOffsetDateStr(7) },
+                { label: '+30 Days', date: getOffsetDateStr(30) },
+              ].map((p) => {
+                const isActive = pickedDate === p.date;
+                return (
+                  <TouchableOpacity
+                    key={p.label}
+                    style={[styles.datePresetChip, isActive && styles.datePresetChipActive]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${p.label}`}
+                    onPress={() => handleSelectDate(p.date)}
+                  >
+                    <Text
+                      style={[
+                        styles.datePresetChipText,
+                        isActive && styles.datePresetChipTextActive,
+                      ]}
+                    >
+                      {p.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Month/Year Navigation */}
+            <View style={styles.datePickerNavRow}>
+              <TouchableOpacity
+                onPress={handlePrevMonth}
+                style={styles.dateNavBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Previous month"
+              >
+                <Feather name="chevron-left" size={18} color="#0284C7" />
+              </TouchableOpacity>
+              <Text style={styles.dateNavMonthYear}>
+                {monthNames[viewMonth]} {viewYear}
+              </Text>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                style={styles.dateNavBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+              >
+                <Feather name="chevron-right" size={18} color="#0284C7" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day of Week Headers */}
+            <View style={styles.calendarWeekRow}>
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                <View key={d} style={styles.calendarWeekHeadCell}>
+                  <Text style={styles.calendarWeekHead}>{d}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={styles.calendarDaysGrid}>
+              {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+                <View key={`empty-${idx}`} style={styles.calendarDayCellEmpty} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, idx) => {
+                const dayNum = idx + 1;
+                const mStr = String(viewMonth + 1).padStart(2, '0');
+                const dStr = String(dayNum).padStart(2, '0');
+                const dateIso = `${viewYear}-${mStr}-${dStr}`;
+                const isSelected = pickedDate === dateIso;
+                const isToday = getTodayStr() === dateIso;
+
+                return (
+                  <TouchableOpacity
+                    key={dateIso}
+                    style={[
+                      styles.calendarDayCell,
+                      isSelected && styles.calendarDayCellSelected,
+                      isToday && !isSelected && styles.calendarDayCellToday,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Date ${dateIso}`}
+                    onPress={() => handleSelectDate(dateIso)}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarDayText,
+                        isSelected && styles.calendarDayTextSelected,
+                        isToday && !isSelected && styles.calendarDayTextToday,
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Modal Bottom Actions */}
+            <View style={styles.datePickerModalFooter}>
+              {Boolean(pickedDate) && (
+                <TouchableOpacity
+                  style={styles.datePickerModalClearAction}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear date selection"
+                  onPress={() => handleSelectDate('')}
+                >
+                  <Feather name="trash-2" size={14} color="#EF4444" />
+                  <Text style={styles.datePickerModalClearText}>Clear</Text>
                 </TouchableOpacity>
-              );
-            })}
+              )}
+              <TouchableOpacity
+                style={styles.datePickerModalDoneAction}
+                accessibilityRole="button"
+                accessibilityLabel="Close date picker"
+                onPress={() => setShowPicker(false)}
+              >
+                <Text style={styles.datePickerModalDoneText}>Close</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -1191,7 +1216,17 @@ export default function DynamicFormFields({
           const isModelBound = Boolean(field.dataModel && field.dataModel !== 'custom');
 
           return (
-            <View key={field.id} style={[styles.field, { zIndex: isOpen ? 100 : 1 }]}>
+            <View
+              key={field.id}
+              style={[
+                styles.field,
+                {
+                  zIndex: isOpen ? 9999 : 1,
+                  elevation: isOpen ? 9999 : 1,
+                },
+                Platform.OS === 'web' && isOpen && ({ position: 'relative', zIndex: 9999 } as any),
+              ]}
+            >
               <View
                 style={{
                   flexDirection: 'row',
@@ -1210,8 +1245,9 @@ export default function DynamicFormFields({
                   </View>
                 )}
               </View>
+
               <TouchableOpacity
-                style={styles.dropdownBtn}
+                style={[styles.dropdownBtn, isOpen && styles.dropdownBtnActive]}
                 activeOpacity={0.8}
                 accessibilityRole="combobox"
                 accessibilityLabel={field.label}
@@ -1224,36 +1260,51 @@ export default function DynamicFormFields({
                 <Feather
                   name={isOpen ? 'chevron-up' : 'chevron-down'}
                   size={16}
-                  color={colors.mutedText}
+                  color={isOpen ? '#0284C7' : colors.mutedText}
                 />
               </TouchableOpacity>
 
               {isOpen && (
-                <View style={styles.dropdownMenu} accessibilityRole="menu">
-                  {fieldOptions.map((opt) => (
-                    <TouchableOpacity
-                      key={opt}
-                      style={[styles.dropdownItem, val === opt && styles.dropdownItemActive]}
-                      accessibilityRole="menuitem"
-                      accessibilityLabel={opt}
-                      accessibilityState={{ selected: val === opt }}
-                      onPress={() => {
-                        onChange(field.id, opt);
-                        onChange(field.label, opt);
-                        setOpenDropdownId(null);
-                      }}
+                <>
+                  <TouchableOpacity
+                    style={styles.dropdownBackdrop}
+                    activeOpacity={1}
+                    onPress={() => setOpenDropdownId(null)}
+                  />
+                  <View style={styles.dropdownMenu} accessibilityRole="menu">
+                    <ScrollView
+                      style={styles.dropdownScrollView}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                      keyboardShouldPersistTaps="handled"
                     >
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          val === opt && styles.dropdownItemTextActive,
-                        ]}
-                      >
-                        {opt}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                      {fieldOptions.map((opt) => (
+                        <TouchableOpacity
+                          key={opt}
+                          style={[styles.dropdownItem, val === opt && styles.dropdownItemActive]}
+                          accessibilityRole="menuitem"
+                          accessibilityLabel={opt}
+                          accessibilityState={{ selected: val === opt }}
+                          onPress={() => {
+                            onChange(field.id, opt);
+                            onChange(field.label, opt);
+                            setOpenDropdownId(null);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              val === opt && styles.dropdownItemTextActive,
+                            ]}
+                          >
+                            {opt}
+                          </Text>
+                          {val === opt && <Feather name="check" size={15} color="#0284C7" />}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </>
               )}
             </View>
           );
@@ -1492,12 +1543,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: 44,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     backgroundColor: colors.bgCard,
+  },
+  dropdownBtnActive: {
+    borderColor: '#0284C7',
+    backgroundColor: '#F0F9FF',
   },
   dropdownPlaceholder: {
     fontSize: 14,
@@ -1508,34 +1564,53 @@ const styles = StyleSheet.create({
     color: colors.navyText,
     fontWeight: '500',
   },
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: -3000,
+    bottom: -3000,
+    left: -3000,
+    right: -3000,
+    zIndex: 9990,
+  },
   dropdownMenu: {
     position: 'absolute',
-    top: 60,
+    top: '100%',
     left: 0,
     right: 0,
-    backgroundColor: colors.bgCard,
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    ...makeShadow(4, 8, 0.1, '0, 0, 0', 5),
-    zIndex: 999,
+    borderColor: '#BAE6FD',
+    ...makeShadow(4, 14, 0.18, '0, 0, 0', 10),
+    zIndex: 9999,
+    elevation: 9999,
+    maxHeight: 250,
+    overflow: 'hidden',
+  },
+  dropdownScrollView: {
+    maxHeight: 250,
   },
   dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: 44,
     borderBottomWidth: 1,
-    borderBottomColor: colors.bgApp,
+    borderBottomColor: '#F1F5F9',
   },
   dropdownItemActive: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F0F9FF',
   },
   dropdownItemText: {
     fontSize: 13,
     color: colors.navyText,
+    flex: 1,
   },
   dropdownItemTextActive: {
     fontWeight: '700',
-    color: '#92400E',
+    color: '#0284C7',
   },
   fieldSpecText: {
     fontSize: 11,
@@ -1781,7 +1856,7 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     borderRadius: radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    minHeight: 44,
   },
   datePickerDisplayText: {
     fontSize: 14,
@@ -1797,58 +1872,115 @@ const styles = StyleSheet.create({
     borderColor: '#0284C7',
   },
   datePickerClearBtn: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.sm,
     backgroundColor: '#F1F5F9',
   },
-  datePickerDropdown: {
+  datePickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    zIndex: 9999,
+  },
+  datePickerModalCard: {
+    width: '100%',
+    maxWidth: 360,
     backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: radius.md,
-    padding: 12,
-    marginTop: 8,
-    ...makeShadow(3),
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  datePickerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 12,
+  },
+  datePickerIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E0F2FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  datePickerModalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  datePickerModalSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  datePickerModalCloseBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
   },
   dateQuickPresetsRow: {
     flexDirection: 'row',
     gap: 6,
     flexWrap: 'wrap',
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   datePresetChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
     backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   datePresetChipActive: {
     backgroundColor: '#0284C7',
+    borderColor: '#0284C7',
   },
   datePresetChipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: '#475569',
   },
   datePresetChipTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   datePickerNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+    paddingHorizontal: 4,
   },
   dateNavBtn: {
-    padding: 6,
-    borderRadius: 6,
+    width: 44,
+    height: 44,
+    borderRadius: 8,
     backgroundColor: '#F0F9FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dateNavMonthYear: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
   },
@@ -1857,8 +1989,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
+  calendarWeekHeadCell: {
+    width: '14.28%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 24,
+  },
   calendarWeekHead: {
-    width: 32,
     textAlign: 'center',
     fontSize: 11,
     fontWeight: '700',
@@ -1867,29 +2004,31 @@ const styles = StyleSheet.create({
   calendarDaysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    rowGap: 4,
   },
   calendarDayCellEmpty: {
     width: '14.28%',
-    height: 32,
+    height: 44,
+    minHeight: 44,
   },
   calendarDayCell: {
     width: '14.28%',
-    height: 32,
+    height: 44,
+    minHeight: 44,
+    minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 6,
+    borderRadius: 8,
   },
   calendarDayCellSelected: {
     backgroundColor: '#0284C7',
   },
   calendarDayCellToday: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#38BDF8',
     backgroundColor: '#F0F9FF',
   },
   calendarDayText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#334155',
     fontWeight: '500',
   },
@@ -1900,6 +2039,44 @@ const styles = StyleSheet.create({
   calendarDayTextToday: {
     color: '#0284C7',
     fontWeight: '700',
+  },
+  datePickerModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  datePickerModalClearAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#FEF2F2',
+  },
+  datePickerModalClearText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  datePickerModalDoneAction: {
+    minHeight: 44,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#0284C7',
+  },
+  datePickerModalDoneText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   modelBadgePill: {
     flexDirection: 'row',
