@@ -251,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('mousedown', handleUserActivity, { passive: true });
       window.addEventListener('keydown', handleUserActivity, { passive: true });
       window.addEventListener('touchstart', handleUserActivity, { passive: true });
@@ -287,7 +287,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 60 * 1000);
 
     return () => {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('mousedown', handleUserActivity);
         window.removeEventListener('keydown', handleUserActivity);
         window.removeEventListener('touchstart', handleUserActivity);
