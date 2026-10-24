@@ -21,6 +21,7 @@ import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
 import { resolveStudentStatus } from '../../utils/studentStatusHelper';
 import { getEnrollmentDraft } from '../../utils/enrollmentDraftHelper';
 import { getStudentProfile, updateStudentProfile } from '../../api/coordinatorApi';
+import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 import { calculateAge } from './enrollmentWizardTypes';
 import { useToast } from '../../context/ToastContext';
 import { exportStudentProfileToPdf } from '../../utils/studentProfilePdfHelper';
@@ -102,24 +103,27 @@ export interface StudentProfileData {
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentProfile'>;
 
-type TabKey =
-  | 'all'
-  | 'student_info'
-  | 'parent_household'
-  | 'medical_reinforcers'
-  | 'social_skills'
-  | 'documents_media';
-
 export default function StudentProfileScreen({ navigation, route }: Props) {
   const { showToast } = useToast();
   const studentId = route.params?.studentId;
   const [profile, setProfile] = useState<StudentProfileData | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('all');
+  const [activeTab, setActiveTab] = useState<string>('All');
   const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width);
 
+  // Dynamic Form Configuration schema states (Single Source of Truth)
+  const [formFields, setFormFields] = useState<any[]>(DEFAULT_ENROLLMENT_FORM.fields || []);
+  const [customSections, setCustomSections] = useState<string[]>(
+    DEFAULT_ENROLLMENT_FORM.customSections || [],
+  );
+  const [deletedSections, setDeletedSections] = useState<string[]>([]);
+
   // Scoring Modal State for Social Skills Table
-  const [scoringQuestionIdx, setScoringQuestionIdx] = useState<number | null>(null);
+  const [scoringField, setScoringField] = useState<{
+    id: string;
+    label: string;
+    index?: number;
+  } | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
 
   useEffect(() => {
@@ -129,11 +133,72 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     return () => sub?.remove();
   }, []);
 
+  // Fetch active enrollment schema from backend FormConfiguration
+  const loadFormConfig = useCallback(async () => {
+    try {
+      const { data } = await getFormConfig('Enrollment Wizard');
+      if (data) {
+        if (Array.isArray(data.customSections)) {
+          setCustomSections(data.customSections);
+        }
+        if (Array.isArray(data.deletedSections)) {
+          setDeletedSections(data.deletedSections);
+        }
+        if (Array.isArray(data.fields) && data.fields.length > 0) {
+          setFormFields(data.fields);
+          return;
+        }
+      }
+      setFormFields(DEFAULT_ENROLLMENT_FORM.fields || []);
+      setCustomSections(DEFAULT_ENROLLMENT_FORM.customSections || []);
+    } catch {
+      setFormFields(DEFAULT_ENROLLMENT_FORM.fields || []);
+      setCustomSections(DEFAULT_ENROLLMENT_FORM.customSections || []);
+    }
+  }, []);
+
+  // Listen to dynamic form schema changes dispatched by Institutional Admin Form Builder
+  useEffect(() => {
+    loadFormConfig();
+    const handler = (e: any) => {
+      const name = (e?.detail?.formName || '').toLowerCase();
+      if (name.includes('enrollment') || !name) {
+        loadFormConfig();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_form_config_changed', handler);
+      return () => window.removeEventListener('melue_form_config_changed', handler);
+    }
+  }, [loadFormConfig]);
+
+  const isDataPayload = (val: any) =>
+    typeof val === 'string' &&
+    (val.startsWith('data:') ||
+      val.startsWith('blob:') ||
+      (val.length > 256 && !val.includes(' ')));
+
+  const cleanField = (val: string | undefined | null, fallback: string = ''): string => {
+    if (!val || typeof val !== 'string') return fallback;
+    const trimmed = val.trim();
+    if (isDataPayload(trimmed)) {
+      return fallback;
+    }
+    return trimmed;
+  };
+
   // Helper to extract nested or alternate keys dynamically
   const extractVal = (obj: Record<string, any>, keys: string[], fallback: string = ''): string => {
     for (const k of keys) {
       if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') {
-        return String(obj[k]).trim();
+        const val = String(obj[k]).trim();
+        const isMediaKey = keys.some((key) =>
+          /photo|image|headshot|video|certificate|agreement|doc|paper/i.test(key),
+        );
+        if (!isMediaKey && isDataPayload(val)) {
+          continue;
+        }
+        return val;
       }
     }
     return fallback;
@@ -147,45 +212,51 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       if (draft) {
         const formVals = draft.formValues || {};
         const rawFirst =
-          extractVal(formVals, [
-            'enr_first_name',
-            'childFirstName',
-            'child_first_name',
-            'firstName',
-            'first_name',
-          ]) ||
-          draft.firstName ||
-          (draft.fullName || draft.name || '').split(' ')[0] ||
+          cleanField(
+            extractVal(formVals, [
+              'enr_first_name',
+              'childFirstName',
+              'child_first_name',
+              'firstName',
+              'first_name',
+            ]),
+          ) ||
+          cleanField(draft.firstName) ||
+          cleanField((draft.fullName || draft.name || '').split(' ')[0]) ||
           '';
 
         const rawLast =
-          extractVal(formVals, [
-            'enr_last_name',
-            'childLastName',
-            'child_last_name',
-            'lastName',
-            'last_name',
-          ]) ||
-          draft.lastName ||
-          (draft.fullName || draft.name || '').split(' ').slice(1).join(' ') ||
+          cleanField(
+            extractVal(formVals, [
+              'enr_last_name',
+              'childLastName',
+              'child_last_name',
+              'lastName',
+              'last_name',
+            ]),
+          ) ||
+          cleanField(draft.lastName) ||
+          cleanField((draft.fullName || draft.name || '').split(' ').slice(1).join(' ')) ||
           '';
 
         const rawMiddle =
-          extractVal(formVals, [
-            'enr_middle_name',
-            'childMiddleName',
-            'child_middle_name',
-            'middleName',
-            'middle_name',
-          ]) ||
-          draft.middleName ||
+          cleanField(
+            extractVal(formVals, [
+              'enr_middle_name',
+              'childMiddleName',
+              'child_middle_name',
+              'middleName',
+              'middle_name',
+            ]),
+          ) ||
+          cleanField(draft.middleName) ||
           '';
 
         const full =
           (rawFirst ? `${rawFirst} ${rawLast}`.trim() : '') ||
-          draft.fullName ||
-          draft.name ||
-          extractVal(formVals, ['f1', 'fullName', 'name']) ||
+          cleanField(draft.fullName) ||
+          cleanField(draft.name) ||
+          cleanField(extractVal(formVals, ['f1', 'fullName', 'name'])) ||
           'Untitled Draft';
 
         const dob = extractVal(formVals, ['enr_dob', 'f2', 'dob', 'dateOfBirth', 'date_of_birth']);
@@ -194,49 +265,48 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         const draftProfile: StudentProfileData = {
           id: draft.id,
           fullName: full,
-          firstName: rawFirst || full.split(' ')[0] || '',
-          lastName: rawLast || full.split(' ').slice(1).join(' ') || '',
+          firstName: rawFirst || (full !== 'Untitled Draft' ? full.split(' ')[0] : 'Draft'),
+          lastName:
+            rawLast || (full !== 'Untitled Draft' ? full.split(' ').slice(1).join(' ') : ''),
           middleName: rawMiddle,
           dateOfBirth: dob,
           age,
-          programType: extractVal(formVals, [
-            'enr_program_type',
-            'f_program',
-            'programType',
-            'program',
-          ]),
-          therapyGroup: extractVal(formVals, [
-            'enr_therapy_group',
-            'f_therapy',
-            'therapyGroup',
-            'therapy_group',
-          ]),
+          programType:
+            extractVal(formVals, ['enr_program_type', 'f_program', 'programType']) ||
+            draft.program ||
+            '',
+          therapyGroup:
+            extractVal(formVals, ['enr_therapy_group', 'f_therapy', 'therapyGroup']) ||
+            draft.therapyGroup ||
+            '',
           status: 'Draft',
-          headshotUrl: draft.photoUrl || formVals.enr_headshot || formVals.f_photo || null,
-          photoUrl: draft.photoUrl || formVals.enr_headshot || formVals.f_photo || null,
-          photo: draft.photoUrl || formVals.enr_headshot || formVals.f_photo || null,
+          headshotUrl:
+            extractVal(formVals, ['f_photo', 'enr_headshot', 'photoUrl', 'photo']) ||
+            draft.photo ||
+            null,
+          photoUrl:
+            extractVal(formVals, ['f_photo', 'enr_headshot', 'photoUrl', 'photo']) ||
+            draft.photo ||
+            null,
+          photo:
+            extractVal(formVals, ['f_photo', 'enr_headshot', 'photoUrl', 'photo']) ||
+            draft.photo ||
+            null,
           gender: extractVal(formVals, ['enr_gender', 'f_gender', 'gender']),
-          guardianName: extractVal(formVals, [
-            'enr_guardian_name',
-            'f4',
-            'guardianName',
-            'guardian_name',
-            'parentName',
-          ]),
-          guardianPhone: extractVal(formVals, [
-            'enr_guardian_phone',
-            'f5',
-            'guardianPhone',
-            'guardian_phone',
-            'parentPhone',
-          ]),
-          guardianEmail: extractVal(formVals, [
-            'enr_guardian_email',
-            'f6',
-            'guardianEmail',
-            'guardian_email',
-            'parentEmail',
-          ]),
+          guardianName:
+            cleanField(
+              extractVal(formVals, ['enr_guardian_name', 'f4', 'guardianName', 'parentName']),
+            ) ||
+            cleanField(draft.guardianName) ||
+            '',
+          guardianPhone:
+            extractVal(formVals, ['enr_guardian_phone', 'f5', 'guardianPhone', 'parentPhone']) ||
+            draft.guardianPhone ||
+            '',
+          guardianEmail:
+            extractVal(formVals, ['enr_guardian_email', 'f6', 'guardianEmail', 'parentEmail']) ||
+            draft.guardianEmail ||
+            '',
           guardianRelationship: extractVal(formVals, [
             'enr_guardian_relationship',
             'guardianRelationship',
@@ -246,13 +316,11 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
             'enr_household',
             'household',
             'householdStructure',
-            'household_structure',
           ]),
           emergencyContact: extractVal(formVals, [
             'enr_emergency_contact',
             'f9',
             'emergencyContact',
-            'emergency_contact',
           ]),
           diagnosis: extractVal(formVals, ['enr_diagnosis', 'f_diagnosis', 'diagnosis']),
           diagnosisDate: extractVal(formVals, [
@@ -260,12 +328,7 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
             'diagnosisDate',
             'diagnosis_date',
           ]),
-          medicalNotes: extractVal(formVals, [
-            'enr_medical_restrictions',
-            'f7',
-            'medicalNotes',
-            'medical_notes',
-          ]),
+          medicalNotes: extractVal(formVals, ['enr_medical_restrictions', 'f7', 'medicalNotes']),
           developmentalHistory: extractVal(formVals, [
             'enr_dev_history',
             'developmentalHistory',
@@ -291,19 +354,32 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
             'reinforcerKinetic',
             'kineticReinforcer',
           ]),
-          transportation: extractVal(formVals, ['f8', 'transportation', 'transportation_required']),
+          transportation: extractVal(formVals, ['f8', 'transportation']),
           therapist:
-            extractVal(formVals, ['f_therapist', 'therapist', 'assignedTherapist']) ||
-            draft.therapist,
+            extractVal(formVals, ['f_therapist', 'therapist']) || draft.therapist || 'Unassigned',
           currentFocusStudentGoalId: null,
           goals: [],
           customFields: formVals,
           formValues: formVals,
-          birthCertificate: formVals.birthCertificate || formVals.birth_certificate,
-          diagnosisPaper: formVals.diagnosisPaper || formVals.diagnosis_paper,
-          agreement: formVals.agreement,
-          videoUrl: extractVal(formVals, ['enr_baseline_video', 'videoUrl', 'video_url']),
-          hasVideo: Boolean(formVals.enr_baseline_video || formVals.videoUrl || formVals.video_url),
+          birthCertificate:
+            formVals.birthCertificate ||
+            formVals.birth_certificate ||
+            formVals.enr_birth_certificate,
+          diagnosisPaper:
+            formVals.diagnosisPaper || formVals.diagnosis_paper || formVals.enr_diagnosis_paper,
+          agreement: formVals.agreement || formVals.enr_agreement,
+          videoUrl: extractVal(formVals, [
+            'enr_baseline_video',
+            'baseline_video',
+            'videoUrl',
+            'video_url',
+          ]),
+          hasVideo: Boolean(
+            formVals.enr_baseline_video ||
+            formVals.baseline_video ||
+            formVals.videoUrl ||
+            formVals.video_url,
+          ),
           isDraft: true,
         };
         setProfile(draftProfile);
@@ -320,46 +396,52 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         };
 
         const rawFirst =
-          data.firstName ||
-          data.first_name ||
-          extractVal(customObj, [
-            'enr_first_name',
-            'childFirstName',
-            'child_first_name',
-            'firstName',
-            'first_name',
-          ]) ||
-          (data.fullName || data.name || '').split(' ')[0] ||
+          cleanField(data.firstName) ||
+          cleanField(data.first_name) ||
+          cleanField(
+            extractVal(customObj, [
+              'enr_first_name',
+              'childFirstName',
+              'child_first_name',
+              'firstName',
+              'first_name',
+            ]),
+          ) ||
+          cleanField((data.fullName || data.name || '').split(' ')[0]) ||
           '';
 
         const rawLast =
-          data.lastName ||
-          data.last_name ||
-          extractVal(customObj, [
-            'enr_last_name',
-            'childLastName',
-            'child_last_name',
-            'lastName',
-            'last_name',
-          ]) ||
-          (data.fullName || data.name || '').split(' ').slice(1).join(' ') ||
+          cleanField(data.lastName) ||
+          cleanField(data.last_name) ||
+          cleanField(
+            extractVal(customObj, [
+              'enr_last_name',
+              'childLastName',
+              'child_last_name',
+              'lastName',
+              'last_name',
+            ]),
+          ) ||
+          cleanField((data.fullName || data.name || '').split(' ').slice(1).join(' ')) ||
           '';
 
         const rawMiddle =
-          data.middleName ||
-          data.middle_name ||
-          extractVal(customObj, [
-            'enr_middle_name',
-            'childMiddleName',
-            'child_middle_name',
-            'middleName',
-            'middle_name',
-          ]) ||
+          cleanField(data.middleName) ||
+          cleanField(data.middle_name) ||
+          cleanField(
+            extractVal(customObj, [
+              'enr_middle_name',
+              'childMiddleName',
+              'child_middle_name',
+              'middleName',
+              'middle_name',
+            ]),
+          ) ||
           '';
 
         const full =
-          data.fullName ||
-          data.name ||
+          cleanField(data.fullName) ||
+          cleanField(data.name) ||
           (rawFirst ? `${rawFirst} ${rawLast}`.trim() : '') ||
           'Student Profile';
 
@@ -373,13 +455,22 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           (data.id && String(data.id).startsWith('MEL-') ? data.id : '') ||
           studentId;
 
+        const headshot =
+          data.headshotUrl ||
+          data.photoUrl ||
+          data.photo ||
+          customObj.f_photo ||
+          customObj.enr_headshot ||
+          null;
+
         const safeProfile: StudentProfileData = {
           id: data.id || sid,
           studentId: sid,
           student_id: sid,
           fullName: full,
-          firstName: rawFirst || full.split(' ')[0] || '',
-          lastName: rawLast || full.split(' ').slice(1).join(' ') || '',
+          firstName: rawFirst || (full !== 'Student Profile' ? full.split(' ')[0] : ''),
+          lastName:
+            rawLast || (full !== 'Student Profile' ? full.split(' ').slice(1).join(' ') : ''),
           middleName: rawMiddle,
           dateOfBirth: dob,
           age,
@@ -391,17 +482,17 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
             data.therapyGroup ||
             extractVal(customObj, ['enr_therapy_group', 'f_therapy', 'therapyGroup']),
           status: data.status || 'Active',
-          headshotUrl:
-            data.headshotUrl || data.photoUrl || data.photo || customObj.enr_headshot || null,
-          photoUrl:
-            data.photoUrl || data.headshotUrl || data.photo || customObj.enr_headshot || null,
-          photo: data.photo || data.photoUrl || data.headshotUrl || customObj.enr_headshot || null,
+          headshotUrl: headshot,
+          photoUrl: headshot,
+          photo: headshot,
           gender: data.gender || extractVal(customObj, ['enr_gender', 'f_gender', 'gender']),
           guardianName:
-            data.guardianName ||
-            data.guardian_name ||
-            data.parentName ||
-            extractVal(customObj, ['enr_guardian_name', 'f4', 'guardianName', 'parentName']),
+            cleanField(data.guardianName) ||
+            cleanField(data.guardian_name) ||
+            cleanField(data.parentName) ||
+            cleanField(
+              extractVal(customObj, ['enr_guardian_name', 'f4', 'guardianName', 'parentName']),
+            ),
           guardianPhone:
             data.guardianPhone ||
             data.guardian_phone ||
@@ -474,15 +565,33 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           customFields: customObj,
           formValues: customObj,
           birthCertificate:
-            data.birthCertificate || data.birth_certificate || customObj.birthCertificate,
-          diagnosisPaper: data.diagnosisPaper || data.diagnosis_paper || customObj.diagnosisPaper,
-          agreement: data.agreement || customObj.agreement,
+            data.birthCertificate ||
+            data.birth_certificate ||
+            customObj.birthCertificate ||
+            customObj.birth_certificate ||
+            customObj.enr_birth_certificate,
+          diagnosisPaper:
+            data.diagnosisPaper ||
+            data.diagnosis_paper ||
+            customObj.diagnosisPaper ||
+            customObj.diagnosis_paper ||
+            customObj.enr_diagnosis_paper,
+          agreement: data.agreement || customObj.agreement || customObj.enr_agreement,
           videoUrl:
             data.videoUrl ||
             data.video_url ||
-            extractVal(customObj, ['enr_baseline_video', 'videoUrl']),
+            extractVal(customObj, [
+              'enr_baseline_video',
+              'baseline_video',
+              'videoUrl',
+              'video_url',
+            ]),
           hasVideo: Boolean(
-            data.hasVideo || data.videoUrl || data.video_url || customObj.enr_baseline_video,
+            data.hasVideo ||
+            data.videoUrl ||
+            data.video_url ||
+            customObj.enr_baseline_video ||
+            customObj.baseline_video,
           ),
           isDraft: Boolean(data.isDraft || data.status?.toLowerCase() === 'draft'),
         };
@@ -519,34 +628,74 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     );
   }, [profile, studentId]);
 
-  // Parse Household members dynamically from saved string or array (hook must be called unconditionally)
+  // Dynamically derive active sections and fields directly from FormConfiguration (Single Source of Truth)
+  const deletedSet = useMemo(
+    () => new Set((deletedSections || []).map((s) => s.toLowerCase().trim())),
+    [deletedSections],
+  );
+
+  const fieldsBySection = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    (formFields || []).forEach((field: any) => {
+      const sec = (field.section || 'General').trim();
+      if (!deletedSet.has(sec.toLowerCase())) {
+        if (!map[sec]) map[sec] = [];
+        map[sec].push(field);
+      }
+    });
+    return map;
+  }, [formFields, deletedSet]);
+
+  const activeSections = useMemo(() => {
+    const result: string[] = [];
+    const pushSection = (s: string) => {
+      const trimmed = s.trim();
+      if (
+        trimmed &&
+        !deletedSet.has(trimmed.toLowerCase()) &&
+        !result.some((r) => r.toLowerCase() === trimmed.toLowerCase()) &&
+        !['assign therapist', 'review', 'review & complete'].includes(trimmed.toLowerCase()) &&
+        (fieldsBySection[trimmed]?.length || 0) > 0
+      ) {
+        result.push(trimmed);
+      }
+    };
+
+    (customSections || []).forEach(pushSection);
+    (formFields || []).forEach((f: any) => {
+      pushSection(f.section || 'General');
+    });
+
+    return result;
+  }, [customSections, formFields, deletedSet, fieldsBySection]);
+
+  const tabs = useMemo(() => ['All', ...activeSections], [activeSections]);
+
+  // Extract household structure members
   const householdMembers = useMemo(() => {
-    const raw = profile?.householdStructure;
+    const raw = profile?.householdStructure || '';
     if (!raw) return [];
-    if (Array.isArray(raw)) return raw.filter(Boolean);
-    return String(raw)
+    return raw
       .split(/[,;\n]+/)
       .map((s) => s.trim())
       .filter(Boolean);
   }, [profile?.householdStructure]);
 
-  // Handle Quick Scoring for Social Skills Items
-  const handleScoreQuestion = (questionIdx: number, scoreVal: string) => {
+  // Score modal save handler
+  const handleScoreQuestion = (fieldId: string, scoreVal: string) => {
     if (!profile) return;
-    const fieldKey = `soc_q${questionIdx + 1}`;
     const updatedCustom = {
       ...(profile.customFields || {}),
-      [fieldKey]: scoreVal,
+      ...(profile.formValues || {}),
+      [fieldId]: scoreVal,
     };
     setProfile({
       ...profile,
       customFields: updatedCustom,
-      formValues: { ...(profile.formValues || {}), [fieldKey]: scoreVal },
+      formValues: updatedCustom,
     });
-    setScoringQuestionIdx(null);
-    showToast(`Updated Question ${questionIdx + 1} score to "${scoreVal}"`, 'success');
-
-    // Persist to backend if not draft
+    setScoringField(null);
+    showToast(`Updated score: ${scoreVal}`, 'success');
     if (!isDraft) {
       updateStudentProfile(profile.id, { custom_fields: updatedCustom }).catch(() => {});
     }
@@ -554,7 +703,7 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
   const handleContinueEnrollment = () => {
     if (profile) {
-      navigation?.navigate?.('StudentEnrollmentWizard', { draftId: profile.id });
+      (navigation as any)?.navigate?.('StudentEnrollmentWizard', { draftId: profile.id });
     }
   };
 
@@ -574,12 +723,354 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleUploadDocuments = () => {
+  const handleUploadDocuments = (targetSection?: string) => {
     if (!profile) return;
     (navigation as any)?.navigate('StudentEnrollmentWizard', {
       draftId: profile.id,
-      section: 'Medical Info',
+      section: targetSection || 'Documents & Media',
     });
+  };
+
+  // Helper to resolve dynamic field value from profile
+  const resolveFieldValue = (field: any) => {
+    if (!profile) return '';
+    const custom = { ...(profile.customFields || {}), ...(profile.formValues || {}) };
+    const fieldId = field.id;
+    const normId = (fieldId || '').toLowerCase().trim();
+    const normLabel = (field.label || '').toLowerCase().trim();
+
+    // 1. Photo / Headshot
+    if (
+      normId === 'f_photo' ||
+      normId === 'enr_headshot' ||
+      normId === 'headshot' ||
+      normLabel.includes('headshot') ||
+      normLabel.includes('photo')
+    ) {
+      return (
+        profile.photoUrl ||
+        profile.headshotUrl ||
+        profile.photo ||
+        custom[fieldId] ||
+        custom.f_photo ||
+        custom.enr_headshot ||
+        null
+      );
+    }
+
+    // 2. Child First Name
+    if (
+      normId === 'enr_first_name' ||
+      normId === 'childfirstname' ||
+      normId === 'child_first_name' ||
+      normId === 'firstname' ||
+      normId === 'first_name' ||
+      normLabel === 'child first name' ||
+      normLabel === 'first name'
+    ) {
+      return (
+        profile.firstName ||
+        (profile.fullName ? profile.fullName.split(' ')[0] : '') ||
+        cleanField(custom[fieldId]) ||
+        ''
+      );
+    }
+
+    // 3. Child Last Name
+    if (
+      normId === 'enr_last_name' ||
+      normId === 'childlastname' ||
+      normId === 'child_last_name' ||
+      normId === 'lastname' ||
+      normId === 'last_name' ||
+      normLabel === 'child last name' ||
+      normLabel === 'last name'
+    ) {
+      return (
+        profile.lastName ||
+        (profile.fullName ? profile.fullName.split(' ').slice(1).join(' ') : '') ||
+        cleanField(custom[fieldId]) ||
+        ''
+      );
+    }
+
+    // 4. Child Middle Name
+    if (
+      normId === 'enr_middle_name' ||
+      normId === 'childmiddlename' ||
+      normId === 'child_middle_name' ||
+      normId === 'middlename' ||
+      normId === 'middle_name' ||
+      normLabel === 'child middle name' ||
+      normLabel === 'middle name'
+    ) {
+      return profile.middleName || cleanField(custom[fieldId]) || '';
+    }
+
+    // 5. Student Full Name
+    if (
+      normId === 'f1' ||
+      normId === 'fullname' ||
+      normId === 'full_name' ||
+      normLabel === 'student full name' ||
+      normLabel === 'full name'
+    ) {
+      return profile.fullName || cleanField(custom[fieldId]) || '';
+    }
+
+    // 6. Date of Birth
+    if (
+      normId === 'enr_dob' ||
+      normId === 'f2' ||
+      normId === 'dob' ||
+      normId === 'dateofbirth' ||
+      normId === 'date_of_birth' ||
+      normLabel.includes('date of birth') ||
+      normLabel === 'dob'
+    ) {
+      if (profile.dateOfBirth) {
+        return `${profile.dateOfBirth}${profile.age ? ` (${profile.age} years old)` : ''}`;
+      }
+      return cleanField(custom[fieldId]) || '';
+    }
+
+    // 7. Gender
+    if (normId === 'f_gender' || normId === 'gender' || normLabel === 'gender') {
+      return profile.gender || cleanField(custom[fieldId]) || '';
+    }
+
+    // 8. Program Placement
+    if (
+      normId === 'f_program' ||
+      normId === 'enr_program_type' ||
+      normId === 'program' ||
+      normId === 'programtype' ||
+      normId === 'program_type' ||
+      normLabel.includes('program')
+    ) {
+      return profile.programType || cleanField(custom[fieldId]) || '';
+    }
+
+    // 9. Therapy Group Track
+    if (
+      normId === 'f_therapy' ||
+      normId === 'enr_therapy_group' ||
+      normId === 'therapygroup' ||
+      normId === 'therapy_group' ||
+      normLabel.includes('therapy group')
+    ) {
+      return profile.therapyGroup || cleanField(custom[fieldId]) || '';
+    }
+
+    // 10. Assigned Therapist
+    if (normId === 'f_therapist' || normId === 'therapist' || normLabel.includes('therapist')) {
+      return profile.therapist || cleanField(custom[fieldId]) || '';
+    }
+
+    // 11. Guardian Name
+    if (
+      normId === 'f4' ||
+      normId === 'enr_guardian_name' ||
+      normId === 'guardianname' ||
+      normId === 'guardian_name' ||
+      normLabel.includes('guardian name') ||
+      normLabel.includes('parent name')
+    ) {
+      return profile.guardianName || cleanField(custom[fieldId]) || '';
+    }
+
+    // 12. Guardian Phone
+    if (
+      normId === 'f5' ||
+      normId === 'enr_guardian_phone' ||
+      normId === 'guardianphone' ||
+      normId === 'guardian_phone' ||
+      normLabel.includes('phone') ||
+      normLabel.includes('telephone')
+    ) {
+      return profile.guardianPhone || cleanField(custom[fieldId]) || '';
+    }
+
+    // 13. Guardian Email
+    if (
+      normId === 'f6' ||
+      normId === 'enr_guardian_email' ||
+      normId === 'guardianemail' ||
+      normId === 'guardian_email' ||
+      normLabel.includes('email')
+    ) {
+      return profile.guardianEmail || cleanField(custom[fieldId]) || '';
+    }
+
+    // 14. Guardian Relationship
+    if (
+      normId === 'enr_guardian_relationship' ||
+      normId === 'guardianrelationship' ||
+      normId === 'guardian_relationship' ||
+      normLabel.includes('relationship')
+    ) {
+      return profile.guardianRelationship || cleanField(custom[fieldId]) || '';
+    }
+
+    // 15. Household Structure
+    if (
+      normId === 'enr_household' ||
+      normId === 'householdstructure' ||
+      normId === 'household_structure' ||
+      normLabel.includes('household')
+    ) {
+      return profile.householdStructure || cleanField(custom[fieldId]) || '';
+    }
+
+    // 16. Emergency Contact
+    if (
+      normId === 'enr_emergency_contact' ||
+      normId === 'f9' ||
+      normId === 'emergencycontact' ||
+      normId === 'emergency_contact' ||
+      normLabel.includes('emergency')
+    ) {
+      return profile.emergencyContact || cleanField(custom[fieldId]) || '';
+    }
+
+    // 17. Primary Clinical Diagnosis
+    if (
+      normId === 'f_diagnosis' ||
+      normId === 'enr_diagnosis' ||
+      normId === 'diagnosis' ||
+      normLabel.includes('clinical diagnosis') ||
+      normLabel === 'diagnosis'
+    ) {
+      return profile.diagnosis || cleanField(custom[fieldId]) || '';
+    }
+
+    // 18. Diagnosis Date
+    if (
+      normId === 'enr_diagnosis_date' ||
+      normId === 'diagnosisdate' ||
+      normId === 'diagnosis_date' ||
+      normLabel.includes('diagnosis date')
+    ) {
+      return profile.diagnosisDate || cleanField(custom[fieldId]) || '';
+    }
+
+    // 19. Medical Notes & Restrictions
+    if (
+      normId === 'f_medical_notes' ||
+      normId === 'enr_medical_restrictions' ||
+      normId === 'medicalnotes' ||
+      normId === 'medical_notes' ||
+      normLabel.includes('medical note') ||
+      normLabel.includes('restrictions')
+    ) {
+      return profile.medicalNotes || cleanField(custom[fieldId]) || '';
+    }
+
+    // 20. Developmental History
+    if (
+      normId === 'enr_dev_history' ||
+      normId === 'developmentalhistory' ||
+      normId === 'developmental_history' ||
+      normLabel.includes('developmental history')
+    ) {
+      return profile.developmentalHistory || cleanField(custom[fieldId]) || '';
+    }
+
+    // 21. Reinforcers
+    if (
+      normId === 'enr_reinf_visual' ||
+      normId === 'enr_reinforcer_visual' ||
+      normId === 'reinforcervisual' ||
+      normId === 'reinforcer_visual' ||
+      normLabel.includes('visual reinforcer')
+    ) {
+      return profile.reinforcerVisual || cleanField(custom[fieldId]) || '';
+    }
+
+    if (
+      normId === 'enr_reinf_auditory' ||
+      normId === 'enr_reinforcer_auditory' ||
+      normId === 'reinforcerauditory' ||
+      normId === 'reinforcer_auditory' ||
+      normLabel.includes('auditory reinforcer')
+    ) {
+      return profile.reinforcerAuditory || cleanField(custom[fieldId]) || '';
+    }
+
+    if (
+      normId === 'enr_reinf_tactile' ||
+      normId === 'enr_reinforcer_tactile' ||
+      normId === 'reinforcertactile' ||
+      normId === 'reinforcer_tactile' ||
+      normLabel.includes('tactile')
+    ) {
+      return profile.reinforcerTactile || cleanField(custom[fieldId]) || '';
+    }
+
+    if (
+      normId === 'enr_reinf_kinetic' ||
+      normId === 'enr_reinforcer_kinetic' ||
+      normId === 'reinforcerkinetic' ||
+      normId === 'reinforcer_kinetic' ||
+      normLabel.includes('kinetic')
+    ) {
+      return profile.reinforcerKinetic || cleanField(custom[fieldId]) || '';
+    }
+
+    // 22. Birth Certificate Document
+    if (
+      normId === 'enr_birth_certificate' ||
+      normId === 'birth_certificate' ||
+      normLabel.includes('birth certificate')
+    ) {
+      return profile.birthCertificate || custom[fieldId] || null;
+    }
+
+    // 23. Diagnosis Paper Document
+    if (
+      normId === 'enr_diagnosis_paper' ||
+      normId === 'diagnosis_paper' ||
+      normLabel.includes('diagnosis paper') ||
+      normLabel.includes('diagnosis document')
+    ) {
+      return profile.diagnosisPaper || custom[fieldId] || null;
+    }
+
+    // 24. Agreement Document
+    if (normId === 'enr_agreement' || normId === 'agreement' || normLabel.includes('agreement')) {
+      return profile.agreement || custom[fieldId] || null;
+    }
+
+    // 25. Baseline Assessment Video
+    if (
+      normId === 'enr_baseline_video' ||
+      normId === 'baseline_video' ||
+      normId === 'videourl' ||
+      normId === 'video_url' ||
+      normLabel.includes('baseline video') ||
+      normLabel.includes('video')
+    ) {
+      return profile.videoUrl || profile.hasVideo || custom[fieldId] || null;
+    }
+
+    // Fallback: general custom field value (skip if binary data URL payload)
+    if (custom[fieldId] !== undefined && custom[fieldId] !== null) {
+      const v = custom[fieldId];
+      if (typeof v === 'string' && isDataPayload(v)) {
+        return '';
+      }
+      return v;
+    }
+
+    return '';
+  };
+
+  // Safe navigation mapping supporting both Coordinator and Program Director stacks
+  const handleNavTabPress = (tabName: string) => {
+    const routeName = navRouteForTab(tabName);
+    if (routeName) {
+      (navigation as any)?.navigate?.(routeName);
+    }
   };
 
   if (!studentId) {
@@ -587,14 +1078,12 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.safe}>
         <AppNavbar
           activeTab="Student Profile"
-          onTabPress={(t) =>
-            t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)
-          }
+          onTabPress={(t) => t !== 'Student Profile' && handleNavTabPress(t)}
         />
         <View style={styles.emptyState}>
           <Feather name="user" size={40} color={colors.mutedText} />
           <Text style={typography.body}>No student selected.</Text>
-          <TouchableOpacity onPress={() => navigation?.navigate?.('StudentEnrollment')}>
+          <TouchableOpacity onPress={() => navigation?.navigate?.('StudentEnrollment' as never)}>
             <Text style={styles.linkText}>Pick a student from Student Registration →</Text>
           </TouchableOpacity>
         </View>
@@ -607,13 +1096,14 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.safe}>
         <AppNavbar
           activeTab="Student Profile"
-          onTabPress={(t) =>
-            t !== 'Student Profile' && navigation?.navigate?.(navRouteForTab(t) as never)
-          }
+          onTabPress={(t) => t !== 'Student Profile' && handleNavTabPress(t)}
         />
         <View style={styles.emptyState}>
           <Feather name="inbox" size={40} color={colors.mutedText} />
           <Text style={typography.body}>Profile not found.</Text>
+          <TouchableOpacity onPress={load} style={{ marginTop: 12 }}>
+            <Text style={styles.linkText}>Retry loading profile →</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -622,36 +1112,489 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
   if (!profile) return <ScreenLoader />;
 
   const isWide = windowWidth >= 960;
-  const studentPhoto = profile.photoUrl || profile.headshotUrl || profile.photo;
+  const custom = { ...(profile.customFields || {}), ...(profile.formValues || {}) };
+  const studentPhoto =
+    profile.photoUrl ||
+    profile.headshotUrl ||
+    profile.photo ||
+    custom.f_photo ||
+    custom.enr_headshot ||
+    custom.photo ||
+    null;
   const therapistName = profile.therapist;
   const hasTherapist = Boolean(therapistName && therapistName !== 'Unassigned');
 
   // Count scored items in Social Skills Questionnaire
-  const custom = { ...(profile.customFields || {}), ...(profile.formValues || {}) };
   const scoredCount = SOCIAL_SKILLS_PROMPTS.reduce((acc, _, idx) => {
     return custom[`soc_q${idx + 1}`] ? acc + 1 : acc;
   }, 0);
 
-  // Check if reinforcers exist
-  const hasAnyReinforcers = Boolean(
-    profile.reinforcerVisual ||
-    profile.reinforcerAuditory ||
-    profile.reinforcerTactile ||
-    profile.reinforcerKinetic,
-  );
+  // Helper to pick icons per section
+  const getSectionIcon = (secName: string) => {
+    const s = secName.toLowerCase();
+    if (s.includes('student') || s.includes('child')) return 'user';
+    if (s.includes('parent') || s.includes('household') || s.includes('guardian')) return 'users';
+    if (s.includes('doc') || s.includes('media') || s.includes('file')) return 'folder';
+    if (s.includes('medical') || s.includes('clinical') || s.includes('reinforcer'))
+      return 'activity';
+    if (s.includes('social') || s.includes('skill') || s.includes('questionnaire'))
+      return 'clipboard';
+    return 'file-text';
+  };
 
-  // Tab visibility checks
-  const showStudentInfo = activeTab === 'all' || activeTab === 'student_info';
-  const showParentHousehold = activeTab === 'all' || activeTab === 'parent_household';
-  const showMedicalReinforcers = activeTab === 'all' || activeTab === 'medical_reinforcers';
-  const showSocialSkills = activeTab === 'all' || activeTab === 'social_skills';
-  const showDocumentsMedia = activeTab === 'all' || activeTab === 'documents_media';
+  // Render a dynamic section card strictly based on the Form Builder schema
+  const renderDynamicSectionCard = (secName: string) => {
+    const fields = fieldsBySection[secName] || [];
+    if (fields.length === 0) return null;
+
+    const normSec = secName.toLowerCase();
+    const isSocialSkillsSec =
+      normSec.includes('social skills') ||
+      normSec.includes('social_skills') ||
+      fields.some((f) => String(f.id).startsWith('soc_q'));
+    const isDocMediaSec = normSec.includes('doc') || normSec.includes('media');
+
+    return (
+      <View
+        style={styles.card}
+        key={secName}
+        testID={`profile-section-${secName.replace(/\s+/g, '-').toLowerCase()}`}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardTitleWrap}>
+            <Feather name={getSectionIcon(secName) as any} size={15} color={C_SKY} />
+            <Text style={styles.cardTitle}>{secName.toUpperCase()}</Text>
+          </View>
+          {isDocMediaSec ? (
+            <TouchableOpacity
+              onPress={() => handleUploadDocuments(secName)}
+              accessibilityRole="button"
+              accessibilityLabel="Upload Documents in Enrollment Wizard"
+              testID="upload-documents-card-button"
+            >
+              <Text style={styles.cardLinkAction}>+ Upload</Text>
+            </TouchableOpacity>
+          ) : isSocialSkillsSec ? (
+            <View style={styles.scoredBadge}>
+              <Text style={styles.scoredBadgeText}>{scoredCount}/10 Sections Scored</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => showToast('Section verified against intake', 'success')}
+            >
+              <Text style={styles.cardLinkAction}>Verified</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* If Social Skills Questionnaire section, render the interactive scoring table */}
+        {isSocialSkillsSec ? (
+          <View>
+            <Text style={styles.socialSubtitle}>
+              Baseline behavioral screening metrics across peer socialization indicators
+            </Text>
+            <View style={styles.socialTable}>
+              <View style={styles.socialTableHeader}>
+                <Text style={[styles.socialTh, { flex: 0.72 }]}>
+                  SKILL INDICATOR / ASSESSMENT PROMPT
+                </Text>
+                <Text style={[styles.socialTh, { flex: 0.16, textAlign: 'center' }]}>STATUS</Text>
+                <Text style={[styles.socialTh, { flex: 0.12, textAlign: 'right' }]}>ACTION</Text>
+              </View>
+
+              {fields.map((f: any, idx: number) => {
+                const promptText = f.label || SOCIAL_SKILLS_PROMPTS[idx] || `Item ${idx + 1}`;
+                const scoreVal = custom[f.id] || custom[`soc_q${idx + 1}`];
+                const hasScore = Boolean(scoreVal && scoreVal !== '—');
+
+                return (
+                  <View key={f.id || idx} style={styles.socialTableRow}>
+                    <Text style={[styles.socialPromptText, { flex: 0.72 }]}>{promptText}</Text>
+                    <View style={{ flex: 0.16, alignItems: 'center' }}>
+                      {hasScore ? (
+                        <View style={styles.scorePill}>
+                          <Text style={styles.scorePillText}>{String(scoreVal)}</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.socialStatusEmpty}>—</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={{ flex: 0.12, alignItems: 'flex-end' }}
+                      onPress={() => setScoringField({ id: f.id, label: promptText, index: idx })}
+                    >
+                      <Text style={styles.socialScoreActionText}>
+                        {hasScore ? 'Edit' : 'Score'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          /* Render fields in their authoring schema order */
+          <View style={styles.kvList}>
+            {fields.map((f: any) => {
+              const val = resolveFieldValue(f);
+              const fieldType = (f.type || 'text').toLowerCase();
+              const normFid = String(f.id || '').toLowerCase();
+              const normLabel = String(f.label || '').toLowerCase();
+
+              const isPhotoField =
+                normFid.includes('headshot') ||
+                normFid.includes('photo') ||
+                normFid.includes('avatar') ||
+                normLabel.includes('headshot') ||
+                normLabel.includes('photo') ||
+                ['image', 'photo', 'imagepicker', 'image_picker'].includes(fieldType) ||
+                (typeof val === 'string' && val.startsWith('data:image'));
+
+              const isVideoField =
+                normFid.includes('video') ||
+                normLabel.includes('video') ||
+                ['video', 'video_upload', 'videorecording'].includes(fieldType) ||
+                (typeof val === 'string' && val.startsWith('data:video'));
+
+              const isDocField =
+                !isPhotoField &&
+                !isVideoField &&
+                (fieldType === 'file_upload' ||
+                  fieldType === 'file' ||
+                  fieldType === 'document' ||
+                  fieldType === 'attachment' ||
+                  normFid.includes('certificate') ||
+                  normFid.includes('agreement') ||
+                  normFid.includes('diagnosis_paper') ||
+                  normLabel.includes('certificate') ||
+                  normLabel.includes('agreement') ||
+                  normLabel.includes('paper') ||
+                  normLabel.includes('document') ||
+                  (typeof val === 'string' &&
+                    (val.startsWith('data:application') || val.startsWith('data:'))));
+
+              // 1. Headshot Photo Field
+              if (isPhotoField) {
+                const photoUri =
+                  typeof val === 'string' &&
+                  (val.startsWith('http') ||
+                    val.startsWith('data:image') ||
+                    val.startsWith('blob:'))
+                    ? val
+                    : studentPhoto;
+
+                return (
+                  <View style={styles.headshotBox} key={f.id}>
+                    {photoUri ? (
+                      <Image source={{ uri: photoUri }} style={styles.headshotThumb} />
+                    ) : (
+                      <View style={styles.headshotPlaceholder}>
+                        <Feather name="user" size={24} color="#94A3B8" />
+                      </View>
+                    )}
+                    <View style={styles.headshotDetails}>
+                      <View style={styles.headshotTitleRow}>
+                        <Text style={styles.headshotTitle}>{f.label || 'Official Headshot'}</Text>
+                        <View style={styles.verifiedPill}>
+                          <Feather
+                            name={photoUri ? 'check' : 'alert-circle'}
+                            size={11}
+                            color={photoUri ? C_EMERALD : C_AMBER}
+                          />
+                          <Text style={[styles.verifiedPillText, !photoUri && { color: C_AMBER }]}>
+                            {photoUri ? 'Verified' : 'Not Uploaded'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.headshotFilename} numberOfLines={1}>
+                        {photoUri ? `${profile.id}_photo.jpg` : 'No file on record'}
+                      </Text>
+                      <View style={styles.headshotActions}>
+                        <TouchableOpacity
+                          onPress={() =>
+                            (navigation as any)?.navigate?.('StudentEnrollmentWizard', {
+                              draftId: profile.id,
+                            })
+                          }
+                        >
+                          <Text style={styles.headshotActionLink}>Update Photo</Text>
+                        </TouchableOpacity>
+                        {photoUri ? (
+                          <>
+                            <Text style={styles.metaDot}>•</Text>
+                            <TouchableOpacity
+                              onPress={() => showToast('Full photo viewer opened', 'info')}
+                            >
+                              <Text style={styles.headshotActionLink}>View Full Size</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                );
+              }
+
+              // 2. Video Upload Field (e.g. Baseline Video)
+              if (isVideoField) {
+                const hasVid = Boolean(profile.videoUrl || profile.hasVideo || val);
+                return (
+                  <View key={f.id} style={{ gap: 8 }}>
+                    <View style={styles.docRow}>
+                      <View style={styles.docIconWrap}>
+                        <Feather name="video" size={15} color={C_SKY} />
+                      </View>
+                      <View style={styles.docMeta}>
+                        <Text style={styles.docTitle}>{f.label || 'Baseline Video'}</Text>
+                        <Text style={styles.docSubtitle}>
+                          {f.description || 'Behavioral intake assessment sample'}
+                        </Text>
+                      </View>
+                      {hasVid ? (
+                        <TouchableOpacity onPress={() => setVideoModalOpen(true)}>
+                          <Text style={styles.docStatusAction}>View Recording</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.docUploadActionPill}
+                          onPress={() => handleUploadDocuments(secName)}
+                        >
+                          <Feather name="upload" size={11} color={C_SKY} />
+                          <Text style={styles.docUploadActionText}>Upload Video</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Interactive video preview card if video is attached */}
+                    {hasVid && (
+                      <View style={styles.videoPlayerContainer}>
+                        <View style={styles.videoHeaderRow}>
+                          <View style={styles.videoHeaderLeft}>
+                            <View style={[styles.dot, { backgroundColor: C_EMERALD }]} />
+                            <Text style={styles.videoSectionTitle}>
+                              Baseline Behavioral Assessment Video (HQ)
+                            </Text>
+                          </View>
+                          <Text style={styles.videoRecordDate}>Assessment Recording</Text>
+                        </View>
+                        <View style={styles.videoScreenWrap}>
+                          <Image
+                            source={{ uri: profile.videoUrl || '' }}
+                            style={styles.videoScreenImage}
+                          />
+                          <TouchableOpacity
+                            style={styles.videoBigPlayBtn}
+                            onPress={() => setVideoModalOpen(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Play Assessment Video"
+                          >
+                            <Feather
+                              name="play"
+                              size={28}
+                              color="#FFFFFF"
+                              style={{ marginLeft: 3 }}
+                            />
+                          </TouchableOpacity>
+                          <View style={styles.videoBottomOverlay}>
+                            <Text style={styles.overlayTitle}>
+                              Behavioral Assessment Observation
+                            </Text>
+                            <Text style={styles.overlaySubtitle}>
+                              Activity Observation & Joint Attention Screening
+                            </Text>
+                            <View style={styles.scrubBarTrack}>
+                              <View style={styles.scrubBarProgress} />
+                              <View style={styles.scrubBarThumb} />
+                            </View>
+                          </View>
+                        </View>
+                        <View style={styles.videoControlsFooter}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.videoEvaluatorText}>
+                              Student ID: {profile.id} • Protocol Intake Verification
+                            </Text>
+                          </View>
+                          <View style={styles.videoFooterActions}>
+                            <TouchableOpacity
+                              style={styles.playSessionBtn}
+                              onPress={() => setVideoModalOpen(true)}
+                            >
+                              <Feather name="play" size={13} color="#FFFFFF" />
+                              <Text style={styles.playSessionBtnText}>Play Session</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              }
+
+              // 3. Document / File Upload Field (Birth Certificate, Medical Diagnosis Paper, Agreement, etc.)
+              if (isDocField) {
+                const isAttached = Boolean(val);
+                return (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={styles.docRow}
+                    onPress={isAttached ? undefined : () => handleUploadDocuments(secName)}
+                    activeOpacity={isAttached ? 1 : 0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={f.label}
+                  >
+                    <View style={styles.docIconWrap}>
+                      <Feather name="file-text" size={15} color={C_SLATE} />
+                    </View>
+                    <View style={styles.docMeta}>
+                      <Text style={styles.docTitle}>{f.label}</Text>
+                      <Text style={styles.docSubtitle}>
+                        {f.description ||
+                          (isAttached
+                            ? 'Document attached on record'
+                            : 'Required verification document')}
+                      </Text>
+                    </View>
+                    {isAttached ? (
+                      <Text style={styles.docStatusAttached}>Attached</Text>
+                    ) : (
+                      <View style={styles.docUploadActionPill}>
+                        <Feather name="upload" size={11} color={C_SKY} />
+                        <Text style={styles.docUploadActionText}>Upload</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }
+
+              // 4. Multi-line Text / Textarea field
+              if (fieldType === 'textarea') {
+                const isData = typeof val === 'string' && isDataPayload(val);
+                const displayVal = isData ? 'Document attached' : String(val);
+                return (
+                  <View style={styles.devHistoryBox} key={f.id}>
+                    <Text style={styles.boxUpperLabel}>{f.label?.toUpperCase()}</Text>
+                    {val ? (
+                      <Text style={styles.boxBodyText}>{displayVal}</Text>
+                    ) : (
+                      <Text style={styles.emptyFieldText}>Not Provided</Text>
+                    )}
+                  </View>
+                );
+              }
+
+              // 5. Household Structure with tags
+              if (normFid === 'enr_household' || normLabel.includes('household')) {
+                const isData = typeof val === 'string' && isDataPayload(val);
+                const displayVal = isData ? 'Details on record' : String(val);
+                return (
+                  <View style={styles.householdSection} key={f.id}>
+                    <Text style={styles.householdLabel}>{f.label}:</Text>
+                    {householdMembers.length > 0 ? (
+                      <View style={styles.householdTagsRow}>
+                        {householdMembers.map((member, i) => (
+                          <View key={i} style={styles.householdTag}>
+                            <Text style={styles.householdTagText}>{member}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : val ? (
+                      <Text style={styles.kvValBold}>{displayVal}</Text>
+                    ) : (
+                      <Text style={styles.emptyFieldText}>Not Provided</Text>
+                    )}
+                  </View>
+                );
+              }
+
+              // 6. Clinical Diagnosis dynamic callout box
+              if (
+                normFid === 'enr_diagnosis' ||
+                normFid === 'f_diagnosis' ||
+                normLabel === 'primary clinical diagnosis'
+              ) {
+                const isData = typeof val === 'string' && isDataPayload(val);
+                const displayVal = isData ? 'Diagnosis Recorded' : String(val);
+                return (
+                  <View style={styles.diagnosisContainer} key={f.id}>
+                    <Text style={styles.diagnosisContainerLabel}>{f.label}</Text>
+                    {val ? (
+                      <View style={styles.diagnosisBox}>
+                        <Text style={styles.diagnosisBoxTitle}>{displayVal}</Text>
+                        {profile.diagnosisDate ? (
+                          <Text style={styles.diagnosisBoxDate}>
+                            Formal Diagnosis Date: {profile.diagnosisDate}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : (
+                      <Text style={styles.emptyFieldText}>No clinical diagnosis recorded</Text>
+                    )}
+                  </View>
+                );
+              }
+
+              // 7. Standard Key-Value field row (Guarded against raw data payloads)
+              const isDataUri = typeof val === 'string' && isDataPayload(val);
+              const isImageData = typeof val === 'string' && val.startsWith('data:image');
+
+              return (
+                <View style={styles.kvRow} key={f.id}>
+                  <Text style={styles.kvKey}>{f.label}</Text>
+                  {val ? (
+                    isImageData ? (
+                      <View style={styles.valWithIcon}>
+                        <Image
+                          source={{ uri: val }}
+                          style={{ width: 28, height: 28, borderRadius: 4, marginRight: 6 }}
+                        />
+                        <Text style={styles.kvValBold}>Image Attached</Text>
+                      </View>
+                    ) : isDataUri ? (
+                      <View style={styles.valWithIcon}>
+                        <Feather
+                          name="paperclip"
+                          size={13}
+                          color={C_SLATE}
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text style={styles.kvValBold}>File Attached</Text>
+                      </View>
+                    ) : normFid.includes('phone') || normLabel.includes('phone') ? (
+                      <View style={styles.valWithIcon}>
+                        <Text style={styles.kvValSkyBold}>{String(val)}</Text>
+                        <Feather name="phone-call" size={12} color={C_SKY} />
+                      </View>
+                    ) : normFid.includes('program') || normLabel.includes('program') ? (
+                      <Text style={styles.kvValSky}>{String(val)}</Text>
+                    ) : (
+                      <Text style={styles.kvValBold}>{String(val)}</Text>
+                    )
+                  ) : (
+                    <Text style={styles.emptyFieldText}>Not Provided</Text>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Section splitting for wide screens when 'All' tab is selected
+  const renderedSections = activeTab === 'All' ? activeSections : [activeTab];
+  const leftSections =
+    isWide && activeTab === 'All'
+      ? renderedSections.filter((_, i) => i % 2 === 0)
+      : renderedSections;
+  const rightSections =
+    isWide && activeTab === 'All' ? renderedSections.filter((_, i) => i % 2 === 1) : [];
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
         activeTab="Enrollment"
-        onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)}
+        onTabPress={(t) => t !== 'Enrollment' && handleNavTabPress(t)}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -841,717 +1784,42 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           </View>
         </View>
 
-        {/* ── 3. Horizontal Navigation Tabs Bar ──────────────────────── */}
+        {/* ── 3. Horizontal Navigation Tabs Bar (Dynamically mirrored from Form Builder schema) ── */}
         <View style={styles.tabsBar}>
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'all' && styles.tabItemActive]}
-            onPress={() => setActiveTab('all')}
-          >
-            <Text style={[styles.tabItemText, activeTab === 'all' && styles.tabItemTextActive]}>
-              Overview (All)
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'student_info' && styles.tabItemActive]}
-            onPress={() => setActiveTab('student_info')}
-          >
-            <Text
-              style={[styles.tabItemText, activeTab === 'student_info' && styles.tabItemTextActive]}
-            >
-              Student Information
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'parent_household' && styles.tabItemActive]}
-            onPress={() => setActiveTab('parent_household')}
-          >
-            <Text
-              style={[
-                styles.tabItemText,
-                activeTab === 'parent_household' && styles.tabItemTextActive,
-              ]}
-            >
-              Parent & Household
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'medical_reinforcers' && styles.tabItemActive]}
-            onPress={() => setActiveTab('medical_reinforcers')}
-          >
-            <Text
-              style={[
-                styles.tabItemText,
-                activeTab === 'medical_reinforcers' && styles.tabItemTextActive,
-              ]}
-            >
-              Medical & Reinforcers
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'social_skills' && styles.tabItemActive]}
-            onPress={() => setActiveTab('social_skills')}
-          >
-            <Text
-              style={[
-                styles.tabItemText,
-                activeTab === 'social_skills' && styles.tabItemTextActive,
-              ]}
-            >
-              Social Skills Checklist
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'documents_media' && styles.tabItemActive]}
-            onPress={() => setActiveTab('documents_media')}
-          >
-            <Text
-              style={[
-                styles.tabItemText,
-                activeTab === 'documents_media' && styles.tabItemTextActive,
-              ]}
-            >
-              Documents & Media
-            </Text>
-          </TouchableOpacity>
+          {tabs.map((tabName) => {
+            const isActive = activeTab === tabName;
+            return (
+              <TouchableOpacity
+                key={tabName}
+                style={[styles.tabItem, isActive && styles.tabItemActive]}
+                onPress={() => setActiveTab(tabName)}
+              >
+                <Text style={[styles.tabItemText, isActive && styles.tabItemTextActive]}>
+                  {tabName === 'All' ? 'Overview (All)' : tabName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* ── 4. Main Two-Column Dashboard Content ───────────────────── */}
+        {/* ── 4. Main Dynamic Sections Grid Content ───────────────────── */}
         <View
           style={[
             styles.dashboardGrid,
-            isWide && activeTab === 'all' ? styles.dashboardGridWide : styles.dashboardGridStack,
+            isWide && activeTab === 'All' ? styles.dashboardGridWide : styles.dashboardGridStack,
           ]}
         >
-          {/* ════════ COLUMN 1: LEFT SIDE (STUDENT & HOUSEHOLD) ════════ */}
-          {(showStudentInfo || showParentHousehold || showDocumentsMedia) && (
-            <View
-              style={[
-                styles.gridColumn,
-                isWide && activeTab === 'all' ? { flex: 0.38 } : { flex: 1 },
-              ]}
-            >
-              {/* CARD 1: STUDENT INFO */}
-              {showStudentInfo && (
-                <View style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardTitleWrap}>
-                      <Feather name="user" size={15} color={C_SKY} />
-                      <Text style={styles.cardTitle}>STUDENT INFO</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => showToast('Intake record verified', 'success')}
-                    >
-                      <Text style={styles.cardLinkAction}>Verified File</Text>
-                    </TouchableOpacity>
-                  </View>
+          {/* Column 1: Left Sections */}
+          <View
+            style={[styles.gridColumn, isWide && activeTab === 'All' ? { flex: 0.5 } : { flex: 1 }]}
+          >
+            {leftSections.map((secName) => renderDynamicSectionCard(secName))}
+          </View>
 
-                  {/* Official Headshot row */}
-                  <View style={styles.headshotBox}>
-                    {studentPhoto ? (
-                      <Image source={{ uri: studentPhoto }} style={styles.headshotThumb} />
-                    ) : (
-                      <View style={styles.headshotPlaceholder}>
-                        <Feather name="user" size={24} color="#94A3B8" />
-                      </View>
-                    )}
-                    <View style={styles.headshotDetails}>
-                      <View style={styles.headshotTitleRow}>
-                        <Text style={styles.headshotTitle}>Official Headshot</Text>
-                        <View style={styles.verifiedPill}>
-                          <Feather
-                            name={studentPhoto ? 'check' : 'alert-circle'}
-                            size={11}
-                            color={studentPhoto ? C_EMERALD : C_AMBER}
-                          />
-                          <Text
-                            style={[styles.verifiedPillText, !studentPhoto && { color: C_AMBER }]}
-                          >
-                            {studentPhoto ? 'Verified' : 'Not Uploaded'}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.headshotFilename} numberOfLines={1}>
-                        {studentPhoto ? `${profile.id}_photo.jpg` : 'No file on record'}
-                      </Text>
-                      <View style={styles.headshotActions}>
-                        <TouchableOpacity
-                          onPress={() =>
-                            navigation?.navigate?.('StudentEnrollmentWizard', {
-                              draftId: profile.id,
-                            })
-                          }
-                        >
-                          <Text style={styles.headshotActionLink}>Update Photo</Text>
-                        </TouchableOpacity>
-                        {studentPhoto ? (
-                          <>
-                            <Text style={styles.metaDot}>•</Text>
-                            <TouchableOpacity
-                              onPress={() => showToast('Full photo viewer opened', 'info')}
-                            >
-                              <Text style={styles.headshotActionLink}>View Full Size</Text>
-                            </TouchableOpacity>
-                          </>
-                        ) : null}
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Key Value Details */}
-                  <View style={styles.kvList}>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Child First Name</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.firstName || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                    {Boolean(profile.middleName) && (
-                      <View style={styles.kvRow}>
-                        <Text style={styles.kvKey}>Child Middle Name</Text>
-                        <Text style={styles.kvValBold}>{profile.middleName}</Text>
-                      </View>
-                    )}
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Child Last Name</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.lastName || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Date of Birth</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.dateOfBirth ? (
-                          `${profile.dateOfBirth} (${profile.age} years old)`
-                        ) : (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Gender</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.gender || <Text style={styles.emptyFieldText}>Not Provided</Text>}
-                      </Text>
-                    </View>
-
-                    {/* Primary Clinical Diagnosis Dynamic Box */}
-                    <View style={styles.diagnosisContainer}>
-                      <Text style={styles.diagnosisContainerLabel}>Primary Clinical Diagnosis</Text>
-                      {profile.diagnosis ? (
-                        <View style={styles.diagnosisBox}>
-                          <Text style={styles.diagnosisBoxTitle}>{profile.diagnosis}</Text>
-                          {profile.diagnosisDate ? (
-                            <Text style={styles.diagnosisBoxDate}>
-                              Formal Diagnosis Date: {profile.diagnosisDate}
-                            </Text>
-                          ) : null}
-                        </View>
-                      ) : (
-                        <Text style={styles.emptyFieldText}>No clinical diagnosis recorded</Text>
-                      )}
-                    </View>
-
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Placement Program</Text>
-                      <Text style={styles.kvValSky}>
-                        {profile.programType || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Therapy Group Track</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.therapyGroup || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* CARD 2: PARENT & HOUSEHOLD INFO */}
-              {showParentHousehold && (
-                <View style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardTitleWrap}>
-                      <Feather name="users" size={15} color={C_SKY} />
-                      <Text style={styles.cardTitle}>PARENT & HOUSEHOLD INFO</Text>
-                    </View>
-                  </View>
-
-                  {/* Household Structure & Co-Habitants */}
-                  <View style={styles.householdSection}>
-                    <Text style={styles.householdLabel}>Household Structure & Co-Habitants:</Text>
-                    {householdMembers.length > 0 ? (
-                      <View style={styles.householdTagsRow}>
-                        {householdMembers.map((member, i) => (
-                          <View key={i} style={styles.householdTag}>
-                            <Text style={styles.householdTagText}>{member}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={styles.emptyFieldText}>Not Provided</Text>
-                    )}
-                  </View>
-
-                  <View style={styles.kvList}>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Primary Parent / Guardian</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.guardianName || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Relationship to Child</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.guardianRelationship || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Primary Contact Telephone</Text>
-                      {profile.guardianPhone ? (
-                        <View style={styles.valWithIcon}>
-                          <Text style={styles.kvValSkyBold}>{profile.guardianPhone}</Text>
-                          <Feather name="phone-call" size={12} color={C_SKY} />
-                        </View>
-                      ) : (
-                        <Text style={styles.emptyFieldText}>Not Provided</Text>
-                      )}
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Guardian Email Address</Text>
-                      <Text style={styles.kvValMuted}>
-                        {profile.guardianEmail || (
-                          <Text style={styles.emptyFieldText}>Not Provided (—)</Text>
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvKey}>Emergency Secondary Contact</Text>
-                      <Text style={styles.kvValBold}>
-                        {profile.emergencyContact || (
-                          <Text style={styles.emptyFieldText}>Not Provided</Text>
-                        )}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* CARD 3: UPLOADED DOCUMENTS & MEDIA */}
-              {showDocumentsMedia && (
-                <View style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardTitleWrap}>
-                      <Feather name="folder" size={15} color={C_SKY} />
-                      <Text style={styles.cardTitle}>UPLOADED DOCUMENTS & MEDIA</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={handleUploadDocuments}
-                      accessibilityRole="button"
-                      accessibilityLabel="Upload Documents in Enrollment Wizard"
-                      testID="upload-documents-card-button"
-                    >
-                      <Text style={styles.cardLinkAction}>+ Upload</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.docList}>
-                    {/* Birth Certificate */}
-                    <TouchableOpacity
-                      style={styles.docRow}
-                      onPress={profile.birthCertificate ? undefined : handleUploadDocuments}
-                      activeOpacity={profile.birthCertificate ? 1 : 0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel="Birth Certificate"
-                    >
-                      <View style={styles.docIconWrap}>
-                        <Feather name="file-text" size={15} color={C_SLATE} />
-                      </View>
-                      <View style={styles.docMeta}>
-                        <Text style={styles.docTitle}>Birth Certificate</Text>
-                        <Text style={styles.docSubtitle}>Official proof of birth</Text>
-                      </View>
-                      {profile.birthCertificate ? (
-                        <Text style={styles.docStatusAttached}>Attached</Text>
-                      ) : (
-                        <View style={styles.docUploadActionPill}>
-                          <Feather name="upload" size={11} color={C_SKY} />
-                          <Text style={styles.docUploadActionText}>Upload</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* Diagnosis Documentation */}
-                    <TouchableOpacity
-                      style={styles.docRow}
-                      onPress={profile.diagnosisPaper ? undefined : handleUploadDocuments}
-                      activeOpacity={profile.diagnosisPaper ? 1 : 0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel="Diagnosis Documentation"
-                    >
-                      <View style={styles.docIconWrap}>
-                        <Feather name="file-text" size={15} color={C_SLATE} />
-                      </View>
-                      <View style={styles.docMeta}>
-                        <Text style={styles.docTitle}>Diagnosis Documentation</Text>
-                        <Text style={styles.docSubtitle}>Hospital / Neuropsych report</Text>
-                      </View>
-                      {profile.diagnosisPaper ? (
-                        <Text style={styles.docStatusAttached}>Attached</Text>
-                      ) : (
-                        <View style={styles.docUploadActionPill}>
-                          <Feather name="upload" size={11} color={C_SKY} />
-                          <Text style={styles.docUploadActionText}>Upload</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* Enrollment Agreement */}
-                    <TouchableOpacity
-                      style={styles.docRow}
-                      onPress={profile.agreement ? undefined : handleUploadDocuments}
-                      activeOpacity={profile.agreement ? 1 : 0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel="Enrollment Agreement"
-                    >
-                      <View style={styles.docIconWrap}>
-                        <Feather name="file-text" size={15} color={C_SLATE} />
-                      </View>
-                      <View style={styles.docMeta}>
-                        <Text style={styles.docTitle}>Enrollment Agreement</Text>
-                        <Text style={styles.docSubtitle}>Signed intake terms</Text>
-                      </View>
-                      {profile.agreement ? (
-                        <Text style={styles.docStatusAttached}>Attached</Text>
-                      ) : (
-                        <View style={styles.docUploadActionPill}>
-                          <Feather name="upload" size={11} color={C_SKY} />
-                          <Text style={styles.docUploadActionText}>Upload</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* Baseline Video */}
-                    <View style={styles.docRow}>
-                      <View style={styles.docIconWrap}>
-                        <Feather name="video" size={15} color={C_SKY} />
-                      </View>
-                      <View style={styles.docMeta}>
-                        <Text style={styles.docTitle}>Baseline Video</Text>
-                        <Text style={styles.docSubtitle}>Behavioral intake assessment sample</Text>
-                      </View>
-                      {profile.videoUrl || profile.hasVideo ? (
-                        <TouchableOpacity onPress={() => setVideoModalOpen(true)}>
-                          <Text style={styles.docStatusAction}>View Recording</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.docUploadActionPill}
-                          onPress={handleUploadDocuments}
-                        >
-                          <Feather name="upload" size={11} color={C_SKY} />
-                          <Text style={styles.docUploadActionText}>Upload Video</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* ════════ COLUMN 2: RIGHT SIDE (CLINICAL & ASSESSMENTS) ════════ */}
-          {(showMedicalReinforcers || showSocialSkills) && (
-            <View
-              style={[
-                styles.gridColumn,
-                isWide && activeTab === 'all' ? { flex: 0.62 } : { flex: 1 },
-              ]}
-            >
-              {/* CARD 4: MEDICAL & SENSORY REINFORCER PROFILE */}
-              {showMedicalReinforcers && (
-                <View style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardTitleWrap}>
-                      <MaterialCommunityIcons name="stethoscope" size={17} color={C_SKY} />
-                      <Text style={styles.cardTitle}>MEDICAL & SENSORY REINFORCER PROFILE</Text>
-                    </View>
-                    <Text style={styles.cardHeaderSubtitle}>Intake Clinical Assessment</Text>
-                  </View>
-
-                  {/* Developmental History & Medical Notes Split Boxes */}
-                  <View style={styles.medSplitRow}>
-                    {/* Developmental History Box */}
-                    <View style={styles.devHistoryBox}>
-                      <Text style={styles.boxUpperLabel}>DEVELOPMENTAL HISTORY</Text>
-                      {profile.developmentalHistory ? (
-                        <Text style={styles.boxBodyText}>{profile.developmentalHistory}</Text>
-                      ) : (
-                        <Text style={styles.emptyFieldText}>
-                          No developmental history notes recorded during intake.
-                        </Text>
-                      )}
-                    </View>
-
-                    {/* Medical Notes & Prescriptions Box */}
-                    <View
-                      style={[styles.medAlertBox, !profile.medicalNotes && styles.medAlertBoxEmpty]}
-                    >
-                      <View style={styles.medAlertHeader}>
-                        <Text
-                          style={[
-                            styles.boxUpperLabelAmber,
-                            !profile.medicalNotes && { color: C_SLATE },
-                          ]}
-                        >
-                          MEDICAL NOTES & RESTRICTIONS
-                        </Text>
-                      </View>
-                      {profile.medicalNotes ? (
-                        <Text style={styles.medAlertBodyText}>{profile.medicalNotes}</Text>
-                      ) : (
-                        <Text style={styles.emptyFieldText}>
-                          No medical notes or dietary restrictions recorded.
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-
-                  {/* Reinforcer Sensitivity Breakdown */}
-                  <View style={styles.reinforcerSection}>
-                    <Text style={styles.reinforcerTitle}>REINFORCER SENSITIVITY BREAKDOWN</Text>
-
-                    {hasAnyReinforcers ? (
-                      <View style={styles.reinforcerGrid}>
-                        {Boolean(profile.reinforcerVisual) && (
-                          <View style={styles.reinforcerCard}>
-                            <View style={styles.reinforcerCardHeader}>
-                              <View style={styles.reinforcerDotTitle}>
-                                <View style={[styles.dot, { backgroundColor: C_SKY }]} />
-                                <Text style={styles.reinforcerName}>Visual Reinforcer</Text>
-                              </View>
-                              <View style={styles.optionPill}>
-                                <Text style={styles.optionPillText}>Option A</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.reinforcerDesc}>{profile.reinforcerVisual}</Text>
-                          </View>
-                        )}
-
-                        {Boolean(profile.reinforcerAuditory) && (
-                          <View style={styles.reinforcerCard}>
-                            <View style={styles.reinforcerCardHeader}>
-                              <View style={styles.reinforcerDotTitle}>
-                                <View style={[styles.dot, { backgroundColor: C_SKY }]} />
-                                <Text style={styles.reinforcerName}>Auditory Reinforcer</Text>
-                              </View>
-                              <View style={styles.optionPill}>
-                                <Text style={styles.optionPillText}>Option B</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.reinforcerDesc}>{profile.reinforcerAuditory}</Text>
-                          </View>
-                        )}
-
-                        {Boolean(profile.reinforcerTactile) && (
-                          <View style={styles.reinforcerCard}>
-                            <View style={styles.reinforcerCardHeader}>
-                              <View style={styles.reinforcerDotTitle}>
-                                <View style={[styles.dot, { backgroundColor: C_EMERALD }]} />
-                                <Text style={styles.reinforcerName}>Tactile Preference</Text>
-                              </View>
-                              <View style={styles.optionPill}>
-                                <Text style={styles.optionPillText}>Option A</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.reinforcerDesc}>{profile.reinforcerTactile}</Text>
-                          </View>
-                        )}
-
-                        {Boolean(profile.reinforcerKinetic) && (
-                          <View style={styles.reinforcerCard}>
-                            <View style={styles.reinforcerCardHeader}>
-                              <View style={styles.reinforcerDotTitle}>
-                                <View style={[styles.dot, { backgroundColor: C_PURPLE }]} />
-                                <Text style={styles.reinforcerName}>Kinetic & Movement</Text>
-                              </View>
-                              <View style={styles.optionPill}>
-                                <Text style={styles.optionPillText}>Option B</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.reinforcerDesc}>{profile.reinforcerKinetic}</Text>
-                          </View>
-                        )}
-                      </View>
-                    ) : (
-                      <View style={styles.emptyCardBox}>
-                        <Text style={styles.emptyFieldText}>
-                          No sensory reinforcer sensitivities or preferences recorded during intake.
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Baseline Behavioral Assessment Video Player Component (Only rendered if video exists) */}
-                  {profile.videoUrl || profile.hasVideo ? (
-                    <View style={styles.videoPlayerContainer}>
-                      <View style={styles.videoHeaderRow}>
-                        <View style={styles.videoHeaderLeft}>
-                          <View style={[styles.dot, { backgroundColor: C_EMERALD }]} />
-                          <Text style={styles.videoSectionTitle}>
-                            Baseline Behavioral Assessment Video (HQ)
-                          </Text>
-                        </View>
-                        <Text style={styles.videoRecordDate}>Assessment Recording</Text>
-                      </View>
-
-                      {/* Video Preview Box */}
-                      <View style={styles.videoScreenWrap}>
-                        <Image
-                          source={{ uri: profile.videoUrl || '' }}
-                          style={styles.videoScreenImage}
-                        />
-                        {/* Large Centered Play Button */}
-                        <TouchableOpacity
-                          style={styles.videoBigPlayBtn}
-                          onPress={() => setVideoModalOpen(true)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Play Assessment Video"
-                        >
-                          <Feather
-                            name="play"
-                            size={28}
-                            color="#FFFFFF"
-                            style={{ marginLeft: 3 }}
-                          />
-                        </TouchableOpacity>
-
-                        {/* In-Video Bottom Overlay */}
-                        <View style={styles.videoBottomOverlay}>
-                          <Text style={styles.overlayTitle}>Behavioral Assessment Observation</Text>
-                          <Text style={styles.overlaySubtitle}>
-                            Activity Observation & Joint Attention Screening
-                          </Text>
-                          {/* Scrub Bar */}
-                          <View style={styles.scrubBarTrack}>
-                            <View style={styles.scrubBarProgress} />
-                            <View style={styles.scrubBarThumb} />
-                          </View>
-                        </View>
-                      </View>
-
-                      {/* Video Info Footer Bar */}
-                      <View style={styles.videoControlsFooter}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.videoEvaluatorText}>
-                            Student ID: {profile.id} • Protocol Intake Verification
-                          </Text>
-                        </View>
-                        <View style={styles.videoFooterActions}>
-                          <TouchableOpacity
-                            style={styles.playSessionBtn}
-                            onPress={() => setVideoModalOpen(true)}
-                          >
-                            <Feather name="play" size={13} color="#FFFFFF" />
-                            <Text style={styles.playSessionBtnText}>Play Session</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.emptyVideoBox}>
-                      <Feather name="video-off" size={18} color="#94A3B8" />
-                      <Text style={styles.emptyFieldText}>
-                        No baseline behavioral assessment video uploaded for this student.
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* CARD 5: SOCIAL SKILLS QUESTIONNAIRE TABLE */}
-              {showSocialSkills && (
-                <View style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardTitleWrap}>
-                      <Feather name="clipboard" size={15} color={C_SKY} />
-                      <Text style={styles.cardTitle}>SOCIAL SKILLS QUESTIONNAIRE</Text>
-                    </View>
-                    <View style={styles.scoredBadge}>
-                      <Text style={styles.scoredBadgeText}>{scoredCount}/10 Sections Scored</Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.socialSubtitle}>
-                    Baseline behavioral screening metrics across peer socialization indicators
-                  </Text>
-
-                  {/* Assessment Table */}
-                  <View style={styles.socialTable}>
-                    {/* Table Header */}
-                    <View style={styles.socialTableHeader}>
-                      <Text style={[styles.socialTh, { flex: 0.72 }]}>
-                        SKILL INDICATOR / ASSESSMENT PROMPT
-                      </Text>
-                      <Text style={[styles.socialTh, { flex: 0.16, textAlign: 'center' }]}>
-                        STATUS
-                      </Text>
-                      <Text style={[styles.socialTh, { flex: 0.12, textAlign: 'right' }]}>
-                        ACTION
-                      </Text>
-                    </View>
-
-                    {/* 10 Assessment Prompts */}
-                    {SOCIAL_SKILLS_PROMPTS.map((promptText, idx) => {
-                      const fieldKey = `soc_q${idx + 1}`;
-                      const scoreVal = custom[fieldKey];
-                      const hasScore = Boolean(scoreVal && scoreVal !== '—');
-
-                      return (
-                        <View key={idx} style={styles.socialTableRow}>
-                          <Text style={[styles.socialPromptText, { flex: 0.72 }]}>
-                            {promptText}
-                          </Text>
-                          <View style={{ flex: 0.16, alignItems: 'center' }}>
-                            {hasScore ? (
-                              <View style={styles.scorePill}>
-                                <Text style={styles.scorePillText}>{String(scoreVal)}</Text>
-                              </View>
-                            ) : (
-                              <Text style={styles.socialStatusEmpty}>—</Text>
-                            )}
-                          </View>
-                          <TouchableOpacity
-                            style={{ flex: 0.12, alignItems: 'flex-end' }}
-                            onPress={() => setScoringQuestionIdx(idx)}
-                          >
-                            <Text style={styles.socialScoreActionText}>
-                              {hasScore ? 'Edit' : 'Score'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
+          {/* Column 2: Right Sections (in Wide mode) */}
+          {isWide && activeTab === 'All' && rightSections.length > 0 && (
+            <View style={[styles.gridColumn, { flex: 0.5 }]}>
+              {rightSections.map((secName) => renderDynamicSectionCard(secName))}
             </View>
           )}
         </View>
@@ -1569,24 +1837,22 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
       {/* ── Scoring Modal for Social Skills Items ────────────────────── */}
       <Modal
-        visible={scoringQuestionIdx !== null}
+        visible={scoringField !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setScoringQuestionIdx(null)}
+        onRequestClose={() => setScoringField(null)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Score Social Skill Indicator</Text>
-              <TouchableOpacity onPress={() => setScoringQuestionIdx(null)}>
+              <TouchableOpacity onPress={() => setScoringField(null)}>
                 <Feather name="x" size={18} color={C_SLATE} />
               </TouchableOpacity>
             </View>
 
-            {scoringQuestionIdx !== null && (
-              <Text style={styles.modalPromptText}>
-                {SOCIAL_SKILLS_PROMPTS[scoringQuestionIdx]}
-              </Text>
+            {scoringField !== null && (
+              <Text style={styles.modalPromptText}>{scoringField.label}</Text>
             )}
 
             <Text style={styles.modalOptionInstruction}>Select observational rating:</Text>
@@ -1596,8 +1862,8 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                   key={opt}
                   style={styles.modalOptionBtn}
                   onPress={() => {
-                    if (scoringQuestionIdx !== null) {
-                      handleScoreQuestion(scoringQuestionIdx, opt);
+                    if (scoringField !== null) {
+                      handleScoreQuestion(scoringField.id, opt);
                     }
                   }}
                 >
@@ -1663,21 +1929,32 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
   );
 }
 
-function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return (
-    {
-      Dashboard: 'CoordinatorDashboard',
-      'Live Sessions': 'LiveSessionMonitoring',
-      Review: 'SessionSummaryReview',
-      Progress: 'CoordinatorStudentProgress',
-      Schedule: 'CoordinatorSchedule',
-      Parents: 'CoordinatorParentCommunication',
-      Enrollment: 'StudentEnrollment',
-      Workload: 'WorkloadDashboard',
-      Notifications: 'Notifications',
-      Rooms: 'RoomResourceScheduling',
-    } as Record<string, keyof CoordinatorStackParamList>
-  )[tab];
+function navRouteForTab(tab: string): string | undefined {
+  const routes: Record<string, string> = {
+    Dashboard: 'CoordinatorDashboard',
+    'Live Sessions': 'LiveSessionMonitoring',
+    Review: 'SessionSummaryReview',
+    Progress: 'CoordinatorStudentProgress',
+    Schedule: 'CoordinatorSchedule',
+    Parents: 'CoordinatorParentCommunication',
+    Enrollment: 'StudentEnrollment',
+    'Student Enrollment': 'StudentEnrollment',
+    Workload: 'WorkloadDashboard',
+    Notifications: 'Notifications',
+    Rooms: 'RoomResourceScheduling',
+    // Program Director routes
+    'Program Director': 'ProgramDirectorDashboard',
+    Caseload: 'StudentCaseload',
+    'Student Caseload': 'StudentCaseload',
+    Goals: 'GoalBankManagement',
+    'Goal Bank': 'GoalBankManagement',
+    'Mastery Approval': 'GoalMasteryApproval',
+    'Assessment Review': 'AssessmentReview',
+    'IUP Generation': 'IupGeneration',
+    'IUP Library': 'IupLibrary',
+    Analytics: 'GraphChartView',
+  };
+  return routes[tab];
 }
 
 const styles = StyleSheet.create({
@@ -2039,10 +2316,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: C_SKY,
   },
-  cardHeaderSubtitle: {
-    fontSize: 11,
-    color: C_SLATE,
-  },
 
   // Headshot Box in Student Info
   headshotBox: {
@@ -2136,10 +2409,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: C_NAVY,
-  },
-  kvValMuted: {
-    fontSize: 12,
-    color: '#94A3B8',
+    maxWidth: '60%',
+    textAlign: 'right',
   },
   kvValSky: {
     fontSize: 12,
@@ -2217,9 +2488,6 @@ const styles = StyleSheet.create({
   },
 
   // Documents List
-  docList: {
-    gap: 8,
-  },
   docRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2248,11 +2516,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: C_SLATE,
   },
-  docStatusMuted: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontStyle: 'italic',
-  },
   docStatusAttached: {
     fontSize: 11,
     color: C_EMERALD,
@@ -2280,35 +2543,14 @@ const styles = StyleSheet.create({
     color: C_SKY,
   },
 
-  // Split Row in Medical Card
-  medSplitRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    flexWrap: 'wrap',
-  },
+  // Textarea multi-line callout box
   devHistoryBox: {
-    flex: 1,
-    minWidth: 200,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: C_BORDER,
     borderRadius: radius.md,
     padding: 10,
     gap: 2,
-  },
-  medAlertBox: {
-    flex: 1,
-    minWidth: 200,
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: radius.md,
-    padding: 10,
-    gap: 4,
-  },
-  medAlertBoxEmpty: {
-    backgroundColor: '#F8FAFC',
-    borderColor: C_BORDER,
   },
   boxUpperLabel: {
     fontSize: 9,
@@ -2320,104 +2562,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: C_NAVY,
     lineHeight: 15,
-  },
-  medAlertHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  boxUpperLabelAmber: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#92400E',
-    letterSpacing: 0.5,
-  },
-  medAlertBodyText: {
-    fontSize: 11,
-    color: '#78350F',
-    lineHeight: 15,
-  },
-
-  // Reinforcer Sensitivity Breakdown
-  reinforcerSection: {
-    gap: 8,
-  },
-  reinforcerTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: C_SLATE,
-    letterSpacing: 0.5,
-  },
-  reinforcerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  reinforcerCard: {
-    flex: 1,
-    minWidth: '47%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: C_BORDER,
-    padding: 8,
-    gap: 4,
-  },
-  reinforcerCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  reinforcerDotTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  reinforcerName: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: C_NAVY,
-  },
-  optionPill: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  optionPillText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: C_SKY,
-  },
-  reinforcerDesc: {
-    fontSize: 10,
-    color: C_SLATE,
-    lineHeight: 14,
-  },
-  emptyCardBox: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: C_BORDER,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyVideoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: C_BORDER,
-    borderRadius: radius.md,
-    padding: spacing.md,
   },
 
   // Baseline Behavioral Assessment Video Container
@@ -2544,6 +2688,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
 
   // Social Skills Questionnaire
   scoredBadge: {
@@ -2618,46 +2767,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: C_SKY,
-  },
-
-  // Synthesis Box
-  synthesisRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: C_BORDER,
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  synthesisTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: C_NAVY,
-  },
-  synthesisDesc: {
-    fontSize: 11,
-    color: C_SLATE,
-    marginTop: 2,
-  },
-  generateAssessmentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: C_BORDER,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-  },
-  generateAssessmentBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: C_NAVY,
   },
 
   // 5. Page Footer

@@ -21,6 +21,10 @@ export interface EnrollmentDraftItem {
   therapist: string;
   diagnosis: string;
   photoUrl?: string | null;
+  photo?: string | null;
+  guardianName?: string;
+  guardianPhone?: string;
+  guardianEmail?: string;
   isDraft: true;
   status: 'Draft';
   formValues: Record<string, any>;
@@ -61,8 +65,28 @@ export function saveEnrollmentDraft(
   const id = existingDraftId || `draft-${Date.now()}`;
   const now = new Date().toISOString();
 
-  // Extract identifiable properties for display in student roster
-  const findVal = (keyOrPattern: string | RegExp) => {
+  const isDataPayload = (val: any) =>
+    typeof val === 'string' &&
+    (val.startsWith('data:') ||
+      val.startsWith('blob:') ||
+      (val.length > 256 && !val.includes(' ')));
+
+  // Extract identifiable text properties for display in student roster (ignoring base64 media)
+  const findTextVal = (keyOrPattern: string | RegExp) => {
+    if (typeof keyOrPattern === 'string') {
+      const v = formValues[keyOrPattern];
+      return isDataPayload(v) ? '' : v || '';
+    }
+    const matchingKey = Object.keys(formValues).find((k) => keyOrPattern.test(k));
+    if (matchingKey) {
+      const v = formValues[matchingKey];
+      return isDataPayload(v) ? '' : v || '';
+    }
+    return '';
+  };
+
+  // Find media / upload properties (permits data URLs)
+  const findMediaVal = (keyOrPattern: string | RegExp) => {
     if (typeof keyOrPattern === 'string') {
       return formValues[keyOrPattern] || '';
     }
@@ -71,97 +95,104 @@ export function saveEnrollmentDraft(
   };
 
   const rawFirstName =
-    findVal('enr_first_name') ||
-    findVal('childFirstName') ||
-    findVal('child_first_name') ||
-    findVal('firstName') ||
-    findVal('first_name') ||
-    findVal(/child.*first.*name|^first.*name$/i) ||
-    formValues.childFirstName ||
-    formValues.firstName ||
-    formValues.first_name ||
+    findTextVal('enr_first_name') ||
+    findTextVal('childFirstName') ||
+    findTextVal('child_first_name') ||
+    findTextVal('firstName') ||
+    findTextVal('first_name') ||
+    findTextVal(/child.*first.*name|^first.*name$/i) ||
+    (isDataPayload(formValues.childFirstName) ? '' : formValues.childFirstName) ||
+    (isDataPayload(formValues.firstName) ? '' : formValues.firstName) ||
+    (isDataPayload(formValues.first_name) ? '' : formValues.first_name) ||
     '';
 
   const rawLastName =
-    findVal('enr_last_name') ||
-    findVal('childLastName') ||
-    findVal('child_last_name') ||
-    findVal('lastName') ||
-    findVal('last_name') ||
-    findVal(/child.*last.*name|^last.*name$/i) ||
-    formValues.childLastName ||
-    formValues.lastName ||
-    formValues.last_name ||
+    findTextVal('enr_last_name') ||
+    findTextVal('childLastName') ||
+    findTextVal('child_last_name') ||
+    findTextVal('lastName') ||
+    findTextVal('last_name') ||
+    findTextVal(/child.*last.*name|^last.*name$/i) ||
+    (isDataPayload(formValues.childLastName) ? '' : formValues.childLastName) ||
+    (isDataPayload(formValues.lastName) ? '' : formValues.lastName) ||
+    (isDataPayload(formValues.last_name) ? '' : formValues.last_name) ||
     '';
 
   const rawMiddleName =
-    findVal('enr_middle_name') ||
-    findVal('childMiddleName') ||
-    findVal('child_middle_name') ||
-    findVal('middleName') ||
-    findVal('middle_name') ||
-    findVal(/child.*middle.*name|^middle.*name$/i) ||
-    formValues.childMiddleName ||
-    formValues.middleName ||
-    formValues.middle_name ||
+    findTextVal('enr_middle_name') ||
+    findTextVal('childMiddleName') ||
+    findTextVal('child_middle_name') ||
+    findTextVal('middleName') ||
+    findTextVal('middle_name') ||
+    findTextVal(/child.*middle.*name|^middle.*name$/i) ||
+    (isDataPayload(formValues.childMiddleName) ? '' : formValues.childMiddleName) ||
+    (isDataPayload(formValues.middleName) ? '' : formValues.middleName) ||
+    (isDataPayload(formValues.middle_name) ? '' : formValues.middle_name) ||
     '';
 
   const rawName =
     (rawFirstName ? `${rawFirstName} ${rawLastName}`.trim() : '') ||
-    findVal('f1') ||
-    findVal(/student.*name|full.*name|^name$/i) ||
-    (formValues.enr_first_name
+    findTextVal('f1') ||
+    findTextVal(/^(student|child)_?(full_?)?name$|^full_?name$|^name$/i) ||
+    (formValues.enr_first_name && !isDataPayload(formValues.enr_first_name)
       ? `${formValues.enr_first_name} ${formValues.enr_last_name || ''}`.trim()
       : '') ||
-    (formValues.first_name
+    (formValues.first_name && !isDataPayload(formValues.first_name)
       ? `${formValues.first_name} ${formValues.last_name || ''}`.trim()
       : '') ||
-    formValues.name ||
-    formValues.fullName ||
+    (isDataPayload(formValues.name) ? '' : formValues.name) ||
+    (isDataPayload(formValues.fullName) ? '' : formValues.fullName) ||
     '';
 
   const name = String(rawName).trim() || 'Untitled Draft';
-  const firstName = String(rawFirstName).trim() || name.split(' ')[0] || 'Draft';
-  const lastName = String(rawLastName).trim() || name.split(' ').slice(1).join(' ') || '';
+  const firstName =
+    String(rawFirstName).trim() || (name !== 'Untitled Draft' ? name.split(' ')[0] : 'Draft');
+  const lastName =
+    String(rawLastName).trim() ||
+    (name !== 'Untitled Draft' ? name.split(' ').slice(1).join(' ') : '');
   const dob = String(
-    findVal('f2') || findVal('enr_dob') || findVal(/birth|dob/i) || formValues.dob || '',
+    findTextVal('f2') ||
+      findTextVal('enr_dob') ||
+      findTextVal(/birth|dob/i) ||
+      formValues.dob ||
+      '',
   ).trim();
   const age = dob ? (calculateAge(dob) ?? 0) : 0;
   const gender = String(
-    findVal('f_gender') ||
-      findVal('enr_gender') ||
-      findVal(/gender/i) ||
+    findTextVal('f_gender') ||
+      findTextVal('enr_gender') ||
+      findTextVal(/gender/i) ||
       formValues.gender ||
       'Female',
   );
   const program = String(
-    findVal('f_program') ||
-      findVal('enr_program_type') ||
-      findVal(/program/i) ||
+    findTextVal('f_program') ||
+      findTextVal('enr_program_type') ||
+      findTextVal(/program/i) ||
       formValues.program ||
       'Regular',
   );
   const therapyGroup = String(
-    findVal('f_therapy') ||
-      findVal('enr_therapy_group') ||
-      findVal(/therapy/i) ||
+    findTextVal('f_therapy') ||
+      findTextVal('enr_therapy_group') ||
+      findTextVal(/therapy/i) ||
       formValues.therapyGroup ||
       'Basic',
   );
   const therapist = String(
-    findVal('f_therapist') || findVal(/therapist/i) || formValues.therapist || 'Unassigned',
+    findTextVal('f_therapist') || findTextVal(/therapist/i) || formValues.therapist || 'Unassigned',
   );
   const diagnosis = String(
-    findVal('f_diagnosis') ||
-      findVal('enr_diagnosis') ||
-      findVal(/diagnosis/i) ||
+    findTextVal('f_diagnosis') ||
+      findTextVal('enr_diagnosis') ||
+      findTextVal(/diagnosis/i) ||
       formValues.diagnosis ||
       'Draft Enrollment',
   );
   const photoUrl =
-    findVal('f_photo') ||
-    findVal('enr_headshot') ||
-    findVal(/photo|headshot/i) ||
+    findMediaVal('f_photo') ||
+    findMediaVal('enr_headshot') ||
+    findMediaVal(/photo|headshot/i) ||
     formValues.photoUri ||
     formValues.photoBase64 ||
     formValues.photo ||

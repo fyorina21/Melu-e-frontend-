@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import DobPicker from '../../components/DobPicker';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -636,10 +637,90 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
     formValues.photoBase64 ||
     '';
 
-  // Photo handlers
+  // Photo and Document handlers
   const handleTakePhoto = (fieldId: string) => {
     setActivePhotoFieldId(fieldId);
     setCameraModalOpen(true);
+  };
+
+  const handleUploadDocument = async (fieldId: string) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let fileData = asset.uri;
+
+        if ((asset as any).file && typeof FileReader !== 'undefined') {
+          try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL((asset as any).file);
+            });
+            fileData = dataUrl;
+          } catch {}
+        }
+
+        handleFieldChange(fieldId, fileData);
+
+        const field = formFields.find((f) => f.id === fieldId);
+        const norm = `${fieldId} ${field?.label || ''}`.toLowerCase();
+        if (norm.includes('birth')) {
+          setFormValues((prev) => ({
+            ...prev,
+            birth_certificate: fileData,
+            birthCertificate: fileData,
+            enr_birth_certificate: fileData,
+          }));
+        } else if (norm.includes('diagnosis')) {
+          setFormValues((prev) => ({
+            ...prev,
+            diagnosis_paper: fileData,
+            diagnosisPaper: fileData,
+            enr_diagnosis_paper: fileData,
+          }));
+        } else if (norm.includes('agreement')) {
+          setFormValues((prev) => ({
+            ...prev,
+            agreement: fileData,
+            enr_agreement: fileData,
+          }));
+        } else if (norm.includes('video')) {
+          setFormValues((prev) => ({
+            ...prev,
+            baseline_video: fileData,
+            baselineVideo: fileData,
+            enr_baseline_video: fileData,
+            videoUrl: fileData,
+          }));
+        } else if (norm.includes('photo') || norm.includes('headshot')) {
+          setFormValues((prev) => ({
+            ...prev,
+            headshot: fileData,
+            enr_headshot: fileData,
+            photoUrl: fileData,
+          }));
+          if (studentName.trim()) {
+            saveStudentPhoto({
+              name: studentName.trim(),
+              fullName: studentName.trim(),
+              photo: fileData,
+              photoBase64: fileData,
+              photoUri: asset.uri,
+            });
+          }
+        }
+
+        showToast(`${asset.name || 'File'} uploaded successfully`, 'success');
+      }
+    } catch (err: any) {
+      showToast('Could not select document: ' + (err?.message || 'Error occurred'), 'error');
+    }
   };
 
   const handleChoosePhoto = async (fieldId: string) => {
@@ -662,6 +743,12 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
           ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
           : asset.uri;
         handleFieldChange(fieldId, photoData);
+        setFormValues((prev) => ({
+          ...prev,
+          headshot: photoData,
+          enr_headshot: photoData,
+          photoUrl: photoData,
+        }));
         if (studentName.trim()) {
           saveStudentPhoto({
             name: studentName.trim(),
@@ -680,7 +767,36 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
 
   const handleRemovePhoto = (fieldId: string) => {
     handleFieldChange(fieldId, '');
-    showToast('Photo removed', 'info');
+    const field = formFields.find((f) => f.id === fieldId);
+    const norm = `${fieldId} ${field?.label || ''}`.toLowerCase();
+    if (norm.includes('birth')) {
+      setFormValues((prev) => ({
+        ...prev,
+        birth_certificate: '',
+        birthCertificate: '',
+        enr_birth_certificate: '',
+      }));
+    } else if (norm.includes('diagnosis')) {
+      setFormValues((prev) => ({
+        ...prev,
+        diagnosis_paper: '',
+        diagnosisPaper: '',
+        enr_diagnosis_paper: '',
+      }));
+    } else if (norm.includes('agreement')) {
+      setFormValues((prev) => ({ ...prev, agreement: '', enr_agreement: '' }));
+    } else if (norm.includes('video')) {
+      setFormValues((prev) => ({
+        ...prev,
+        baseline_video: '',
+        baselineVideo: '',
+        enr_baseline_video: '',
+        videoUrl: '',
+      }));
+    } else if (norm.includes('photo') || norm.includes('headshot')) {
+      setFormValues((prev) => ({ ...prev, headshot: '', enr_headshot: '', photoUrl: '' }));
+    }
+    showToast('File removed', 'info');
   };
 
   // Step Navigation — Freely advances to next page without blocking on required fields
@@ -997,8 +1113,33 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       enrollment_status: 'active',
       is_active: true,
       active: true,
-      photo: studentPhoto,
-      photoBase64: studentPhoto,
+      photo: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      photoBase64: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      photoUrl: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      headshot: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      birth_certificate:
+        formValues.birth_certificate ||
+        formValues.enr_birth_certificate ||
+        formValues.birthCertificate,
+      birthCertificate:
+        formValues.birth_certificate ||
+        formValues.enr_birth_certificate ||
+        formValues.birthCertificate,
+      diagnosis_paper:
+        formValues.diagnosis_paper || formValues.enr_diagnosis_paper || formValues.diagnosisPaper,
+      diagnosisPaper:
+        formValues.diagnosis_paper || formValues.enr_diagnosis_paper || formValues.diagnosisPaper,
+      agreement: formValues.agreement || formValues.enr_agreement,
+      baseline_video:
+        formValues.baseline_video ||
+        formValues.enr_baseline_video ||
+        formValues.baselineVideo ||
+        formValues.videoUrl,
+      baselineVideo:
+        formValues.baseline_video ||
+        formValues.enr_baseline_video ||
+        formValues.baselineVideo ||
+        formValues.videoUrl,
     };
 
     try {
@@ -1122,7 +1263,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
     const value = formValues[field.id] ?? '';
     const options = resolveFieldOptions(field);
 
-    // 1. File / Image Upload
+    // 1. File / Image / Document Upload
     if (
       normType === 'file' ||
       normType === 'image' ||
@@ -1130,7 +1271,13 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       normType === 'image_picker'
     ) {
       const isPhoto =
-        field.id === 'f_photo' || /photo/i.test(field.id) || /photo/i.test(field.label);
+        field.id === 'f_photo' ||
+        /photo/i.test(field.id) ||
+        /photo/i.test(field.label) ||
+        /headshot/i.test(field.id) ||
+        /headshot/i.test(field.label);
+      const isVideo = /video/i.test(field.id) || /video/i.test(field.label);
+
       return (
         <View key={field.id} style={styles.photoUploadCard}>
           <Text style={styles.fieldLabel}>
@@ -1141,41 +1288,87 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
             <View style={styles.photoAvatarContainer}>
               {value ? (
                 <View style={styles.photoWrapper}>
-                  <Image source={{ uri: value }} style={styles.photoImage} />
+                  {isPhoto &&
+                  typeof value === 'string' &&
+                  (value.startsWith('data:image') ||
+                    value.startsWith('http') ||
+                    value.startsWith('file:') ||
+                    value.startsWith('blob:')) ? (
+                    <Image source={{ uri: value }} style={styles.photoImage} />
+                  ) : (
+                    <View style={[styles.photoPlaceholder, { backgroundColor: '#E0F2FE' }]}>
+                      <Feather name={isVideo ? 'video' : 'file-text'} size={28} color="#0284C7" />
+                    </View>
+                  )}
                   <TouchableOpacity
                     style={styles.photoRemoveBtn}
                     onPress={() => handleRemovePhoto(field.id)}
-                    accessibilityLabel="Remove photo"
+                    accessibilityLabel="Remove file"
                   >
                     <Feather name="x" size={12} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Feather name={isPhoto ? 'user' : 'file-text'} size={30} color="#94A3B8" />
+                  <Feather
+                    name={isPhoto ? 'user' : isVideo ? 'video' : 'file-text'}
+                    size={30}
+                    color="#94A3B8"
+                  />
                 </View>
               )}
             </View>
 
             <View style={styles.photoButtonContainer}>
-              <TouchableOpacity style={styles.cameraBtn} onPress={() => handleTakePhoto(field.id)}>
-                <Feather name="camera" size={15} color="#FFFFFF" />
-                <Text style={styles.cameraBtnText}>Open Camera</Text>
-              </TouchableOpacity>
+              {isPhoto ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.cameraBtn}
+                    onPress={() => handleTakePhoto(field.id)}
+                  >
+                    <Feather name="camera" size={15} color="#FFFFFF" />
+                    <Text style={styles.cameraBtnText}>Open Camera</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.uploadBtn}
-                onPress={() => handleChoosePhoto(field.id)}
-              >
-                <Feather name="upload" size={15} color={colors.navyText} />
-                <Text style={styles.uploadBtnText}>Upload File</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={() => handleChoosePhoto(field.id)}
+                  >
+                    <Feather name="upload" size={15} color={colors.navyText} />
+                    <Text style={styles.uploadBtnText}>Upload Photo</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={[styles.uploadBtn, { backgroundColor: '#0284C7' }]}
+                    onPress={() => handleUploadDocument(field.id)}
+                  >
+                    <Feather name="upload" size={15} color="#FFFFFF" />
+                    <Text style={[styles.uploadBtnText, { color: '#FFFFFF' }]}>
+                      {value ? 'Change File' : `Choose ${isVideo ? 'Video' : 'Document'}`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={() => handleChoosePhoto(field.id)}
+                  >
+                    <Feather name="image" size={15} color={colors.navyText} />
+                    <Text style={styles.uploadBtnText}>Upload Image</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
           <Text style={styles.fieldHint}>
             {field.helpText ||
               field.help_text ||
-              'Capture using camera or upload a file from your device.'}
+              (isPhoto
+                ? 'Capture using camera or upload a photo from your device.'
+                : isVideo
+                  ? 'Upload MP4 or MOV baseline video clip.'
+                  : 'Upload PDF, document or image scan from your device.')}
           </Text>
         </View>
       );

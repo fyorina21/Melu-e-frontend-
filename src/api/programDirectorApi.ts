@@ -2423,3 +2423,6 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
 
   return { data: payload };
 };
+
+// Re-export unified Student Profile functions for Program Director navigator & caseload workflows
+export { getStudentProfile, updateStudentProfile } from './coordinatorApi';
