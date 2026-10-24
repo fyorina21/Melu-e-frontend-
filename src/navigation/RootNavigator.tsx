@@ -74,6 +74,18 @@ function syncUrlToScreen(state: NavigationState | undefined): void {
     if (currentPath !== newPath) {
       window.history.pushState(null, '', newPath);
     }
+
+    // Dynamic browser tab title management
+    if (typeof document !== 'undefined') {
+      const friendlyName = route.name
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/Screen$/, '')
+        .trim();
+      document.title =
+        friendlyName && friendlyName !== 'Login' && friendlyName !== 'Index'
+          ? `${friendlyName} | Melue Therapy Management System`
+          : 'Melue Therapy Management System';
+    }
   }
 }
 

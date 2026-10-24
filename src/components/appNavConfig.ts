@@ -25,32 +25,93 @@ export const MODULE_TO_TABS: Record<string, string[]> = {
     'IUP Creation & Goal Assignment',
     'IUP Library Management',
     'Student Caseload Management',
+    'Goal Bank',
+    'Goal Bank / Domains',
+    // legacy alias
     'Clinical Quality Monitoring',
   ],
   goals: ['Goal Mastery Approval'],
-  assessments: ['Assessments', 'Assessment Review', 'Assessment Summary Report'],
-  sessions: ['Session', 'Daily Notes', 'Live Sessions', 'Session Summary', 'Trial Logging Format'],
-  behavior_incidents: ['ABC Log', 'ABC Dropdown Lists'],
-  parent_portal: ['Parent Communication', 'Progress', 'Observations'],
-  students: ['Registered Student', 'Enrollment Wizard'],
-  reports: ['Reports & Oversight', 'Report Builder'],
+  assessments: [
+    'Assessment Dashboard',
+    'Assessment Review & Sign-Off',
+    'Assessment Summary Report',
+    // legacy aliases
+    'Assessments',
+    'Assessment Review',
+  ],
+  sessions: [
+    'Session Data Collection',
+    'Daily Session Notes',
+    'Live Session Monitoring',
+    'Session Summary Review',
+    'Trial Logging Format Config',
+    // legacy aliases
+    'Session',
+    'Daily Notes',
+    'Live Sessions',
+    'Session Summary',
+    'Trial Logging Format',
+  ],
+  behavior_incidents: [
+    'ABC Behavior Incident Log',
+    'ABC Dropdown Lists',
+    // legacy alias
+    'ABC Log',
+  ],
+  parent_portal: [
+    'Parent Communication',
+    'Child Progress Tracker',
+    'Home Observation Log',
+    'Parent Communication (Messages)',
+    // legacy aliases
+    'Progress',
+    'Observations',
+    'Messages',
+  ],
+  students: [
+    'Student Enrollment Wizard',
+    'Student Register & Roster List',
+    // legacy aliases
+    'Registered Student',
+    'Enrollment Wizard',
+    'Student Register',
+  ],
+  reports: [
+    'Reports & Executive Oversight',
+    'Custom Report Builder',
+    // legacy aliases
+    'Reports & Oversight',
+    'Report Builder',
+    'Reports',
+  ],
   staff: [
+    'Staff Scheduling & Capacity',
+    'Staff Workload & Therapist Linking',
+    'Room Resource Scheduling',
+    'Schedule & Capacity Configuration',
+    'Staff Account Management',
+    // legacy aliases
     'Staff Scheduling',
     'Staff Management & Linking',
-    'Room Resource Scheduling',
     'Schedule & Capacity',
+    'Staff Accounts',
   ],
   admin: [
-    'Staff Accounts',
+    'Staff Account Management',
     'Role Management',
+    'Permission Configuration (RBAC)',
+    'System Audit Log',
+    'Form Builder',
+    // legacy aliases
+    'Staff Accounts',
     'Permission Configuration',
     'Audit Log',
-    'Form Builder',
   ],
 };
 
 export const TAB_ALIASES_TO_MODULE: Record<string, string> = {
   // Students
+  'Student Register & Roster List': 'students',
   'Student Register': 'students',
   'Registered Student': 'students',
   'Registered Students': 'students',
@@ -60,29 +121,41 @@ export const TAB_ALIASES_TO_MODULE: Record<string, string> = {
   Enrollment: 'students',
   Students: 'students',
 
-  // Clinical Verification
+  // Clinical Verification & Goals
   'Goal Mastery Approval': 'goals',
   Approvals: 'goals',
 
   // Assessments
-  Assessments: 'assessments',
   'Assessment Dashboard': 'assessments',
+  'Assessment Review & Sign-Off': 'assessments',
   'Assessment Review': 'assessments',
   'Assessment Summary Report': 'assessments',
+  Assessments: 'assessments',
 
   // Sessions
+  'Session Data Collection': 'sessions',
+  'Daily Session Notes': 'sessions',
+  'Live Session Monitoring': 'sessions',
+  'Session Summary Review': 'sessions',
+  'Trial Logging Format Config': 'sessions',
   Session: 'sessions',
   'Active Therapy': 'sessions',
   'Daily Notes': 'sessions',
   'Live Sessions': 'sessions',
   'Session Summary': 'sessions',
-  'Session Summary Review': 'sessions',
   'Trial Logging Format': 'sessions',
+
+  // Behavior Incidents
+  'ABC Behavior Incident Log': 'behavior_incidents',
+  'ABC Dropdown Lists': 'behavior_incidents',
+  'ABC Log': 'behavior_incidents',
 
   // IUPs & Goal Management
   'IUP Creation & Goal Assignment': 'iups',
   'IUP Library Management': 'iups',
   'Student Caseload Management': 'iups',
+  'Goal Bank': 'iups',
+  'Goal Bank / Domains': 'iups',
   'Clinical Quality Monitoring': 'iups',
   Goals: 'iups',
   'Goal Domains': 'iups',
@@ -94,7 +167,10 @@ export const TAB_ALIASES_TO_MODULE: Record<string, string> = {
   Quality: 'iups',
 
   // Staff & Operations
+  'Staff Scheduling & Capacity': 'staff',
+  'Staff Workload & Therapist Linking': 'staff',
   'Room Resource Scheduling': 'staff',
+  'Schedule & Capacity Configuration': 'staff',
   'Staff Scheduling': 'staff',
   'Operational Management': 'staff',
   'Staff Management & Linking': 'staff',
@@ -102,27 +178,35 @@ export const TAB_ALIASES_TO_MODULE: Record<string, string> = {
   Workload: 'staff',
   Scheduling: 'staff',
 
-  // Reports
+  // Reports & Oversight
+  'Reports & Executive Oversight': 'reports',
+  'Custom Report Builder': 'reports',
   'Reports & Oversight': 'reports',
   'Report & Oversight': 'reports',
   Reports: 'reports',
   'Report Builder': 'reports',
   Charts: 'reports',
 
-  // Admin
+  // Admin & Governance
+  'Staff Account Management': 'admin',
   'Staff Accounts': 'admin',
   'Staff account management': 'admin',
   'Staff Management': 'admin',
   Staff: 'admin',
   'Role Management': 'admin',
+  'Permission Configuration (RBAC)': 'admin',
   'Permission Configuration': 'admin',
+  'System Audit Log': 'admin',
   'Audit Log': 'admin',
   'Form Builder': 'admin',
 
-  // Parent
+  // Family Engagement & Parent Portal
+  'Parent Communication': 'parent_portal',
+  'Parent Communication (Messages)': 'parent_portal',
+  'Child Progress Tracker': 'parent_portal',
+  'Home Observation Log': 'parent_portal',
   Parents: 'parent_portal',
   Messages: 'parent_portal',
-  'Parent Communication': 'parent_portal',
   Progress: 'parent_portal',
   Observations: 'parent_portal',
 };
@@ -234,50 +318,71 @@ export function getTabsForSession(
 }
 
 export const ROLE_TABS: Record<Role, string[]> = {
-  teacher: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
-  therapist: ['Dashboard', 'Session', 'Assessments', 'Daily Notes', 'ABC Log', 'Parents'],
+  teacher: [
+    'Dashboard',
+    'Session Data Collection',
+    'Assessment Dashboard',
+    'ABC Behavior Incident Log',
+    'Daily Session Notes',
+    'Parent Communication',
+  ],
+  therapist: [
+    'Dashboard',
+    'Session Data Collection',
+    'Assessment Dashboard',
+    'ABC Behavior Incident Log',
+    'Daily Session Notes',
+    'Parent Communication',
+  ],
   coordinator: [
     'Dashboard',
-    'Live Sessions',
-    'Session Summary',
-    'Registered Student',
-    'Enrollment Wizard',
-    'Staff Management & Linking',
+    'Live Session Monitoring',
+    'Session Summary Review',
+    'Student Register & Roster List',
+    'Student Enrollment Wizard',
+    'Staff Workload & Therapist Linking',
     'Room Resource Scheduling',
-    'IUP Creation & Goal Assignment',
     'Parent Communication',
   ],
   director: [
     'Dashboard',
-    'Staff Scheduling',
+    'Staff Scheduling & Capacity',
     'Goal Mastery Approval',
     'Parent Communication',
-    'Reports & Oversight',
-    'Report Builder',
+    'Reports & Executive Oversight',
+    'Custom Report Builder',
   ],
   program_director: [
     'Dashboard',
-    'Registered Student',
-    'Enrollment Wizard',
+    'Student Enrollment Wizard',
+    'Student Register & Roster List',
     'IUP Creation & Goal Assignment',
-    'Assessment Summary Report',
-    'Goal Mastery Approval',
-    'Assessment Review',
     'IUP Library Management',
+    'Assessment Review & Sign-Off',
+    'Assessment Summary Report',
     'Student Caseload Management',
-    'Clinical Quality Monitoring',
-    'Parent Communication',
-    'Reports',
+    'Goal Bank',
+    'Reports & Executive Oversight',
   ],
   institutional_admin: [
-    'Goals',
-    'Schedule & Capacity',
-    'ABC Dropdown Lists',
-    'Trial Logging Format',
+    'Schedule & Capacity Configuration',
     'Form Builder',
+    'ABC Dropdown Lists',
+    'Trial Logging Format Config',
+    'Goal Bank / Domains',
   ],
-  system_admin: ['Staff Accounts', 'Role Management', 'Permission Configuration', 'Audit Log'],
-  parent: ['Dashboard', 'Progress', 'Observations', 'Messages'],
+  system_admin: [
+    'Staff Account Management',
+    'Role Management',
+    'Permission Configuration (RBAC)',
+    'System Audit Log',
+  ],
+  parent: [
+    'Dashboard',
+    'Child Progress Tracker',
+    'Home Observation Log',
+    'Parent Communication (Messages)',
+  ],
 };
 
 export interface NavGroupTab {
@@ -296,15 +401,15 @@ export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {
     'Dashboard',
     {
       label: 'Sessions',
-      items: ['Live Sessions', 'Session Summary'],
+      items: ['Live Session Monitoring', 'Session Summary Review'],
     },
     {
       label: 'Students',
-      items: ['Registered Student', 'Enrollment Wizard', 'IUP Creation & Goal Assignment'],
+      items: ['Student Register & Roster List', 'Student Enrollment Wizard'],
     },
     {
       label: 'Operations',
-      items: ['Staff Management & Linking', 'Room Resource Scheduling'],
+      items: ['Staff Workload & Therapist Linking', 'Room Resource Scheduling'],
     },
     'Parent Communication',
   ],
@@ -312,11 +417,11 @@ export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {
     'Dashboard',
     {
       label: 'Students',
-      items: ['Registered Student', 'Enrollment Wizard'],
+      items: ['Student Register & Roster List', 'Student Enrollment Wizard'],
     },
     {
       label: 'Assessments',
-      items: ['Assessment Review', 'Assessment Summary Report'],
+      items: ['Assessment Review & Sign-Off', 'Assessment Summary Report'],
     },
     {
       label: 'IUPs',
@@ -324,12 +429,12 @@ export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {
         'IUP Creation & Goal Assignment',
         'IUP Library Management',
         'Student Caseload Management',
-        'Clinical Quality Monitoring',
+        'Goal Bank',
       ],
     },
     'Goal Mastery Approval',
     'Parent Communication',
-    'Reports',
+    'Reports & Executive Oversight',
   ],
 };
 
@@ -382,6 +487,352 @@ export function getGroupedTabsForSession(
   return filteredGrouped.length > 0 ? filteredGrouped : dynamicTabs;
 }
 
+// =========================================================================
+// Sidebar Navigation Architecture (Grouped by SRS Module Categories)
+// =========================================================================
+
+export interface SidebarNavItem {
+  label: string;
+  route: string;
+  module: string;
+  aliases?: string[];
+}
+
+export interface SidebarSection {
+  title: string;
+  category: string;
+  items: SidebarNavItem[];
+}
+
+export const SIDEBAR_MODULE_CATEGORIES: SidebarSection[] = [
+  {
+    category: 'Student Intake & Enrollment',
+    title: 'Student Intake & Enrollment',
+    items: [
+      {
+        label: 'Student Enrollment Wizard',
+        route: 'StudentEnrollmentWizard',
+        module: 'students',
+        aliases: ['Enrollment Wizard', 'Student Enrollment'],
+      },
+      {
+        label: 'Student Register & Roster List',
+        route: 'StudentEnrollment',
+        module: 'students',
+        aliases: [
+          'Student Register',
+          'Registered Student',
+          'Registered Students',
+          'Student Registration',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'Assessments',
+    title: 'Assessments',
+    items: [
+      {
+        label: 'Assessment Dashboard',
+        route: 'AssessmentDashboard',
+        module: 'assessments',
+        aliases: ['Assessments'],
+      },
+      {
+        label: 'Assessment Review & Sign-Off',
+        route: 'AssessmentReview',
+        module: 'assessments',
+        aliases: ['Assessment Review', 'Assessment'],
+      },
+      {
+        label: 'Assessment Summary Report',
+        route: 'AssessmentSummaryReport',
+        module: 'assessments',
+        aliases: ['Assessment Summary'],
+      },
+    ],
+  },
+  {
+    category: 'IUP & Goals',
+    title: 'IUP & Goals',
+    items: [
+      {
+        label: 'IUP Creation & Goal Assignment',
+        route: 'IupGeneration',
+        module: 'iups',
+        aliases: ['IUP Creation', 'IUPs', 'IUP'],
+      },
+      {
+        label: 'IUP Library Management',
+        route: 'IupLibrary',
+        module: 'iups',
+        aliases: ['IUP Library', 'Library'],
+      },
+      {
+        label: 'Student Caseload Management',
+        route: 'StudentCaseload',
+        module: 'iups',
+        aliases: ['Student Caseload', 'Caseload'],
+      },
+      {
+        label: 'Goal Bank',
+        route: 'GoalBankManagement',
+        module: 'iups',
+        aliases: ['Clinical Quality Monitoring', 'Clinical Quality', 'Quality'],
+      },
+    ],
+  },
+  {
+    category: 'Active Therapy & Clinical Delivery',
+    title: 'Active Therapy & Clinical Delivery',
+    items: [
+      {
+        label: 'Session Data Collection',
+        route: 'SessionDataCollection',
+        module: 'sessions',
+        aliases: ['Session', 'Active Therapy'],
+      },
+      {
+        label: 'Daily Session Notes',
+        route: 'DailyNotes',
+        module: 'sessions',
+        aliases: ['Daily Notes'],
+      },
+      {
+        label: 'ABC Behavior Incident Log',
+        route: 'AbcLog',
+        module: 'behavior_incidents',
+        aliases: ['ABC Log'],
+      },
+      {
+        label: 'Live Session Monitoring',
+        route: 'LiveSessionMonitoring',
+        module: 'sessions',
+        aliases: ['Live Sessions', 'Live'],
+      },
+      {
+        label: 'Session Summary Review',
+        route: 'SessionSummaryReview',
+        module: 'sessions',
+        aliases: ['Session Summary', 'Review'],
+      },
+      {
+        label: 'Goal Mastery Approval',
+        route: 'GoalMasteryApproval',
+        module: 'goals',
+        aliases: ['Approvals'],
+      },
+    ],
+  },
+  {
+    category: 'Operations & Scheduling',
+    title: 'Operations & Scheduling',
+    items: [
+      {
+        label: 'Staff Scheduling & Capacity',
+        route: 'DirectorScheduling',
+        module: 'staff',
+        aliases: ['Staff Scheduling', 'Scheduling'],
+      },
+      {
+        label: 'Staff Workload & Therapist Linking',
+        route: 'WorkloadDashboard',
+        module: 'staff',
+        aliases: ['Staff Management & Linking', 'Workload', 'Staff'],
+      },
+      {
+        label: 'Room Resource Scheduling',
+        route: 'RoomResourceScheduling',
+        module: 'staff',
+        aliases: ['Room Scheduling', 'Rooms'],
+      },
+    ],
+  },
+  {
+    category: 'Family Engagement & Parent Portal',
+    title: 'Family Engagement & Parent Portal',
+    items: [
+      {
+        label: 'Child Progress Tracker',
+        route: 'ChildProgress',
+        module: 'parent_portal',
+        aliases: ['Progress'],
+      },
+      {
+        label: 'Home Observation Log',
+        route: 'HomeObservationLog',
+        module: 'parent_portal',
+        aliases: ['Observations'],
+      },
+      {
+        label: 'Parent Communication',
+        route: 'ParentCommunication',
+        module: 'parent_portal',
+        aliases: ['Parents', 'Messages', 'Parent Communication (Messages)'],
+      },
+    ],
+  },
+  {
+    category: 'Executive Oversight',
+    title: 'Executive Oversight',
+    items: [
+      {
+        label: 'Reports & Executive Oversight',
+        route: 'ReportsOversight',
+        module: 'reports',
+        aliases: ['Reports & Oversight', 'Reports'],
+      },
+      {
+        label: 'Custom Report Builder',
+        route: 'ReportBuilder',
+        module: 'reports',
+        aliases: ['Report Builder', 'Builder'],
+      },
+    ],
+  },
+  {
+    category: 'Institutional Administration',
+    title: 'Institutional Administration',
+    items: [
+      {
+        label: 'Schedule & Capacity Configuration',
+        route: 'ScheduleCapacityConfig',
+        module: 'staff',
+        aliases: ['Schedule & Capacity', 'Schedule', 'Capacity'],
+      },
+      {
+        label: 'Form Builder',
+        route: 'FormBuilder',
+        module: 'admin',
+        aliases: ['Assessment & Form Builder', 'Forms', 'Form'],
+      },
+      {
+        label: 'ABC Dropdown Lists',
+        route: 'AbcDropdownLists',
+        module: 'behavior_incidents',
+        aliases: ['ABC Lists', 'ABC'],
+      },
+      {
+        label: 'Trial Logging Format Config',
+        route: 'TrialLoggingFormat',
+        module: 'sessions',
+        aliases: ['Trial Logging Format', 'Trial Logging'],
+      },
+      {
+        label: 'Goal Bank / Domains',
+        route: 'GoalDomainDefinitions',
+        module: 'iups',
+        aliases: ['Goals', 'Goal Domains', 'Goal'],
+      },
+    ],
+  },
+  {
+    category: 'System Administration',
+    title: 'System Administration',
+    items: [
+      {
+        label: 'Staff Account Management',
+        route: 'StaffAccountManagement',
+        module: 'staff',
+        aliases: ['Staff Accounts', 'Staff account management', 'Staff Management', 'Staff'],
+      },
+      {
+        label: 'Role Management',
+        route: 'RoleManagement',
+        module: 'admin',
+        aliases: ['Roles'],
+      },
+      {
+        label: 'Permission Configuration (RBAC)',
+        route: 'PermissionConfiguration',
+        module: 'admin',
+        aliases: ['Permission Configuration', 'Permissions', 'Permission'],
+      },
+      {
+        label: 'System Audit Log',
+        route: 'AuditLog',
+        module: 'reports',
+        aliases: ['Audit Log', 'Audit Logs', 'Audit'],
+      },
+    ],
+  },
+];
+
+/**
+ * Returns categorized sidebar sections dynamically filtered based on the active role and session permissions.
+ * Sections with 0 permitted links are automatically hidden.
+ */
+export function getSidebarSectionsForSession(
+  session: AuthSession | null | undefined,
+  role: Role,
+): SidebarSection[] {
+  // 1. Collect granted modules from session
+  const grantedModules = new Set<string>();
+  if (session?.modules && Array.isArray(session.modules)) {
+    for (const rawMod of session.modules) {
+      if (typeof rawMod === 'string') {
+        const canonical = (RESOURCE_ALIAS_MAP[rawMod.toLowerCase()] ?? rawMod).toLowerCase();
+        grantedModules.add(canonical);
+      }
+    }
+  }
+  if (session?.permissions && Array.isArray(session.permissions)) {
+    for (const rawPerm of session.permissions) {
+      if (typeof rawPerm === 'string' && rawPerm.includes(':')) {
+        const rawRes = rawPerm.split(':')[0]?.trim().toLowerCase();
+        if (rawRes) {
+          const canonical = (RESOURCE_ALIAS_MAP[rawRes] ?? rawRes).toLowerCase();
+          grantedModules.add(canonical);
+        }
+      }
+    }
+  }
+
+  const roleTabs = ROLE_TABS[role] ?? [];
+  const roleTabSet = new Set(roleTabs);
+  const isSystemAdmin = role === 'system_admin' || session?.role === 'system_admin';
+
+  const sections: SidebarSection[] = [];
+
+  for (const cat of SIDEBAR_MODULE_CATEGORIES) {
+    const visibleItems: SidebarNavItem[] = [];
+
+    for (const item of cat.items) {
+      // Check if this item or any of its aliases is part of this role's configured pages
+      const belongsToRole =
+        roleTabSet.has(item.label) ||
+        (item.aliases && item.aliases.some((alias) => roleTabSet.has(alias)));
+
+      if (grantedModules.size > 0) {
+        const hasModule = grantedModules.has(item.module.toLowerCase());
+        if (belongsToRole && hasModule) {
+          visibleItems.push(item);
+        } else if (roleTabs.length === 0 && hasModule) {
+          visibleItems.push(item);
+        }
+      } else {
+        // Without explicit module restrictions in session:
+        if (isSystemAdmin && cat.category === 'System Administration') {
+          visibleItems.push(item);
+        } else if (belongsToRole) {
+          visibleItems.push(item);
+        }
+      }
+    }
+
+    // Dynamic filtering: completely hide section if 0 visible links
+    if (visibleItems.length > 0) {
+      sections.push({
+        title: cat.title,
+        category: cat.category,
+        items: visibleItems,
+      });
+    }
+  }
+
+  return sections;
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   teacher: 'Teacher',
   therapist: 'Therapist',
@@ -408,29 +859,40 @@ export const ROLE_NOTIFICATION_ROUTE: Record<Role, string | undefined> = {
 
 export const TEACHER_ROUTE_BY_TAB: Record<string, string> = {
   Dashboard: 'TeacherDashboard',
+  'Session Data Collection': 'SessionDataCollection',
   Session: 'SessionDataCollection',
   'Active Therapy': 'SessionDataCollection',
-  Assessments: 'AssessmentDashboard',
   'Assessment Dashboard': 'AssessmentDashboard',
+  Assessments: 'AssessmentDashboard',
+  'Assessment Review & Sign-Off': 'AssessmentReview',
   'Assessment Summary Report': 'AssessmentSummaryReport',
+  'Daily Session Notes': 'DailyNotes',
   'Daily Notes': 'DailyNotes',
+  'ABC Behavior Incident Log': 'AbcLog',
   'ABC Log': 'AbcLog',
+  'Parent Communication': 'ParentCommunication',
   Parents: 'ParentCommunication',
   Notifications: 'Notifications',
   'IUP Creation & Goal Assignment': 'IupGeneration',
   IUPs: 'IupGeneration',
   'Enrollment Wizard': 'StudentEnrollmentWizard',
   'Student Enrollment Wizard': 'StudentEnrollmentWizard',
+  'Student Register & Roster List': 'StudentEnrollment',
   'Student Register': 'StudentEnrollment',
   'Registered Student': 'StudentEnrollment',
   'Student Profile': 'StudentProfile',
+  'Reports & Executive Oversight': 'ReportsOversight',
   'Reports & Oversight': 'ReportsOversight',
 };
 
 export const PARENT_ROUTE_BY_TAB: Record<string, keyof ParentStackParamList> = {
   Dashboard: 'ParentDashboard',
+  'Child Progress Tracker': 'ChildProgress',
   Progress: 'ChildProgress',
+  'Home Observation Log': 'HomeObservationLog',
   Observations: 'HomeObservationLog',
+  'Parent Communication (Messages)': 'ParentCommunication',
+  'Parent Communication': 'ParentCommunication',
   Messages: 'ParentCommunication',
   Notifications: 'Notifications',
 };
@@ -438,15 +900,18 @@ export const PARENT_ROUTE_BY_TAB: Record<string, keyof ParentStackParamList> = {
 export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList> = {
   // Canonical tabs
   Dashboard: 'DirectorDashboard',
+  'Staff Scheduling & Capacity': 'DirectorScheduling',
   'Staff Scheduling': 'DirectorScheduling',
   'Goal Mastery Approval': 'GoalMasteryApproval',
   'Parent Communication': 'DirectorParentCommunication',
+  'Reports & Executive Oversight': 'ReportsOversight',
   'Reports & Oversight': 'ReportsOversight',
   'Report & Oversight': 'ReportsOversight',
+  'Custom Report Builder': 'ReportBuilder',
+  'Report Builder': 'ReportBuilder',
   'Student Progress': 'DirectorStudentProgress',
   Assessments: 'AssessmentSummaryReport',
   'Assessment Summary Report': 'AssessmentSummaryReport',
-  'Report Builder': 'ReportBuilder',
   // Legacy aliases (existing screens / internal links)
   Scheduling: 'DirectorScheduling',
   Approvals: 'GoalMasteryApproval',
@@ -458,15 +923,18 @@ export const DIRECTOR_ROUTE_BY_TAB: Record<string, keyof DirectorStackParamList>
 
 export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> = {
   'Admin Panel': 'StaffAccountManagement',
+  'Staff Account Management': 'StaffAccountManagement',
   'Staff Accounts': 'StaffAccountManagement',
   'Staff account management': 'StaffAccountManagement',
   'Staff Management': 'StaffAccountManagement',
   Staff: 'StaffAccountManagement',
   'Role Management': 'RoleManagement',
   Roles: 'RoleManagement',
+  'Permission Configuration (RBAC)': 'PermissionConfiguration',
   'Permission Configuration': 'PermissionConfiguration',
   Permissions: 'PermissionConfiguration',
   Permission: 'PermissionConfiguration',
+  'System Audit Log': 'AuditLog',
   'Audit Log': 'AuditLog',
   'Audit Logs': 'AuditLog',
   Audit: 'AuditLog',
@@ -475,13 +943,17 @@ export const SYS_ROUTE_BY_TAB: Record<string, keyof SystemAdminStackParamList> =
 export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamList> = {
   // Canonical tabs
   Dashboard: 'FormBuilder',
-  Goals: 'GoalDomainDefinitions',
-  'Goal Domains': 'GoalDomainDefinitions',
-  'Task Analysis Templates': 'TaskAnalysisTemplates',
+  'Schedule & Capacity Configuration': 'ScheduleCapacityConfig',
   'Schedule & Capacity': 'ScheduleCapacityConfig',
-  'ABC Dropdown Lists': 'AbcDropdownLists',
-  'Trial Logging Format': 'TrialLoggingFormat',
   'Form Builder': 'FormBuilder',
+  'Assessment & Form Builder': 'FormBuilder',
+  'ABC Dropdown Lists': 'AbcDropdownLists',
+  'Trial Logging Format Config': 'TrialLoggingFormat',
+  'Trial Logging Format': 'TrialLoggingFormat',
+  'Goal Bank / Domains': 'GoalDomainDefinitions',
+  'Goal Domains': 'GoalDomainDefinitions',
+  Goals: 'GoalDomainDefinitions',
+  'Task Analysis Templates': 'TaskAnalysisTemplates',
   // Legacy aliases (existing screens / internal links)
   Forms: 'FormBuilder',
   Form: 'FormBuilder',
@@ -498,6 +970,7 @@ export const IA_ROUTE_BY_TAB: Record<string, keyof InstitutionalAdminStackParamL
 export const PD_ROUTE_BY_TAB: Record<string, keyof ProgramDirectorStackParamList> = {
   // Canonical tabs
   Dashboard: 'ProgramDirectorDashboard',
+  'Student Register & Roster List': 'StudentEnrollment',
   'Student Register': 'StudentEnrollment',
   'Registered Student': 'StudentEnrollment',
   'Registered Students': 'StudentEnrollment',
@@ -507,14 +980,16 @@ export const PD_ROUTE_BY_TAB: Record<string, keyof ProgramDirectorStackParamList
   'IUP Creation & Goal Assignment': 'IupGeneration',
   'Assessment Summary Report': 'AssessmentSummaryReport',
   'Goal Mastery Approval': 'GoalMasteryApproval',
+  'Assessment Review & Sign-Off': 'AssessmentReview',
   'Assessment Review': 'AssessmentReview',
   'Assessment Dashboard': 'AssessmentDashboard',
   'IUP Library Management': 'IupLibrary',
   'Student Caseload Management': 'StudentCaseload',
+  'Goal Bank': 'GoalBankManagement',
   'Clinical Quality Monitoring': 'GoalBankManagement',
   'Parent Communication': 'PdParentCommunication',
+  'Reports & Executive Oversight': 'GraphChartView',
   Reports: 'GraphChartView',
-  'Reports & Oversight': 'GraphChartView',
   // Legacy aliases (existing screens / internal links)
   Caseload: 'StudentCaseload',
   Assessments: 'AssessmentSummaryReport',
@@ -538,13 +1013,15 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   // Canonical tabs
   Dashboard: 'CoordinatorDashboard',
   'Student Profile': 'StudentProfile',
+  'Live Session Monitoring': 'LiveSessionMonitoring',
   'Live Sessions': 'LiveSessionMonitoring',
-  'Session Summary': 'SessionSummaryReview',
   'Session Summary Review': 'SessionSummaryReview',
+  'Session Summary': 'SessionSummaryReview',
   'Student Progress': 'CoordinatorStudentProgress',
   'Operational Management': 'CoordinatorSchedule',
   'Room Resource Scheduling': 'RoomResourceScheduling',
   'Parent Communication': 'CoordinatorParentCommunication',
+  'Student Register & Roster List': 'StudentEnrollment',
   'Registered Student': 'StudentEnrollment',
   'Registered Students': 'StudentEnrollment',
   'registred student': 'StudentEnrollment',
@@ -554,6 +1031,7 @@ export const COORDINATOR_ROUTE_BY_TAB: Record<string, keyof CoordinatorStackPara
   'Enrollment Wizard': 'StudentEnrollmentWizard',
   'Student Enrollment Wizard': 'StudentEnrollmentWizard',
   Enrollment: 'StudentEnrollment',
+  'Staff Workload & Therapist Linking': 'WorkloadDashboard',
   'Staff Management & Linking': 'WorkloadDashboard',
   'IUP Creation & Goal Assignment': 'IupGeneration',
   // Group aliases
@@ -586,33 +1064,45 @@ export const GLOBAL_ROUTE_BY_TAB: Record<string, string> = {
   ...SYS_ROUTE_BY_TAB,
   ...PARENT_ROUTE_BY_TAB,
   // Canonical overrides
+  'Staff Account Management': 'StaffAccountManagement',
   'Staff Accounts': 'StaffAccountManagement',
   'Staff account management': 'StaffAccountManagement',
   'Staff Management': 'StaffAccountManagement',
   'Role Management': 'RoleManagement',
+  'Permission Configuration (RBAC)': 'PermissionConfiguration',
   'Permission Configuration': 'PermissionConfiguration',
+  'System Audit Log': 'AuditLog',
   'Audit Log': 'AuditLog',
   'Form Builder': 'FormBuilder',
+  'Assessment & Form Builder': 'FormBuilder',
+  'Goal Bank / Domains': 'GoalDomainDefinitions',
   Goals: 'GoalDomainDefinitions',
   'Goal Domains': 'GoalDomainDefinitions',
   'Task Analysis Templates': 'TaskAnalysisTemplates',
   'Task Analysis': 'TaskAnalysisTemplates',
+  'Schedule & Capacity Configuration': 'ScheduleCapacityConfig',
   'Schedule & Capacity': 'ScheduleCapacityConfig',
   'ABC Dropdown Lists': 'AbcDropdownLists',
+  'Trial Logging Format Config': 'TrialLoggingFormat',
   'Trial Logging Format': 'TrialLoggingFormat',
+  'Staff Scheduling & Capacity': 'DirectorScheduling',
   'Staff Scheduling': 'DirectorScheduling',
   'Operational Management': 'CoordinatorSchedule',
+  'Staff Workload & Therapist Linking': 'WorkloadDashboard',
   'Staff Management & Linking': 'WorkloadDashboard',
   'Room Resource Scheduling': 'RoomResourceScheduling',
   'Goal Mastery Approval': 'GoalMasteryApproval',
+  'Reports & Executive Oversight': 'ReportsOversight',
   'Reports & Oversight': 'ReportsOversight',
   'Report & Oversight': 'ReportsOversight',
   Reports: 'ReportsOversight',
+  'Custom Report Builder': 'ReportBuilder',
   'Report Builder': 'ReportBuilder',
   'Clinical Progress Charts': 'GraphChartView',
   'IUP Creation & Goal Assignment': 'IupGeneration',
   'Enrollment Wizard': 'StudentEnrollmentWizard',
   'Student Enrollment Wizard': 'StudentEnrollmentWizard',
+  'Student Register & Roster List': 'StudentEnrollment',
   'Student Register': 'StudentEnrollment',
   'Registered Student': 'StudentEnrollment',
   'Registered Students': 'StudentEnrollment',
@@ -620,25 +1110,33 @@ export const GLOBAL_ROUTE_BY_TAB: Record<string, string> = {
   'Student Caseload Management': 'StudentCaseload',
   'Student Profile': 'StudentProfile',
   'Student Progress': 'CoordinatorStudentProgress',
+  'Live Session Monitoring': 'LiveSessionMonitoring',
   'Live Sessions': 'LiveSessionMonitoring',
-  'Session Summary': 'SessionSummaryReview',
   'Session Summary Review': 'SessionSummaryReview',
+  'Session Summary': 'SessionSummaryReview',
+  'ABC Behavior Incident Log': 'AbcLog',
   'ABC Log': 'AbcLog',
+  'Session Data Collection': 'SessionDataCollection',
   Session: 'SessionDataCollection',
   'Active Therapy': 'SessionDataCollection',
+  'Daily Session Notes': 'DailyNotes',
   'Daily Notes': 'DailyNotes',
-  Assessments: 'AssessmentDashboard',
   'Assessment Dashboard': 'AssessmentDashboard',
+  Assessments: 'AssessmentDashboard',
   'Assessment Summary Report': 'AssessmentSummaryReport',
+  'Assessment Review & Sign-Off': 'AssessmentReview',
   'Assessment Review': 'AssessmentReview',
   'IUP Library Management': 'IupLibrary',
+  'Goal Bank': 'GoalBankManagement',
   'Clinical Quality Monitoring': 'GoalBankManagement',
-  Parents: 'ParentCommunication',
   'Parent Communication': 'ParentCommunication',
+  'Parent Communication (Messages)': 'ParentCommunication',
+  Parents: 'ParentCommunication',
   Messages: 'ParentCommunication',
+  'Child Progress Tracker': 'ChildProgress',
   Progress: 'ChildProgress',
+  'Home Observation Log': 'HomeObservationLog',
   Observations: 'HomeObservationLog',
-  Notifications: 'Notifications',
 };
 
 export function routeMapForRole(role: Role): Record<string, string> {

@@ -46,6 +46,9 @@ export {
   type AuditEntry,
   ALL_PAGE_MODULES,
   getDefaultMatrixForRole,
+  CATEGORY_ORDER,
+  CATEGORY_METADATA,
+  CATEGORY_FILTER_OPTIONS,
 } from './permissionConfigHelpers';
 
 import {
@@ -65,20 +68,10 @@ import {
   groupPagesByCategory,
   buildSavePayload,
   blankActions,
+  CATEGORY_ORDER,
+  CATEGORY_METADATA,
+  CATEGORY_FILTER_OPTIONS,
 } from './permissionConfigHelpers';
-
-const CATEGORY_FILTER_OPTIONS = [
-  'All Categories',
-  'Executive Oversight',
-  'Intake & Registration',
-  'Goal Management',
-  'Assessments',
-  'Clinical Verification',
-  'Operations & Scheduling',
-  'Clinical Supervision',
-  'Family & Messages',
-  'Administration',
-];
 
 const ADMIN_BADGE_COLORS: Record<
   string,
@@ -741,29 +734,88 @@ export default function PermissionConfigurationScreen({
                   </Text>
                 </View>
               ) : groupedView ? (
-                Object.entries(categorizedPages).map(([categoryName, pages]) => (
-                  <View key={categoryName}>
-                    {/* Category Section Banner */}
-                    <View style={styles.categoryHeaderRow}>
-                      <Feather name="folder" size={14} color="#0369A1" />
-                      <Text style={styles.categoryHeaderText}>{categoryName}</Text>
-                      <View style={styles.categoryBadgePill}>
-                        <Text style={styles.categoryBadgePillText}>{pages.length} pages</Text>
+                Object.entries(categorizedPages).map(([categoryName, pages]) => {
+                  const meta = CATEGORY_METADATA[categoryName];
+                  return (
+                    <View key={categoryName}>
+                      {/* Category Section Banner */}
+                      <View style={styles.categoryHeaderRow}>
+                        <Feather name="folder" size={15} color="#0369A1" style={{ marginTop: 2 }} />
+                        <View style={{ flex: 1 }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Text style={styles.categoryHeaderText}>{categoryName}</Text>
+                            <View style={styles.categoryBadgePill}>
+                              <Text style={styles.categoryBadgePillText}>
+                                {pages.length} {pages.length === 1 ? 'page' : 'pages'}
+                              </Text>
+                            </View>
+                          </View>
+                          {meta?.description && (
+                            <Text style={styles.categoryDescText} numberOfLines={2}>
+                              {meta.description}
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                    </View>
 
-                    {pages.map((page, idx) =>
-                      renderTableRow(
-                        page,
-                        idx,
-                        matrix,
-                        selectedRole.name,
-                        handleCellPress,
-                        toggleRow,
-                      ),
-                    )}
-                  </View>
-                ))
+                      {/* Render Pages */}
+                      {pages.map((page, idx) => {
+                        const prevPage = idx > 0 ? pages[idx - 1] : null;
+                        const showSubHeader =
+                          categoryName === 'Administration & Governance' &&
+                          page.subCategory &&
+                          (!prevPage || prevPage.subCategory !== page.subCategory);
+
+                        const subHeaderTitle =
+                          page.subCategory === 'Institutional Administration'
+                            ? 'Institutional Administration (Clinical & Operational Configuration)'
+                            : 'System Administration (IT, Governance & Security)';
+
+                        const subHeaderDesc =
+                          page.subCategory === 'Institutional Administration'
+                            ? 'Configured by Clinical Directors / Institutional Administrators without code changes'
+                            : 'Restricted to System Administrators for access control and platform compliance';
+
+                        return (
+                          <React.Fragment key={page.id}>
+                            {showSubHeader && (
+                              <View style={styles.subCategoryHeaderRow}>
+                                <Feather
+                                  name={
+                                    page.subCategory === 'Institutional Administration'
+                                      ? 'sliders'
+                                      : 'shield'
+                                  }
+                                  size={13}
+                                  color="#475569"
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.subCategoryHeaderText}>{subHeaderTitle}</Text>
+                                  <Text style={styles.subCategoryDescText}>{subHeaderDesc}</Text>
+                                </View>
+                              </View>
+                            )}
+                            {renderTableRow(
+                              page,
+                              idx,
+                              matrix,
+                              selectedRole.name,
+                              handleCellPress,
+                              toggleRow,
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  );
+                })
               ) : (
                 filteredPages.map((page, idx) =>
                   renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow),
@@ -1056,7 +1108,7 @@ function renderTableRow(
             </View>
           )}
         </View>
-        <Text style={styles.pageDescText} numberOfLines={1}>
+        <Text style={styles.pageDescText} numberOfLines={2}>
           {page.description}
         </Text>
         <Text style={styles.pageRouteMeta}>
@@ -1064,7 +1116,7 @@ function renderTableRow(
           <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }}>
             {page.route}
           </Text>{' '}
-          · {page.category}
+          · {page.subCategory ? page.subCategory : page.category}
         </Text>
       </View>
 
@@ -1418,14 +1470,28 @@ const styles = StyleSheet.create({
   },
   categoryHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
     paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     backgroundColor: '#F0F9FF',
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#BAE6FD',
+  },
+  categoryNumberBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#0284C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  categoryNumberBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   categoryHeaderText: {
     fontSize: 12,
@@ -1444,6 +1510,62 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#0284C7',
+  },
+  srsBadgePill: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+  },
+  srsBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  categoryDescText: {
+    fontSize: 11,
+    color: '#0369A1',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  subCategoryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  subCategoryHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  subCategoryDescText: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  screenBadgePill: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+  },
+  screenBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
   },
   tableRow: {
     flexDirection: 'row',

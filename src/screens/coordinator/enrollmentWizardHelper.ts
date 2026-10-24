@@ -74,7 +74,8 @@ export function validateStep(
   );
 
   const missing = sectionRequiredFields.filter((f) => {
-    const val = customValues[f.id] ?? customValues[f.label];
+    const val =
+      customValues[f.id] ?? customValues[f.label] ?? (form as any)[f.id] ?? (form as any)[f.label];
     return (
       val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)
     );

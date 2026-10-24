@@ -17,9 +17,9 @@ export default function Root({ children }: PropsWithChildren) {
         />
         <meta
           name="description"
-          content="Melue - Comprehensive Clinical & Special Education Therapy Management System"
+          content="Melue Therapy Management System - Comprehensive Clinical & Special Education Therapy Management"
         />
-        <title>Melue - Therapy & Education Platform</title>
+        <title>Melue Therapy Management System</title>
 
         {/* Preload critical icon font to eliminate render-blocking latency */}
         <link

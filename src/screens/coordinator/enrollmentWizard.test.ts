@@ -58,6 +58,7 @@ describe('Student Enrollment Wizard Utilities', () => {
         'Student Info',
         'Parent Info',
         'Medical Info',
+        'Program Placement',
         'Assign Therapist',
         'Review',
       ]);
