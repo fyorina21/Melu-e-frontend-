@@ -11,6 +11,8 @@ import ParentCommunicationScreen from '../screens/parent/ParentCommunicationScre
 import GraphChartViewScreen from '../screens/programdirector/GraphChartViewScreen';
 import GoalMasteryApprovalScreen from '../screens/director/GoalMasteryApprovalScreen';
 import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
+import StudentProfileScreen from '../screens/coordinator/StudentProfileScreen';
+import StudentEditProfileScreen from '../screens/coordinator/StudentEditProfileScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboardScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
@@ -29,6 +31,8 @@ const GuardedGoalMasteryApproval = withModuleGuard(GoalMasteryApprovalScreen, 'i
 const GuardedPdParentCommunication = withModuleGuard(ParentCommunicationScreen, 'parent_portal');
 const GuardedGraphChartView = withModuleGuard(GraphChartViewScreen, 'reports');
 const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
+const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
+const GuardedStudentEditProfile = withModuleGuard(StudentEditProfileScreen, 'students');
 const GuardedAssessmentSummaryReport = withModuleGuard(
   AssessmentSummaryReportScreen,
   'assessments',
@@ -54,6 +58,8 @@ export default function ProgramDirectorStack() {
         <Stack.Screen name="PdParentCommunication" component={GuardedPdParentCommunication} />
         <Stack.Screen name="GraphChartView" component={GuardedGraphChartView} />
         <Stack.Screen name="StudentEnrollment" component={GuardedStudentEnrollment as never} />
+        <Stack.Screen name="StudentProfile" component={GuardedStudentProfile as never} />
+        <Stack.Screen name="StudentEditProfile" component={GuardedStudentEditProfile as never} />
         <Stack.Screen name="StudentEnrollmentWizard" component={GuardedStudentEnrollmentWizard} />
         <Stack.Screen
           name="AssessmentSummaryReport"

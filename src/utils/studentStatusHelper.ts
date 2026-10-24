@@ -63,7 +63,7 @@ export function markStudentActive(id?: string, name?: string): void {
 export function toggleStudentStatus(
   id?: string,
   name?: string,
-  currentStatus?: 'Active' | 'Inactive'
+  currentStatus?: 'Active' | 'Inactive' | string,
 ): 'Active' | 'Inactive' {
   const overrides = getStoredJson<Record<string, 'Active' | 'Inactive'>>(STATUS_OVERRIDES_KEY, {});
   const nextStatus: 'Active' | 'Inactive' = currentStatus === 'Active' ? 'Inactive' : 'Active';
@@ -88,8 +88,7 @@ export function isStudentRegisteredActive(id?: string, name?: string): boolean {
   const nameKey = normalizeKey(name);
 
   return (
-    Boolean(idKey && activeList.includes(idKey)) ||
-    Boolean(nameKey && activeList.includes(nameKey))
+    Boolean(idKey && activeList.includes(idKey)) || Boolean(nameKey && activeList.includes(nameKey))
   );
 }
 
@@ -100,8 +99,15 @@ export function isStudentRegisteredActive(id?: string, name?: string): boolean {
 export function resolveStudentStatus(
   id?: string,
   name?: string,
-  rawStatus?: string | null
-): 'Active' | 'Inactive' {
+  rawStatus?: string | null,
+): 'Active' | 'Inactive' | 'Draft' {
+  if (rawStatus && String(rawStatus).trim().toLowerCase() === 'draft') {
+    return 'Draft';
+  }
+  if (id && String(id).startsWith('draft-')) {
+    return 'Draft';
+  }
+
   const overrides = getStoredJson<Record<string, 'Active' | 'Inactive'>>(STATUS_OVERRIDES_KEY, {});
   const idKey = normalizeKey(id);
   const nameKey = normalizeKey(name);
@@ -116,11 +122,7 @@ export function resolveStudentStatus(
   }
 
   // 3. Known legacy demo inactive student
-  if (
-    idKey === 'stu-4' ||
-    idKey === 'mlu-0015' ||
-    nameKey === 'liam wilson'
-  ) {
+  if (idKey === 'stu-4' || idKey === 'mlu-0015' || nameKey === 'liam wilson') {
     return 'Inactive';
   }
 

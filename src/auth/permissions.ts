@@ -110,6 +110,7 @@ export const SCREEN_TO_MODULE: Record<string, ModuleId> = {
   StudentEnrollmentWizard: 'students',
   StudentEnrollment: 'students',
   StudentProfile: 'students',
+  StudentEditProfile: 'students',
   StudentCaseload: 'students',
 
   // ── Clinical Assessments ──

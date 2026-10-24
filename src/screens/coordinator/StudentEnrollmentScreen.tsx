@@ -17,19 +17,19 @@ import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { getEnrollmentStudents } from '../../api/coordinatorApi';
-import { getStaffOptions } from '../../api/optionsApi';
-import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
+import { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from '../../api/optionsApi';
 import {
   resolveStudentStatus,
   toggleStudentStatus,
   onStudentStatusChanged,
 } from '../../utils/studentStatusHelper';
+import {
+  getEnrollmentDrafts,
+  deleteEnrollmentDraft,
+  onEnrollmentDraftsChanged,
+} from '../../utils/enrollmentDraftHelper';
 import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
-
-const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
-const DIAGNOSES = ['Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
-const AGE_RANGES = ['3-5', '6-8', '9-11', '12+'];
 
 export interface EnrolledStudent {
   id: string;
@@ -37,15 +37,19 @@ export interface EnrolledStudent {
   age: number;
   gender: string;
   program: string;
+  therapyGroup: string;
   therapist: string;
   diagnosis: string;
-  status: 'Active' | 'Inactive';
+  status: 'Active' | 'Inactive' | 'Draft';
   studentId: string;
   photoUrl?: string | null;
+  isDraft?: boolean;
 }
 
 interface EnrollmentStudentRow {
   id: string;
+  studentId?: string;
+  student_id?: string;
   fullName: string;
   age: number;
   programType: string;
@@ -61,87 +65,134 @@ type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollmen
 
 export default function StudentEnrollmentScreen({ navigation }: Props) {
   const [students, setStudents] = useState<EnrolledStudent[]>([]);
-  const [therapistOptions, setTherapistOptions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [programFilter, setProgramFilter] = useState('All');
-  const [therapistFilter, setTherapistFilter] = useState('All');
+  const [therapyGroupFilter, setTherapyGroupFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [diagnosisFilter, setDiagnosisFilter] = useState('All');
-  const [ageFilter, setAgeFilter] = useState('All');
+  const [programOptions, setProgramOptions] = useState<string[]>([]);
+  const [therapyGroupOptions, setTherapyGroupOptions] = useState<string[]>([]);
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
 
-  const fetchTherapists = useCallback(() => {
-    getStaffOptions()
+  // Fetch dynamic Program, Therapy Group, and Status lists from backend API on component mount
+  useEffect(() => {
+    let isMounted = true;
+    getProgramOptions()
       .then(({ data }) => {
-        const clean = filterOutDeletedStaff(data);
-        const therapists = clean.filter((s) => s.role === 'teacher').map((t) => t.name);
-        setTherapistOptions(therapists);
-        setTherapistFilter((prev) => (prev === 'All' || therapists.includes(prev) ? prev : 'All'));
+        if (isMounted && Array.isArray(data)) {
+          setProgramOptions(data);
+        }
       })
-      .catch(() => setTherapistOptions([]));
+      .catch(() => {});
+
+    getTherapyGroupOptions()
+      .then(({ data }) => {
+        if (isMounted && Array.isArray(data)) {
+          setTherapyGroupOptions(data);
+        }
+      })
+      .catch(() => {});
+
+    getStatusOptions()
+      .then(({ data }) => {
+        if (isMounted && Array.isArray(data)) {
+          setStatusOptions(data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  useEffect(() => {
-    fetchTherapists();
-  }, [fetchTherapists]);
-
-  useEffect(() => {
-    return onDeletedStaffChanged(fetchTherapists);
-  }, [fetchTherapists]);
 
   const load = useCallback(async () => {
     try {
       const queryParams: Record<string, string> = {};
       if (search) queryParams.search = search;
       if (programFilter !== 'All') queryParams.program = programFilter;
-      if (therapistFilter !== 'All') queryParams.therapist = therapistFilter;
-      if (diagnosisFilter !== 'All') queryParams.diagnosis = diagnosisFilter;
-      if (ageFilter !== 'All') queryParams.age = ageFilter;
+      if (therapyGroupFilter !== 'All') queryParams.therapy_group = therapyGroupFilter;
+      if (statusFilter !== 'All') queryParams.status = statusFilter;
 
+      // 1. Load active enrollment drafts
+      const drafts = getEnrollmentDrafts();
+      const draftStudents: EnrolledStudent[] = drafts.map((d) => ({
+        id: d.id,
+        name: d.fullName || d.name || 'Untitled Draft',
+        age: d.age || 0,
+        gender: d.gender || '',
+        program: d.program || 'Regular Morning',
+        therapyGroup: d.therapyGroup || 'Basic',
+        therapist: d.therapist || 'Unassigned',
+        diagnosis: d.diagnosis || 'Draft Enrollment',
+        status: 'Draft',
+        studentId: d.id,
+        photoUrl: d.photoUrl || null,
+        isDraft: true,
+      }));
+
+      // 2. Load backend and enrolled students
       const { data } = await getEnrollmentStudents(queryParams);
       if (Array.isArray(data)) {
         registerStudentPhotos(data);
       }
-      setStudents(
-        (data as EnrollmentStudentRow[]).map((row) => ({
-          id: row.id,
-          name: row.fullName,
-          age: row.age,
-          gender: '',
-          program: row.programType,
-          therapist: row.therapist || row.therapyGroup,
-          diagnosis: '',
-          status: resolveStudentStatus(row.id, row.fullName, row.status),
-          studentId: row.id,
-          photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
-        })),
-      );
+      const enrolledRows: EnrolledStudent[] = (data as EnrollmentStudentRow[]).map((row) => ({
+        id: row.id,
+        name: row.fullName,
+        age: row.age,
+        gender: '',
+        program: row.programType,
+        therapyGroup: row.therapyGroup || 'Basic',
+        therapist: row.therapist || row.therapyGroup,
+        diagnosis: '',
+        status: resolveStudentStatus(row.id, row.fullName, row.status),
+        studentId: row.studentId || row.student_id || row.id,
+        photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
+        isDraft: false,
+      }));
+
+      setStudents([...draftStudents, ...enrolledRows]);
     } catch (err) {
-      setStudents([]);
+      const drafts = getEnrollmentDrafts();
+      const draftStudents: EnrolledStudent[] = drafts.map((d) => ({
+        id: d.id,
+        name: d.fullName || d.name || 'Untitled Draft',
+        age: d.age || 0,
+        gender: d.gender || '',
+        program: d.program || 'Regular Morning',
+        therapyGroup: d.therapyGroup || 'Basic',
+        therapist: d.therapist || 'Unassigned',
+        diagnosis: d.diagnosis || 'Draft Enrollment',
+        status: 'Draft',
+        studentId: d.id,
+        photoUrl: d.photoUrl || null,
+        isDraft: true,
+      }));
+      setStudents(draftStudents);
     }
-  }, [search, programFilter, therapistFilter, diagnosisFilter, ageFilter]);
+  }, [search, programFilter, therapyGroupFilter, statusFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    return onStudentStatusChanged(load);
+    const unsubStatus = onStudentStatusChanged(load);
+    const unsubDrafts = onEnrollmentDraftsChanged(load);
+    return () => {
+      unsubStatus();
+      unsubDrafts();
+    };
   }, [load]);
-
-  const matchesAge = (age: number, range: string) => {
-    if (range === 'All') return true;
-    const [min, max] = range.split('-').map(Number);
-    if (range === '12+') return age >= 12;
-    return age >= min && age <= max;
-  };
 
   const filtered = students.filter(
     (s) =>
-      (programFilter === 'All' || s.program === programFilter) &&
-      (therapistFilter === 'All' || s.therapist === therapistFilter) &&
-      (statusFilter === 'All' || s.status === statusFilter) &&
-      (diagnosisFilter === 'All' || s.diagnosis === diagnosisFilter) &&
-      matchesAge(s.age, ageFilter) &&
+      (programFilter === 'All' ||
+        s.program?.toLowerCase().includes(programFilter.toLowerCase()) ||
+        programFilter.toLowerCase().includes(s.program?.toLowerCase())) &&
+      (therapyGroupFilter === 'All' ||
+        s.therapyGroup?.toLowerCase().includes(therapyGroupFilter.toLowerCase()) ||
+        therapyGroupFilter.toLowerCase().includes(s.therapyGroup?.toLowerCase())) &&
+      (statusFilter === 'All' || s.status?.toLowerCase() === statusFilter.toLowerCase()) &&
       (!search ||
         s.name.toLowerCase().includes(search.toLowerCase()) ||
         s.studentId.toLowerCase().includes(search.toLowerCase())),
@@ -196,9 +247,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       <View style={styles.header}>
         <View>
           <Text style={typography.h1}>Student Register</Text>
-          <Text style={typography.caption}>
-            MR-16 — register, search and filter enrolled students
-          </Text>
+          <Text style={typography.caption}>Register, search and filter enrolled students</Text>
         </View>
         <TouchableOpacity
           style={styles.addBtn}
@@ -219,28 +268,21 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         />
         <FilterChips
           label="Program"
-          options={PROGRAMS}
+          options={programOptions}
           value={programFilter}
           onChange={setProgramFilter}
         />
         <FilterChips
-          label="Therapist"
-          options={therapistOptions}
-          value={therapistFilter}
-          onChange={setTherapistFilter}
+          label="Therapy Group"
+          options={therapyGroupOptions}
+          value={therapyGroupFilter}
+          onChange={setTherapyGroupFilter}
         />
         <FilterChips
           label="Status"
-          options={['Active', 'Inactive']}
+          options={statusOptions}
           value={statusFilter}
           onChange={setStatusFilter}
-        />
-        <FilterChips label="Age" options={AGE_RANGES} value={ageFilter} onChange={setAgeFilter} />
-        <FilterChips
-          label="Diagnosis"
-          options={DIAGNOSES}
-          value={diagnosisFilter}
-          onChange={setDiagnosisFilter}
         />
       </View>
 
@@ -249,31 +291,61 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         {filtered.map((s) => (
           <TouchableOpacity
             key={s.id}
-            style={styles.row}
-            onPress={() => navigation?.navigate?.('StudentProfile', { studentId: s.id })}
+            style={[styles.row, s.isDraft && styles.rowDraft]}
+            onPress={() => {
+              navigation?.navigate?.('StudentProfile', { studentId: s.id });
+            }}
           >
             <StudentAvatar name={s.name} studentId={s.id} photoUrl={s.photoUrl} size={40} />
             <View style={{ flex: 1 }}>
-              <Text style={typography.bodyBold}>{s.name}</Text>
+              <View style={styles.nameRow}>
+                <Text style={typography.bodyBold}>{s.name}</Text>
+                {s.isDraft && (
+                  <View style={styles.draftBadge}>
+                    <Text style={styles.draftBadgeText}>Draft</Text>
+                  </View>
+                )}
+              </View>
               <Text style={typography.caption}>
-                {s.studentId} · Age {s.age} · {s.gender}
+                {s.isDraft
+                  ? 'In-progress Enrollment Draft'
+                  : `${s.studentId} · Age ${s.age} · ${s.gender}`}
               </Text>
               <Text style={typography.caption}>
-                {s.program} · {s.therapist} · {s.diagnosis}
+                {s.program} · {s.therapyGroup} · {s.status}
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={(e) => {
-                e?.stopPropagation?.();
-                toggleStudentStatus(s.id, s.name, s.status);
-              }}
-              activeOpacity={0.7}
-            >
-              <StatusPill
-                status={s.status === 'Active' ? 'approved' : 'revision'}
-                label={s.status}
-              />
-            </TouchableOpacity>
+            {s.isDraft ? (
+              <View style={styles.draftActionGroup}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    deleteEnrollmentDraft(s.id);
+                    load();
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Discard Draft"
+                  style={styles.trashBtn}
+                >
+                  <Feather name="trash-2" size={16} color={colors.mutedText} />
+                </TouchableOpacity>
+                <StatusPill status="draft" label="Draft" />
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  toggleStudentStatus(s.id, s.name, s.status);
+                }}
+                activeOpacity={0.7}
+              >
+                <StatusPill
+                  status={s.status === 'Active' ? 'approved' : 'revision'}
+                  label={s.status}
+                />
+              </TouchableOpacity>
+            )}
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         ))}
@@ -377,4 +449,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  rowDraft: {
+    borderColor: '#F59E0B',
+    borderLeftWidth: 4,
+    backgroundColor: '#FFFDF5',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  draftBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  draftBadgeText: {
+    color: '#B45309',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  draftActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  trashBtn: {
+    padding: spacing.xs,
+    borderRadius: radius.sm,
+  },
 });

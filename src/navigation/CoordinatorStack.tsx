@@ -9,6 +9,7 @@ import CoordinatorScheduleScreen from '../screens/coordinator/CoordinatorSchedul
 import CoordinatorParentCommunicationScreen from '../screens/coordinator/CoordinatorParentCommunicationScreen';
 import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
 import StudentProfileScreen from '../screens/coordinator/StudentProfileScreen';
+import StudentEditProfileScreen from '../screens/coordinator/StudentEditProfileScreen';
 import WorkloadDashboardScreen from '../screens/coordinator/WorkloadDashboardScreen';
 import RoomResourceSchedulingScreen from '../screens/coordinator/RoomResourceSchedulingScreen';
 import CoordinatorNotificationsScreen from '../screens/notifications/CoordinatorNotificationsScreen';
@@ -35,6 +36,7 @@ const GuardedCoordinatorParentCommunication = withModuleGuard(
 );
 const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
 const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
+const GuardedStudentEditProfile = withModuleGuard(StudentEditProfileScreen, 'students');
 const GuardedWorkloadDashboard = withModuleGuard(WorkloadDashboardScreen, 'staff');
 const GuardedRoomResourceScheduling = withModuleGuard(RoomResourceSchedulingScreen, 'staff');
 const GuardedIupGeneration = withModuleGuard(IupGenerationScreen, 'iups');
@@ -67,6 +69,7 @@ export default function CoordinatorStack() {
         />
         <Stack.Screen name="StudentEnrollment" component={GuardedStudentEnrollment} />
         <Stack.Screen name="StudentProfile" component={GuardedStudentProfile} />
+        <Stack.Screen name="StudentEditProfile" component={GuardedStudentEditProfile as never} />
         <Stack.Screen name="WorkloadDashboard" component={GuardedWorkloadDashboard} />
         <Stack.Screen name="RoomResourceScheduling" component={GuardedRoomResourceScheduling} />
         <Stack.Screen name="IupGeneration" component={GuardedIupGeneration} />

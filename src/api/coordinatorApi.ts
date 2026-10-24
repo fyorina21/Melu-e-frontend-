@@ -3,6 +3,8 @@ import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
+import { getEnrollmentDraft } from '../utils/enrollmentDraftHelper';
+export { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from './optionsApi';
 
 // ============================================================================
 // Storage Keys
@@ -1249,6 +1251,8 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
       optionsPool.forEach((o) => {
         pool.push({
           id: String(o.id),
+          studentId: o.studentId || o.student_id,
+          student_id: o.student_id || o.studentId,
           fullName: o.name,
           name: o.name,
           age: o.age || 6,
@@ -1263,24 +1267,40 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     }
   }
 
-  const normalized = pool.map((s, idx) => ({
-    id: String(s.id || `std-${idx + 1}`),
-    fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
-    name: String(s.fullName || s.name || `Student ${idx + 1}`),
-    age: Number(s.age || 6),
-    programType: String(s.programType || s.program || 'Comprehensive ABA'),
-    therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
-    therapist: String(s.therapist || 'Abeba Tadesse'),
-    status: s.status === 'inactive' ? 'inactive' : 'active',
-    headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
-  }));
+  const currentYearSuffix = String(new Date().getFullYear()).slice(-2);
+  const normalized = pool.map((s, idx) => {
+    const rawSid = s.studentId || s.student_id;
+    const fallbackSid = String(s.id).startsWith('MEL-')
+      ? String(s.id)
+      : `MEL-${String(idx + 1).padStart(4, '0')}-${currentYearSuffix}`;
+    const sid = String(rawSid || fallbackSid);
+    return {
+      id: String(s.id || sid),
+      studentId: sid,
+      student_id: sid,
+      fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
+      name: String(s.fullName || s.name || `Student ${idx + 1}`),
+      age: Number(s.age || 6),
+      programType: String(s.programType || s.program || 'Comprehensive ABA'),
+      therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
+      therapist: String(s.therapist || 'Abeba Tadesse'),
+      status: s.status === 'inactive' ? 'inactive' : 'active',
+      headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
+    };
+  });
 
   return { data: normalized };
 };
 
 export const createStudentEnrollment = async (payload: Payload): Promise<{ data: any }> => {
+  const currentYearSuffix = String(new Date().getFullYear()).slice(-2);
+  const seq = String(Math.floor(1 + Math.random() * 9999)).padStart(4, '0');
+  const generatedStudentId = `MEL-${seq}-${currentYearSuffix}`;
+
   const newStudent = {
-    id: `stu-${Date.now()}`,
+    id: generatedStudentId,
+    studentId: generatedStudentId,
+    student_id: generatedStudentId,
     fullName: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
     name: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
     age: Number(payload.age || 6),
@@ -1291,29 +1311,204 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     ...payload,
   };
 
-  saveEnrolledStudentLocally(newStudent);
-
   try {
     const res = await client.post('/coordinator/students', payload);
-    if (res?.data) return res;
-  } catch {}
-
-  return { data: newStudent };
-};
-
-export const getStudentProfile = async (studentId: string): Promise<{ data: any }> => {
-  try {
-    const res = await client.get(`/coordinator/students/${studentId}/profile`);
-    if (res?.data && res.data.fullName) {
+    if (res?.data) {
+      saveEnrolledStudentLocally(res.data);
       return res;
     }
   } catch {}
 
+  saveEnrolledStudentLocally(newStudent);
+  return { data: newStudent };
+};
+
+export const getStudentProfile = async (studentId: string): Promise<{ data: any }> => {
+  const draft = getEnrollmentDraft(studentId);
+  if (draft) {
+    const fullName =
+      (draft.fullName && draft.fullName !== 'Untitled Draft' ? draft.fullName : '') ||
+      (draft.name && draft.name !== 'Untitled Draft' ? draft.name : '') ||
+      (draft.formValues?.enr_first_name
+        ? `${draft.formValues.enr_first_name} ${draft.formValues.enr_last_name || ''}`.trim()
+        : '') ||
+      (draft.formValues?.first_name
+        ? `${draft.formValues.first_name} ${draft.formValues.last_name || ''}`.trim()
+        : '') ||
+      (draft.formValues?.f1 ? String(draft.formValues.f1).trim() : '') ||
+      draft.fullName ||
+      'Untitled Draft';
+    const firstName =
+      draft.firstName ||
+      draft.formValues?.enr_first_name ||
+      draft.formValues?.childFirstName ||
+      draft.formValues?.child_first_name ||
+      draft.formValues?.firstName ||
+      draft.formValues?.first_name ||
+      fullName.split(' ')[0] ||
+      'Draft';
+    const lastName =
+      draft.lastName ||
+      draft.formValues?.enr_last_name ||
+      draft.formValues?.childLastName ||
+      draft.formValues?.child_last_name ||
+      draft.formValues?.lastName ||
+      draft.formValues?.last_name ||
+      fullName.split(' ').slice(1).join(' ') ||
+      '';
+    const middleName =
+      draft.middleName ||
+      draft.formValues?.enr_middle_name ||
+      draft.formValues?.childMiddleName ||
+      draft.formValues?.child_middle_name ||
+      draft.formValues?.middleName ||
+      draft.formValues?.middle_name ||
+      '';
+    return {
+      data: {
+        id: draft.id,
+        fullName,
+        firstName,
+        lastName,
+        middleName,
+        dateOfBirth:
+          draft.formValues?.enr_dob ||
+          draft.formValues?.f2 ||
+          draft.formValues?.date_of_birth ||
+          '—',
+        age: draft.age || 0,
+        programType:
+          draft.program ||
+          draft.formValues?.enr_program_type ||
+          draft.formValues?.f_program ||
+          'Regular Morning',
+        therapyGroup:
+          draft.therapyGroup ||
+          draft.formValues?.enr_therapy_group ||
+          draft.formValues?.f_therapy ||
+          'Basic',
+        status: 'Draft',
+        headshotUrl: draft.photoUrl || null,
+        photoUrl: draft.photoUrl || null,
+        photo: draft.photoUrl || null,
+        currentFocusStudentGoalId: null,
+        goals: [],
+        customFields: draft.formValues || {},
+        formValues: draft.formValues || {},
+        gender: draft.gender || draft.formValues?.f_gender || 'Female',
+        guardianName:
+          draft.formValues?.f4 ||
+          draft.formValues?.guardian_name ||
+          draft.formValues?.parentName ||
+          'Guardian',
+        guardianPhone:
+          draft.formValues?.f5 ||
+          draft.formValues?.guardian_phone ||
+          draft.formValues?.parentPhone ||
+          '',
+        guardianEmail:
+          draft.formValues?.f6 ||
+          draft.formValues?.guardian_email ||
+          draft.formValues?.parentEmail ||
+          '',
+        emergencyContact:
+          draft.formValues?.f9 ||
+          draft.formValues?.emergency_contact ||
+          draft.formValues?.emergencyContact ||
+          '',
+        diagnosis: draft.diagnosis || draft.formValues?.f_diagnosis || 'Autism Spectrum Disorder',
+        medicalNotes: draft.formValues?.f7 || draft.formValues?.medicalNotes || '',
+        transportation: draft.formValues?.f8 || draft.formValues?.transportation || 'No',
+        therapist:
+          draft.therapist ||
+          draft.formValues?.f_therapist ||
+          draft.formValues?.assignedTherapist ||
+          'Unassigned',
+        isDraft: true,
+      },
+    };
+  }
+
+  try {
+    const res = await client.get(`/coordinator/students/${studentId}/profile`);
+    if (res?.data && (res.data.fullName || res.data.name)) {
+      const sid =
+        res.data.studentId ||
+        res.data.student_id ||
+        (String(res.data.id).startsWith('MEL-') ? res.data.id : '') ||
+        studentId;
+      return {
+        data: {
+          ...res.data,
+          studentId: sid,
+          student_id: sid,
+          fullName: res.data.fullName || res.data.name || 'Student Profile',
+          goals: Array.isArray(res.data.goals) ? res.data.goals : [],
+          customFields: res.data.customFields || res.data.custom_fields || {},
+        },
+      };
+    }
+  } catch {}
+
+  // Check stored enrolled students cache
+  const storedEnrolled = getStoredEnrolledStudents();
+  const storedMatch = storedEnrolled.find(
+    (s) =>
+      s.id === studentId ||
+      s.studentId === studentId ||
+      s.student_id === studentId ||
+      s.name?.toLowerCase() === studentId.toLowerCase() ||
+      s.fullName?.toLowerCase() === studentId.toLowerCase(),
+  );
+  if (storedMatch) {
+    const sid =
+      storedMatch.studentId ||
+      storedMatch.student_id ||
+      (String(storedMatch.id).startsWith('MEL-') ? storedMatch.id : '') ||
+      studentId;
+    return {
+      data: {
+        id: storedMatch.id || studentId,
+        studentId: sid,
+        student_id: sid,
+        fullName: storedMatch.fullName || storedMatch.name || 'Student Profile',
+        firstName: (storedMatch.fullName || storedMatch.name || 'Student').split(' ')[0],
+        lastName: (storedMatch.fullName || storedMatch.name || '').split(' ').slice(1).join(' '),
+        dateOfBirth: storedMatch.dateOfBirth || storedMatch.date_of_birth || '2020-01-01',
+        age: storedMatch.age || 6,
+        programType: storedMatch.programType || storedMatch.program || 'Regular Morning',
+        therapyGroup: storedMatch.therapyGroup || 'Basic',
+        status: storedMatch.status || 'active',
+        headshotUrl: storedMatch.headshotUrl || storedMatch.photoUrl || null,
+        photoUrl: storedMatch.photoUrl || storedMatch.headshotUrl || null,
+        photo: storedMatch.photo || storedMatch.photoUrl || null,
+        currentFocusStudentGoalId: 'g-1',
+        goals: Array.isArray(storedMatch.goals)
+          ? storedMatch.goals
+          : [
+              {
+                id: 'g-1',
+                name: 'Receptive Identification of Common Objects',
+                status: 'In Progress',
+                progressPercent: 85,
+              },
+              {
+                id: 'g-2',
+                name: 'Independent Manding with Vocal Approximation',
+                status: 'In Progress',
+                progressPercent: 70,
+              },
+            ],
+        customFields: storedMatch.customFields || storedMatch.custom_fields || {},
+      },
+    };
+  }
+
   // Resilient fallback profile
   let fullName = 'Student Profile';
   let age = 6;
-  let program = 'Comprehensive ABA';
-  let therapyGroup = 'Station 1 · Early Learners';
+  let program = 'Regular Morning';
+  let therapyGroup = 'Basic';
 
   const defaultMatch = DEFAULT_COORDINATOR_STUDENTS.find(
     (s) =>

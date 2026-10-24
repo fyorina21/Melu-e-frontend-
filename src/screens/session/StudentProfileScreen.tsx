@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
@@ -8,12 +7,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
-import StatusPill, { StatusType } from '../../components/StatusPill';
+import StatusPill, { type StatusType } from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherStudentProfile, getSkillsAssessment } from '../../api/teacherExtrasApi';
+import { getStudentProfile } from '../../api/coordinatorApi';
 import { DEFAULT_ABLLS_DOMAINS, SCORE_LABEL } from '../assessments/abllsConfigHelper';
 import type { SessionStackParamList } from '../../types';
 
@@ -64,7 +64,8 @@ const STATUS_FOR_GOAL: Record<string, StatusType> = {
 };
 
 function toProfile(row: any): TeacherStudentProfile {
-  const fullName = row.fullName || `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Student';
+  const fullName =
+    row.fullName || `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Student';
   const photo = row.photoUrl || row.headshotUrl || row.photo || null;
   if (row.id || fullName) {
     saveStudentPhoto({ id: row.id, name: fullName, photo });
@@ -96,10 +97,10 @@ function toProfile(row: any): TeacherStudentProfile {
 const SECTION_ICON: Record<string, React.ComponentProps<typeof Feather>['name']> = {
   'Personal Info': 'user',
   'Program & Clinical': 'activity',
-  'Goals': 'target',
+  Goals: 'target',
   'Parent / Guardian': 'users',
   'Block Summary': 'bar-chart-2',
-  'Notes': 'file-text',
+  Notes: 'file-text',
 };
 
 interface SavedSkillsAssessment {
@@ -122,7 +123,17 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       setProfile(res ? toProfile(res as StudentProfileResponse) : null);
       setLoadError(false);
     } catch (err) {
-      setLoadError(true);
+      try {
+        const { data: fallbackRes } = await getStudentProfile(studentId);
+        if (fallbackRes) {
+          setProfile(toProfile(fallbackRes));
+          setLoadError(false);
+        } else {
+          setLoadError(true);
+        }
+      } catch {
+        setLoadError(true);
+      }
     }
     try {
       const { data: saved } = await getSkillsAssessment(studentId);
@@ -133,8 +144,14 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       };
       const scores = (savedData.scores ?? (saved as any)?.scores ?? {}) as Record<string, any>;
       const notes = (savedData.notes ?? (saved as any)?.notes ?? {}) as Record<string, string>;
-      const customFields = (savedData.customFields ?? (saved as any)?.customFields ?? {}) as Record<string, any>;
-      const hasData = Object.keys(scores).length > 0 || Object.keys(notes).length > 0 || Object.keys(customFields).length > 0;
+      const customFields = (savedData.customFields ?? (saved as any)?.customFields ?? {}) as Record<
+        string,
+        any
+      >;
+      const hasData =
+        Object.keys(scores).length > 0 ||
+        Object.keys(notes).length > 0 ||
+        Object.keys(customFields).length > 0;
       if (hasData) {
         setSkills({ status: (saved?.status as string) || '', scores, notes, customFields });
       } else {
@@ -168,12 +185,13 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Session"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-      />
+      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation?.goBack?.()} style={styles.backBtn} accessibilityLabel="Go back">
+        <TouchableOpacity
+          onPress={() => navigation?.goBack?.()}
+          style={styles.backBtn}
+          accessibilityLabel="Go back"
+        >
           <Feather name="arrow-left" size={18} color={colors.navyText} />
         </TouchableOpacity>
         <View style={styles.identity}>
@@ -206,7 +224,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         {renderSection('Goals')}
         <View style={styles.card}>
           {profile.goals.length === 0 && (
-            <Text style={[typography.body, { color: colors.mutedText }]}>No goals assigned yet.</Text>
+            <Text style={[typography.body, { color: colors.mutedText }]}>
+              No goals assigned yet.
+            </Text>
           )}
           {profile.goals.map((g) => (
             <View key={g.id} style={styles.goalRow}>
@@ -222,15 +242,20 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         {renderSection('Skills Assessment (ABLLS)')}
         <View style={styles.card}>
           {!skills ? (
-            <Text style={[typography.body, { color: colors.mutedText }]}>No skills assessment saved yet.</Text>
+            <Text style={[typography.body, { color: colors.mutedText }]}>
+              No skills assessment saved yet.
+            </Text>
           ) : (
             <>
               <View style={styles.assessHeader}>
                 <Text style={styles.assessStatus}>
-                  {skills.status === 'completed' || skills.status === 'submitted' ? 'Completed' : 'In Progress'}
+                  {skills.status === 'completed' || skills.status === 'submitted'
+                    ? 'Completed'
+                    : 'In Progress'}
                 </Text>
                 <Text style={styles.assessAnswered}>
-                  {Object.keys(skills.scores).length} of {DEFAULT_ABLLS_DOMAINS.reduce((sum, d) => sum + d.items.length, 0)} items scored
+                  {Object.keys(skills.scores).length} of{' '}
+                  {DEFAULT_ABLLS_DOMAINS.reduce((sum, d) => sum + d.items.length, 0)} items scored
                 </Text>
               </View>
 
@@ -243,10 +268,13 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                       <Text style={typography.bodyBold}>{d.name}</Text>
                       {scored.map((i) => {
                         const raw = skills.scores[i.id];
-                        const value = (SCORE_LABEL as Record<string, string>)[String(raw)] ?? String(raw);
+                        const value =
+                          (SCORE_LABEL as Record<string, string>)[String(raw)] ?? String(raw);
                         return (
                           <View key={i.id} style={styles.assessRow}>
-                            <Text style={styles.assessItem}>{i.id} · {i.description}</Text>
+                            <Text style={styles.assessItem}>
+                              {i.id} · {i.description}
+                            </Text>
                             <Text style={styles.assessScore}>{value}</Text>
                           </View>
                         );
@@ -262,7 +290,8 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                     .filter(([, v]) => v && String(v).trim())
                     .map(([k, v]) => (
                       <Text key={k} style={styles.assessNote}>
-                        <Text style={styles.assessNoteLabel}>{k}: </Text>{String(v)}
+                        <Text style={styles.assessNoteLabel}>{k}: </Text>
+                        {String(v)}
                       </Text>
                     ))}
                 </View>
@@ -298,7 +327,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         </View>
 
         {renderSection('Notes')}
-        <Text style={[typography.body, { color: colors.mutedText }]}>{profile.notes || 'No notes on file.'}</Text>
+        <Text style={[typography.body, { color: colors.mutedText }]}>
+          {profile.notes || 'No notes on file.'}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -315,27 +346,90 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  backBtn: { width: 36, height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   identity: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.promptG, alignItems: 'center', justifyContent: 'center' },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.promptG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: { color: colors.white, fontWeight: '700', fontSize: 18 },
   content: { padding: spacing.lg, gap: spacing.sm },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
   infoLabel: { color: colors.mutedText, fontSize: 13 },
-  infoValue: { color: colors.navyText, fontWeight: '600', fontSize: 13, maxWidth: '60%', textAlign: 'right' },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.md },
-  goalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  infoValue: {
+    color: colors.navyText,
+    fontWeight: '600',
+    fontSize: 13,
+    maxWidth: '60%',
+    textAlign: 'right',
+  },
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  goalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
   goalRowText: { flex: 1, gap: 2 },
   statsRow: { flexDirection: 'row', gap: spacing.md },
-  statCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, alignItems: 'center', gap: 2 },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    alignItems: 'center',
+    gap: 2,
+  },
   statValue: { fontSize: 22, fontWeight: '700', color: colors.navyText },
   statLabel: { fontSize: 11, color: colors.mutedText },
-  assessHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
+  assessHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   assessStatus: { color: colors.statusApprovedText, fontWeight: '700', fontSize: 12 },
   assessAnswered: { color: colors.mutedText, fontSize: 12 },
-  assessDomain: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  assessRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md, paddingVertical: 2 },
+  assessDomain: {
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  assessRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: 2,
+  },
   assessItem: { flex: 1, color: colors.bodyText, fontSize: 13 },
   assessScore: { color: colors.navyText, fontWeight: '700', fontSize: 13 },
   assessNote: { color: colors.bodyText, fontSize: 13 },

@@ -14,21 +14,22 @@ const PLACEHOLDER_HOST = 'REPLACE_WITH_REAL_API_HOST';
 const DEFAULT_API_URL = 'http://localhost:3000';
 
 const getFallbackApiUrl = (): string => {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  // In production web (non-localhost), dynamically use origin or production API URL
-  if (
-    typeof window !== 'undefined' &&
-    window.location?.origin &&
-    !window.location.hostname.includes('localhost') &&
-    !window.location.hostname.includes('127.0.0.1')
-  ) {
-    if (window.location.hostname.endsWith('melue.foundation')) {
+  // In web environment, match the hostname to avoid cross-device or stale IP mismatches
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname;
+    if (host.endsWith('melue.foundation')) {
       return 'https://api.melue.foundation';
     }
-    return window.location.origin;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:3000';
+    }
+    return `http://${host}:3000`;
   }
+
+  if (process.env.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_URL.includes('192.168.1.7')) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
   return DEFAULT_API_URL;
 };
 

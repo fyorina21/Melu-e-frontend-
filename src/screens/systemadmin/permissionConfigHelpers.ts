@@ -165,7 +165,7 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
   },
   {
     id: 'coord_student_registration',
-    name: 'Student Register & Roster List',
+    name: 'Student Roster & Student Profiles',
     role: 'Therapy Coordinator',
     roleKey: 'coordinator',
     category: 'Student Intake & Enrollment',
@@ -174,7 +174,7 @@ export const ALL_PAGE_MODULES: AppPageModule[] = [
     backendResource: 'students',
     subResource: 'enrollments',
     description:
-      'Student register, roster search, cohort filtering (Regular/Pulled Out, Basic/Functional Living), and enrollment status management.',
+      'Student register, roster search, viewing student profiles and draft records from the list, cohort filtering (Regular Morning, Regular Afternoon, Pulled Out; Basic, Functional Living), and enrollment status management.',
   },
 
   // =========================================================================
