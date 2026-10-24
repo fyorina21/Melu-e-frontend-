@@ -22,9 +22,11 @@ export type SessionStackParamList = {
   TeacherParentCommunication: undefined;
   ParentCommunication: undefined;
   Notifications: undefined;
-  StudentProfile: { studentId: string };
+
   StudentEnrollmentWizard: undefined;
   StudentEnrollment?: undefined;
+  StudentProfile: { studentId: string };
+
   IupGeneration: { studentId?: string } | undefined;
   GoalMasteryApproval?: undefined;
   ChildProgress?: undefined;
@@ -58,6 +60,10 @@ export type DirectorStackParamList = {
   ReportsOversight: undefined;
   DirectorStudentProgress: { studentId?: string } | undefined;
   ReportBuilder: undefined;
+  StudentEnrollment?: undefined;
+  StudentProfile?: { studentId?: string } | undefined;
+
+
   AssessmentSummaryReport?: { studentId?: string } | undefined;
 };
 
@@ -72,6 +78,8 @@ export type ProgramDirectorStackParamList = {
   PdParentCommunication: undefined;
   GraphChartView: { studentId?: string; goalIds?: string[] } | undefined;
   StudentEnrollment?: undefined;
+  StudentProfile?: { studentId?: string } | undefined;
+
   StudentEnrollmentWizard: undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
   AssessmentDashboard: undefined;
