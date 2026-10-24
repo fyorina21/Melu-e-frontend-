@@ -36,6 +36,11 @@ function isWebLocalStorageAvailable(): boolean {
   }
 }
 
+export function toSecureKey(key: string): string {
+  const sanitized = (key || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return sanitized || 'melue_default_key';
+}
+
 class UnifiedStorage implements KeyValueStorage {
   private get hasLocalStorage(): boolean {
     return isWebLocalStorageAvailable();
@@ -46,7 +51,11 @@ class UnifiedStorage implements KeyValueStorage {
   async getItem(key: string): Promise<string | null> {
     if (this.hasLocalStorage) {
       try {
-        return localStorage.getItem(key);
+        const val = localStorage.getItem(key);
+        if (val !== null) {
+          memoryStore.set(key, val);
+          return val;
+        }
       } catch {
         return memoryStore.get(key) ?? null;
       }
@@ -54,7 +63,12 @@ class UnifiedStorage implements KeyValueStorage {
 
     if (Platform.OS !== 'web') {
       try {
-        return await SecureStore.getItemAsync(key);
+        const val = await SecureStore.getItemAsync(toSecureKey(key));
+        if (val !== null) {
+          memoryStore.set(key, val);
+          return val;
+        }
+        return memoryStore.get(key) ?? null;
       } catch {
         return memoryStore.get(key) ?? null;
       }
@@ -77,7 +91,7 @@ class UnifiedStorage implements KeyValueStorage {
 
     if (Platform.OS !== 'web') {
       try {
-        await SecureStore.setItemAsync(key, value);
+        await SecureStore.setItemAsync(toSecureKey(key), value);
       } catch {
         // secure store unavailable
       }
@@ -96,7 +110,7 @@ class UnifiedStorage implements KeyValueStorage {
 
     if (Platform.OS !== 'web') {
       try {
-        await SecureStore.deleteItemAsync(key);
+        await SecureStore.deleteItemAsync(toSecureKey(key));
       } catch {}
     }
   }
@@ -107,7 +121,10 @@ class UnifiedStorage implements KeyValueStorage {
     if (this.hasLocalStorage) {
       try {
         const val = localStorage.getItem(key);
-        if (val !== null) return val;
+        if (val !== null) {
+          memoryStore.set(key, val);
+          return val;
+        }
       } catch {}
     }
     return memoryStore.get(key) ?? null;
@@ -119,6 +136,10 @@ class UnifiedStorage implements KeyValueStorage {
       try {
         localStorage.setItem(key, value);
       } catch {}
+    } else if (Platform.OS !== 'web') {
+      try {
+        SecureStore.setItemAsync(toSecureKey(key), value).catch(() => {});
+      } catch {}
     }
   }
 
@@ -127,6 +148,10 @@ class UnifiedStorage implements KeyValueStorage {
     if (this.hasLocalStorage) {
       try {
         localStorage.removeItem(key);
+      } catch {}
+    } else if (Platform.OS !== 'web') {
+      try {
+        SecureStore.deleteItemAsync(toSecureKey(key)).catch(() => {});
       } catch {}
     }
   }

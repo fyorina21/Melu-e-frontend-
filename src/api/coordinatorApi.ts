@@ -162,8 +162,31 @@ function getStoredEnrolledStudents(): any[] {
 function saveEnrolledStudentLocally(student: any): void {
   try {
     const list = getStoredEnrolledStudents();
-    list.unshift(student);
-    storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
+    const cleanName = (student.fullName || student.name || '').toLowerCase().trim();
+    const exists = list.some(
+      (s) =>
+        (s.id && student.id && String(s.id) === String(student.id)) ||
+        (cleanName && (s.fullName || s.name || '').toLowerCase().trim() === cleanName),
+    );
+    if (!exists) {
+      list.unshift(student);
+      storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
+    }
+  } catch {}
+}
+
+function removeStoredEnrolledStudentByName(name: string): void {
+  try {
+    if (!name) return;
+    const cleanName = name.toLowerCase().trim();
+    const list = getStoredEnrolledStudents();
+    const filtered = list.filter((s) => {
+      const sName = (s.fullName || s.name || '').toLowerCase().trim();
+      return sName !== cleanName;
+    });
+    if (filtered.length !== list.length) {
+      storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, filtered);
+    }
   } catch {}
 }
 
@@ -1237,13 +1260,33 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
 
   const storedEnrolled = getStoredEnrolledStudents();
 
+  // Deduplicate between backendStudents and storedEnrolled.
+  // Real backend records take precedence, removing any local duplicates.
+  const backendNames = new Set(
+    backendStudents.map((b) => (b.fullName || b.name || '').toLowerCase().trim()).filter(Boolean),
+  );
+  const backendIds = new Set(backendStudents.map((b) => String(b.id || '')).filter(Boolean));
+
+  const cleanStored = storedEnrolled.filter((s) => {
+    const idMatch = s.id && backendIds.has(String(s.id));
+    const nameMatch =
+      (s.fullName || s.name) && backendNames.has((s.fullName || s.name).toLowerCase().trim());
+    return !idMatch && !nameMatch;
+  });
+
+  if (cleanStored.length !== storedEnrolled.length) {
+    try {
+      storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, cleanStored);
+    } catch {}
+  }
+
   let optionsPool: any[] = [];
   try {
     const { data: opts } = await client.get<any[]>('/options/students');
     if (Array.isArray(opts) && opts.length > 0) optionsPool = opts;
   } catch {}
 
-  const pool = [...storedEnrolled, ...backendStudents];
+  const pool = [...backendStudents, ...cleanStored];
   if (pool.length === 0) {
     if (optionsPool.length > 0) {
       optionsPool.forEach((o) => {
@@ -1270,7 +1313,15 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     age: Number(s.age || 6),
     programType: String(s.programType || s.program || 'Comprehensive ABA'),
     therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
-    therapist: String(s.therapist || 'Abeba Tadesse'),
+    therapist: String(
+      s.therapist ||
+        s.assignedTherapist ||
+        s.assigned_therapist ||
+        s.therapistName ||
+        s.teacher ||
+        s.teacherName ||
+        'Abeba Tadesse',
+    ),
     status: s.status === 'inactive' ? 'inactive' : 'active',
     headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
   }));
@@ -1279,6 +1330,15 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
 };
 
 export const createStudentEnrollment = async (payload: Payload): Promise<{ data: any }> => {
+  const chosenTherapist =
+    payload.therapist ||
+    payload.assignedTherapist ||
+    payload.assigned_therapist ||
+    payload.therapistName ||
+    payload.teacher ||
+    payload.teacherName ||
+    '';
+
   const newStudent = {
     id: `stu-${Date.now()}`,
     fullName: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
@@ -1286,17 +1346,26 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     age: Number(payload.age || 6),
     programType: payload.program || payload.programType || 'Comprehensive ABA',
     therapyGroup: payload.therapyGroup || 'Station 1 · Early Learners',
-    therapist: payload.therapist || 'Abeba Tadesse',
+    therapist: chosenTherapist || 'Abeba Tadesse',
     status: 'active',
     ...payload,
+    ...(chosenTherapist ? { therapist: chosenTherapist, assignedTherapist: chosenTherapist } : {}),
   };
 
-  saveEnrolledStudentLocally(newStudent);
-
   try {
-    const res = await client.post('/coordinator/students', payload);
-    if (res?.data) return res;
+    const res = await client.post('/coordinator/students', {
+      ...payload,
+      ...(chosenTherapist
+        ? { therapist: chosenTherapist, assignedTherapist: chosenTherapist }
+        : {}),
+    });
+    if (res?.data) {
+      removeStoredEnrolledStudentByName(newStudent.fullName);
+      return res;
+    }
   } catch {}
+
+  saveEnrolledStudentLocally(newStudent);
 
   return { data: newStudent };
 };

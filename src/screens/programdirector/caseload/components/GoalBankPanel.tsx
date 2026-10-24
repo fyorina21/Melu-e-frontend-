@@ -12,34 +12,16 @@ interface GoalBankPanelProps {
   domainFilter: string;
   onSearchChange: (text: string) => void;
   onDomainFilterChange: (domain: string) => void;
-  onAddNewGoal: () => void;
+  onAddNewGoal?: () => void;
   onAssignGoal: (goal: Goal) => void;
 }
 
 export const GoalBankPanel: React.FC<GoalBankPanelProps> = React.memo(
-  ({
-    goals,
-    searchTerm,
-    domainFilter,
-    onSearchChange,
-    onDomainFilterChange,
-    onAddNewGoal,
-    onAssignGoal,
-  }) => {
+  ({ goals, searchTerm, domainFilter, onSearchChange, onDomainFilterChange, onAssignGoal }) => {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={typography.h3}>Goal Bank</Text>
-          <TouchableOpacity
-            style={styles.addGoalBtn}
-            onPress={onAddNewGoal}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Add new goal to bank"
-          >
-            <Feather name="plus" size={14} color={colors.navyText} />
-            <Text style={styles.addGoalBtnText}>Add New Goal to Bank</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.searchBlock}>
@@ -79,7 +61,11 @@ export const GoalBankPanel: React.FC<GoalBankPanelProps> = React.memo(
         <ScrollView contentContainerStyle={styles.goalList} showsVerticalScrollIndicator={false}>
           {goals.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.noResults}>No goals match your search.</Text>
+              <Text style={styles.noResults}>
+                {searchTerm
+                  ? 'No goals match your search.'
+                  : 'No goals assigned from IUP Generation for this student yet.'}
+              </Text>
             </View>
           ) : (
             goals.map((goal) => <GoalCard key={goal.id} goal={goal} onAssign={onAssignGoal} />)

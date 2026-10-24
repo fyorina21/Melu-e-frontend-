@@ -361,8 +361,8 @@ export const ROLE_TABS: Record<Role, string[]> = {
     'Assessment Review & Sign-Off',
     'Assessment Summary Report',
     'Student Caseload Management',
-    'Goal Bank',
-    'Reports & Executive Oversight',
+    'Clinical Quality Monitoring',
+    'Parent Communication',
   ],
   institutional_admin: [
     'Schedule & Capacity Configuration',

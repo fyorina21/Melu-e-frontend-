@@ -9,16 +9,23 @@ import {
 } from '../stores/goalBankStore';
 import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
+import {
+  getRegisteredStudentStatus,
+  getStudentAssessmentSubmission,
+  getStudentSkillsProgress,
+  getStudentBehaviorProgress,
+  isStudentAssessmentSubmitted,
+} from '../utils/studentLifecycleHelper';
 
 // ============================================================================
 // Storage Keys
 // ============================================================================
-const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
-const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
-const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
-const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
-const ARCHIVED_IUPS_STORAGE_KEY = 'melue_archived_iups_cache';
-const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
+export const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
+export const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
+export const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
+export const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
+export const ARCHIVED_IUPS_STORAGE_KEY = 'melue_archived_iups_cache';
+export const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
 
 // ============================================================================
 // Default Datasets for Resilient Fallbacks
@@ -336,8 +343,14 @@ export function getStoredIupDraft(id: string): Payload | null {
 export function storeIupDraftLocally(id: string, payload: Payload): void {
   try {
     const all = getAllStoredIupDrafts();
+    const existing = all[id] || {};
+    // Prevent unauthorized overwrite if record is marked finalized/permanent/non-editable
+    if (existing.isFinalized && !payload.isFinalized && payload.status !== 'finalized') {
+      console.warn('Blocked unauthorized modification to finalized permanent IUP draft:', id);
+      return;
+    }
     const entry = {
-      ...(all[id] || {}),
+      ...existing,
       ...payload,
       saved_at: new Date().toISOString(),
     };
@@ -373,16 +386,114 @@ function setStudentReviewedLocally(studentId: string, notes?: string): void {
   } catch {}
 }
 
-function getStoredCaseloadMap(): Record<string, any> {
+export function dispatchCaseloadEvent(name: string, detail?: any): void {
+  try {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent(name, { detail }));
+    } else if (
+      typeof globalThis !== 'undefined' &&
+      typeof (globalThis as any).dispatchEvent === 'function'
+    ) {
+      (globalThis as any).dispatchEvent(new CustomEvent(name, { detail }));
+    }
+  } catch {}
+}
+
+export function getStoredCaseloadMap(): Record<string, any> {
   return storage.getJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, {}) || {};
 }
 
-function setStoredCaseload(studentId: string, data: any): void {
+export function setStoredCaseload(studentId: string, data: any): void {
   try {
     const all = getStoredCaseloadMap();
     all[studentId] = data;
     storage.setJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, all);
   } catch {}
+}
+
+export function unassignApprovedGoalFromCaseload(
+  studentId: string,
+  goalId?: string,
+  goalName?: string,
+): boolean {
+  if (!studentId) return false;
+
+  const caseloadMap = getStoredCaseloadMap();
+
+  // Find student in caseloadMap (direct key or alias)
+  let matchedKey = studentId;
+  if (!caseloadMap[matchedKey]) {
+    const defaultStudent = DEFAULT_PD_STUDENTS.find(
+      (s) => s.id === studentId || s.name.toLowerCase() === studentId.toLowerCase(),
+    );
+    if (defaultStudent && caseloadMap[defaultStudent.id]) {
+      matchedKey = defaultStudent.id;
+    }
+  }
+
+  const studentSlots = caseloadMap[matchedKey] ? { ...caseloadMap[matchedKey] } : {};
+  let removedFromCaseload = false;
+
+  Object.keys(studentSlots).forEach((k) => {
+    const slotGoal = studentSlots[k];
+    if (!slotGoal) return;
+
+    const matchesId =
+      goalId &&
+      (String(slotGoal.id) === String(goalId) || String(slotGoal.goalId) === String(goalId));
+    const matchesName =
+      goalName && slotGoal.name && slotGoal.name.toLowerCase() === goalName.toLowerCase();
+
+    if (matchesId || matchesName) {
+      delete studentSlots[k];
+      removedFromCaseload = true;
+    }
+  });
+
+  if (removedFromCaseload) {
+    setStoredCaseload(matchedKey, studentSlots);
+  }
+
+  // Also remove from draft IUP slots for that student
+  let removedFromDraft = false;
+  const draft = getStoredIupDraft(matchedKey) || getStoredIupDraft(studentId);
+  if (draft && draft.slots) {
+    const slots = { ...draft.slots } as any;
+    (['station1', 'station2'] as const).forEach((station) => {
+      if (Array.isArray(slots[station])) {
+        slots[station] = slots[station].map((g: any) => {
+          if (!g) return null;
+          const matchesId =
+            goalId && (String(g.id) === String(goalId) || String(g.goalId) === String(goalId));
+          const matchesName = goalName && g.name && g.name.toLowerCase() === goalName.toLowerCase();
+          if (matchesId || matchesName) {
+            removedFromDraft = true;
+            return null;
+          }
+          return g;
+        });
+      }
+    });
+
+    if (removedFromDraft) {
+      storeIupDraftLocally(matchedKey, {
+        ...draft,
+        slots,
+        goals: [...(slots.station1 || []), ...(slots.station2 || [])]
+          .filter(Boolean)
+          .map((g: any) => g.id),
+      });
+    }
+  }
+
+  dispatchCaseloadEvent('melue_caseload_updated', {
+    studentId: matchedKey,
+    goalId,
+    goalName,
+    action: 'mastery_approved',
+  });
+
+  return removedFromCaseload || removedFromDraft;
 }
 
 function getStoredCustomGoals(): any[] {
@@ -707,78 +818,187 @@ export const getAssessmentsForReview = async (
   }
   const config = Object.keys(cleanParams).length > 0 ? { params: cleanParams } : undefined;
 
-  let rawList: any[] = [];
-  try {
-    const res = await client.get('/program_director/assessments', config);
-    const data = res?.data;
-    const list = Array.isArray(data)
+  // 1. Fetch real assessments, real students, and real pipeline in parallel
+  const [assessmentsRes, studentsRes, pipelineRes] = await Promise.allSettled([
+    client.get('/program_director/assessments', config),
+    client.get('/coordinator/students'),
+    client.get('/program_director/assessment_pipeline'),
+  ]);
+
+  let rawAssessments: any[] = [];
+  if (assessmentsRes.status === 'fulfilled' && assessmentsRes.value?.data) {
+    const data = assessmentsRes.value.data;
+    rawAssessments = Array.isArray(data)
       ? data
       : Array.isArray(data?.assessments)
         ? data.assessments
         : Array.isArray(data?.data)
           ? data.data
           : [];
-    if (list.length > 0) rawList = list;
-  } catch {}
-
-  const reviewedMap = getStoredReviewedMap();
-
-  if (rawList.length > 0) {
-    const merged = rawList.map((item: any) => {
-      const sId = String(item.studentId || item.student_id || item.id);
-      if (reviewedMap[sId]?.reviewed) {
-        return { ...item, status: 'Reviewed', reviewNotes: reviewedMap[sId].notes };
-      }
-      return item;
-    });
-    return { data: merged, assessments: merged };
   }
 
-  // Resilient fallback: build list from /options/students or DEFAULT_PD_STUDENTS
-  let studentPool = DEFAULT_PD_STUDENTS;
-  try {
-    const { data: sData } = await client.get<any[]>('/options/students');
-    if (Array.isArray(sData) && sData.length > 0) {
-      studentPool = sData.map((s: any, idx: number) => ({
-        id: String(s.id),
-        fullName: s.name || `Student ${idx + 1}`,
-        name: s.name || `Student ${idx + 1}`,
-        age: s.age || 6,
-        programType: s.program || 'Comprehensive ABA',
-        program: s.program || 'Comprehensive ABA',
-        therapyGroup: s.therapy_group || `Station ${(idx % 3) + 1}`,
-        therapist: DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length],
-        currentStage: idx % 2 === 0 ? 'assessment-complete' : 'in-assessment',
-        status: idx % 2 === 0 ? 'Assessment Completed' : 'In Assessment',
-        assessmentStatus: (idx % 2 === 0 ? 'completed' : 'in-progress') as
-          'completed' | 'in-progress',
-        sessionAssigned: idx % 2 === 0,
-      }));
+  let rawStudents: any[] = [];
+  if (studentsRes.status === 'fulfilled' && studentsRes.value?.data) {
+    const data = studentsRes.value.data;
+    rawStudents = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.students)
+        ? data.students
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+  }
+
+  if (rawStudents.length === 0) {
+    try {
+      const optRes = await client.get('/options/students');
+      if (Array.isArray(optRes?.data) && optRes.data.length > 0) {
+        rawStudents = optRes.data;
+      }
+    } catch {}
+  }
+
+  let rawPipeline: any[] = [];
+  if (pipelineRes.status === 'fulfilled' && pipelineRes.value?.data) {
+    const data = pipelineRes.value.data;
+    rawPipeline = Array.isArray(data?.pipeline)
+      ? data.pipeline
+      : Array.isArray(data?.students)
+        ? data.students
+        : Array.isArray(data)
+          ? data
+          : [];
+  }
+
+  // Build lookup map for real students
+  const studentMap = new Map<string, any>();
+  for (const s of rawStudents) {
+    const sId = String(s.id || s.studentId || s.student_id || '').trim();
+    if (sId) studentMap.set(sId, s);
+    const sName = String(s.fullName || s.name || '')
+      .toLowerCase()
+      .trim();
+    if (sName) studentMap.set(sName, s);
+  }
+
+  const reviewedMap = getStoredReviewedMap();
+  const itemsByStudent = new Map<string, any>();
+
+  // Process real assessment records
+  for (const a of rawAssessments) {
+    const sId = String(a.student_id || a.studentId || a.id || '').trim();
+    const sName = String(a.student_name || a.studentName || a.name || '').trim();
+    const student = studentMap.get(sId) || studentMap.get(sName.toLowerCase());
+
+    const isRev = Boolean(
+      (sId && reviewedMap[sId]?.reviewed) || (student && reviewedMap[String(student.id)]?.reviewed),
+    );
+    const progress = Number(a.assessment_progress ?? a.abllsPct ?? 0);
+    const rawStatus = String(a.status || '')
+      .toLowerCase()
+      .trim();
+
+    let status = 'Not Started';
+    if (isRev || rawStatus === 'reviewed' || rawStatus === 'approved') {
+      status = 'Reviewed';
+    } else if (
+      rawStatus === 'complete' ||
+      rawStatus === 'completed' ||
+      rawStatus === 'ready_for_iup' ||
+      progress >= 100
+    ) {
+      status = 'Complete';
+    } else if (rawStatus === 'in_progress' || rawStatus === 'in_assessment' || progress > 0) {
+      status = 'In Progress';
     }
-  } catch {}
 
-  const synthesized = studentPool.map((s, idx) => {
-    const sId = String(s.id);
-    const isRev = Boolean(reviewedMap[sId]?.reviewed);
-    const isComp = isRev || idx % 2 === 0;
-
-    return {
-      studentId: sId,
-      studentName: s.fullName || s.name,
-      age: s.age || 6,
-      program: s.program || s.programType || 'Comprehensive ABA',
-      therapyGroup: s.therapyGroup || 'Station 1 · Early Learners',
-      therapist: s.therapist || DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length],
-      status: isRev ? 'Reviewed' : isComp ? 'Complete' : 'In Progress',
-      abllsPct: isRev ? 100 : isComp ? 85 : 65,
-      behaviorStatus: 'completed',
-      sessionStatus: isComp ? 'assigned' : 'pending',
-      dateCompleted: isComp ? '2026-03-28' : null,
+    const item = {
+      studentId: sId || (student ? String(student.id || student.studentId) : ''),
+      studentName:
+        sName || (student ? String(student.fullName || student.name) : 'Unknown Student'),
+      age: Number(student?.age ?? a.age ?? 0),
+      program: String(
+        student?.programType ?? student?.program ?? a.program ?? a.program_type ?? 'Regular',
+      ),
+      therapyGroup: String(
+        student?.therapyGroup ?? student?.therapy_group ?? a.therapyGroup ?? a.therapy_group ?? '',
+      ),
+      therapist: String(
+        student?.therapist ??
+          student?.therapist_name ??
+          a.therapist ??
+          a.therapist_name ??
+          'Unassigned',
+      ),
+      status,
+      abllsPct: progress,
+      behaviorStatus: String(a.behavior_assessment ?? a.behaviorStatus ?? 'notStarted'),
+      sessionStatus: String(a.sessionStatus ?? ''),
+      dateCompleted: a.completed_at || a.completed_on || a.dateCompleted || null,
       reviewNotes: reviewedMap[sId]?.notes || '',
+      createdAt: a.created_at || null,
     };
-  });
 
-  return { data: synthesized, assessments: synthesized };
+    const key = item.studentId || item.studentName.toLowerCase();
+    const existing = itemsByStudent.get(key);
+    if (
+      !existing ||
+      item.abllsPct > existing.abllsPct ||
+      (item.createdAt && item.createdAt > existing.createdAt)
+    ) {
+      itemsByStudent.set(key, item);
+    }
+  }
+
+  // Include pipeline or real enrolled students who do not have an assessment record yet
+  for (const s of rawStudents) {
+    const sId = String(s.id || s.studentId || '').trim();
+    const sName = String(s.fullName || s.name || '').trim();
+    const key = sId || sName.toLowerCase();
+
+    if (!itemsByStudent.has(key)) {
+      const isRev = Boolean(reviewedMap[sId]?.reviewed);
+      const pipe = rawPipeline.find(
+        (p) =>
+          String(p.student_id || p.studentId || '').trim() === sId ||
+          String(p.student_name || p.studentName || '')
+            .toLowerCase()
+            .trim() === sName.toLowerCase(),
+      );
+
+      const progress = Number(pipe?.assessment_progress ?? 0);
+      let status = 'Not Started';
+      const pipeStatus = String(pipe?.status || '')
+        .toLowerCase()
+        .trim();
+
+      if (isRev) {
+        status = 'Reviewed';
+      } else if (pipeStatus === 'ready_for_iup' || pipeStatus === 'complete' || progress >= 100) {
+        status = 'Complete';
+      } else if (pipeStatus === 'in_assessment' || pipeStatus === 'in_progress' || progress > 0) {
+        status = 'In Progress';
+      }
+
+      itemsByStudent.set(key, {
+        studentId: sId,
+        studentName: sName,
+        age: Number(s.age ?? 0),
+        program: String(s.programType ?? s.program ?? 'Regular'),
+        therapyGroup: String(s.therapyGroup ?? s.therapy_group ?? ''),
+        therapist: String(s.therapist ?? s.therapist_name ?? 'Unassigned'),
+        status,
+        abllsPct: progress,
+        behaviorStatus: String(pipe?.behavior_assessment ?? 'notStarted'),
+        sessionStatus: '',
+        dateCompleted: null,
+        reviewNotes: reviewedMap[sId]?.notes || '',
+      });
+    }
+  }
+
+  const finalItems = Array.from(itemsByStudent.values());
+  return { data: finalItems, assessments: finalItems };
 };
 
 export const getAssessmentReport = async (studentId: string): Promise<{ data: any }> => {
@@ -974,16 +1194,21 @@ export interface IupCandidate {
   id: string;
   studentId?: string;
   iupId?: string;
+  iup_id?: string;
   name: string;
   status: string;
   rawStatus?: string;
   program?: string;
   age?: number;
   currentStage?: string;
+  stage?: string;
   sessionAssigned?: boolean;
   assessmentProgress?: number;
   assessmentStatus?: string;
   hasAssessmentData?: boolean;
+  photoUrl?: string;
+  headshotUrl?: string;
+  photo?: string;
 }
 
 export const isCandidateInSession = (c: IupCandidate): boolean => {
@@ -1031,6 +1256,19 @@ export const isEligibleIupCandidate = (c: IupCandidate): boolean => {
     assessStatus === 'not-started'
   ) {
     return false;
+  }
+
+  // Ensure IUP Generation is accessible only when both Skills and Behavior assessments are fully complete
+  const sid = String(c.id || '');
+  if (sid && !isStudentAssessmentSubmitted(sid)) {
+    const skills = getStudentSkillsProgress(sid, -1, '');
+    const behavior = getStudentBehaviorProgress(sid, -1, '');
+    if (skills.progress >= 0 && skills.progress < 100) {
+      return false;
+    }
+    if (behavior.progress >= 0 && behavior.progress < 100) {
+      return false;
+    }
   }
 
   // Allow students whose status is Ready for IUP or In Session
@@ -1342,6 +1580,29 @@ export const getIupContext = async (studentId: string): Promise<{ data: any }> =
 };
 
 export const saveIupDraft = async (id: string, payload: Payload): Promise<{ data: any }> => {
+  const studentId = String(payload.studentId || payload.student_id || id);
+  const existingDraft = getStoredIupDraft(id) || getStoredIupDraft(studentId);
+  const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+  const existingInLib = lib.find((item) => item.id === id || item.studentId === studentId);
+
+  // Enforce non-editability through backend authorization and data protection
+  if (
+    (existingDraft &&
+      (existingDraft.isFinalized ||
+        existingDraft.status === 'finalized' ||
+        existingDraft.editable === false)) ||
+    (existingInLib &&
+      (existingInLib.isFinalized ||
+        existingInLib.editable === false ||
+        existingInLib.status === 'Active'))
+  ) {
+    const error = new Error(
+      'Unauthorized modification: Finalized IUP records are permanent and non-editable.',
+    );
+    (error as any).status = 403;
+    throw error;
+  }
+
   storeIupDraftLocally(id, payload);
 
   try {
@@ -1351,7 +1612,9 @@ export const saveIupDraft = async (id: string, payload: Payload): Promise<{ data
     };
     const res = await client.patch(`/iups/${id}`, formattedPayload);
     if (res?.data) return res;
-  } catch {}
+  } catch (err: any) {
+    if (err?.status === 403) throw err;
+  }
 
   return {
     data: {
@@ -1364,21 +1627,55 @@ export const saveIupDraft = async (id: string, payload: Payload): Promise<{ data
 };
 
 export const finalizeIup = async (id: string, payload: Payload): Promise<{ data: any }> => {
-  storeIupDraftLocally(id, { ...payload, status: 'finalized' });
+  const studentId = String(payload.studentId || payload.student_id || id);
+  const studentName = payload.studentName || 'Student';
+  const program = payload.program || 'Comprehensive ABA';
+  const slotsPayload = payload.slots as any;
+  const goalCount = Array.isArray(payload.goals)
+    ? payload.goals.length
+    : slotsPayload
+      ? [...(slotsPayload.station1 || []), ...(slotsPayload.station2 || [])].filter(Boolean).length
+      : 2;
 
-  // Also update IUP library record
+  const finalizedPayload = {
+    ...payload,
+    studentId,
+    studentName,
+    program,
+    goalCount,
+    status: 'finalized',
+    isFinalized: true,
+    isPermanent: true,
+    editable: false,
+  };
+
+  storeIupDraftLocally(id, finalizedPayload);
+  storeIupDraftLocally(studentId, finalizedPayload);
+
+  // Also update IUP library record as permanent, non-editable record
   try {
     const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
-    const existingIdx = lib.findIndex((item) => item.id === id || item.studentId === id);
+    const existingIdx = lib.findIndex((item) => item.id === id || item.studentId === studentId);
     const rec = {
       id,
-      studentId: id,
-      studentName: payload.studentName || 'Student',
-      program: payload.program || 'Comprehensive ABA',
+      studentId,
+      studentName,
+      program,
       finalizedDate: new Date().toISOString().slice(0, 10),
-      goalCount: Array.isArray(payload.goals) ? payload.goals.length : 4,
+      finalizedAt: new Date().toISOString(),
+      goalCount,
       version: '1.0',
       status: 'Active',
+      slots: payload.slots,
+      goals: payload.goals,
+      reinforcementSchedule: payload.reinforcementSchedule,
+      crisisProtocol: payload.crisisProtocol,
+      accommodations: payload.accommodations,
+      reviewCycle: payload.reviewCycle,
+      customFields: payload.customFields || payload.form_values,
+      isFinalized: true,
+      isPermanent: true,
+      editable: false,
     };
     if (existingIdx >= 0) {
       lib[existingIdx] = { ...lib[existingIdx], ...rec };
@@ -1388,8 +1685,27 @@ export const finalizeIup = async (id: string, payload: Payload): Promise<{ data:
     storage.setJSONSync(IUP_LIBRARY_STORAGE_KEY, lib);
   } catch {}
 
+  // Sync assigned goals directly to student caseload so they appear on Student Caseload page
+  if (payload.slots) {
+    try {
+      const caseloadMap = getStoredCaseloadMap();
+      const studentSlots = caseloadMap[studentId] ? { ...caseloadMap[studentId] } : {};
+      const slotsObj = payload.slots as any;
+      const s1 = Array.isArray(slotsObj.station1) ? slotsObj.station1 : [];
+      const s2 = Array.isArray(slotsObj.station2) ? slotsObj.station2 : [];
+      s1.forEach((g: any, idx: number) => {
+        if (g) studentSlots[`station1-${idx}`] = g;
+      });
+      s2.forEach((g: any, idx: number) => {
+        if (g) studentSlots[`station2-${idx}`] = g;
+      });
+      setStoredCaseload(studentId, studentSlots);
+      dispatchCaseloadEvent('melue_caseload_updated', { studentId, slots: studentSlots });
+    } catch {}
+  }
+
   try {
-    const res = await client.post(`/iups/${id}/finalize`, payload);
+    const res = await client.post(`/iups/${id}/finalize`, finalizedPayload);
     if (res?.data) return res;
   } catch {}
 
@@ -1397,8 +1713,8 @@ export const finalizeIup = async (id: string, payload: Payload): Promise<{ data:
     data: {
       success: true,
       message: 'IUP finalized successfully',
-      iup: { id, status: 'active' },
-      ...payload,
+      iup: { id, status: 'active', isFinalized: true, editable: false },
+      ...finalizedPayload,
     },
   };
 };
@@ -1453,6 +1769,7 @@ export const getIupLibrary = async (
     const id = String(item.id || '');
     const isArchived = archivedSet.has(id) || item.status === 'Archived';
     return {
+      ...item,
       id,
       studentId: String(item.studentId || item.student_id || id),
       studentName: String(item.studentName || item.student_name || item.name || 'Student'),
@@ -1465,6 +1782,9 @@ export const getIupLibrary = async (
       ),
       version: String(item.version || '1.0'),
       status: isArchived ? 'Archived' : String(item.status || 'Active'),
+      isFinalized: item.isFinalized ?? (item.status === 'Active' || item.status === 'finalized'),
+      isPermanent: item.isPermanent ?? (item.status === 'Active' || item.status === 'finalized'),
+      editable: item.editable ?? item.status === 'Draft',
     };
   });
 
@@ -1581,6 +1901,11 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
   const draft = getStoredIupDraft(studentId);
   const draftSlots = (draft?.slots as any) || {};
 
+  // Also check finalized IUPs in the library
+  const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+  const finalizedIup = lib.find((item) => item.studentId === studentId || item.id === studentId);
+  const finalizedSlots = (finalizedIup?.slots as any) || {};
+
   // Build standard slot format: station1-0, station1-1, station2-0, station2-1
   const slots: Record<string, any> = {
     'station1-0': null,
@@ -1592,15 +1917,36 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
   // Populate from local caseload assignments if present
   if (localCaseload && typeof localCaseload === 'object') {
     Object.keys(slots).forEach((k) => {
-      if (localCaseload[k]) slots[k] = localCaseload[k];
+      slots[k] = localCaseload[k] || null;
     });
-  }
+    // Also include any additional station slots beyond standard 0 and 1
+    Object.entries(localCaseload).forEach(([k, val]) => {
+      if (val) slots[k] = val;
+    });
+  } else {
+    // Only initialize from draft or finalized IUP slots if no explicit caseload record exists yet
+    if (Array.isArray(finalizedSlots.station1)) {
+      finalizedSlots.station1.forEach((g: any, i: number) => {
+        if (g) slots[`station1-${i}`] = g;
+      });
+    }
+    if (Array.isArray(finalizedSlots.station2)) {
+      finalizedSlots.station2.forEach((g: any, i: number) => {
+        if (g) slots[`station2-${i}`] = g;
+      });
+    }
 
-  // Populate from draft IUP slots
-  if (draftSlots.station1?.[0]) slots['station1-0'] = draftSlots.station1[0];
-  if (draftSlots.station1?.[1]) slots['station1-1'] = draftSlots.station1[1];
-  if (draftSlots.station2?.[0]) slots['station2-0'] = draftSlots.station2[0];
-  if (draftSlots.station2?.[1]) slots['station2-1'] = draftSlots.station2[1];
+    if (Array.isArray(draftSlots.station1)) {
+      draftSlots.station1.forEach((g: any, i: number) => {
+        if (!slots[`station1-${i}`] && g) slots[`station1-${i}`] = g;
+      });
+    }
+    if (Array.isArray(draftSlots.station2)) {
+      draftSlots.station2.forEach((g: any, i: number) => {
+        if (!slots[`station2-${i}`] && g) slots[`station2-${i}`] = g;
+      });
+    }
+  }
 
   // Populate from backend goals
   backendGoals.forEach((bg) => {
@@ -1617,37 +1963,17 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
     }
   });
 
-  // If entirely empty, supply a realistic default assigned goal in Station 1
-  if (
-    !slots['station1-0'] &&
-    !slots['station1-1'] &&
-    !slots['station2-0'] &&
-    !slots['station2-1']
-  ) {
-    slots['station1-0'] = {
-      id: DEFAULT_GOAL_BANK[0].id,
-      name: DEFAULT_GOAL_BANK[0].name,
-      domain: DEFAULT_GOAL_BANK[0].domain,
-      description: DEFAULT_GOAL_BANK[0].description,
-      status: 'Active',
-      progress: 60,
-    };
-    slots['station2-0'] = {
-      id: DEFAULT_GOAL_BANK[1].id,
-      name: DEFAULT_GOAL_BANK[1].name,
-      domain: DEFAULT_GOAL_BANK[1].domain,
-      description: DEFAULT_GOAL_BANK[1].description,
-      status: 'Active',
-      progress: 45,
-    };
-  }
-
-  // Build flat goals array for IupGenerationContainer
+  // Build flat goals array for IupGenerationContainer across all slots
   const goals: any[] = [];
-  if (slots['station1-0']) goals.push({ ...slots['station1-0'], station: 1, slot: 0 });
-  if (slots['station1-1']) goals.push({ ...slots['station1-1'], station: 1, slot: 1 });
-  if (slots['station2-0']) goals.push({ ...slots['station2-0'], station: 2, slot: 0 });
-  if (slots['station2-1']) goals.push({ ...slots['station2-1'], station: 2, slot: 1 });
+  Object.entries(slots).forEach(([key, goalObj]) => {
+    if (goalObj) {
+      const isStation2 = key.startsWith('station2');
+      const station = isStation2 ? 2 : 1;
+      const parts = key.split('-');
+      const slot = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+      goals.push({ ...goalObj, station, slot });
+    }
+  });
 
   return {
     data: {
@@ -1671,7 +1997,9 @@ export const assignGoalToSlot = async (
   if (typeof payload.slot === 'string') {
     slotKey = payload.slot;
     stationKey = slotKey.startsWith('station2') ? 'station2' : 'station1';
-    slotIdx = slotKey.endsWith('1') ? 1 : 0;
+    const numPart = slotKey.replace(/^[^\d]*-/, '');
+    const parsed = parseInt(numPart, 10);
+    slotIdx = !isNaN(parsed) ? parsed : slotKey.endsWith('1') ? 1 : 0;
   } else {
     stationKey = payload.station === 2 || payload.station === 'station2' ? 'station2' : 'station1';
     slotIdx =
@@ -1693,9 +2021,40 @@ export const assignGoalToSlot = async (
     progress: 50,
   };
 
-  // 1. Update local caseload assignments
+  // 1. Update local caseload assignments with two-goal limit and duplicate checks
   const caseloadMap = getStoredCaseloadMap();
-  const studentSlots = caseloadMap[studentId] || {};
+  const studentSlots = caseloadMap[studentId] ? { ...caseloadMap[studentId] } : {};
+
+  // Check duplicate goal assignment for this student
+  const isDuplicate = Object.entries(studentSlots).some(
+    ([k, g]: [string, any]) =>
+      k !== slotKey && g && (String(g.id) === goalId || g.name === goalObj.name),
+  );
+  if (isDuplicate) {
+    const err = new Error(
+      `Duplicate goal assignment: "${goalObj.name}" is already assigned to this student.`,
+    );
+    (err as any).status = 400;
+    throw err;
+  }
+
+  // Check two-goal limit when assigning to a new / empty slot
+  const currentActiveKeys = Object.keys(studentSlots).filter(
+    (k) => k !== slotKey && studentSlots[k] && studentSlots[k].status !== 'Mastered',
+  );
+  if (
+    !payload.allowMultipleGoals &&
+    payload.source !== 'iup_generation' &&
+    !studentSlots[slotKey] &&
+    currentActiveKeys.length >= 2
+  ) {
+    const err = new Error(
+      'Two-goal limit exceeded: Each student can have a maximum of two active assigned goals at a time.',
+    );
+    (err as any).status = 400;
+    throw err;
+  }
+
   studentSlots[slotKey] = goalObj;
   setStoredCaseload(studentId, studentSlots);
 
@@ -1704,6 +2063,9 @@ export const assignGoalToSlot = async (
     const draft = getStoredIupDraft(studentId) || {};
     const slots = (draft.slots as any) || { station1: [null, null], station2: [null, null] };
     if (Array.isArray(slots[stationKey])) {
+      while (slots[stationKey].length <= slotIdx) {
+        slots[stationKey].push(null);
+      }
       slots[stationKey][slotIdx] = goalObj;
       storeIupDraftLocally(studentId, {
         ...draft,
@@ -1716,7 +2078,10 @@ export const assignGoalToSlot = async (
     }
   } catch {}
 
-  // 3. Attempt live API call if available
+  // 3. Dispatch caseload update event
+  dispatchCaseloadEvent('melue_caseload_updated', { studentId, slotKey, goal: goalObj });
+
+  // 4. Attempt live API call if available
   try {
     await client.post('/goal_assignments', {
       student_id: studentId,
@@ -1755,8 +2120,20 @@ export const removeGoalFromSlot = async (
 
   // 1. Update local caseload assignments
   const caseloadMap = getStoredCaseloadMap();
-  const studentSlots = caseloadMap[studentId] || {};
+  let studentSlots: Record<string, any> = caseloadMap[studentId]
+    ? { ...caseloadMap[studentId] }
+    : {};
+
+  if (Object.keys(studentSlots).length === 0) {
+    try {
+      const { data } = await getStudentCaseload(studentId);
+      const rawSlots = data?.slots || data?.studentGoals || data || {};
+      studentSlots = { ...rawSlots };
+    } catch {}
+  }
+
   delete studentSlots[slotKey];
+  studentSlots[slotKey] = null;
   setStoredCaseload(studentId, studentSlots);
 
   // 2. Sync with local IUP draft
@@ -1775,6 +2152,33 @@ export const removeGoalFromSlot = async (
       });
     }
   } catch {}
+
+  // 2.1 Sync with finalized IUP library if present
+  try {
+    const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+    let updatedLib = false;
+    lib.forEach((item) => {
+      if (
+        item &&
+        (item.studentId === studentId || item.id === studentId || item.student_id === studentId)
+      ) {
+        if (item.slots && Array.isArray(item.slots[stationKey])) {
+          item.slots[stationKey][slotIdx] = null;
+          updatedLib = true;
+        }
+      }
+    });
+    if (updatedLib) {
+      storage.setJSONSync(IUP_LIBRARY_STORAGE_KEY, lib);
+    }
+  } catch {}
+
+  // 3. Dispatch caseload update event
+  dispatchCaseloadEvent('melue_caseload_updated', {
+    studentId,
+    slotKey,
+    action: 'removed',
+  });
 
   return { data: { success: true, studentId, slotKey } };
 };
@@ -2071,12 +2475,20 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     };
   }
 
+  const registeredInfo = getRegisteredStudentStatus(targetId);
+  const submissionInfo = getStudentAssessmentSubmission(targetId);
   const selectedStudentObj = studentsList.find((s) => s.id === targetId) || {
     id: targetId,
-    name: 'Student',
+    name: registeredInfo?.name || submissionInfo?.studentName || 'Student',
     age: 6,
     program: 'Comprehensive ABA',
+    status: 'Active',
+    photoUrl: '',
   };
+
+  if (targetId && !studentsList.some((s) => s.id === targetId)) {
+    studentsList.unshift(selectedStudentObj);
+  }
 
   let summaryRes: any = null;
   try {

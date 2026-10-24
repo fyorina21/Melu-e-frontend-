@@ -23,6 +23,8 @@ import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getIupLibrary, archiveIup } from '../../api/programDirectorApi';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 interface IupRecord {
@@ -34,11 +36,22 @@ interface IupRecord {
   goalCount: number;
   version: string;
   status: string;
+  isPermanent?: boolean;
+  isFinalized?: boolean;
+  editable?: boolean;
+  slots?: any;
+  goals?: any[];
+  reinforcementSchedule?: string;
+  crisisProtocol?: string;
+  accommodations?: string;
+  reviewCycle?: string;
+  customFields?: Record<string, any>;
 }
 
 export default function IupLibraryScreen({
   navigation,
 }: NativeStackScreenProps<ProgramDirectorStackParamList, 'IupLibrary'>) {
+  const { showToast } = useToast();
   const [list, setList] = useState<IupRecord[] | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -65,35 +78,78 @@ export default function IupLibraryScreen({
   }, [load]);
 
   const handleArchive = (iup: IupRecord) => {
-    Alert.alert(`Archive ${iup.studentName}'s IUP?`, 'This will mark the plan as Archived.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Archive',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await archiveIup(iup.id);
-            await load();
-          } catch {}
-        },
+    confirmAction({
+      title: `Archive ${iup.studentName}'s IUP?`,
+      message: 'This will mark the plan as Archived.',
+      confirmLabel: 'Archive',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await archiveIup(iup.id);
+          if (iup.studentId && iup.studentId !== iup.id) {
+            await archiveIup(iup.studentId);
+          }
+          setList((prev) =>
+            (prev || []).map((item) =>
+              item.id === iup.id || (iup.studentId && item.studentId === iup.studentId)
+                ? { ...item, status: 'Archived' }
+                : item,
+            ),
+          );
+          await load();
+          showToast(`${iup.studentName}'s IUP has been archived.`, 'success');
+        } catch {
+          showToast('Failed to archive IUP.', 'error');
+        }
       },
-    ]);
+    });
   };
 
-  const buildExportText = (iup: IupRecord) =>
-    [
+  const buildExportText = (iup: any) => {
+    const lines = [
       '================================================================',
       `MELU'E FOUNDATION — IUP RECORD ARCHIVE`,
       '================================================================',
       `Student: ${iup.studentName}`,
+      `Student ID: ${iup.studentId}`,
       `Program: ${iup.program}`,
-      `Plan Status: ${iup.status}`,
+      `Plan Status: ${iup.status} (Permanent, Non-Editable)`,
       `Finalized Date: ${iup.finalizedDate}`,
       `Target Goals Assigned: ${iup.goalCount}`,
       `Plan Version: v${iup.version}`,
-      `Generated: ${new Date().toLocaleDateString()}`,
-      '================================================================',
-    ].join('\n');
+      '----------------------------------------------------------------',
+    ];
+
+    if (iup.slots) {
+      lines.push('ASSIGNED TARGET GOALS:');
+      const s1 = iup.slots.station1 || [];
+      const s2 = iup.slots.station2 || [];
+      s1.forEach((g: any, i: number) => {
+        if (g)
+          lines.push(
+            `  Station 1 (Slot ${i + 1}): ${g.name} [${g.domain}] — ${g.masteryCriteria || 'Mastery'}`,
+          );
+      });
+      s2.forEach((g: any, i: number) => {
+        if (g)
+          lines.push(
+            `  Station 2 (Slot ${i + 1}): ${g.name} [${g.domain}] — ${g.masteryCriteria || 'Mastery'}`,
+          );
+      });
+      lines.push('----------------------------------------------------------------');
+    }
+
+    if (iup.reinforcementSchedule)
+      lines.push(`Reinforcement Schedule: ${iup.reinforcementSchedule}`);
+    if (iup.accommodations) lines.push(`Accommodations: ${iup.accommodations}`);
+    if (iup.crisisProtocol) lines.push(`Crisis Protocol: ${iup.crisisProtocol}`);
+    if (iup.reviewCycle) lines.push(`Review Cycle: ${iup.reviewCycle}`);
+
+    lines.push(`Generated: ${new Date().toLocaleDateString()}`);
+    lines.push('================================================================');
+    return lines.join('\n');
+  };
 
   const filtered = useMemo(() => {
     if (!list) return [];
@@ -421,6 +477,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   versionBadgeText: { fontSize: 10, fontWeight: '700', color: colors.bodyText },
+  permanentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  permanentBadgeText: { fontSize: 10, fontWeight: '700', color: '#15803D' },
   iupMeta: { fontSize: 12, color: colors.bodyText, marginTop: 2 },
 
   iupCardActions: {

@@ -15,7 +15,7 @@ import {
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
 } from '../utils/studentLifecycleHelper';
-import { getStoredIupDraft } from './programDirectorApi';
+import { getStoredIupDraft, unassignApprovedGoalFromCaseload } from './programDirectorApi';
 
 // SCR-DIR-001: Director Dashboard
 export const getDirectorDashboard = async () => {
@@ -319,7 +319,14 @@ export const getMasteryApprovalDetail = async (id: string) => {
 };
 
 export const approveMastery = async (id: string, payload?: Payload) => {
-  approveMasteryCheck(id, (payload?.notes as string) || undefined);
+  const check = approveMasteryCheck(id, (payload?.notes as string) || undefined);
+  if (check && check.studentId) {
+    try {
+      unassignApprovedGoalFromCaseload(check.studentId, check.goalId, check.goalName);
+    } catch (err) {
+      console.warn('Failed to unassign approved goal from caseload:', err);
+    }
+  }
   try {
     return await client.patch(`/mastery_checks/${id}/approve`, payload);
   } catch {

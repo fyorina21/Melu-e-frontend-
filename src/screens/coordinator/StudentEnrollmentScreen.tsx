@@ -1,3 +1,4 @@
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -7,6 +8,7 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -27,8 +29,7 @@ import {
 import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
 
-const PROGRAMS = ['ABA', 'Speech Therapy', 'Occupational Therapy'];
-const DIAGNOSES = ['Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
+const DEFAULT_PROGRAM_TYPES = ['Regular', 'Pulled Out'];
 const AGE_RANGES = ['3-5', '6-8', '9-11', '12+'];
 
 export interface EnrolledStudent {
@@ -38,7 +39,7 @@ export interface EnrolledStudent {
   gender: string;
   program: string;
   therapist: string;
-  diagnosis: string;
+  diagnosis?: string;
   status: 'Active' | 'Inactive';
   studentId: string;
   photoUrl?: string | null;
@@ -48,13 +49,109 @@ interface EnrollmentStudentRow {
   id: string;
   fullName: string;
   age: number;
-  programType: string;
-  therapyGroup: string;
+  programType?: string;
+  program?: string;
+  therapyGroup?: string;
   therapist?: string;
   status: string;
   headshotUrl?: string | null;
   photoUrl?: string | null;
   photo?: string | null;
+  gender?: string;
+}
+
+interface FilterDropdownProps {
+  label: string;
+  value: string;
+  options: string[];
+  isOpen: boolean;
+  onToggle: () => void;
+  onSelect: (val: string) => void;
+  allLabel?: string;
+}
+
+function FilterDropdown({
+  label,
+  value,
+  options,
+  isOpen,
+  onToggle,
+  onSelect,
+  allLabel = 'All',
+}: FilterDropdownProps) {
+  const isFiltered = value !== 'All';
+  const displayValue = isFiltered ? value : allLabel;
+
+  return (
+    <View style={[styles.dropdownContainer, isOpen && styles.dropdownContainerOpen]}>
+      <Text style={styles.filterLabel}>{label}</Text>
+      <TouchableOpacity
+        style={[
+          styles.dropdownTrigger,
+          isOpen && styles.dropdownTriggerOpen,
+          isFiltered && styles.dropdownTriggerActive,
+        ]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${displayValue}`}
+      >
+        <Text
+          style={[styles.dropdownValueText, isFiltered && styles.dropdownValueTextActive]}
+          numberOfLines={1}
+        >
+          {displayValue}
+        </Text>
+        <Feather
+          name={isOpen ? 'chevron-up' : 'chevron-down'}
+          size={14}
+          color={isFiltered ? colors.navyText : colors.mutedText}
+        />
+      </TouchableOpacity>
+
+      {isOpen && (
+        <View style={styles.dropdownMenu}>
+          <ScrollView
+            style={styles.dropdownScroll}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={true}
+          >
+            <TouchableOpacity
+              style={[styles.dropdownItem, value === 'All' && styles.dropdownItemSelected]}
+              onPress={() => onSelect('All')}
+            >
+              <Text
+                style={[
+                  styles.dropdownItemText,
+                  value === 'All' && styles.dropdownItemTextSelected,
+                ]}
+              >
+                {allLabel}
+              </Text>
+              {value === 'All' && <Feather name="check" size={14} color={colors.navyText} />}
+            </TouchableOpacity>
+            {options.map((opt) => {
+              const isSelected = value.toLowerCase().trim() === opt.toLowerCase().trim();
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                  onPress={() => onSelect(opt)}
+                >
+                  <Text
+                    style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}
+                  >
+                    {opt}
+                  </Text>
+                  {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
 }
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollment'>;
@@ -66,8 +163,8 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
   const [programFilter, setProgramFilter] = useState('All');
   const [therapistFilter, setTherapistFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [diagnosisFilter, setDiagnosisFilter] = useState('All');
   const [ageFilter, setAgeFilter] = useState('All');
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   const fetchTherapists = useCallback(() => {
     getStaffOptions()
@@ -75,7 +172,6 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         const clean = filterOutDeletedStaff(data);
         const therapists = clean.filter((s) => s.role === 'teacher').map((t) => t.name);
         setTherapistOptions(therapists);
-        setTherapistFilter((prev) => (prev === 'All' || therapists.includes(prev) ? prev : 'All'));
       })
       .catch(() => setTherapistOptions([]));
   }, []);
@@ -90,14 +186,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const queryParams: Record<string, string> = {};
-      if (search) queryParams.search = search;
-      if (programFilter !== 'All') queryParams.program = programFilter;
-      if (therapistFilter !== 'All') queryParams.therapist = therapistFilter;
-      if (diagnosisFilter !== 'All') queryParams.diagnosis = diagnosisFilter;
-      if (ageFilter !== 'All') queryParams.age = ageFilter;
-
-      const { data } = await getEnrollmentStudents(queryParams);
+      const { data } = await getEnrollmentStudents({});
       if (Array.isArray(data)) {
         registerStudentPhotos(data);
       }
@@ -106,6 +195,9 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           id: row.id,
           name: row.fullName,
           age: row.age,
+          gender: row.gender || '',
+          program: row.programType || row.program || '',
+          therapist: row.therapist || row.therapyGroup || '',
           gender: '',
           program: row.programType,
           therapist: row.therapist || row.therapyGroup,
@@ -118,7 +210,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
     } catch (err) {
       setStudents([]);
     }
-  }, [search, programFilter, therapistFilter, diagnosisFilter, ageFilter]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -128,13 +220,79 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
     return onStudentStatusChanged(load);
   }, [load]);
 
+  // Dynamic program options derived from real enrolled students data and system options
+  const realProgramOptions = useMemo(() => {
+    const fromStudents = students.map((s) => s.program).filter(Boolean);
+    const map = new Map<string, string>();
+    [...DEFAULT_PROGRAM_TYPES, ...fromStudents].forEach((p) => {
+      const trimmed = p.trim();
+      const key = trimmed.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, trimmed);
+      }
+    });
+    return Array.from(map.values()).sort();
+  }, [students]);
+
+  // Dynamic therapist options derived from staff API and real enrolled students data
+  const realTherapistOptions = useMemo(() => {
+    const fromStudents = students.map((s) => s.therapist).filter(Boolean);
+    const map = new Map<string, string>();
+    [...therapistOptions, ...fromStudents].forEach((t) => {
+      const trimmed = t.trim();
+      const key = trimmed.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, trimmed);
+      }
+    });
+    return Array.from(map.values()).sort();
+  }, [students, therapistOptions]);
+
   const matchesAge = (age: number, range: string) => {
     if (range === 'All') return true;
-    const [min, max] = range.split('-').map(Number);
     if (range === '12+') return age >= 12;
-    return age >= min && age <= max;
+    const parts = range.split('-').map(Number);
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      return age >= parts[0] && age <= parts[1];
+    }
+    return age === Number(range);
   };
 
+  const filtered = useMemo(() => {
+    return students.filter((s) => {
+      const matchProgram =
+        programFilter === 'All' ||
+        s.program.toLowerCase().trim() === programFilter.toLowerCase().trim();
+      const matchTherapist =
+        therapistFilter === 'All' ||
+        s.therapist.toLowerCase().trim() === therapistFilter.toLowerCase().trim();
+      const matchStatus =
+        statusFilter === 'All' || s.status.toLowerCase() === statusFilter.toLowerCase();
+      const matchAge = matchesAge(s.age, ageFilter);
+      const matchSearch =
+        !search ||
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        s.studentId.toLowerCase().includes(search.toLowerCase());
+
+      return matchProgram && matchTherapist && matchStatus && matchAge && matchSearch;
+    });
+  }, [students, programFilter, therapistFilter, statusFilter, ageFilter, search]);
+
+  const hasActiveFilters =
+    programFilter !== 'All' ||
+    therapistFilter !== 'All' ||
+    statusFilter !== 'All' ||
+    ageFilter !== 'All' ||
+    search.trim() !== '';
+
+  const clearAllFilters = () => {
+    setProgramFilter('All');
+    setTherapistFilter('All');
+    setStatusFilter('All');
+    setAgeFilter('All');
+    setSearch('');
+    setOpenDropdown(null);
+  };
   const filtered = students.filter(
     (s) =>
       (programFilter === 'All' || s.program === programFilter) &&
@@ -183,6 +341,17 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
+      {openDropdown && (
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={() => setOpenDropdown(null)}
+        />
+      )}
+
+      <AppNavbar
+        activeTab="Enrollment"
+        onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)}
       <AppNavbar
         activeTab="Student Register"
         onTabPress={(t) => {
@@ -217,6 +386,72 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           value={search}
           onChangeText={setSearch}
         />
+
+        <View style={styles.dropdownsRow}>
+          <FilterDropdown
+            label="Program"
+            value={programFilter}
+            options={realProgramOptions}
+            isOpen={openDropdown === 'program'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'program' ? null : 'program'))}
+            onSelect={(val) => {
+              setProgramFilter(val);
+              setOpenDropdown(null);
+            }}
+            allLabel="All Programs"
+          />
+
+          <FilterDropdown
+            label="Therapist"
+            value={therapistFilter}
+            options={realTherapistOptions}
+            isOpen={openDropdown === 'therapist'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'therapist' ? null : 'therapist'))}
+            onSelect={(val) => {
+              setTherapistFilter(val);
+              setOpenDropdown(null);
+            }}
+            allLabel="All Therapists"
+          />
+
+          <FilterDropdown
+            label="Status"
+            value={statusFilter}
+            options={['Active', 'Inactive']}
+            isOpen={openDropdown === 'status'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'status' ? null : 'status'))}
+            onSelect={(val) => {
+              setStatusFilter(val);
+              setOpenDropdown(null);
+            }}
+            allLabel="All Statuses"
+          />
+
+          <FilterDropdown
+            label="Age"
+            value={ageFilter}
+            options={AGE_RANGES}
+            isOpen={openDropdown === 'age'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'age' ? null : 'age'))}
+            onSelect={(val) => {
+              setAgeFilter(val);
+              setOpenDropdown(null);
+            }}
+            allLabel="All Ages"
+          />
+
+          {hasActiveFilters && (
+            <TouchableOpacity
+              style={styles.resetBtn}
+              onPress={clearAllFilters}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all filters"
+            >
+              <Feather name="x" size={14} color={colors.navyText} />
+              <Text style={styles.resetBtnText}>Clear filters</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <FilterChips
           label="Program"
           options={PROGRAMS}
@@ -256,6 +491,11 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
             <View style={{ flex: 1 }}>
               <Text style={typography.bodyBold}>{s.name}</Text>
               <Text style={typography.caption}>
+                {s.studentId} · Age {s.age}
+                {s.gender ? ` · ${s.gender}` : ''}
+              </Text>
+              <Text style={typography.caption}>
+                {[s.program, s.therapist].filter(Boolean).join(' · ')}
                 {s.studentId} · Age {s.age} · {s.gender}
               </Text>
               <Text style={typography.caption}>
@@ -311,6 +551,13 @@ function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
+  backdrop: {
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 } as any)
+      : StyleSheet.absoluteFillObject),
+    zIndex: 90,
+    backgroundColor: 'transparent',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -334,6 +581,11 @@ const styles = StyleSheet.create({
   addBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   filtersRow: {
     padding: spacing.md,
+    gap: spacing.md,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    zIndex: 100,
     gap: spacing.sm,
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
@@ -345,6 +597,128 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     backgroundColor: colors.bgApp,
+    fontSize: 14,
+    color: colors.navyText,
+  },
+  dropdownsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  dropdownContainer: {
+    position: 'relative',
+    minWidth: 140,
+    flexGrow: 1,
+    flexBasis: 140,
+    maxWidth: 220,
+    zIndex: 1,
+  },
+  dropdownContainerOpen: {
+    zIndex: 1000,
+  },
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 40,
+    gap: spacing.xs,
+  },
+  dropdownTriggerOpen: {
+    borderColor: colors.navyText,
+    backgroundColor: '#FFFFFF',
+  },
+  dropdownTriggerActive: {
+    borderColor: colors.primaryYellow,
+    backgroundColor: '#FEF9C3',
+  },
+  dropdownValueText: {
+    fontSize: 13,
+    color: colors.navyText,
+    flex: 1,
+  },
+  dropdownValueTextActive: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 64,
+    left: 0,
+    right: 0,
+    minWidth: 180,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    maxHeight: 220,
+    zIndex: 1001,
+    ...(Platform.OS === 'web'
+      ? {
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+        }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+          elevation: 8,
+        }),
+  },
+  dropdownScroll: {
+    maxHeight: 220,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#FEF9C3',
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    color: colors.navyText,
+    flex: 1,
+  },
+  dropdownItemTextSelected: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  resetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 40,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgApp,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-end',
+  },
+  resetBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.navyText,
+  },
   },
   filterLabel: { marginRight: spacing.sm, paddingVertical: spacing.sm },
   filterChip: {

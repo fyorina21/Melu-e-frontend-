@@ -36,6 +36,8 @@ import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhot
 import { markStudentActive } from '../../utils/studentStatusHelper';
 import { registerStudentStatuses } from '../../utils/studentLifecycleHelper';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
+import { storage } from '../../utils/storage';
+import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
@@ -59,6 +61,109 @@ export function calculateAge(dobIso: string): number | null {
     age--;
   }
   return age >= 0 ? age : 0;
+}
+
+export const THERAPIST_ASSIGNMENTS_STORAGE_KEY = 'melue_therapist_assigned_students_v1';
+
+export function getTherapistAssignedStudents(therapistKey: string): string[] {
+  if (!therapistKey) return [];
+  const store =
+    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
+  const normKey = therapistKey.trim().toLowerCase();
+  for (const [k, v] of Object.entries(store)) {
+    if (k.trim().toLowerCase() === normKey && Array.isArray(v)) {
+      return v;
+    }
+  }
+  return [];
+}
+
+export function assignStudentToTherapist(
+  therapistName: string,
+  studentName: string,
+  therapistId?: string,
+): void {
+  if (!therapistName || !studentName) return;
+  const store =
+    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
+  const key = therapistName.trim();
+  const current = Array.isArray(store[key]) ? [...store[key]] : [];
+  if (!current.includes(studentName.trim())) {
+    current.push(studentName.trim());
+  }
+  store[key] = current;
+  if (therapistId && therapistId.trim() && therapistId.trim() !== key) {
+    store[therapistId.trim()] = current;
+  }
+  storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, store);
+}
+
+export function resolveEnrichedTherapists(teachers: StaffOption[]): StaffOption[] {
+  const store =
+    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
+  const enrolledCache = storage.getJSONSync<any[]>('melue_enrolled_students_cache', []) || [];
+
+  let directorStore: Record<string, any> = {};
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('melue_director_assignments_store_v1');
+      if (raw) directorStore = JSON.parse(raw);
+    }
+  } catch {}
+
+  return teachers.map((t) => {
+    const assigned = new Set<string>();
+
+    // 1. Any existing assignedStudents on staff record itself
+    if (Array.isArray(t.assignedStudents)) {
+      t.assignedStudents.forEach((s) => s && assigned.add(String(s)));
+    }
+
+    // 2. From persistent therapist assignments store
+    const normName = t.name.trim().toLowerCase();
+    for (const [k, v] of Object.entries(store)) {
+      if (k.trim().toLowerCase() === normName && Array.isArray(v)) {
+        v.forEach((s) => s && assigned.add(String(s)));
+      }
+    }
+    if (t.id && Array.isArray(store[t.id])) {
+      store[t.id].forEach((s) => s && assigned.add(String(s)));
+    }
+
+    // 3. From enrolled students cache
+    enrolledCache.forEach((stu: any) => {
+      const stuTherapist = String(
+        stu.therapist ||
+          stu.assignedTherapist ||
+          stu.assigned_therapist ||
+          stu.teacher ||
+          stu.teacherName ||
+          '',
+      )
+        .trim()
+        .toLowerCase();
+      const tId = String(t.id || '')
+        .trim()
+        .toLowerCase();
+      if (stuTherapist && (stuTherapist === normName || (tId && stuTherapist === tId))) {
+        const sName = stu.fullName || stu.name || stu.id;
+        if (sName) assigned.add(String(sName));
+      }
+    });
+
+    // 4. From director assignments store
+    if (t.id && directorStore[String(t.id)]) {
+      const rec = directorStore[String(t.id)];
+      if (Array.isArray(rec.studentIds)) {
+        rec.studentIds.forEach((sid: any) => sid && assigned.add(String(sid)));
+      }
+    }
+
+    return {
+      ...t,
+      assignedStudents: Array.from(assigned),
+    };
+  });
 }
 
 export function getTherapyGroupAgeWarning(therapyGroup: string, age: number | null): string | null {
@@ -198,7 +303,18 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       .then(({ data }) => {
         const clean = filterOutDeletedStaff(data);
         const teachers = clean.filter((s) => s.role === 'teacher');
-        setTherapists(teachers);
+        const enriched = resolveEnrichedTherapists(teachers);
+        setTherapists(enriched);
+        const available = enriched.find((t) => (t.assignedStudents?.length ?? 0) < MAX_CASELOAD);
+        setForm((prev) => ({
+          ...prev,
+          therapist: enriched.some(
+            (t) => t.name === prev.therapist && (t.assignedStudents?.length ?? 0) < MAX_CASELOAD,
+          )
+          therapist: teachers.some((t) => t.name === prev.therapist)
+            ? prev.therapist
+            : available?.name || '',
+        }));
       })
       .catch(() => setTherapists([]));
 
@@ -323,6 +439,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     ...(includeTherapistStep ? ['Assign Therapist'] : []),
     'Review',
   ];
+
+  useEffect(() => {
+    const handler = () => {
+      loadFormConfig();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_therapist_assignments_updated', handler);
+      return () => window.removeEventListener('melue_therapist_assignments_updated', handler);
+    }
+  }, [loadFormConfig]);
 
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
@@ -586,6 +712,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       }
     }
 
+    const [firstName, ...rest] = form.name.trim().split(/\s+/);
+    const photoPayload = form.photoBase64 || form.photoUri || '';
+    const chosenTherapist = form.therapist.trim();
+    const selectedTherapistObj = therapists.find(
+      (t) => t.name.toLowerCase().trim() === chosenTherapist.toLowerCase(),
+    );
+    const therapistId = selectedTherapistObj?.id || '';
     const [firstName, ...rest] = (studentName || 'Student').trim().split(/\s+/);
     const parentName = getFieldVal('f4') || getFieldVal(/parent.*name|guardian/i) || 'Guardian';
     const parentPhone = getFieldVal('f5') || getFieldVal(/phone/i) || '555-0100';
@@ -668,8 +801,50 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             enrollment_status: 'active',
             is_active: true,
             active: true,
+            therapist: chosenTherapist,
+            assignedTherapist: chosenTherapist,
+            assigned_therapist: chosenTherapist,
+            therapistId,
+            therapist_id: therapistId,
           });
         } catch {}
+      }
+
+      const studentName = form.name.trim();
+      if (chosenTherapist && studentName) {
+        assignStudentToTherapist(chosenTherapist, studentName, therapistId);
+
+        const enrolledCache = storage.getJSONSync<any[]>('melue_enrolled_students_cache', []) || [];
+        const cleanName = studentName.toLowerCase();
+        const existingIdx = enrolledCache.findIndex(
+          (s) => (s.fullName || s.name || '').trim().toLowerCase() === cleanName,
+        );
+        const studentRecord = {
+          id: createdId || `stu-${Date.now()}`,
+          fullName: studentName,
+          name: studentName,
+          age: form.dob ? calculateAge(form.dob) : 6,
+          programType: form.program,
+          program: form.program,
+          therapyGroup: form.therapyGroup,
+          therapist: chosenTherapist,
+          assignedTherapist: chosenTherapist,
+          status: 'active',
+        };
+        if (existingIdx >= 0) {
+          enrolledCache[existingIdx] = { ...enrolledCache[existingIdx], ...studentRecord };
+        } else {
+          enrolledCache.unshift(studentRecord);
+        }
+        storage.setJSONSync('melue_enrolled_students_cache', enrolledCache);
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('melue_therapist_assignments_updated', {
+              detail: { therapist: chosenTherapist, studentName },
+            }),
+          );
+        }
       }
 
       saveStudentPhoto({
@@ -681,6 +856,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         photoBase64: studentPhoto,
         photoUri: studentPhoto,
       });
+      loadFormConfig();
+      showToast('Student is successfully enrolled', 'success');
 
       showToast(`${studentName} enrolled in ${studentProgram}`, 'success');
       navigation?.navigate?.('StudentEnrollment' as never);
@@ -1143,6 +1320,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
+        activeTab="Enrollment"
+        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t] as never)}
         activeTab="Enrollment Wizard"
         onTabPress={(t) => {
           const r = PD_ROUTE_BY_TAB[t];

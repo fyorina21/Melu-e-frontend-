@@ -18,7 +18,7 @@ describe('appNavConfig grouped navigation for Program Director', () => {
     };
 
     const tabs = getGroupedTabsForSession(session, 'program_director', ROLE_TABS.program_director);
-    expect(tabs.length).toBe(7);
+    expect(tabs.length).toBe(6);
 
     // Standalone tabs
     expect(tabs[0]).toBe('Dashboard');

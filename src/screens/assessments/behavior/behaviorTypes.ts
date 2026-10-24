@@ -176,6 +176,7 @@ export interface StudentProfile {
 
 export function calculateMassTotals(
   massAnswers: Record<string, string>,
+  items: MassItem[] = MASS_ITEMS,
 ): Record<MassFunction, number> {
   const totals: Record<MassFunction, number> = {
     Sensory: 0,
@@ -183,9 +184,9 @@ export function calculateMassTotals(
     Attention: 0,
     Tangible: 0,
   };
-  MASS_ITEMS.forEach((i) => {
+  items.forEach((i) => {
     if (massAnswers[i.id]) {
-      totals[i.function] += LIKERT_SCORE[massAnswers[i.id]] || 0;
+      totals[i.function] = (totals[i.function] || 0) + (LIKERT_SCORE[massAnswers[i.id]] || 0);
     }
   });
   return totals;
@@ -198,8 +199,15 @@ export function calculateMassMaxFunction(totals: Record<MassFunction, number>): 
   );
 }
 
+export function getTopMassFunctions(totals: Record<MassFunction, number>): MassFunction[] {
+  const maxScore = Math.max(...Object.values(totals));
+  if (maxScore <= 0) return [];
+  return (Object.keys(totals) as MassFunction[]).filter((fn) => totals[fn] === maxScore);
+}
+
 export function calculateFastTotals(
   fastAnswers: Record<string, boolean>,
+  items: FastItem[] = FAST_ITEMS,
 ): Record<FastCategory, number> {
   const totals: Record<FastCategory, number> = {
     'Social - Positive': 0,
@@ -207,9 +215,9 @@ export function calculateFastTotals(
     'Automatic - Positive': 0,
     'Automatic - Negative': 0,
   };
-  FAST_ITEMS.forEach((i) => {
+  items.forEach((i) => {
     if (fastAnswers[i.id]) {
-      totals[i.category] += 1;
+      totals[i.category] = (totals[i.category] || 0) + 1;
     }
   });
   return totals;
@@ -220,4 +228,10 @@ export function calculateFastMaxCategory(totals: Record<FastCategory, number>): 
     (max, k) => (totals[k] > totals[max] ? k : max),
     'Social - Positive' as FastCategory,
   );
+}
+
+export function getTopFastCategories(totals: Record<FastCategory, number>): FastCategory[] {
+  const maxScore = Math.max(...Object.values(totals));
+  if (maxScore <= 0) return [];
+  return (Object.keys(totals) as FastCategory[]).filter((cat) => totals[cat] === maxScore);
 }
