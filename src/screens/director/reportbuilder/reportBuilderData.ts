@@ -76,7 +76,7 @@ export async function buildCustomReport(filters: ReportFilterState): Promise<Rep
 
   const rows: ReportRow[] = list.map((student) => {
     const h = hash(String(student.id ?? student.name ?? Math.random()));
-    const program = PROGRAM_OPTIONS[h % PROGRAM_OPTIONS.length] ?? 'ABA';
+    const program = PROGRAM_OPTIONS[h % PROGRAM_OPTIONS.length] ?? 'Regular Morning';
     const therapist = teachers.length ? teachers[h % teachers.length].name : 'Unassigned';
     const attendance = 60 + (h % 40); // 60–99
     const assessmentScore = 40 + (h % 60); // 40–99

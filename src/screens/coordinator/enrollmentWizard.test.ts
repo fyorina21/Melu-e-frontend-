@@ -64,7 +64,7 @@ describe('Student Enrollment Wizard Utilities', () => {
       ]);
       expect(MAX_CASELOAD).toBe(2);
       expect(INITIAL_STATE.gender).toBe('Female');
-      expect(INITIAL_STATE.program).toBe('Regular');
+      expect(INITIAL_STATE.program).toBe('Regular Morning');
     });
   });
 });

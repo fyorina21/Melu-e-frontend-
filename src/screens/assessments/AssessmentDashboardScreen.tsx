@@ -31,8 +31,16 @@ interface AssessmentStatusStyle {
 
 const STATUS_STYLE: Record<string, AssessmentStatusStyle> = {
   Completed: { bg: colors.statusApprovedBg, text: colors.statusApprovedText, barColor: '#22C55E' },
-  'In Progress': { bg: colors.statusInProgressBg, text: colors.statusInProgressText, barColor: colors.statusInProgressText },
-  'Not Started': { bg: colors.statusNotStartedBg, text: colors.mutedText, barColor: colors.mutedText },
+  'In Progress': {
+    bg: colors.statusInProgressBg,
+    text: colors.statusInProgressText,
+    barColor: colors.statusInProgressText,
+  },
+  'Not Started': {
+    bg: colors.statusNotStartedBg,
+    text: colors.mutedText,
+    barColor: colors.mutedText,
+  },
 };
 
 function StatusPillLocal({ status }: { status: string }) {
@@ -44,7 +52,15 @@ function StatusPillLocal({ status }: { status: string }) {
   );
 }
 
-function AssessmentRow({ label, status, progress }: { label: string; status: string; progress: number }) {
+function AssessmentRow({
+  label,
+  status,
+  progress,
+}: {
+  label: string;
+  status: string;
+  progress: number;
+}) {
   const s = STATUS_STYLE[status] || STATUS_STYLE['Not Started'];
   return (
     <View style={styles.assessmentBlock}>
@@ -57,7 +73,9 @@ function AssessmentRow({ label, status, progress }: { label: string; status: str
         <Text style={typography.caption}>{progress}%</Text>
       </View>
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: s.barColor }]} />
+        <View
+          style={[styles.progressFill, { width: `${progress}%`, backgroundColor: s.barColor }]}
+        />
       </View>
     </View>
   );
@@ -96,16 +114,20 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   useEffect(() => {
-    const handleSync = () => { load(); };
+    const handleSync = () => {
+      load();
+    };
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', handleSync);
       window.addEventListener('focus', handleSync);
@@ -135,7 +157,10 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -167,8 +192,16 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
             <Text style={styles.statValue}>
               {
                 filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  const sk = getStudentSkillsProgress(
+                    s.id,
+                    Number(s.ablls?.progress || 0),
+                    s.ablls?.status || 'Not Started',
+                  );
+                  const bh = getStudentBehaviorProgress(
+                    s.id,
+                    Number(s.behavior?.progress || 0),
+                    s.behavior?.status || 'Not Started',
+                  );
                   return sk.status === 'Completed' && bh.status === 'Completed';
                 }).length
               }
@@ -180,9 +213,20 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
             <Text style={styles.statValue}>
               {
                 filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
-                  return (sk.status === 'In Progress' || bh.status === 'In Progress') && !(sk.status === 'Completed' && bh.status === 'Completed');
+                  const sk = getStudentSkillsProgress(
+                    s.id,
+                    Number(s.ablls?.progress || 0),
+                    s.ablls?.status || 'Not Started',
+                  );
+                  const bh = getStudentBehaviorProgress(
+                    s.id,
+                    Number(s.behavior?.progress || 0),
+                    s.behavior?.status || 'Not Started',
+                  );
+                  return (
+                    (sk.status === 'In Progress' || bh.status === 'In Progress') &&
+                    !(sk.status === 'Completed' && bh.status === 'Completed')
+                  );
                 }).length
               }
             </Text>
@@ -193,8 +237,16 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
             <Text style={styles.statValue}>
               {
                 filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-                  const bh = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+                  const sk = getStudentSkillsProgress(
+                    s.id,
+                    Number(s.ablls?.progress || 0),
+                    s.ablls?.status || 'Not Started',
+                  );
+                  const bh = getStudentBehaviorProgress(
+                    s.id,
+                    Number(s.behavior?.progress || 0),
+                    s.behavior?.status || 'Not Started',
+                  );
                   return sk.status === 'Not Started' && bh.status === 'Not Started';
                 }).length
               }
@@ -206,15 +258,23 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <Text style={typography.h3}>Student Assessments</Text>
         <View style={styles.studentsGrid}>
           {filteredStudents.map((s) => {
-            const skillsData = getStudentSkillsProgress(s.id, Number(s.ablls?.progress || 0), s.ablls?.status || 'Not Started');
-            const behaviorData = getStudentBehaviorProgress(s.id, Number(s.behavior?.progress || 0), s.behavior?.status || 'Not Started');
+            const skillsData = getStudentSkillsProgress(
+              s.id,
+              Number(s.ablls?.progress || 0),
+              s.ablls?.status || 'Not Started',
+            );
+            const behaviorData = getStudentBehaviorProgress(
+              s.id,
+              Number(s.behavior?.progress || 0),
+              s.behavior?.status || 'Not Started',
+            );
 
             const skillsProg = skillsData.progress;
             const skillsStat = skillsData.status;
 
             const behaviorProg = behaviorData.progress;
             const behaviorStat = behaviorData.status;
-            
+
             const isCompleted =
               s.score === 100 ||
               (skillsStat === 'Completed' && behaviorStat === 'Completed') ||
@@ -222,9 +282,12 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
             const displayScore = isCompleted
               ? 100
-              : (skillsProg === 0 && behaviorProg === 0)
-              ? 0
-              : Math.min(Math.max(Number(s.score ?? Math.round((skillsProg + behaviorProg) / 2)), 0), 100);
+              : skillsProg === 0 && behaviorProg === 0
+                ? 0
+                : Math.min(
+                    Math.max(Number(s.score ?? Math.round((skillsProg + behaviorProg) / 2)), 0),
+                    100,
+                  );
 
             return (
               <View key={s.id} style={styles.studentCard}>
@@ -238,8 +301,12 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={typography.bodyBold}>{s.name}</Text>
-                    <Text style={typography.caption}>Age {s.age} · {s.program}</Text>
-                    <Text style={typography.caption}>Therapist: {s.therapist} · Last assessment: {s.lastAssessment}</Text>
+                    <Text style={typography.caption}>
+                      Age {s.age} · {s.program}
+                    </Text>
+                    <Text style={typography.caption}>
+                      Therapist: {s.therapist} · Last assessment: {s.lastAssessment}
+                    </Text>
                   </View>
                   <View style={styles.scoreBadge}>
                     <Text style={styles.scoreBadgeValue}>{displayScore}%</Text>
@@ -247,44 +314,75 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
                   </View>
                 </View>
 
-                <AssessmentRow label="Skills Assessment" status={skillsStat} progress={skillsProg} />
-                <AssessmentRow label="Behavior Assessment" status={behaviorStat} progress={behaviorProg} />
+                <AssessmentRow
+                  label="Skills Assessment"
+                  status={skillsStat}
+                  progress={skillsProg}
+                />
+                <AssessmentRow
+                  label="Behavior Assessment"
+                  status={behaviorStat}
+                  progress={behaviorProg}
+                />
 
                 {/* Prominent IUP Generation Button to Assign Goals (Only when assessment is completed) */}
                 {isCompleted && (
                   <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 }]}
+                    style={[
+                      styles.launchBtn,
+                      { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 },
+                    ]}
                     onPress={() => {
                       markStudentAssessmentCompleted(s.id);
                       (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
                       <Feather name="check-circle" size={15} color="#FFFFFF" />
-                      <Text style={[styles.launchBtnTextLight, { fontSize: 12 }]}>100% Complete — Proceed to IUP Generation to Assign Goals →</Text>
+                      <Text style={[styles.launchBtnTextLight, { fontSize: 12 }]}>
+                        100% Complete — Proceed to IUP Generation to Assign Goals →
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 )}
 
                 <View style={styles.studentBtnRow}>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]} onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}>
+                  <TouchableOpacity
+                    style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]}
+                    onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}
+                  >
                     <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#EF4444' }]} onPress={() => navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })}>
+                  <TouchableOpacity
+                    style={[styles.launchBtn, { backgroundColor: '#EF4444' }]}
+                    onPress={() =>
+                      navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })
+                    }
+                  >
                     <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.studentBtnRow}>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#22C55E' }]} onPress={() => navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })}>
+                  <TouchableOpacity
+                    style={[styles.launchBtn, { backgroundColor: '#22C55E' }]}
+                    onPress={() =>
+                      navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })
+                    }
+                  >
                     <Text style={styles.launchBtnTextLight}>Preference →</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#A855F7' }]} onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}>
+                  <TouchableOpacity
+                    style={[styles.launchBtn, { backgroundColor: '#A855F7' }]}
+                    onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}
+                  >
                     <Text style={styles.launchBtnTextLight}>Sensory →</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.studentBtnRow}>
-                  <TouchableOpacity style={[styles.launchBtn, { backgroundColor: '#D97706' }]} onPress={() => navigation?.navigate?.('SocialSkillsAssessment', { studentId: s.id })}>
-                    <Text style={styles.launchBtnTextLight}>Social Skills Questionnaire →</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -295,7 +393,9 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         <View style={styles.guidelinesBox}>
           <Feather name="info" size={16} color={colors.primaryYellowDark} />
           <Text style={styles.guidelinesText}>
-            All students must complete the Skills and Behavior assessments within the 6-week window. Once assessments reach 100% completion, proceed to IUP Generation to assign targets from the Goal Bank.
+            All students must complete the Skills and Behavior assessments within the 6-week window.
+            Once assessments reach 100% completion, proceed to IUP Generation to assign targets from
+            the Goal Bank.
           </Text>
         </View>
       </ScrollView>
@@ -305,32 +405,108 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border, flexWrap: 'wrap', gap: spacing.sm },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  periodPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: '#FEF3C7', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
+  periodPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
   periodPillText: { fontSize: 12, fontWeight: '700', color: colors.primaryYellowDark },
   content: { padding: spacing.lg, gap: spacing.lg },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statCard: { flexGrow: 1, minWidth: '22%', backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  statCard: {
+    flexGrow: 1,
+    minWidth: '22%',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+  },
   statValue: { fontSize: 24, fontWeight: '700', color: colors.navyText },
   studentsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  studentCard: { flexGrow: 1, minWidth: '45%', backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
+  studentCard: {
+    flexGrow: 1,
+    minWidth: '45%',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
   studentHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  studentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.promptG, alignItems: 'center', justifyContent: 'center' },
+  studentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.promptG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   studentAvatarText: { color: colors.white, fontWeight: '700' },
-  scoreBadge: { alignItems: 'center', backgroundColor: colors.bgApp, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderWidth: 1, borderColor: colors.border },
+  scoreBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.bgApp,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   scoreBadgeValue: { fontSize: 14, fontWeight: '700', color: colors.navyText },
-  scoreBadgeLabel: { fontSize: 9, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase' },
+  scoreBadgeLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+  },
   assessmentBlock: { gap: spacing.xs },
-  assessmentHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  assessmentHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
   statusPillText: { fontSize: 10, fontWeight: '700' },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressTrack: { height: 6, borderRadius: radius.pill, backgroundColor: colors.bgApp, overflow: 'hidden' },
+  progressTrack: {
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bgApp,
+    overflow: 'hidden',
+  },
   progressFill: { height: '100%' },
   studentBtnRow: { flexDirection: 'row', gap: spacing.sm },
-  launchBtn: { flex: 1, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  launchBtn: {
+    flex: 1,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
   launchBtnTextLight: { fontWeight: '700', color: colors.white, fontSize: 11 },
-  guidelinesBox: { flexDirection: 'row', gap: spacing.sm, backgroundColor: '#FEF3C7', borderRadius: radius.md, padding: spacing.lg },
+  guidelinesBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: '#FEF3C7',
+    borderRadius: radius.md,
+    padding: spacing.lg,
+  },
   guidelinesText: { flex: 1, fontSize: 13, color: '#92400E' },
 });

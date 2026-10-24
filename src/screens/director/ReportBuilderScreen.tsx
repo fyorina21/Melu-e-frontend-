@@ -1,4 +1,3 @@
-
 // screens/director/ReportBuilderScreen.tsx
 // SCR-DIR-007: Custom Report Builder (Director View)
 
@@ -27,12 +26,25 @@ import { getStaffOptions } from '../../api/optionsApi';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import type { DirectorStackParamList } from '../../types';
 
-const PROGRAMS = ['All Programs', 'ABA', 'Speech Therapy', 'Occupational Therapy'];
+const PROGRAMS = ['All Programs', 'Regular Morning', 'Regular Afternoon', 'Pulled Out'];
 const PERIODS = ['All Periods', 'Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
 const SCORE_FILTERS = ['All Scores', '>50%', '>70%', '>90%'];
 const GOAL_STATUSES = ['All Statuses', 'On Track', 'Needs Support', 'Mastered'];
-const BEHAVIOR_TYPES = ['All Types', 'Tantrums', 'Aggression', 'Self-Injury', 'Elopement', 'Non-Compliance'];
-const DIAGNOSES = ['All Diagnoses', 'Autism Spectrum', 'Speech Delay', 'Motor Delay', 'Global Delay'];
+const BEHAVIOR_TYPES = [
+  'All Types',
+  'Tantrums',
+  'Aggression',
+  'Self-Injury',
+  'Elopement',
+  'Non-Compliance',
+];
+const DIAGNOSES = [
+  'All Diagnoses',
+  'Autism Spectrum',
+  'Speech Delay',
+  'Motor Delay',
+  'Global Delay',
+];
 const ATTENDANCE_OPTIONS = ['All', '<70%', '<75%', '<80%', '<85%', '<90%'];
 const AGE_OPTIONS = ['All', '3–5 yrs', '6–8 yrs', '9–12 yrs', '13+ yrs'];
 
@@ -149,7 +161,7 @@ export default function ReportBuilderScreen({
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const progParam = program === 'All Programs' ? 'ABA' : program;
+      const progParam = program === 'All Programs' ? 'Regular Morning' : program;
       const { data } = await generateCustomReport({
         program: progParam,
         therapist: therapist === 'All Staff' ? 'All' : therapist,
@@ -198,7 +210,7 @@ export default function ReportBuilderScreen({
     if (!results) return '';
     const lines = [
       '================================================================',
-      '         MELU\'E FOUNDATION — CUSTOM REPORT BUILDER              ',
+      "         MELU'E FOUNDATION — CUSTOM REPORT BUILDER              ",
       '================================================================',
       `GENERATED: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
       `FILTERS: Program: ${program} | Therapist: ${therapist} | Period: ${period}`,
@@ -208,7 +220,7 @@ export default function ReportBuilderScreen({
       'MATCHED STUDENT RECORDS:',
       ...results.map(
         (r, i) =>
-          `  ${i + 1}. ${r.name} (Age ${r.age}) | Program: ${r.program} | Therapist: ${r.therapist}\n     Attendance: ${r.attendance}% | Assessment: ${r.assessmentScore}% | Goal Status: ${r.goalStatus}\n     Diagnosis: ${r.diagnosis} | Primary Behavior: ${r.behaviorType}`
+          `  ${i + 1}. ${r.name} (Age ${r.age}) | Program: ${r.program} | Therapist: ${r.therapist}\n     Attendance: ${r.attendance}% | Assessment: ${r.assessmentScore}% | Goal Status: ${r.goalStatus}\n     Diagnosis: ${r.diagnosis} | Primary Behavior: ${r.behaviorType}`,
       ),
       '',
       '----------------------------------------------------------------',
@@ -395,7 +407,9 @@ export default function ReportBuilderScreen({
             <View style={styles.resultHeader}>
               <View>
                 <Text style={styles.cardTitle}>Report Results</Text>
-                <Text style={styles.resultSubtitle}>{results.length} Student Record(s) Matched</Text>
+                <Text style={styles.resultSubtitle}>
+                  {results.length} Student Record(s) Matched
+                </Text>
               </View>
               <View style={styles.exportRow}>
                 <TouchableOpacity style={styles.exportBtn} onPress={() => handleExport('CSV')}>
@@ -420,10 +434,13 @@ export default function ReportBuilderScreen({
                   <View style={{ flex: 1 }}>
                     <View style={styles.studentTitleRow}>
                       <Text style={styles.studentName}>{r.name}</Text>
-                      <Text style={styles.studentMeta}>Age {r.age} · {r.program}</Text>
+                      <Text style={styles.studentMeta}>
+                        Age {r.age} · {r.program}
+                      </Text>
                     </View>
                     <Text style={styles.studentSubMeta}>
-                      Therapist: {r.therapist} · Diagnosis: {r.diagnosis} · Behavior: {r.behaviorType}
+                      Therapist: {r.therapist} · Diagnosis: {r.diagnosis} · Behavior:{' '}
+                      {r.behaviorType}
                     </Text>
                     <View style={styles.metricRow}>
                       <Text style={styles.metricText}>Attendance: {r.attendance}%</Text>
@@ -441,7 +458,9 @@ export default function ReportBuilderScreen({
                 <View style={styles.emptyResults}>
                   <Feather name="info" size={28} color={colors.mutedText} />
                   <Text style={styles.emptyResultsTitle}>No Students Matched</Text>
-                  <Text style={styles.emptyResultsSub}>Try adjusting your filter parameters above.</Text>
+                  <Text style={styles.emptyResultsSub}>
+                    Try adjusting your filter parameters above.
+                  </Text>
                 </View>
               )}
             </View>
@@ -484,7 +503,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -521,7 +546,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     backgroundColor: colors.bgApp,
   },
-  selectDropdownText: { fontSize: 13, fontWeight: '600', color: colors.navyText, flex: 1, paddingRight: 6 },
+  selectDropdownText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.navyText,
+    flex: 1,
+    paddingRight: 6,
+  },
 
   searchWrap: {
     flexDirection: 'row',
@@ -636,4 +667,3 @@ const styles = StyleSheet.create({
   pickerItemText: { fontSize: 13, color: colors.navyText, fontWeight: '500' },
   pickerItemTextActive: { fontWeight: '700' },
 });
-

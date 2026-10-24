@@ -26,8 +26,8 @@ export const STEPS = [
   'Review',
 ];
 
-export const PROGRAM_TYPES = ['Regular', 'Pulled Out'];
-export const THERAPY_GROUPS = ['Basic', 'Functional Living Skill'];
+export const PROGRAM_TYPES = ['Regular Morning', 'Regular Afternoon', 'Pulled Out'];
+export const THERAPY_GROUPS = ['Basic', 'Functional Living'];
 export const GENDERS = ['Female', 'Male', 'Other'];
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
