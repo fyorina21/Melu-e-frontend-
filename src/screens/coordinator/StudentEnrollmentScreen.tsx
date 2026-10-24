@@ -25,6 +25,7 @@ import {
   toggleStudentStatus,
   onStudentStatusChanged,
 } from '../../utils/studentStatusHelper';
+import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
 
 const DEFAULT_PROGRAM_TYPES = ['Regular', 'Pulled Out'];
@@ -201,7 +202,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
         })),
       );
-    } catch (err) {
+    } catch {
       setStudents([]);
     }
   }, []);
@@ -288,6 +289,8 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
     setOpenDropdown(null);
   };
 
+  const routeMap = routeMapForRole('coordinator');
+
   return (
     <SafeAreaView style={styles.safe}>
       {openDropdown && (
@@ -299,8 +302,13 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       )}
 
       <AppNavbar
-        activeTab="Enrollment"
-        onTabPress={(t) => t !== 'Enrollment' && navigation?.navigate?.(navRouteForTab(t) as never)}
+        activeTab="Student Register & Roster List"
+        onTabPress={(t) => {
+          const route = routeMap[t] || COORDINATOR_ROUTE_BY_TAB[t];
+          if (route && route !== 'StudentEnrollment') {
+            navigation?.navigate?.(route as never);
+          }
+        }}
       />
 
       <View style={styles.header}>
@@ -444,28 +452,11 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
   );
 }
 
-function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
-  return (
-    {
-      Dashboard: 'CoordinatorDashboard',
-      'Live Sessions': 'LiveSessionMonitoring',
-      Review: 'SessionSummaryReview',
-      Progress: 'CoordinatorStudentProgress',
-      Schedule: 'CoordinatorSchedule',
-      Parents: 'CoordinatorParentCommunication',
-      Enrollment: 'StudentEnrollment',
-      Workload: 'WorkloadDashboard',
-      Notifications: 'Notifications',
-      Rooms: 'RoomResourceScheduling',
-    } as Record<string, keyof CoordinatorStackParamList>
-  )[tab];
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   backdrop: {
     ...(Platform.OS === 'web'
-      ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 } as any)
+      ? { position: 'fixed' as unknown as 'absolute', top: 0, left: 0, right: 0, bottom: 0 }
       : StyleSheet.absoluteFillObject),
     zIndex: 90,
     backgroundColor: 'transparent',
@@ -638,4 +629,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.promptG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { color: colors.white, fontWeight: '700', fontSize: 16 },
 });

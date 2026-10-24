@@ -1,10 +1,12 @@
 import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { Stack } from 'expo-router';
+import { Slot } from 'expo-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../src/api/queryClient';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ToastProvider } from '../src/context/ToastContext';
+import { ConfirmDialogProvider } from '../src/context/ConfirmDialogContext';
+import { UnsavedChangesProvider } from '../src/context/UnsavedChangesContext';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 export default function RootLayout() {
@@ -14,15 +16,15 @@ export default function RootLayout() {
     // Prevent pages from entering Back-Forward Cache (bfcache), which breaks
     // Metro HMR / Fast Refresh WebSockets when navigating away.
     const noopUnload = () => {};
-    window.addEventListener('unload', noopUnload);
-
-    // If restored from bfcache by the browser, force a reload to reconnect Metro WebSockets cleanly.
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
         window.location.reload();
       }
     };
-    window.addEventListener('pageshow', handlePageShow);
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('unload', noopUnload);
+      window.addEventListener('pageshow', handlePageShow);
+    }
 
     // Filter out false-alarm Metro disconnect warnings emitted during bfcache / pagehide transitions
     const originalWarn = console.warn;
@@ -37,9 +39,24 @@ export default function RootLayout() {
       originalWarn.apply(console, args);
     };
 
+    // Inject runtime font-display: swap for any dynamically generated web font styles
+    if (typeof document !== 'undefined' && !document.getElementById('font-swap-enforcer')) {
+      const fontStyle = document.createElement('style');
+      fontStyle.id = 'font-swap-enforcer';
+      fontStyle.textContent = `
+        @font-face { font-family: 'Ionicons'; font-display: swap; }
+        @font-face { font-family: 'ionicons'; font-display: swap; }
+        @font-face { font-family: 'Feather'; font-display: swap; }
+        @font-face { font-family: 'feather'; font-display: swap; }
+      `;
+      document.head.appendChild(fontStyle);
+    }
+
     return () => {
-      window.removeEventListener('unload', noopUnload);
-      window.removeEventListener('pageshow', handlePageShow);
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('unload', noopUnload);
+        window.removeEventListener('pageshow', handlePageShow);
+      }
       console.warn = originalWarn;
     };
   }, []);
@@ -49,7 +66,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <UnsavedChangesProvider>
+              <ConfirmDialogProvider>
+                <Slot />
+              </ConfirmDialogProvider>
+            </UnsavedChangesProvider>
           </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>

@@ -196,4 +196,31 @@ describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
     // Clean up
     storage.setJSONSync('melue_enrolled_students_cache', []);
   });
+
+  it('preserves field ordering from Form Builder configuration for each wizard step', () => {
+    // In DEFAULT_ENROLLMENT_FORM:
+    // Student Info: f_photo, f1 (Full Name), f2 (DOB), f_gender (Gender)
+    const studentInfoFields = DEFAULT_ENROLLMENT_FORM.fields.filter(
+      (f) => f.section === 'Student Info' || !f.section,
+    );
+    expect(studentInfoFields.map((f) => f.id)).toEqual(['f_photo', 'f1', 'f2', 'f_gender']);
+
+    // Parent Info: f4 (Parent / Guardian Name), f5 (Primary Phone), f6 (Email Address), f9 (Emergency Contact)
+    const parentInfoFields = DEFAULT_ENROLLMENT_FORM.fields.filter(
+      (f) => f.section === 'Parent Info',
+    );
+    expect(parentInfoFields.map((f) => f.id)).toEqual(['f4', 'f5', 'f6', 'f9']);
+
+    // Medical Info: f_diagnosis (Primary Diagnosis), f7 (Medical Notes / Allergies), f8 (Transportation Required)
+    const medicalInfoFields = DEFAULT_ENROLLMENT_FORM.fields.filter(
+      (f) => f.section === 'Medical Info',
+    );
+    expect(medicalInfoFields.map((f) => f.id)).toEqual(['f_diagnosis', 'f7', 'f8']);
+
+    // Program Placement: f_program (Program Type), f_therapy (Therapy Group)
+    const placementFields = DEFAULT_ENROLLMENT_FORM.fields.filter(
+      (f) => f.section === 'Program Placement',
+    );
+    expect(placementFields.map((f) => f.id)).toEqual(['f_program', 'f_therapy']);
+  });
 });

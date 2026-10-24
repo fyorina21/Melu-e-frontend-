@@ -28,6 +28,11 @@ import {
 } from '../../api/SystemAdminApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import {
+  useUnsavedChanges,
+  usePreventUnsavedNavigation,
+} from '../../context/UnsavedChangesContext';
+import { confirmAction } from '../../utils/dialogs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList, Role } from '../../types';
 
@@ -41,6 +46,9 @@ export {
   type AuditEntry,
   ALL_PAGE_MODULES,
   getDefaultMatrixForRole,
+  CATEGORY_ORDER,
+  CATEGORY_METADATA,
+  CATEGORY_FILTER_OPTIONS,
 } from './permissionConfigHelpers';
 
 import {
@@ -60,20 +68,10 @@ import {
   groupPagesByCategory,
   buildSavePayload,
   blankActions,
+  CATEGORY_ORDER,
+  CATEGORY_METADATA,
+  CATEGORY_FILTER_OPTIONS,
 } from './permissionConfigHelpers';
-
-const CATEGORY_FILTER_OPTIONS = [
-  'All Categories',
-  'Executive Oversight',
-  'Intake & Registration',
-  'Goal Management',
-  'Assessments',
-  'Clinical Verification',
-  'Operations & Scheduling',
-  'Clinical Supervision',
-  'Family & Messages',
-  'Administration',
-];
 
 const ADMIN_BADGE_COLORS: Record<
   string,
@@ -105,6 +103,17 @@ export default function PermissionConfigurationScreen({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  const { setDirty: setContextDirty } = useUnsavedChanges();
+  usePreventUnsavedNavigation(navigation, dirty);
+
+  // Synchronize global unsaved context with local dirty state
+  useEffect(() => {
+    setContextDirty(dirty);
+    return () => {
+      setContextDirty(false);
+    };
+  }, [dirty, setContextDirty]);
 
   // Filter & Search Controls
   const [searchQuery, setSearchQuery] = useState('');
@@ -353,40 +362,36 @@ export default function PermissionConfigurationScreen({
 
   // Reset to Defaults with backend confirmation
   const handleResetDefault = () => {
-    Alert.alert(
-      'Reset Permissions to System Defaults?',
-      `Are you sure you want to reset all permissions for ${selectedRole.name}? This will enforce least-privilege system defaults on the server.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset to Default',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const res = await resetDefaultPermissions(selectedRoleId);
-              const serverPerms = res?.data?.permissions;
-              const defaults = mapBackendPermissionsToMatrix(serverPerms, selectedRole.name);
-              setMatrix(defaults);
-              setDirty(false);
+    confirmAction({
+      title: 'Reset Permissions to System Defaults?',
+      message: `Are you sure you want to reset all permissions for ${selectedRole.name}? This will enforce least-privilege system defaults on the server.`,
+      confirmLabel: 'Reset to Default',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await resetDefaultPermissions(selectedRoleId);
+          const serverPerms = res?.data?.permissions;
+          const defaults = mapBackendPermissionsToMatrix(serverPerms, selectedRole.name);
+          setMatrix(defaults);
+          setDirty(false);
 
-              // Record confirmed audit entry
-              const resetAudit: AuditEntry = {
-                id: String(Date.now()),
-                date: new Date().toLocaleString(),
-                user: session?.userName || 'System Admin',
-                resource: 'Role Permissions',
-                action: 'Reset to system defaults',
-                roleName: selectedRole.name,
-              };
-              setAuditTrail((prev) => [resetAudit, ...prev]);
-              showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
-            } catch {
-              showToast('Failed to reset permissions on server. No changes were applied.', 'error');
-            }
-          },
-        },
-      ],
-    );
+          // Record confirmed audit entry
+          const resetAudit: AuditEntry = {
+            id: String(Date.now()),
+            date: new Date().toLocaleString(),
+            user: session?.userName || 'System Admin',
+            resource: 'Role Permissions',
+            action: 'Reset to system defaults',
+            roleName: selectedRole.name,
+          };
+          setAuditTrail((prev) => [resetAudit, ...prev]);
+          showToast(`Permissions for ${selectedRole.name} reset to defaults`, 'success');
+        } catch {
+          showToast('Failed to reset permissions on server. No changes were applied.', 'error');
+        }
+      },
+    });
   };
 
   // Save Configuration Handler with backend authority & error handling
@@ -457,22 +462,18 @@ export default function PermissionConfigurationScreen({
         return;
       }
       if (dirty) {
-        Alert.alert(
-          'Unsaved Changes',
-          `You have unsaved changes for "${selectedRole.name}". Switching roles will discard these changes. Do you want to proceed?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Discard & Switch',
-              style: 'destructive',
-              onPress: () => {
-                setDirty(false);
-                setSelectedRoleId(id);
-                setDropdownOpen(false);
-              },
-            },
-          ],
-        );
+        confirmAction({
+          title: 'Unsaved Changes',
+          message: `You have unsaved changes for "${selectedRole.name}". Switching roles will discard these changes. Do you want to proceed?`,
+          confirmLabel: 'Discard & Switch',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            setSelectedRoleId(id);
+            setDropdownOpen(false);
+          },
+        });
       } else {
         setSelectedRoleId(id);
         setDropdownOpen(false);
@@ -487,21 +488,18 @@ export default function PermissionConfigurationScreen({
       if (!targetRoute) return;
 
       if (dirty) {
-        Alert.alert(
-          'Unsaved Changes',
-          'You have unsaved permission changes. Navigating away will discard them. Do you want to proceed?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Discard & Leave',
-              style: 'destructive',
-              onPress: () => {
-                setDirty(false);
-                navigation?.navigate?.(targetRoute);
-              },
-            },
-          ],
-        );
+        confirmAction({
+          title: 'Unsaved Changes',
+          message:
+            'You have unsaved permission changes. Navigating away will discard them. Do you want to proceed?',
+          confirmLabel: 'Discard & Leave',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            navigation?.navigate?.(targetRoute);
+          },
+        });
       } else {
         navigation?.navigate?.(targetRoute);
       }
@@ -736,29 +734,88 @@ export default function PermissionConfigurationScreen({
                   </Text>
                 </View>
               ) : groupedView ? (
-                Object.entries(categorizedPages).map(([categoryName, pages]) => (
-                  <View key={categoryName}>
-                    {/* Category Section Banner */}
-                    <View style={styles.categoryHeaderRow}>
-                      <Feather name="folder" size={14} color="#0369A1" />
-                      <Text style={styles.categoryHeaderText}>{categoryName}</Text>
-                      <View style={styles.categoryBadgePill}>
-                        <Text style={styles.categoryBadgePillText}>{pages.length} pages</Text>
+                Object.entries(categorizedPages).map(([categoryName, pages]) => {
+                  const meta = CATEGORY_METADATA[categoryName];
+                  return (
+                    <View key={categoryName}>
+                      {/* Category Section Banner */}
+                      <View style={styles.categoryHeaderRow}>
+                        <Feather name="folder" size={15} color="#0369A1" style={{ marginTop: 2 }} />
+                        <View style={{ flex: 1 }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Text style={styles.categoryHeaderText}>{categoryName}</Text>
+                            <View style={styles.categoryBadgePill}>
+                              <Text style={styles.categoryBadgePillText}>
+                                {pages.length} {pages.length === 1 ? 'page' : 'pages'}
+                              </Text>
+                            </View>
+                          </View>
+                          {meta?.description && (
+                            <Text style={styles.categoryDescText} numberOfLines={2}>
+                              {meta.description}
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                    </View>
 
-                    {pages.map((page, idx) =>
-                      renderTableRow(
-                        page,
-                        idx,
-                        matrix,
-                        selectedRole.name,
-                        handleCellPress,
-                        toggleRow,
-                      ),
-                    )}
-                  </View>
-                ))
+                      {/* Render Pages */}
+                      {pages.map((page, idx) => {
+                        const prevPage = idx > 0 ? pages[idx - 1] : null;
+                        const showSubHeader =
+                          categoryName === 'Administration & Governance' &&
+                          page.subCategory &&
+                          (!prevPage || prevPage.subCategory !== page.subCategory);
+
+                        const subHeaderTitle =
+                          page.subCategory === 'Institutional Administration'
+                            ? 'Institutional Administration (Clinical & Operational Configuration)'
+                            : 'System Administration (IT, Governance & Security)';
+
+                        const subHeaderDesc =
+                          page.subCategory === 'Institutional Administration'
+                            ? 'Configured by Clinical Directors / Institutional Administrators without code changes'
+                            : 'Restricted to System Administrators for access control and platform compliance';
+
+                        return (
+                          <React.Fragment key={page.id}>
+                            {showSubHeader && (
+                              <View style={styles.subCategoryHeaderRow}>
+                                <Feather
+                                  name={
+                                    page.subCategory === 'Institutional Administration'
+                                      ? 'sliders'
+                                      : 'shield'
+                                  }
+                                  size={13}
+                                  color="#475569"
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.subCategoryHeaderText}>{subHeaderTitle}</Text>
+                                  <Text style={styles.subCategoryDescText}>{subHeaderDesc}</Text>
+                                </View>
+                              </View>
+                            )}
+                            {renderTableRow(
+                              page,
+                              idx,
+                              matrix,
+                              selectedRole.name,
+                              handleCellPress,
+                              toggleRow,
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  );
+                })
               ) : (
                 filteredPages.map((page, idx) =>
                   renderTableRow(page, idx, matrix, selectedRole.name, handleCellPress, toggleRow),
@@ -1051,7 +1108,7 @@ function renderTableRow(
             </View>
           )}
         </View>
-        <Text style={styles.pageDescText} numberOfLines={1}>
+        <Text style={styles.pageDescText} numberOfLines={2}>
           {page.description}
         </Text>
         <Text style={styles.pageRouteMeta}>
@@ -1059,7 +1116,7 @@ function renderTableRow(
           <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }}>
             {page.route}
           </Text>{' '}
-          · {page.category}
+          · {page.subCategory ? page.subCategory : page.category}
         </Text>
       </View>
 
@@ -1413,14 +1470,28 @@ const styles = StyleSheet.create({
   },
   categoryHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
     paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     backgroundColor: '#F0F9FF',
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#BAE6FD',
+  },
+  categoryNumberBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#0284C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  categoryNumberBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   categoryHeaderText: {
     fontSize: 12,
@@ -1439,6 +1510,62 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#0284C7',
+  },
+  srsBadgePill: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+  },
+  srsBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  categoryDescText: {
+    fontSize: 11,
+    color: '#0369A1',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  subCategoryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  subCategoryHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  subCategoryDescText: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  screenBadgePill: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+  },
+  screenBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
   },
   tableRow: {
     flexDirection: 'row',

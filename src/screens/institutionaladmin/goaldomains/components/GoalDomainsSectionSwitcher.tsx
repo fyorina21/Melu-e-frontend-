@@ -4,16 +4,17 @@ import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../../theme/colors';
 
 interface GoalDomainsSectionSwitcherProps {
-  activeSection: 'domains' | 'templates';
+  activeSection: 'domains' | 'goals' | 'templates';
   domainsCount: number;
-  templatesCount: number;
-  onSelectSection: (section: 'domains' | 'templates') => void;
+  goalsCount?: number;
+  templatesCount?: number;
+  onSelectSection: (section: 'domains' | 'goals') => void;
 }
 
 export function GoalDomainsSectionSwitcher({
   activeSection,
   domainsCount,
-  templatesCount,
+  goalsCount = 0,
   onSelectSection,
 }: GoalDomainsSectionSwitcherProps) {
   return (
@@ -40,23 +41,23 @@ export function GoalDomainsSectionSwitcher({
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.switcherBtn, activeSection === 'templates' && styles.switcherBtnActive]}
-        onPress={() => onSelectSection('templates')}
+        style={[styles.switcherBtn, activeSection === 'goals' && styles.switcherBtnActive]}
+        onPress={() => onSelectSection('goals')}
         accessibilityRole="button"
-        accessibilityState={{ selected: activeSection === 'templates' }}
+        accessibilityState={{ selected: activeSection === 'goals' }}
       >
         <Feather
-          name="list"
+          name="flag"
           size={15}
-          color={activeSection === 'templates' ? colors.navyText : colors.bodyText}
+          color={activeSection === 'goals' ? colors.navyText : colors.bodyText}
         />
         <Text
           style={[
             styles.switcherBtnText,
-            activeSection === 'templates' && styles.switcherBtnTextActive,
+            activeSection === 'goals' && styles.switcherBtnTextActive,
           ]}
         >
-          Task Analysis Templates ({templatesCount})
+          Target Goals ({goalsCount})
         </Text>
       </TouchableOpacity>
     </View>
@@ -78,8 +79,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm + 2,
+    gap: spacing.sm,
+    paddingVertical: 10,
     borderRadius: radius.sm,
   },
   switcherBtnActive: {
@@ -87,11 +88,11 @@ const styles = StyleSheet.create({
   },
   switcherBtnText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     color: colors.bodyText,
   },
   switcherBtnTextActive: {
-    color: colors.navyText,
     fontWeight: '700',
+    color: colors.navyText,
   },
 });

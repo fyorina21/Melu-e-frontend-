@@ -10,9 +10,6 @@ export const ScheduleCapacityHeader: React.FC = React.memo(() => {
       <View style={styles.topHeader}>
         <View style={styles.titleRow}>
           <Text style={styles.breadcrumbTitle}>Session Schedule & Capacity</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>SCR-ADMIN-004</Text>
-          </View>
         </View>
         <View style={styles.breadcrumbRow}>
           <Feather name="settings" size={12} color="#64748B" />
@@ -27,7 +24,7 @@ export const ScheduleCapacityHeader: React.FC = React.memo(() => {
       <View style={styles.pageHeader}>
         <Text style={styles.mainTitle}>Session Schedule & Capacity</Text>
         <Text style={styles.subtitle}>
-          SCR-ADMIN-004 · Define therapy session rounds, capacity, and block definitions
+          Define therapy session rounds, capacity, and block definitions
         </Text>
       </View>
 

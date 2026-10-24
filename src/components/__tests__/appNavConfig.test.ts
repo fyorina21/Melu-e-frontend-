@@ -18,40 +18,47 @@ describe('appNavConfig grouped navigation for Program Director', () => {
     };
 
     const tabs = getGroupedTabsForSession(session, 'program_director', ROLE_TABS.program_director);
-    expect(tabs.length).toBe(6);
+    expect(tabs.length).toBe(7);
 
     // Standalone tabs
     expect(tabs[0]).toBe('Dashboard');
     expect(tabs[5]).toBe('Parent Communication');
+    expect(tabs[6]).toBe('Reports & Executive Oversight');
 
     // Group tabs
     const studentsGroup = tabs[1];
     expect(isNavGroup(studentsGroup)).toBe(true);
     if (isNavGroup(studentsGroup)) {
       expect(studentsGroup.label).toBe('Students');
-      expect(studentsGroup.items).toEqual(['Enrollment Wizard', 'Student Caseload Management']);
+      expect(studentsGroup.items).toEqual([
+        'Student Register & Roster List',
+        'Student Enrollment Wizard',
+      ]);
     }
 
     const assessmentsGroup = tabs[2];
     expect(isNavGroup(assessmentsGroup)).toBe(true);
     if (isNavGroup(assessmentsGroup)) {
       expect(assessmentsGroup.label).toBe('Assessments');
-      expect(assessmentsGroup.items).toEqual(['Assessment Review', 'Assessment Summary Report']);
+      expect(assessmentsGroup.items).toEqual([
+        'Assessment Review & Sign-Off',
+        'Assessment Summary Report',
+      ]);
     }
 
     const iupsGroup = tabs[3];
     expect(isNavGroup(iupsGroup)).toBe(true);
     if (isNavGroup(iupsGroup)) {
       expect(iupsGroup.label).toBe('IUPs');
-      expect(iupsGroup.items).toEqual(['IUP Creation & Goal Assignment', 'IUP Library Management']);
+      expect(iupsGroup.items).toEqual([
+        'IUP Creation & Goal Assignment',
+        'IUP Library Management',
+        'Student Caseload Management',
+        'Goal Bank',
+      ]);
     }
 
-    const qualityGroup = tabs[4];
-    expect(isNavGroup(qualityGroup)).toBe(true);
-    if (isNavGroup(qualityGroup)) {
-      expect(qualityGroup.label).toBe('Approvals & Quality');
-      expect(qualityGroup.items).toEqual(['Goal Mastery Approval', 'Clinical Quality Monitoring']);
-    }
+    expect(tabs[4]).toBe('Goal Mastery Approval');
   });
 
   it('maps all group items and original items to valid PD routes', () => {
@@ -89,9 +96,8 @@ describe('appNavConfig grouped navigation for Program Director', () => {
 });
 
 describe('appNavConfig grouped navigation for Therapy Coordinator', () => {
-  it('renames Student Registration to Registered Student in coordinator tabs', () => {
-    expect(ROLE_TABS.coordinator).toContain('Registered Student');
-    expect(ROLE_TABS.coordinator).not.toContain('Student Registration');
+  it('includes Student Register & Roster List in coordinator tabs', () => {
+    expect(ROLE_TABS.coordinator).toContain('Student Register & Roster List');
   });
 
   it('provides grouped tabs for coordinator role', () => {
@@ -114,7 +120,7 @@ describe('appNavConfig grouped navigation for Therapy Coordinator', () => {
     expect(isNavGroup(sessionsGroup)).toBe(true);
     if (isNavGroup(sessionsGroup)) {
       expect(sessionsGroup.label).toBe('Sessions');
-      expect(sessionsGroup.items).toEqual(['Live Sessions', 'Session Summary']);
+      expect(sessionsGroup.items).toEqual(['Live Session Monitoring', 'Session Summary Review']);
     }
 
     const studentsGroup = tabs[2];
@@ -122,9 +128,8 @@ describe('appNavConfig grouped navigation for Therapy Coordinator', () => {
     if (isNavGroup(studentsGroup)) {
       expect(studentsGroup.label).toBe('Students');
       expect(studentsGroup.items).toEqual([
-        'Registered Student',
-        'Student Progress',
-        'IUP Creation & Goal Assignment',
+        'Student Register & Roster List',
+        'Student Enrollment Wizard',
       ]);
     }
 
@@ -133,8 +138,8 @@ describe('appNavConfig grouped navigation for Therapy Coordinator', () => {
     if (isNavGroup(operationsGroup)) {
       expect(operationsGroup.label).toBe('Operations');
       expect(operationsGroup.items).toEqual([
-        'Operational Management',
-        'Staff Management & Linking',
+        'Staff Workload & Therapist Linking',
+        'Room Resource Scheduling',
       ]);
     }
   });
@@ -234,5 +239,80 @@ describe('getTabsForSession dynamic module filtering', () => {
     expect(tabs).toContain('Assessments');
     expect(tabs).toContain('IUP Creation & Goal Assignment');
     expect(tabs).not.toContain('Staff Accounts');
+  });
+
+  it('dynamically injects newly granted modules into core role navbar and maps valid routes', async () => {
+    const { getTabsForSession, routeMapForRole, ROLE_TABS } = await import('../appNavConfig');
+    // Teacher granted both standard 'sessions' AND newly configured 'reports' & 'staff'
+    const enhancedTeacherSession: AuthSession = {
+      userName: 'Teacher Lead',
+      role: 'teacher',
+      modules: ['sessions', 'reports', 'staff'],
+    };
+
+    const tabs = getTabsForSession(enhancedTeacherSession, ROLE_TABS.teacher);
+
+    // Kept standard granted tabs
+    expect(tabs).toContain('Dashboard');
+    expect(tabs).toContain('Session Data Collection');
+    expect(tabs).toContain('Daily Session Notes');
+
+    // Newly injected tabs for 'reports' and 'staff'
+    expect(tabs).toContain('Reports & Executive Oversight');
+    expect(tabs).toContain('Staff Scheduling & Capacity');
+
+    // Filtered out ungranted tabs
+    expect(tabs).not.toContain('Assessment Dashboard');
+    expect(tabs).not.toContain('ABC Behavior Incident Log');
+    expect(tabs).not.toContain('Parent Communication');
+
+    // Route map resolves dynamically injected tabs for teacher
+    const teacherRoutes = routeMapForRole('teacher');
+    expect(teacherRoutes['Reports & Executive Oversight']).toBe('ReportsOversight');
+    expect(teacherRoutes['Staff Scheduling & Capacity']).toBe('DirectorScheduling');
+  });
+
+  it('dynamically updates grouped navigation for Coordinator role based on active permissions', async () => {
+    const { getGroupedTabsForSession, ROLE_TABS } = await import('../appNavConfig');
+    // Coordinator with only sessions and reports granted
+    const session: AuthSession = {
+      userName: 'Coord Sarah',
+      role: 'coordinator',
+      modules: ['sessions', 'reports'],
+    };
+
+    const groupedTabs = getGroupedTabsForSession(session, 'coordinator', ROLE_TABS.coordinator);
+
+    // Dashboard is present
+    expect(groupedTabs).toContain('Dashboard');
+
+    // Sessions group is present
+    const sessionsGroup = groupedTabs.find(
+      (item) => typeof item !== 'string' && item.label === 'Sessions',
+    ) as any;
+    expect(sessionsGroup).toBeDefined();
+    expect(sessionsGroup.items).toContain('Live Session Monitoring');
+
+    // Reports tab is dynamically injected
+    expect(groupedTabs).toContain('Reports & Executive Oversight');
+
+    // Ungranted groups like Students (needs students) should not be present
+    const studentsGroup = groupedTabs.find(
+      (item) => typeof item !== 'string' && item.label === 'Students',
+    );
+    expect(studentsGroup).toBeUndefined();
+  });
+});
+
+describe('hasModuleAccess route guard alignment', () => {
+  it('allows access when module is granted via session.permissions list', async () => {
+    const { hasModuleAccess } = await import('../../auth/permissions');
+
+    // When session.modules is empty but session.permissions has 'reports:view'
+    expect(hasModuleAccess([], 'reports' as any, ['reports:view'])).toBe(true);
+    expect(hasModuleAccess([], 'reports' as any, ['oversight:view'])).toBe(true);
+
+    // Denies when ungranted
+    expect(hasModuleAccess([], 'reports' as any, ['sessions:view'])).toBe(false);
   });
 });

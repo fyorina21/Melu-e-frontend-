@@ -78,6 +78,7 @@ export const EditFieldModal: React.FC<EditFieldModalProps> = React.memo(
                   style={styles.inlineTextInput}
                   value={editLabel}
                   onChangeText={onLabelChange}
+                  onSubmitEditing={onSave}
                 />
               </View>
 
@@ -89,14 +90,16 @@ export const EditFieldModal: React.FC<EditFieldModalProps> = React.memo(
                       key={type}
                       style={[
                         styles.typeSelectPill,
-                        editType === type && styles.typeSelectPillActive,
+                        editType.toLowerCase() === type.toLowerCase() &&
+                          styles.typeSelectPillActive,
                       ]}
                       onPress={() => onTypeChange(type)}
                     >
                       <Text
                         style={[
                           styles.typeSelectPillText,
-                          editType === type && styles.typeSelectPillTextActive,
+                          editType.toLowerCase() === type.toLowerCase() &&
+                            styles.typeSelectPillTextActive,
                         ]}
                       >
                         {type}
@@ -113,6 +116,7 @@ export const EditFieldModal: React.FC<EditFieldModalProps> = React.memo(
                     style={styles.inlineTextInput}
                     value={editOptions}
                     onChangeText={onOptionsChange}
+                    onSubmitEditing={onSave}
                     placeholder="Option 1, Option 2, Option 3"
                     placeholderTextColor="#94A3B8"
                   />
@@ -125,6 +129,7 @@ export const EditFieldModal: React.FC<EditFieldModalProps> = React.memo(
                   style={styles.inlineTextInput}
                   value={editSection}
                   onChangeText={onSectionChange}
+                  onSubmitEditing={onSave}
                 />
               </View>
 

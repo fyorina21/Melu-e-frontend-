@@ -1,18 +1,42 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList } from '../types';
-import StaffAccountManagementScreen from '../screens/systemadmin/StaffAccountManagementScreen';
-import RoleManagementScreen from '../screens/systemadmin/RoleManagementScreen';
-import PermissionConfigurationScreen from '../screens/systemadmin/PermissionConfigurationScreen';
-import AuditLogScreen from '../screens/systemadmin/AuditLogScreen';
-
+import ScreenLoader from '../components/ScreenLoader';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { withModuleGuard } from '../auth/withModuleGuard';
 
-const GuardedStaffAccountManagement = withModuleGuard(StaffAccountManagementScreen, 'admin');
-const GuardedRoleManagement = withModuleGuard(RoleManagementScreen, 'admin');
-const GuardedPermissionConfiguration = withModuleGuard(PermissionConfigurationScreen, 'admin');
-const GuardedAuditLog = withModuleGuard(AuditLogScreen, 'admin');
+const StaffAccountManagementScreen = lazy(
+  () => import('../screens/systemadmin/StaffAccountManagementScreen'),
+);
+const RoleManagementScreen = lazy(() => import('../screens/systemadmin/RoleManagementScreen'));
+const PermissionConfigurationScreen = lazy(
+  () => import('../screens/systemadmin/PermissionConfigurationScreen'),
+);
+const AuditLogScreen = lazy(() => import('../screens/systemadmin/AuditLogScreen'));
+
+function withLazySuspense<P extends object>(
+  Component: React.ComponentType<P>,
+  fallback = <ScreenLoader />,
+) {
+  return function LazyWrapper(props: P) {
+    return (
+      <Suspense fallback={fallback}>
+        <Component {...props} />
+      </Suspense>
+    );
+  };
+}
+
+const GuardedStaffAccountManagement = withModuleGuard(
+  withLazySuspense(StaffAccountManagementScreen),
+  'admin',
+);
+const GuardedRoleManagement = withModuleGuard(withLazySuspense(RoleManagementScreen), 'admin');
+const GuardedPermissionConfiguration = withModuleGuard(
+  withLazySuspense(PermissionConfigurationScreen),
+  'admin',
+);
+const GuardedAuditLog = withModuleGuard(withLazySuspense(AuditLogScreen), 'admin');
 
 const Stack = createNativeStackNavigator<SystemAdminStackParamList>();
 

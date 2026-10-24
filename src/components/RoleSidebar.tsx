@@ -1,14 +1,29 @@
 // Persistent, in-flow sidebar used by institutional admin and system admin.
 // Lists only that role's links and supports collapsing to an icon rail or hiding on mobile.
 
-import React, { useContext } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
+import React, { useContext, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Image,
+  ScrollView,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NavigationState } from '@react-navigation/native';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
-import { ROLE_TABS, ROLE_LABELS, routeMapForRole } from './appNavConfig';
+import {
+  ROLE_TABS,
+  ROLE_LABELS,
+  routeMapForRole,
+  getTabsForSession,
+  getSidebarSectionsForSession,
+} from './appNavConfig';
 import { SidebarNavContext } from '../navigation/SidebarNavContext';
 import { useBreakpoint } from '../utils/useBreakpoint';
+import { useAuth } from '../context/AuthContext';
 import type { Role } from '../types';
 
 function activeRouteName(state: NavigationState | undefined): string | undefined {
@@ -20,33 +35,178 @@ function activeRouteName(state: NavigationState | undefined): string | undefined
 }
 
 const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
+  Dashboard: 'home',
+  'Director Dashboard': 'home',
+  'Coordinator Dashboard': 'home',
+  'Teacher Dashboard': 'home',
+  'PD Dashboard': 'home',
+  'Parent Dashboard': 'home',
+  Overview: 'home',
+  Home: 'home',
+  Notifications: 'bell',
+
+  // System Administration
+  'Staff Account Management': 'users',
   'Staff Accounts': 'users',
   'Staff account management': 'users',
+  'Staff Management': 'users',
+  Staff: 'users',
   'Role Management': 'shield',
+  Roles: 'shield',
+  'Permission Configuration (RBAC)': 'lock',
   'Permission Configuration': 'lock',
+  Permissions: 'lock',
+  'System Audit Log': 'activity',
   'Audit Log': 'activity',
-  'Goal Domains': 'target',
+  'Audit Logs': 'activity',
+  Audit: 'activity',
+
+  // Institutional Administration
+  'Schedule & Capacity Configuration': 'calendar',
   'Schedule & Capacity': 'calendar',
-  'ABC Dropdown Lists': 'list',
-  'Trial Logging Format': 'check-circle',
   'Form Builder': 'file-plus',
+  'Assessment & Form Builder': 'file-plus',
+  Forms: 'file-plus',
+  'ABC Dropdown Lists': 'list',
+  'ABC Lists': 'list',
+  'Trial Logging Format Config': 'check-circle',
+  'Trial Logging Format': 'check-circle',
+  'Trial Logging': 'check-circle',
+  'Goal Bank / Domains': 'target',
+  'Goal Domains': 'target',
+  Goals: 'target',
+  'Task Analysis': 'check-square',
+  'Task Analysis Templates': 'check-square',
+
+  // Student Intake & Enrollment
+  'Student Enrollment Wizard': 'user-plus',
+  'Enrollment Wizard': 'user-plus',
+  Enrollment: 'user-plus',
+  'Student Register & Roster List': 'user-check',
+  'Student Register': 'user-check',
+  'Registered Student': 'user-check',
+  'Registered Students': 'user-check',
+  'Student Registration': 'user-check',
+
+  // Assessments
+  'Assessment Dashboard': 'clipboard',
+  Assessments: 'clipboard',
+  'Assessment Review & Sign-Off': 'check-circle',
+  'Assessment Review': 'check-circle',
+  'Assessment Summary Report': 'file-text',
+
+  // IUP & Goals
+  'IUP Creation & Goal Assignment': 'plus-circle',
+  'IUP Library Management': 'book',
+  'Student Caseload Management': 'users',
+  'Goal Bank': 'activity',
+  'Clinical Quality Monitoring': 'activity',
+
+  // Active Therapy & Clinical Delivery
+  'Session Data Collection': 'play-circle',
+  Session: 'play-circle',
+  'Active Therapy': 'play-circle',
+  'Daily Session Notes': 'file-text',
+  'Daily Notes': 'file-text',
+  'ABC Behavior Incident Log': 'alert-triangle',
+  'ABC Log': 'alert-triangle',
+  'Live Session Monitoring': 'video',
+  'Live Sessions': 'video',
+  'Session Summary Review': 'clipboard',
+  'Session Summary': 'clipboard',
+  'Goal Mastery Approval': 'award',
+
+  // Operations & Scheduling
+  'Staff Scheduling & Capacity': 'clock',
+  'Staff Scheduling': 'clock',
+  'Staff Workload & Therapist Linking': 'users',
+  'Staff Management & Linking': 'users',
+  Workload: 'users',
+  'Room Resource Scheduling': 'map-pin',
+  'Operational Management': 'calendar',
+
+  // Family Engagement & Parent Portal
+  'Parent Communication': 'message-circle',
+  'Parent Communication (Messages)': 'message-circle',
+  Parents: 'message-circle',
+  Messages: 'message-circle',
+  'Child Progress Tracker': 'trending-up',
+  Progress: 'trending-up',
+  'Home Observation Log': 'eye',
+  Observations: 'eye',
+
+  // Executive Oversight
+  'Reports & Executive Oversight': 'bar-chart-2',
+  'Reports & Oversight': 'bar-chart-2',
+  'Report & Oversight': 'bar-chart-2',
+  Reports: 'bar-chart-2',
+  'Custom Report Builder': 'file-text',
+  'Report Builder': 'file-text',
+  'Clinical Progress Charts': 'trending-up',
+  'Student Progress': 'trending-up',
+  'Student Profile': 'user',
 };
+
+import { useUnsavedChanges } from '../context/UnsavedChangesContext';
+import { confirmAction } from '../utils/dialogs';
 
 export default function RoleSidebar({ role }: { role: Role }) {
   const { navRef, version, isCollapsed, toggleSidebar, setIsCollapsed } =
     useContext(SidebarNavContext);
+  const { session } = useAuth();
+  const { isDirty, setDirty } = useUnsavedChanges();
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
-  const tabs = ROLE_TABS[role] ?? [];
+
+  const sections = getSidebarSectionsForSession(session, role);
   const routeMap = routeMapForRole(role);
+  const hasDashboard = (ROLE_TABS[role] ?? []).includes('Dashboard');
+
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (title: string) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [title]: !prev[title],
+    }));
+  };
 
   const current = activeRouteName(navRef.current?.getState());
   void version; // re-render on navigation state changes
-  const activeTab = current ? tabs.find((tab) => routeMap?.[tab] === current) : undefined;
 
-  const handlePress = (tab: string) => {
-    const route = routeMap?.[tab];
+  const isDashboardActive =
+    current === 'TeacherDashboard' ||
+    current === 'CoordinatorDashboard' ||
+    current === 'DirectorDashboard' ||
+    current === 'ProgramDirectorDashboard' ||
+    current === 'ParentDashboard' ||
+    current === routeMap?.['Dashboard'];
+
+  const isItemActive = (label: string, route: string) => {
+    return current === route || routeMap?.[label] === current;
+  };
+
+  const handlePress = (tab: string, targetRoute?: string) => {
+    const route = targetRoute || routeMap?.[tab];
     if (route) {
+      if (isDirty) {
+        confirmAction({
+          title: 'Unsaved Changes',
+          message:
+            'You have unsaved changes on this page. If you leave now, your modifications will be lost. Are you sure you want to navigate away?',
+          confirmLabel: 'Leave without saving',
+          cancelLabel: 'Keep Editing',
+          destructive: true,
+          onConfirm: () => {
+            setDirty(false);
+            navRef.current?.navigate(route as never);
+            if (isCompact) {
+              setIsCollapsed(true);
+            }
+          },
+        });
+        return;
+      }
       navRef.current?.navigate(route as never);
       if (isCompact) {
         setIsCollapsed(true);
@@ -74,29 +234,55 @@ export default function RoleSidebar({ role }: { role: Role }) {
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         </View>
-        <View style={styles.listCollapsed}>
-          {tabs.map((tab) => {
-            const active = tab === activeTab;
-            const iconName = TAB_ICONS[tab] ?? 'circle';
-            return (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.itemCollapsed, active && styles.itemActiveCollapsed]}
-                onPress={() => handlePress(tab)}
-                accessibilityRole="tab"
-                accessibilityLabel={tab}
-                accessibilityState={{ selected: active }}
-                {...(Platform.OS === 'web' ? { title: tab } : {})}
-              >
-                <Feather
-                  name={iconName}
-                  size={20}
-                  color={active ? colors.navyText : colors.mutedText}
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <ScrollView
+          style={styles.listCollapsedScroll}
+          contentContainerStyle={styles.listCollapsed}
+          showsVerticalScrollIndicator={false}
+        >
+          {hasDashboard && (
+            <TouchableOpacity
+              style={[styles.itemCollapsed, isDashboardActive && styles.itemActiveCollapsed]}
+              onPress={() => handlePress('Dashboard')}
+              accessibilityRole="tab"
+              accessibilityLabel="Dashboard"
+              accessibilityState={{ selected: isDashboardActive }}
+              {...(Platform.OS === 'web' ? { title: 'Dashboard' } : {})}
+            >
+              <Feather
+                name="home"
+                size={20}
+                color={isDashboardActive ? colors.navyText : colors.mutedText}
+              />
+            </TouchableOpacity>
+          )}
+
+          {sections.map((section, sIdx) => (
+            <React.Fragment key={section.title}>
+              {(sIdx > 0 || hasDashboard) && <View style={styles.collapsedDivider} />}
+              {section.items.map((item) => {
+                const active = isItemActive(item.label, item.route);
+                const iconName = TAB_ICONS[item.label] ?? 'circle';
+                return (
+                  <TouchableOpacity
+                    key={item.label}
+                    style={[styles.itemCollapsed, active && styles.itemActiveCollapsed]}
+                    onPress={() => handlePress(item.label, item.route)}
+                    accessibilityRole="tab"
+                    accessibilityLabel={item.label}
+                    accessibilityState={{ selected: active }}
+                    {...(Platform.OS === 'web' ? { title: item.label } : {})}
+                  >
+                    <Feather
+                      name={iconName}
+                      size={20}
+                      color={active ? colors.navyText : colors.mutedText}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </React.Fragment>
+          ))}
+        </ScrollView>
       </View>
     );
   }
@@ -122,7 +308,7 @@ export default function RoleSidebar({ role }: { role: Role }) {
           </View>
         )}
         <Text style={styles.roleLabel} numberOfLines={1}>
-          {ROLE_LABELS[role]}
+          {ROLE_LABELS[role] || (session as any)?.roleTitle || session?.role || 'Staff'}
         </Text>
         <TouchableOpacity
           onPress={toggleSidebar}
@@ -133,32 +319,92 @@ export default function RoleSidebar({ role }: { role: Role }) {
           <Feather name={isCompact ? 'x' : 'chevron-left'} size={18} color={colors.mutedText} />
         </TouchableOpacity>
       </View>
-      <View style={styles.list}>
-        {tabs.map((tab) => {
-          const active = tab === activeTab;
-          const iconName = TAB_ICONS[tab] ?? 'circle';
+      <ScrollView
+        style={styles.listScroll}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+      >
+        {hasDashboard && (
+          <TouchableOpacity
+            style={[styles.item, isDashboardActive && styles.itemActive]}
+            onPress={() => handlePress('Dashboard')}
+            accessibilityRole="tab"
+            accessibilityLabel="Dashboard"
+            accessibilityState={{ selected: isDashboardActive }}
+          >
+            <View style={styles.itemContent}>
+              <Feather
+                name="home"
+                size={16}
+                color={isDashboardActive ? colors.navyText : colors.mutedText}
+              />
+              <Text style={[styles.itemText, isDashboardActive && styles.itemTextActive]}>
+                Dashboard
+              </Text>
+            </View>
+            {isDashboardActive && (
+              <Feather name="chevron-right" size={14} color={colors.navyText} />
+            )}
+          </TouchableOpacity>
+        )}
+
+        {sections.map((section) => {
+          const isExpanded = !collapsedSections[section.title];
           return (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.item, active && styles.itemActive]}
-              onPress={() => handlePress(tab)}
-              accessibilityRole="tab"
-              accessibilityLabel={tab}
-              accessibilityState={{ selected: active }}
-            >
-              <View style={styles.itemContent}>
+            <View key={section.title} style={styles.sectionContainer}>
+              <TouchableOpacity
+                style={styles.sectionHeader}
+                onPress={() => toggleSection(section.title)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${section.title}, ${isExpanded ? 'collapse section' : 'expand section'}`}
+              >
+                <Text style={styles.sectionTitle} numberOfLines={1}>
+                  {section.title}
+                </Text>
                 <Feather
-                  name={iconName}
-                  size={16}
-                  color={active ? colors.navyText : colors.mutedText}
+                  name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                  size={13}
+                  color={colors.mutedText}
                 />
-                <Text style={[styles.itemText, active && styles.itemTextActive]}>{tab}</Text>
-              </View>
-              {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
-            </TouchableOpacity>
+              </TouchableOpacity>
+
+              {isExpanded && (
+                <View style={styles.sectionItems}>
+                  {section.items.map((item) => {
+                    const active = isItemActive(item.label, item.route);
+                    const iconName = TAB_ICONS[item.label] ?? 'circle';
+                    return (
+                      <TouchableOpacity
+                        key={item.label}
+                        style={[styles.item, active && styles.itemActive]}
+                        onPress={() => handlePress(item.label, item.route)}
+                        accessibilityRole="tab"
+                        accessibilityLabel={item.label}
+                        accessibilityState={{ selected: active }}
+                      >
+                        <View style={styles.itemContent}>
+                          <Feather
+                            name={iconName}
+                            size={16}
+                            color={active ? colors.navyText : colors.mutedText}
+                          />
+                          <Text style={[styles.itemText, active && styles.itemTextActive]}>
+                            {item.label}
+                          </Text>
+                        </View>
+                        {active && (
+                          <Feather name="chevron-right" size={14} color={colors.navyText} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -246,13 +492,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  listScroll: {
+    flex: 1,
+  },
   list: {
     gap: spacing.xs,
+    paddingBottom: spacing.lg,
+  },
+  listCollapsedScroll: {
+    flex: 1,
+    width: '100%',
   },
   listCollapsed: {
     gap: spacing.sm,
     width: '100%',
     alignItems: 'center',
+    paddingBottom: spacing.lg,
   },
   item: {
     flexDirection: 'row',
@@ -289,5 +544,36 @@ const styles = StyleSheet.create({
   itemTextActive: {
     fontWeight: '700',
     color: colors.navyText,
+  },
+  sectionContainer: {
+    marginTop: spacing.xs,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', userSelect: 'none' } as any) : {}),
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    flex: 1,
+  },
+  sectionItems: {
+    gap: 2,
+    marginTop: 2,
+  },
+  collapsedDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    width: 32,
+    marginVertical: spacing.xs,
+    alignSelf: 'center',
   },
 });

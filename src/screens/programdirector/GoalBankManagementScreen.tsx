@@ -20,17 +20,17 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getGoalBank, createGoal, updateGoal } from '../../api/programDirectorApi';
-import { getStoredGoalDomains, saveGoalItem, getStoredGoalBank } from '../../stores/goalBankStore';
+import {
+  getStoredGoalDomains,
+  saveGoalItem,
+  deleteGoalItem,
+  getStoredGoalBank,
+} from '../../stores/goalBankStore';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import type { ProgramDirectorStackParamList } from '../../types';
 
-const DEFAULT_DOMAINS = [
-  'Communication',
-  'Motor',
-  'Social',
-  'Self-Help',
-  'Cognition',
-  'Adaptive',
-];
+const DEFAULT_DOMAINS = ['Communication', 'Motor', 'Social', 'Self-Help', 'Cognition', 'Adaptive'];
 
 type GoalStatus = 'active' | 'inactive';
 
@@ -63,7 +63,13 @@ const EMPTY_FORM: FormData = {
 };
 
 /* ── Add / Edit Goal modal ── */
-function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
+function GoalFormModal({
+  visible,
+  initial,
+  domains = [],
+  onClose,
+  onSave,
+}: {
   visible: boolean;
   initial: FormData | null;
   domains?: string[];
@@ -87,7 +93,8 @@ function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
 
   const valid = form.name.trim().length > 0;
 
-  const set = <K extends keyof FormData>(key: K, value: FormData[K]) => setForm((f) => ({ ...f, [key]: value }));
+  const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   const handlePressSave = () => {
     if (!valid) return;
@@ -103,7 +110,9 @@ function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
             <View>
               <Text style={typography.h2}>{initial ? 'Edit Goal' : 'Add Goal'}</Text>
               <Text style={typography.caption}>
-                {initial ? 'Update the goal definition and status.' : 'Create a new goal to add to the shared bank.'}
+                {initial
+                  ? 'Update the goal definition and status.'
+                  : 'Create a new goal to add to the shared bank.'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} hitSlop={8}>
@@ -111,7 +120,10 @@ function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.formFields} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.formFields}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>
                 Goal Name <Text style={{ color: '#EF4444' }}>*</Text>
@@ -138,7 +150,10 @@ function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>
-                Description <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: 'normal' }}>(Optional)</Text>
+                Description{' '}
+                <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: 'normal' }}>
+                  (Optional)
+                </Text>
               </Text>
               <TextInput
                 style={[styles.textInput, styles.textArea]}
@@ -171,7 +186,9 @@ function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
                 placeholder="e.g. 4–8 years"
                 placeholderTextColor={colors.mutedText}
               />
-              <Text style={styles.fieldHint}>For reference only — not saved to the goal record.</Text>
+              <Text style={styles.fieldHint}>
+                For reference only — not saved to the goal record.
+              </Text>
             </View>
 
             <View style={styles.field}>
@@ -219,7 +236,13 @@ function GoalFormModal({ visible, initial, domains = [], onClose, onSave }: {
 }
 
 /* ── Domain picker (in-sheet overlay, avoids nested Modals) ── */
-function DomainPicker({ visible, options, selected, onSelect, onClose }: {
+function DomainPicker({
+  visible,
+  options,
+  selected,
+  onSelect,
+  onClose,
+}: {
   visible: boolean;
   options: string[];
   selected: string;
@@ -242,9 +265,14 @@ function DomainPicker({ visible, options, selected, onSelect, onClose }: {
             <TouchableOpacity
               key={d}
               style={[styles.optionRow, selected === d && styles.optionRowActive]}
-              onPress={() => { onSelect(d); onClose(); }}
+              onPress={() => {
+                onSelect(d);
+                onClose();
+              }}
             >
-              <Text style={[styles.optionText, selected === d && styles.optionTextActive]}>{d}</Text>
+              <Text style={[styles.optionText, selected === d && styles.optionTextActive]}>
+                {d}
+              </Text>
               {selected === d && <Feather name="check" size={14} color="#38BDF8" />}
             </TouchableOpacity>
           ))}
@@ -255,19 +283,28 @@ function DomainPicker({ visible, options, selected, onSelect, onClose }: {
 }
 
 /* ── Goal preview modal ── */
-function GoalPreviewModal({ goal, onClose }: {
-  goal: ExtendedGoal | null;
-  onClose: () => void;
-}) {
+function GoalPreviewModal({ goal, onClose }: { goal: ExtendedGoal | null; onClose: () => void }) {
   return (
     <Modal visible={goal !== null} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
             <View style={styles.previewTitleWrap}>
-              <Text style={styles.previewTitle} numberOfLines={2}>{goal?.name}</Text>
-              <View style={[styles.badge, goal?.status === 'active' ? styles.badgeActive : styles.badgeInactive]}>
-                <Text style={[styles.badgeText, goal?.status === 'active' ? styles.badgeTextActive : styles.badgeTextInactive]}>
+              <Text style={styles.previewTitle} numberOfLines={2}>
+                {goal?.name}
+              </Text>
+              <View
+                style={[
+                  styles.badge,
+                  goal?.status === 'active' ? styles.badgeActive : styles.badgeInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.badgeText,
+                    goal?.status === 'active' ? styles.badgeTextActive : styles.badgeTextInactive,
+                  ]}
+                >
                   {goal?.status === 'active' ? 'Active' : 'Inactive'}
                 </Text>
               </View>
@@ -277,7 +314,10 @@ function GoalPreviewModal({ goal, onClose }: {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.formFields} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.formFields}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.previewGrid}>
               <View style={styles.previewGridCell}>
                 <Text style={styles.previewLabel}>Domain</Text>
@@ -285,7 +325,9 @@ function GoalPreviewModal({ goal, onClose }: {
               </View>
               <View style={styles.previewGridCell}>
                 <Text style={styles.previewLabel}>Usage</Text>
-                <Text style={styles.previewValue}>{goal ? `${goal.usageCount} session${goal.usageCount === 1 ? '' : 's'}` : '—'}</Text>
+                <Text style={styles.previewValue}>
+                  {goal ? `${goal.usageCount} session${goal.usageCount === 1 ? '' : 's'}` : '—'}
+                </Text>
               </View>
               <View style={styles.previewGridCell}>
                 <Text style={styles.previewLabel}>Age Range</Text>
@@ -302,7 +344,9 @@ function GoalPreviewModal({ goal, onClose }: {
               <Text style={styles.fieldLabel}>Mastery Criteria</Text>
               <View style={styles.masteryBox}>
                 <Feather name="activity" size={14} color="#0369A1" />
-                <Text style={styles.masteryText}>{goal?.masteryCriteria?.trim() ? goal.masteryCriteria : '—'}</Text>
+                <Text style={styles.masteryText}>
+                  {goal?.masteryCriteria?.trim() ? goal.masteryCriteria : '—'}
+                </Text>
               </View>
             </View>
           </ScrollView>
@@ -322,6 +366,7 @@ function GoalPreviewModal({ goal, onClose }: {
 export default function GoalBankManagementScreen({
   navigation,
 }: NativeStackScreenProps<ProgramDirectorStackParamList, 'GoalBankManagement'>) {
+  const { showToast } = useToast();
   const [goals, setGoals] = useState<ExtendedGoal[] | null>(null);
   const [availableDomains, setAvailableDomains] = useState<string[]>(() => {
     const stored = getStoredGoalDomains();
@@ -386,7 +431,9 @@ export default function GoalBankManagementScreen({
   }, []);
 
   const domainFilterOptions = useMemo(() => {
-    const allFromGoals = goals ? Array.from(new Set(goals.map((g) => g.domain).filter(Boolean))) : [];
+    const allFromGoals = goals
+      ? Array.from(new Set(goals.map((g) => g.domain).filter(Boolean)))
+      : [];
     const combined = Array.from(new Set([...availableDomains, ...allFromGoals]));
     return ['All', ...(combined.length > 0 ? combined : DEFAULT_DOMAINS)];
   }, [availableDomains, goals]);
@@ -404,13 +451,56 @@ export default function GoalBankManagementScreen({
     });
   }, [goals, search, domainFilter]);
 
+  const handleToggleStatus = async (goal: ExtendedGoal) => {
+    const newStatus: GoalStatus = goal.status === 'active' ? 'inactive' : 'active';
+    const apiPayload = {
+      name: goal.name,
+      domain: goal.domain,
+      description: goal.description,
+      masteryCriteria: goal.masteryCriteria,
+      status: newStatus,
+      active: newStatus === 'active',
+      goalType: 'standard' as const,
+    };
+
+    setGoals((prev) =>
+      (prev || []).map((g) => (g.id === goal.id ? { ...g, status: newStatus } : g)),
+    );
+
+    saveGoalItem({ ...apiPayload, id: goal.id });
+
+    try {
+      await updateGoal(goal.id, apiPayload);
+      showToast(`Goal set to ${newStatus}`, 'success');
+    } catch (err) {
+      console.warn('API sync warning:', err);
+      showToast(`Goal set to ${newStatus} (saved locally)`, 'success');
+    }
+  };
+
+  const handleDeleteGoal = (goal: ExtendedGoal) => {
+    confirmAction({
+      title: 'Delete Goal',
+      message: `Are you sure you want to delete "${goal.name}" from the Goal Bank? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        deleteGoalItem(goal.id);
+        setGoals((prev) => (prev || []).filter((g) => g.id !== goal.id));
+        showToast('Goal deleted successfully', 'success');
+        await load();
+      },
+    });
+  };
+
   const handleSave = async (payload: FormData) => {
     const finalDescription = payload.description.trim() || `Target goal for ${payload.name.trim()}`;
     const apiPayload = {
       name: payload.name.trim(),
       domain: payload.domain || availableDomains[0] || 'Communication',
       description: finalDescription,
-      masteryCriteria: payload.masteryCriteria.trim() || '80% accuracy across 3 consecutive sessions',
+      masteryCriteria:
+        payload.masteryCriteria.trim() || '80% accuracy across 3 consecutive sessions',
       status: payload.status,
       active: payload.status === 'active',
       goalType: 'standard' as const,
@@ -450,8 +540,13 @@ export default function GoalBankManagementScreen({
       } else {
         await createGoal(apiPayload);
       }
+      showToast(formTarget ? 'Goal updated successfully' : 'Goal created successfully', 'success');
     } catch (err) {
       console.warn('API sync warning:', err);
+      showToast(
+        formTarget ? 'Goal updated (saved locally)' : 'Goal created (saved locally)',
+        'success',
+      );
     }
 
     await load();
@@ -461,7 +556,10 @@ export default function GoalBankManagementScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Clinical Quality" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Clinical Quality"
+        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])}
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Page header */}
@@ -472,10 +570,16 @@ export default function GoalBankManagementScreen({
             </View>
             <View>
               <Text style={styles.pageTitle}>Goal Bank Management</Text>
-              <Text style={styles.pageSubtitle}>Review, add, and manage the shared clinical goal bank</Text>
+              <Text style={styles.pageSubtitle}>
+                Review, add, and manage the shared clinical goal bank
+              </Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.addGoalBtn} onPress={() => setFormTarget(null)} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.addGoalBtn}
+            onPress={() => setFormTarget(null)}
+            activeOpacity={0.7}
+          >
             <Feather name="plus" size={16} color={colors.navyText} />
             <Text style={styles.addGoalBtnText}>Add Goal</Text>
           </TouchableOpacity>
@@ -509,7 +613,14 @@ export default function GoalBankManagementScreen({
                   style={[styles.filterChip, domainFilter === d && styles.filterChipActive]}
                   onPress={() => setDomainFilter(d)}
                 >
-                  <Text style={[styles.filterChipText, domainFilter === d && styles.filterChipTextActive]}>{d}</Text>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      domainFilter === d && styles.filterChipTextActive,
+                    ]}
+                  >
+                    {d}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -533,42 +644,94 @@ export default function GoalBankManagementScreen({
                 <View style={styles.emptyRow}>
                   <Feather name="search" size={20} color={colors.mutedText} />
                   <Text style={styles.emptyText}>
-                    {goals.length === 0 ? 'No goals in the bank yet. Add your first goal above.' : 'No goals match your search.'}
+                    {goals.length === 0
+                      ? 'No goals in the bank yet. Add your first goal above.'
+                      : 'No goals match your search.'}
                   </Text>
                 </View>
               ) : (
                 filtered.map((g) => (
                   <View key={g.id} style={styles.tr}>
-                    <Text style={[styles.td, styles.colName, styles.tdName]} numberOfLines={2}>{g.name}</Text>
+                    <Text style={[styles.td, styles.colName, styles.tdName]} numberOfLines={2}>
+                      {g.name}
+                    </Text>
                     <View style={[styles.cell, styles.colDomain]}>
                       <View style={styles.domainBadge}>
-                        <Text style={styles.domainBadgeText} numberOfLines={1}>{g.domain}</Text>
+                        <Text style={styles.domainBadgeText} numberOfLines={1}>
+                          {g.domain}
+                        </Text>
                       </View>
                     </View>
-                    <Text style={[styles.td, styles.colDesc]} numberOfLines={2}>{g.description}</Text>
+                    <Text style={[styles.td, styles.colDesc]} numberOfLines={2}>
+                      {g.description}
+                    </Text>
                     <View style={[styles.cell, styles.colUsage]}>
-                      <View style={[styles.badge, g.usageCount > 0 ? styles.badgeUsage : styles.badgeUsageZero]}>
-                        <Text style={[styles.badgeText, g.usageCount > 0 ? styles.badgeTextUsage : styles.badgeTextUsageZero]}>
+                      <View
+                        style={[
+                          styles.badge,
+                          g.usageCount > 0 ? styles.badgeUsage : styles.badgeUsageZero,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.badgeText,
+                            g.usageCount > 0 ? styles.badgeTextUsage : styles.badgeTextUsageZero,
+                          ]}
+                        >
                           {g.usageCount}
                         </Text>
                       </View>
                     </View>
                     <View style={[styles.cell, styles.colStatus]}>
-                      <View style={[styles.badge, g.status === 'active' ? styles.badgeActive : styles.badgeInactive]}>
-                        <Text style={[styles.badgeText, g.status === 'active' ? styles.badgeTextActive : styles.badgeTextInactive]}>
-                          {g.status === 'active' ? 'Active' : 'Inactive'}
-                        </Text>
-                      </View>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => handleToggleStatus(g)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Status: ${g.status}. Tap to toggle.`}
+                      >
+                        <View
+                          style={[
+                            styles.badge,
+                            g.status === 'active' ? styles.badgeActive : styles.badgeInactive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.badgeText,
+                              g.status === 'active'
+                                ? styles.badgeTextActive
+                                : styles.badgeTextInactive,
+                            ]}
+                          >
+                            {g.status === 'active' ? 'Active' : 'Inactive'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
                     </View>
                     <View style={[styles.cell, styles.colActions]}>
                       <View style={styles.actionRow}>
-                        <TouchableOpacity style={styles.actionBtnEdit} onPress={() => setFormTarget(g)}>
+                        <TouchableOpacity
+                          style={styles.actionBtnEdit}
+                          onPress={() => setFormTarget(g)}
+                        >
                           <Feather name="edit-2" size={12} color={colors.navyText} />
                           <Text style={styles.actionBtnTextEdit}>Edit</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtnPreview} onPress={() => setPreviewGoal(g)}>
+                        <TouchableOpacity
+                          style={styles.actionBtnPreview}
+                          onPress={() => setPreviewGoal(g)}
+                        >
                           <Feather name="eye" size={12} color="#0369A1" />
                           <Text style={styles.actionBtnTextPreview}>Preview</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.actionBtnDelete}
+                          onPress={() => handleDeleteGoal(g)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete goal ${g.name}`}
+                        >
+                          <Feather name="trash-2" size={12} color="#DC2626" />
+                          <Text style={styles.actionBtnTextDelete}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -582,14 +745,18 @@ export default function GoalBankManagementScreen({
 
       <GoalFormModal
         visible={formTarget !== undefined}
-        initial={formTarget === null || formTarget === undefined ? null : {
-          name: formTarget.name,
-          domain: formTarget.domain,
-          description: formTarget.description,
-          masteryCriteria: formTarget.masteryCriteria,
-          suggestedAgeRange: '',
-          status: formTarget.status,
-        }}
+        initial={
+          formTarget === null || formTarget === undefined
+            ? null
+            : {
+                name: formTarget.name,
+                domain: formTarget.domain,
+                description: formTarget.description,
+                masteryCriteria: formTarget.masteryCriteria,
+                suggestedAgeRange: '',
+                status: formTarget.status,
+              }
+        }
         domains={availableDomains}
         onClose={() => setFormTarget(undefined)}
         onSave={handleSave}
@@ -684,7 +851,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  table: { minWidth: 660 },
+  table: { minWidth: 700 },
   tr: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -695,7 +862,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   trHeader: { backgroundColor: colors.bgApp, borderBottomColor: colors.border },
-  th: { fontSize: 10, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase', letterSpacing: 0.5 },
+  th: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   cell: { justifyContent: 'center' },
   td: { fontSize: 13, color: colors.bodyText },
   colName: { width: 130 },
@@ -717,7 +890,12 @@ const styles = StyleSheet.create({
   },
   domainBadgeText: { fontSize: 11, fontWeight: '600', color: colors.bodyText },
 
-  badge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2, alignSelf: 'flex-start' },
+  badge: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
   badgeUsage: { backgroundColor: '#FEF3C7' },
   badgeUsageZero: { backgroundColor: '#F3F4F6' },
   badgeText: { fontSize: 11, fontWeight: '700' },
@@ -753,6 +931,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   actionBtnTextPreview: { fontSize: 11, fontWeight: '600', color: '#0369A1' },
+  actionBtnDelete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  actionBtnTextDelete: { fontSize: 11, fontWeight: '600', color: '#DC2626' },
 
   emptyRow: {
     alignItems: 'center',
@@ -764,7 +954,12 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, color: colors.mutedText, fontWeight: '600' },
 
   /* Modals */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: spacing.lg },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
   modalSheet: {
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
@@ -774,7 +969,11 @@ const styles = StyleSheet.create({
   },
   pickerSheet: { maxWidth: 380, width: '100%', alignSelf: 'center' },
   pickerOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 20, elevation: 20 },
-  pickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: radius.lg },
+  pickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: radius.lg,
+  },
   pickerCard: {
     position: 'absolute',
     top: '30%',
@@ -786,7 +985,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.md },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
   formFields: { gap: spacing.md },
   field: { gap: spacing.xs },
   fieldLabel: {

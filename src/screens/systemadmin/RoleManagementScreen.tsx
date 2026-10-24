@@ -20,7 +20,20 @@ import { useToast } from '../../context/ToastContext';
 import AppNavbar from '../../components/AppNavbar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { SYS_ROUTE_BY_TAB } from '../../components/appNavConfig';
-import { getRoles, createRole, updateRole, deleteRole } from '../../api/SystemAdminApi';
+import {
+  getRoles,
+  createRole,
+  updateRole,
+  deleteRole,
+  getStaffAccounts,
+} from '../../api/SystemAdminApi';
+import { confirmAction } from '../../utils/dialogs';
+import { useResourcePermissions } from '../../auth/usePermission';
+import {
+  filterOutDeletedStaff,
+  isStaffDeleted,
+  onDeletedStaffChanged,
+} from '../../utils/deletedStaffHelper';
 
 import {
   type RoleRecord,
@@ -43,6 +56,7 @@ type Props = NativeStackScreenProps<SystemAdminStackParamList, 'RoleManagement'>
 export default function RoleManagementScreen({ navigation }: Props) {
   const { showToast } = useToast();
   const { width } = useWindowDimensions();
+  const { canCreate, canEdit, canDelete } = useResourcePermissions('admin');
 
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,9 +77,34 @@ export default function RoleManagementScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await getRoles();
-      const list = parseRolesApiResponse(data);
-      setRoles(list.map(toRoleRow));
+      const [rolesRes, staffRes] = await Promise.allSettled([getRoles(), getStaffAccounts({})]);
+      const rolesData = rolesRes.status === 'fulfilled' ? rolesRes.value?.data : [];
+      const staffData = staffRes.status === 'fulfilled' ? staffRes.value?.data : [];
+      const activeStaff = filterOutDeletedStaff(Array.isArray(staffData) ? staffData : []).filter(
+        (s: any) => s.active !== false && !isStaffDeleted(s),
+      );
+
+      // Compute staff count per role name
+      const countsByRole: Record<string, number> = {};
+      activeStaff.forEach((s: any) => {
+        const staffRoles: string[] = Array.isArray(s.roles) ? s.roles : s.role ? [s.role] : [];
+        staffRoles.forEach((rName) => {
+          const norm = rName.toLowerCase();
+          countsByRole[norm] = (countsByRole[norm] || 0) + 1;
+        });
+      });
+
+      const list = parseRolesApiResponse(rolesData);
+      setRoles(
+        list.map((r) => {
+          const row = toRoleRow(r);
+          const computedCount = countsByRole[r.name.toLowerCase()];
+          if (computedCount !== undefined) {
+            row.count = computedCount;
+          }
+          return row;
+        }),
+      );
     } catch {
       setRoles([]);
       showToast('Could not load roles. Check your connection and try again.', 'error');
@@ -78,7 +117,18 @@ export default function RoleManagementScreen({ navigation }: Props) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const unsubscribe = onDeletedStaffChanged(() => {
+      load();
+    });
+    return unsubscribe;
+  }, [load]);
+
   const saveEdit = async (id: string) => {
+    if (!canEdit) {
+      showToast('You do not have permission to edit roles.', 'error');
+      return;
+    }
     const validation = validateRoleInput(editForm.name);
     if (!validation.valid) {
       showToast(validation.error || 'Role name is required.', 'error');
@@ -103,6 +153,10 @@ export default function RoleManagementScreen({ navigation }: Props) {
   };
 
   const addRole = async () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create roles.', 'error');
+      return;
+    }
     const validation = validateRoleInput(newRole.name);
     if (!validation.valid) {
       showToast(validation.error || 'Role name is required.', 'error');
@@ -127,30 +181,30 @@ export default function RoleManagementScreen({ navigation }: Props) {
   };
 
   const removeRole = (role: RoleRow) => {
-    Alert.alert(
-      'Delete Role?',
-      `Are you sure you want to permanently delete the role "${role.name}"?\n\nStaff accounts assigned this role may lose access to associated modules.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setBusyId(role.id);
-            try {
-              await deleteRole(role.id);
-              setRoles((rs) => rs.filter((r) => r.id !== role.id));
-              showToast(`Role "${role.name}" deleted successfully.`, 'success');
-            } catch (err: any) {
-              const msg = err?.response?.data?.error || err?.message || 'Failed to delete role.';
-              showToast(msg, 'error');
-            } finally {
-              setBusyId(null);
-            }
-          },
-        },
-      ],
-    );
+    if (!canDelete) {
+      showToast('You do not have permission to delete roles.', 'error');
+      return;
+    }
+    confirmAction({
+      title: 'Delete Role?',
+      message: `Are you sure you want to permanently delete the role "${role.name}"?\n\nStaff accounts assigned this role may lose access to associated modules.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: async () => {
+        setBusyId(role.id);
+        try {
+          await deleteRole(role.id);
+          setRoles((rs) => rs.filter((r) => r.id !== role.id));
+          showToast(`Role "${role.name}" deleted successfully.`, 'success');
+        } catch (err: any) {
+          const msg = err?.response?.data?.error || err?.message || 'Failed to delete role.';
+          showToast(msg, 'error');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
   };
 
   const handleRefresh = async () => {
@@ -184,6 +238,7 @@ export default function RoleManagementScreen({ navigation }: Props) {
             onConfigurePermissions={() => navigation?.navigate?.('PermissionConfiguration')}
             onAddRole={() => setAddingRole(true)}
             addingRole={addingRole}
+            canCreate={canCreate}
           />
 
           <View style={styles.card}>
@@ -224,6 +279,8 @@ export default function RoleManagementScreen({ navigation }: Props) {
                     navigation?.navigate?.('PermissionConfiguration', { roleId: role.id })
                   }
                   onDeleteRole={() => removeRole(role)}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                 />
               ))}
 

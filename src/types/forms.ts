@@ -11,6 +11,15 @@ export interface FormField {
   helpText?: string;
   defaultValue?: string;
   allowOther?: boolean;
+  minValue?: number | string;
+  maxValue?: number | string;
+  dataModel?: string;
+  activeLabel?: string;
+  inactiveLabel?: string;
+  phoneCountryCode?: string;
+  allowCamera?: boolean;
+  allowGallery?: boolean;
+  allowedExtensions?: string;
 }
 
 export interface HistoryEntry {

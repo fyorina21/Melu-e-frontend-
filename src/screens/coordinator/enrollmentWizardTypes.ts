@@ -1,4 +1,5 @@
 export interface WizardState {
+  [key: string]: any;
   name: string;
   dob: string;
   gender: string;
@@ -9,12 +10,21 @@ export interface WizardState {
   parentName: string;
   parentPhone: string;
   parentEmail: string;
+  emergencyContact?: string;
   diagnosis: string;
   medicalNotes: string;
+  transportation?: string;
   therapist: string;
 }
 
-export const STEPS = ['Student Info', 'Parent Info', 'Medical Info', 'Assign Therapist', 'Review'];
+export const STEPS = [
+  'Student Info',
+  'Parent Info',
+  'Medical Info',
+  'Program Placement',
+  'Assign Therapist',
+  'Review',
+];
 
 export const PROGRAM_TYPES = ['Regular', 'Pulled Out'];
 export const THERAPY_GROUPS = ['Basic', 'Functional Living Skill'];
@@ -35,8 +45,10 @@ export const INITIAL_STATE: WizardState = {
   parentName: '',
   parentPhone: '',
   parentEmail: '',
+  emergencyContact: '',
   diagnosis: '',
   medicalNotes: '',
+  transportation: 'No',
   therapist: '',
 };
 

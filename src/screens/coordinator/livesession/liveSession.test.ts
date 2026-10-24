@@ -79,6 +79,66 @@ describe('Live Session Monitoring Utilities', () => {
       expect(mapped.goals).toEqual([]);
       expect(mapped.trialBreakdown['+']).toBe(0);
     });
+
+    it('extracts student names from fallback students object array', () => {
+      const raw: ActiveSessionRow = {
+        id: 'sess-fallback-1',
+        therapistName: 'Abeba Tadesse',
+        stationName: 'Station 1 · Early Learners',
+        roomName: 'Room 1',
+        status: 'on-track',
+        timer: 1420,
+        trialsCount: 38,
+        students: [
+          { id: 'stud-1', name: 'Amir Hassan' },
+          { id: 'stud-2', name: 'Tigist Bekele' },
+        ],
+      };
+
+      const mapped = mapActiveSession(raw);
+
+      expect(mapped.teacher).toBe('Abeba Tadesse');
+      expect(mapped.students).toEqual(['Amir Hassan', 'Tigist Bekele']);
+      expect(mapped.studentDetails).toEqual([
+        { id: 'stud-1', name: 'Amir Hassan' },
+        { id: 'stud-2', name: 'Tigist Bekele' },
+      ]);
+      expect(mapped.trials).toBe(38);
+      expect(mapped.timer).toBe(1420);
+    });
+
+    it('extracts student names from Rails backend participants structure', () => {
+      const raw: ActiveSessionRow = {
+        id: 'sess-backend-1',
+        teacher: { full_name: 'Abeba Tadesse' },
+        station: { name: 'Station 1' },
+        room: { name: 'Room 1D' },
+        status: 'in_progress',
+        elapsed_seconds: 4380,
+        trials_logged: 14,
+        participants: [
+          {
+            student: { id: 's-1', full_name: 'Amir Hassan' },
+            goals: [{ goal_name: 'Imitates gross motor actions' }],
+          },
+          {
+            student: { id: 's-2', full_name: 'Tigist Bekele' },
+            goals: [{ goal_name: 'Requests preferred items' }],
+          },
+        ],
+      };
+
+      const mapped = mapActiveSession(raw);
+
+      expect(mapped.teacher).toBe('Abeba Tadesse');
+      expect(mapped.station).toBe('Station 1');
+      expect(mapped.room).toBe('Room 1D');
+      expect(mapped.status).toBe('on-track');
+      expect(mapped.students).toEqual(['Amir Hassan', 'Tigist Bekele']);
+      expect(mapped.goals).toEqual(['Imitates gross motor actions', 'Requests preferred items']);
+      expect(mapped.timer).toBe(4380);
+      expect(mapped.trials).toBe(14);
+    });
   });
 
   describe('Status configuration and options', () => {

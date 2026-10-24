@@ -7,8 +7,18 @@ import type { InstitutionalAdminStackParamList } from '../../types';
 import GoalDomainDefinitionsScreen from './GoalDomainDefinitionsScreen';
 
 export default function TaskAnalysisTemplatesScreen(
-  props: NativeStackScreenProps<InstitutionalAdminStackParamList, 'TaskAnalysisTemplates'>
+  props: NativeStackScreenProps<InstitutionalAdminStackParamList, 'TaskAnalysisTemplates'>,
 ) {
-  // Renders the combined Goal Domains & Task Analysis Workbench
-  return <GoalDomainDefinitionsScreen navigation={props.navigation as any} route={props.route as any} />;
+  // Renders the combined Goal Domains & Task Analysis Workbench focused on templates
+  return (
+    <GoalDomainDefinitionsScreen
+      navigation={props.navigation as any}
+      route={
+        {
+          ...props.route,
+          params: { ...(props.route.params || {}), defaultSection: 'templates' },
+        } as any
+      }
+    />
+  );
 }

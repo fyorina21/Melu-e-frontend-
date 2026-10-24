@@ -1,12 +1,11 @@
 import { Alert, Platform } from 'react-native';
+import { triggerInAppConfirm } from '../context/ConfirmDialogContext';
 
 /**
- * Cross-platform confirmation dialog.
+ * Cross-platform in-app confirmation dialog.
  *
- * `react-native-web`'s `Alert` is a no-op, so any screen that relies on
- * `Alert.alert` for confirmations has a dead button on web. This helper falls
- * back to the browser's native `window.confirm` when running on web, and to
- * `Alert.alert` on native platforms.
+ * Uses an in-app confirmation modal (never native browser alert/confirm popups)
+ * on Web and Native, guaranteeing a unified, high-aesthetic dialog experience.
  */
 export function confirmAction(options: {
   title: string;
@@ -14,40 +13,14 @@ export function confirmAction(options: {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
+  onCancel?: () => void;
 }): void {
-  const {
-    title,
-    message,
-    confirmLabel = 'Confirm',
-    cancelLabel = 'Cancel',
-    destructive = false,
-    onConfirm,
-  } = options;
-
-  if (
-    Platform.OS === 'web' &&
-    typeof window !== 'undefined' &&
-    typeof window.confirm === 'function'
-  ) {
-    const prompt = message ? `${title}\n\n${message}` : title;
-    if (window.confirm(prompt)) {
-      onConfirm();
-    }
-    return;
-  }
-
-  Alert.alert(title, message, [
-    { text: cancelLabel, style: 'cancel' },
-    {
-      text: confirmLabel,
-      style: destructive ? 'destructive' : 'default',
-      onPress: onConfirm,
-    },
-  ]);
+  // Always trigger the custom in-app confirmation modal
+  triggerInAppConfirm(options);
 }
 
-/** Cross-platform informational alert (web uses `window.alert`). */
+/** Cross-platform informational alert. */
 export function notify(title: string, message?: string): void {
   if (
     Platform.OS === 'web' &&

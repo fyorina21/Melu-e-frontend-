@@ -22,6 +22,7 @@ import TeacherNotificationsScreen from '../screens/notifications/TeacherNotifica
 import StudentProfileScreen from '../screens/session/StudentProfileScreen';
 import SocialSkillsAssessmentScreen from '../screens/assessments/SocialSkillsAssessmentScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
+import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
 import IupGenerationScreen from '../screens/programdirector/IupGenerationScreen';
 import ChildProgressScreen from '../screens/parent/ChildProgressScreen';
 import GoalMasteryApprovalScreen from '../screens/director/GoalMasteryApprovalScreen';
@@ -56,6 +57,7 @@ const GuardedSensoryAssessment = withModuleGuard(SensoryAssessmentScreen, 'asses
 const GuardedParentCommunication = withModuleGuard(ParentCommunicationScreen, 'parent_portal');
 const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
 const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
+const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
 const GuardedIupGeneration = withModuleGuard(IupGenerationScreen, 'iups');
 const GuardedChildProgress = withModuleGuard(ChildProgressScreen, 'parent_portal');
 const GuardedGoalMasteryApproval = withModuleGuard(GoalMasteryApprovalScreen, 'iups');
@@ -98,6 +100,7 @@ export default function SessionStack() {
           name="StudentEnrollmentWizard"
           component={GuardedStudentEnrollmentWizard as never}
         />
+        <Stack.Screen name="StudentEnrollment" component={GuardedStudentEnrollment as never} />
         <Stack.Screen name="IupGeneration" component={GuardedIupGeneration as never} />
         <Stack.Screen name="ChildProgress" component={GuardedChildProgress as never} />
         <Stack.Screen name="GoalMasteryApproval" component={GuardedGoalMasteryApproval as never} />
