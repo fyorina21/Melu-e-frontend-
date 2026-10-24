@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing, makeShadow } from '../../../theme/colors';
 
@@ -8,6 +16,9 @@ export interface FormMetadataValues {
   formName: string;
   revision: string;
   pages: string;
+  organization?: string;
+  revisionNumber?: number | string;
+  revisionDate?: string;
 }
 
 interface EditMetadataModalProps {
@@ -21,13 +32,19 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
   ({ visible, initialValues, onSave, onClose }) => {
     const [formId, setFormId] = useState(initialValues.formId);
     const [formName, setFormName] = useState(initialValues.formName);
+    const [organization, setOrganization] = useState(initialValues.organization || 'Melu-e Center');
     const [revision, setRevision] = useState(initialValues.revision);
+    const [revisionDate, setRevisionDate] = useState(
+      initialValues.revisionDate || new Date().toISOString().split('T')[0],
+    );
     const [pages, setPages] = useState(initialValues.pages);
 
     useEffect(() => {
       setFormId(initialValues.formId);
       setFormName(initialValues.formName);
+      setOrganization(initialValues.organization || 'Melu-e Center');
       setRevision(initialValues.revision);
+      setRevisionDate(initialValues.revisionDate || new Date().toISOString().split('T')[0]);
       setPages(initialValues.pages);
     }, [initialValues]);
 
@@ -35,8 +52,14 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
       onSave({
         formId: formId.trim() || initialValues.formId,
         formName: formName.trim() || initialValues.formName,
+        organization: organization.trim() || initialValues.organization || 'Melu-e Center',
         revision: revision.trim() || initialValues.revision,
+        revisionDate:
+          revisionDate.trim() ||
+          initialValues.revisionDate ||
+          new Date().toISOString().split('T')[0],
         pages: pages.trim() || initialValues.pages,
+        revisionNumber: initialValues.revisionNumber,
       });
       onClose();
     };
@@ -50,7 +73,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
               <View>
                 <Text style={styles.modalTitle}>Edit Form Header & Metadata</Text>
                 <Text style={styles.modalSubtitle}>
-                  Configure Form ID, Name, Revision, and Page count
+                  Configure Form ID, Name, Organization, Revision, and Page details
                 </Text>
               </View>
               <TouchableOpacity
@@ -63,7 +86,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
             </View>
 
             {/* Form Fields */}
-            <View style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>FORM ID</Text>
                 <TextInput
@@ -89,6 +112,18 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
                 />
               </View>
 
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>ORGANIZATION NAME</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={organization}
+                  onChangeText={setOrganization}
+                  onSubmitEditing={handleSave}
+                  placeholder="e.g. Melu-e Academy"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+
               <View style={styles.rowTwoCol}>
                 <View style={[styles.fieldGroup, { flex: 1 }]}>
                   <Text style={styles.fieldLabel}>REVISION</Text>
@@ -103,18 +138,30 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = React.memo(
                 </View>
 
                 <View style={[styles.fieldGroup, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>PAGE</Text>
+                  <Text style={styles.fieldLabel}>REVISION DATE</Text>
                   <TextInput
                     style={styles.textInput}
-                    value={pages}
-                    onChangeText={setPages}
+                    value={revisionDate}
+                    onChangeText={setRevisionDate}
                     onSubmitEditing={handleSave}
-                    placeholder="e.g. Page 1 of 3"
+                    placeholder="e.g. 2026-10-24"
                     placeholderTextColor="#94A3B8"
                   />
                 </View>
               </View>
-            </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>PAGE</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={pages}
+                  onChangeText={setPages}
+                  onSubmitEditing={handleSave}
+                  placeholder="e.g. Page 1 of 3"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+            </ScrollView>
 
             {/* Footer Buttons */}
             <View style={styles.buttonRow}>
@@ -147,7 +194,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.xl,
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 500,
+    maxHeight: '90%',
     ...makeShadow(6),
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -172,11 +220,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   modalBody: {
-    gap: spacing.md,
     marginVertical: spacing.sm,
   },
   fieldGroup: {
     gap: 4,
+    marginBottom: spacing.md,
   },
   rowTwoCol: {
     flexDirection: 'row',

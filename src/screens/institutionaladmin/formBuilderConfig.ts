@@ -4,7 +4,6 @@ export const FORMS = [
   'Enrollment Wizard',
   'IUP Form',
   'ABLLS Assessment Form',
-  'Social Skills Questionnaire',
   'Behavior Incident Form',
   'Behavioral Assessment',
   'Preference Assessment',
@@ -464,6 +463,7 @@ export const COMMON_INFO_TYPES = [
   'Developmental History',
   'Transportation Details',
   'Consent & Agreements',
+  'Social Skills Questionnaire',
 ];
 
 export const escapeRegExp = (str: string): string => {
@@ -527,11 +527,18 @@ export const getNextIdForSection = (
     return `BEH-${nextNum}`;
   }
 
-  if (form === 'Social Skills Questionnaire') {
+  if (
+    form === 'Social Skills Questionnaire' ||
+    section === 'Social Skills Questionnaire' ||
+    (section && section.toLowerCase().includes('social'))
+  ) {
     const existing = prevFields
       .map((f) => f.id)
-      .filter((id) => /^q(\d+)$/i.test(id))
-      .map((id) => parseInt(id.replace(/^q/i, ''), 10))
+      .filter((id) => /^(?:soc_)?q(\d+)$/i.test(id))
+      .map((id) => {
+        const match = id.match(/^(?:soc_)?q(\d+)$/i);
+        return match ? parseInt(match[1], 10) : NaN;
+      })
       .filter((n) => !isNaN(n));
     const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
     return `q${nextNum}`;

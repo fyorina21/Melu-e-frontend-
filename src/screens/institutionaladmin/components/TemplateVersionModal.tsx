@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, radius, spacing, makeShadow } from '../../../theme/colors';
 import { getDefaultFormConfig } from '../../../api/institutionalAdminApi';
 import type { FormField } from '../../../types';
@@ -79,9 +80,9 @@ export const TemplateVersionModal: React.FC<TemplateVersionModalProps> = React.m
       return Object.entries(groups);
     }, [currentFields]);
 
-    // Multi-version history state dynamically built from real form state
+    // Multi-version history state dynamically built from real form state and snapshots
     const today = new Date().toISOString().split('T')[0];
-    const [versionList, setVersionList] = useState<FormTemplateVersion[]>(() => {
+    const buildVersionList = React.useCallback((): FormTemplateVersion[] => {
       const list: FormTemplateVersion[] = [
         {
           id: 'ver-current',
@@ -94,6 +95,30 @@ export const TemplateVersionModal: React.FC<TemplateVersionModalProps> = React.m
           isDefault: false,
         },
       ];
+
+      if (Array.isArray(history)) {
+        history.forEach((h: any, idx: number) => {
+          if (Array.isArray(h.fields) && h.fields.length > 0) {
+            list.push({
+              id: h.id || `ver-hist-${idx}`,
+              formNumber: h.formId || h.form_id || formId || 'FORM-001',
+              title: `${h.formName || h.form_name || formName || selectedForm} (${h.versionNumber || h.revision || `Rev ${idx + 1}`})`,
+              versionNumber:
+                h.versionNumber ||
+                (h.revision
+                  ? h.revision.startsWith('v')
+                    ? h.revision
+                    : `v${h.revision}`
+                  : `v${idx + 1}.0`),
+              updatedDate: h.updatedDate || h.date || h.saved_at?.split('T')[0] || today,
+              author: h.author || h.user || 'Institutional Admin',
+              fields: h.fields,
+              isDefault: false,
+            });
+          }
+        });
+      }
+
       if (defaultFields && defaultFields.length > 0) {
         list.push({
           id: 'ver-default',
@@ -107,43 +132,85 @@ export const TemplateVersionModal: React.FC<TemplateVersionModalProps> = React.m
         });
       }
       return list;
-    });
+    }, [
+      formId,
+      formName,
+      selectedForm,
+      formRevision,
+      currentFields,
+      history,
+      defaultFields,
+      today,
+    ]);
+
+    const [versionList, setVersionList] = useState<FormTemplateVersion[]>(buildVersionList);
 
     React.useEffect(() => {
-      setVersionList((prev) =>
-        prev.map((v) =>
-          v.id === 'ver-current'
-            ? {
-                ...v,
-                formNumber: formId || 'FORM-001',
-                title: formName || selectedForm,
-                versionNumber: formRevision.startsWith('v') ? formRevision : `v${formRevision}`,
-                fields: currentFields,
-              }
-            : v,
-        ),
-      );
-    }, [formId, formName, selectedForm, formRevision, currentFields]);
+      setVersionList(buildVersionList());
+    }, [buildVersionList]);
+
+    React.useEffect(() => {
+      if (!visible) {
+        setUploadedPdf(null);
+      }
+    }, [visible]);
 
     const handleApplyVersion = (version: FormTemplateVersion) => {
       onReuseTemplate(`${version.title} (${version.versionNumber})`, version.fields);
       onClose();
     };
 
-    const handleSimulatePdfUpload = () => {
+    const fileInputRef = useRef<any>(null);
+
+    const processSelectedFile = (name: string, sizeBytes: number) => {
+      const sizeMb = sizeBytes > 0 ? (sizeBytes / (1024 * 1024)).toFixed(1) : '0.1';
       setUploadedPdf({
-        name: `${selectedForm.toLowerCase().replace(/\s+/g, '_')}_spec.pdf`,
-        size: '2.4 MB',
+        name,
+        size: `${sizeMb} MB`,
         status: 'uploading',
       });
       setTimeout(() => {
         setUploadedPdf({
-          name: `${selectedForm.toLowerCase().replace(/\s+/g, '_')}_spec.pdf`,
-          size: '2.4 MB',
+          name,
+          size: `${sizeMb} MB`,
           status: 'ready',
         });
-        onImportPdf?.({ name: `${selectedForm}_spec.pdf`, size: 2400000 });
-      }, 700);
+        onImportPdf?.({ name, size: sizeBytes });
+      }, 400);
+    };
+
+    const handlePickPdf = async () => {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+          fileInputRef.current.click();
+          return;
+        }
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.pdf,application/pdf';
+        input.onchange = (e: any) => {
+          const file = e.target?.files?.[0];
+          if (file) {
+            processSelectedFile(file.name, file.size);
+          }
+        };
+        input.click();
+        return;
+      }
+
+      try {
+        const res = await DocumentPicker.getDocumentAsync({
+          type: ['application/pdf'],
+          copyToCacheDirectory: true,
+        });
+        if (!res.canceled && res.assets && res.assets.length > 0) {
+          const file = res.assets[0];
+          processSelectedFile(file.name, file.size || 0);
+        }
+      } catch (err) {
+        console.warn('Error picking PDF document:', err);
+      }
     };
 
     const handleExportPdf = () => {
@@ -650,9 +717,24 @@ export const TemplateVersionModal: React.FC<TemplateVersionModalProps> = React.m
                   Object Storage.
                 </Text>
 
+                {Platform.OS === 'web' && (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    style={{ display: 'none' }}
+                    onChange={(e: any) => {
+                      const file = e.target?.files?.[0];
+                      if (file) {
+                        processSelectedFile(file.name, file.size);
+                      }
+                    }}
+                  />
+                )}
+
                 <TouchableOpacity
                   style={styles.dropZone}
-                  onPress={handleSimulatePdfUpload}
+                  onPress={handlePickPdf}
                   accessibilityRole="button"
                   accessibilityLabel="Browse or drop PDF file to upload"
                 >
@@ -682,6 +764,15 @@ export const TemplateVersionModal: React.FC<TemplateVersionModalProps> = React.m
                       <Feather name="check-circle" size={14} color="#16A34A" />
                       <Text style={styles.fileSuccessText}>Ready</Text>
                     </View>
+                    <TouchableOpacity
+                      onPress={() => setUploadedPdf(null)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove uploaded PDF file"
+                      style={{ padding: 4, marginLeft: 6 }}
+                    >
+                      <Feather name="trash-2" size={16} color="#EF4444" />
+                    </TouchableOpacity>
                   </View>
                 )}
 

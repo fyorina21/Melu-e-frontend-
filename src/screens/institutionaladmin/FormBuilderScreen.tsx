@@ -1402,6 +1402,11 @@ export default function FormBuilderScreen({
   // Form Metadata State (Editable in accordance with backend configuration)
   const [formId, setFormId] = useState<string>(FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001');
   const [formName, setFormName] = useState<string>(selectedForm);
+  const [formOrganization, setFormOrganization] = useState<string>('Melu-e Center');
+  const [formRevisionDate, setFormRevisionDate] = useState<string>(
+    new Date().toISOString().split('T')[0],
+  );
+  const [formRevisionNumber, setFormRevisionNumber] = useState<number>(1);
   const [formRevision, setFormRevision] = useState<string>(
     FORM_METADATA[selectedForm]?.revision || 'Rev 1.0 · 2026-09-19',
   );
@@ -1595,17 +1600,50 @@ export default function FormBuilderScreen({
 
       // Populate metadata
       const meta = data?.metadata || {};
-      setFormId(data?.formId || meta.formId || FORM_METADATA[selectedForm]?.id || 'FRM-SYS-001');
-      setFormName(data?.form_name || data?.formName || meta.formName || selectedForm);
-      setFormRevision(
+      const loadedFormId =
+        data?.formId ||
+        data?.form_id ||
+        meta.formId ||
+        meta.form_id ||
+        FORM_METADATA[selectedForm]?.id ||
+        'FRM-SYS-001';
+      const loadedFormName =
+        data?.form_name || data?.formName || meta.formName || meta.form_name || selectedForm;
+      const loadedOrg =
+        data?.organizationName ||
+        data?.organization_name ||
+        data?.organization ||
+        meta.organization ||
+        meta.organizationName ||
+        'Melu-e Center';
+      const loadedRevNum = Number(
+        data?.revisionNumber ||
+          data?.revision_number ||
+          meta.revisionNumber ||
+          meta.revision_number ||
+          1,
+      );
+      const loadedRevDate =
+        data?.revisionDate ||
+        data?.revision_date ||
+        meta.revisionDate ||
+        meta.revision_date ||
+        new Date().toISOString().split('T')[0];
+      const loadedRevision =
         data?.revision ||
-          meta.revision ||
-          FORM_METADATA[selectedForm]?.revision ||
-          'Rev 1.0 · 2026-09-19',
-      );
-      setFormPages(
-        data?.pages || meta.pages || FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1',
-      );
+        meta.revision ||
+        FORM_METADATA[selectedForm]?.revision ||
+        `Rev ${loadedRevNum}.0 · ${loadedRevDate}`;
+      const loadedPages =
+        data?.pages || meta.pages || FORM_METADATA[selectedForm]?.pages || 'Page 1 of 1';
+
+      setFormId(loadedFormId);
+      setFormName(loadedFormName);
+      setFormOrganization(loadedOrg);
+      setFormRevisionNumber(loadedRevNum);
+      setFormRevisionDate(loadedRevDate);
+      setFormRevision(loadedRevision);
+      setFormPages(loadedPages);
     } catch (err) {
       const defaultCfg = getDefaultFormConfig(selectedForm);
       setFields(defaultCfg?.fields || []);
@@ -1616,6 +1654,9 @@ export default function FormBuilderScreen({
       const meta = FORM_METADATA[selectedForm];
       setFormId(meta?.id || 'FRM-SYS-001');
       setFormName(selectedForm);
+      setFormOrganization('Melu-e Center');
+      setFormRevisionNumber(1);
+      setFormRevisionDate(new Date().toISOString().split('T')[0]);
       setFormRevision(meta?.revision || 'Rev 1.0 · 2026-09-19');
       setFormPages(meta?.pages || 'Page 1 of 1');
     } finally {
@@ -1643,6 +1684,58 @@ export default function FormBuilderScreen({
     }
   }, [availableSections, selectedForm]);
 
+  const createSavePayload = useCallback(
+    (overrides: Partial<any> = {}) => ({
+      fields,
+      customSections,
+      deletedSections,
+      history,
+      isDefault: false,
+      formId,
+      form_id: formId,
+      formName,
+      form_name: formName,
+      revision: formRevision,
+      revision_number: formRevisionNumber,
+      revisionNumber: formRevisionNumber,
+      revision_date: formRevisionDate,
+      revisionDate: formRevisionDate,
+      organization: formOrganization,
+      organization_name: formOrganization,
+      organizationName: formOrganization,
+      pages: formPages,
+      metadata: {
+        formId,
+        form_id: formId,
+        formName,
+        form_name: formName,
+        revision: formRevision,
+        revision_number: formRevisionNumber,
+        revisionNumber: formRevisionNumber,
+        revision_date: formRevisionDate,
+        revisionDate: formRevisionDate,
+        organization: formOrganization,
+        organization_name: formOrganization,
+        organizationName: formOrganization,
+        pages: formPages,
+      },
+      ...overrides,
+    }),
+    [
+      fields,
+      customSections,
+      deletedSections,
+      history,
+      formId,
+      formName,
+      formRevision,
+      formRevisionNumber,
+      formRevisionDate,
+      formOrganization,
+      formPages,
+    ],
+  );
+
   // Handle creating a new Skill Type folder / domain
   const handleCreateSkillType = () => {
     const trimmed = newSkillTypeName.trim();
@@ -1666,19 +1759,23 @@ export default function FormBuilderScreen({
     setShowAddSkillTypeModal(false);
     setNewSkillTypeName('');
 
-    saveFormConfig(selectedForm, {
-      fields,
-      customSections: updatedSections,
-      deletedSections: updatedDeleted,
-      history,
-      isDefault: false,
-    })
-      .then(() =>
+    saveFormConfig(
+      selectedForm,
+      createSavePayload({
+        customSections: updatedSections,
+        deletedSections: updatedDeleted,
+      }),
+    )
+      .then((res) => {
+        const savedData = res?.data;
+        if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+        if (savedData?.revision) setFormRevision(savedData.revision);
+        if (Array.isArray(savedData?.history)) setHistory(savedData.history);
         showToast(
           `Created skill type "${trimmed}". Click "Add" inside it to add items.`,
           'success',
-        ),
-      )
+        );
+      })
       .catch(() => showToast(`Created skill type "${trimmed}" — click Save to persist`, 'info'));
   };
 
@@ -1705,19 +1802,23 @@ export default function FormBuilderScreen({
     setShowAddInfoTypeModal(false);
     setNewInfoTypeName('');
 
-    saveFormConfig(selectedForm, {
-      fields,
-      customSections: updatedSections,
-      deletedSections: updatedDeleted,
-      history,
-      isDefault: false,
-    })
-      .then(() =>
+    saveFormConfig(
+      selectedForm,
+      createSavePayload({
+        customSections: updatedSections,
+        deletedSections: updatedDeleted,
+      }),
+    )
+      .then((res) => {
+        const savedData = res?.data;
+        if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+        if (savedData?.revision) setFormRevision(savedData.revision);
+        if (Array.isArray(savedData?.history)) setHistory(savedData.history);
         showToast(
           `Created info type "${trimmed}". Click "Add" inside it to add fields.`,
           'success',
-        ),
-      )
+        );
+      })
       .catch(() => showToast(`Created info type "${trimmed}" — click Save to persist`, 'info'));
   };
 
@@ -1786,16 +1887,21 @@ export default function FormBuilderScreen({
     setIsDefault(false);
     setEditingSkillType(null);
 
-    saveFormConfig(selectedForm, {
-      fields: updatedFields,
-      customSections: updatedCustom,
-      deletedSections: updatedDeleted,
-      history,
-      isDefault: false,
-    })
-      .then(() =>
-        showToast(`Renamed ${typeLabel.toLowerCase()} "${oldName}" to "${newName}"`, 'success'),
-      )
+    saveFormConfig(
+      selectedForm,
+      createSavePayload({
+        fields: updatedFields,
+        customSections: updatedCustom,
+        deletedSections: updatedDeleted,
+      }),
+    )
+      .then((res) => {
+        const savedData = res?.data;
+        if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+        if (savedData?.revision) setFormRevision(savedData.revision);
+        if (Array.isArray(savedData?.history)) setHistory(savedData.history);
+        showToast(`Renamed ${typeLabel.toLowerCase()} "${oldName}" to "${newName}"`, 'success');
+      })
       .catch(() => showToast(`Renamed to "${newName}" — click Save to persist`, 'info'));
   };
 
@@ -1824,21 +1930,26 @@ export default function FormBuilderScreen({
       setDeletedSections(updatedDeleted);
       setIsDefault(false);
 
-      saveFormConfig(selectedForm, {
-        fields: updatedFields,
-        customSections: updatedCustom,
-        deletedSections: updatedDeleted,
-        history,
-        isDefault: false,
-      })
-        .then(() =>
+      saveFormConfig(
+        selectedForm,
+        createSavePayload({
+          fields: updatedFields,
+          customSections: updatedCustom,
+          deletedSections: updatedDeleted,
+        }),
+      )
+        .then((res) => {
+          const savedData = res?.data;
+          if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+          if (savedData?.revision) setFormRevision(savedData.revision);
+          if (Array.isArray(savedData?.history)) setHistory(savedData.history);
           showToast(
             matchingItems.length > 0
               ? `Deleted ${typeLabel.toLowerCase()} "${sec}" and its items`
               : `Removed ${typeLabel.toLowerCase()} "${sec}"`,
             'info',
-          ),
-        )
+          );
+        })
         .catch(() => showToast(`${typeLabel} removed — click Save to persist`, 'info'));
     };
 
@@ -1925,14 +2036,20 @@ export default function FormBuilderScreen({
     setFields(updatedFields);
     setIsDefault(false);
     setIsDirty(true);
-    saveFormConfig(selectedForm, {
-      fields: updatedFields,
-      customSections,
-      deletedSections,
-      history: updatedHistory,
-      isDefault: false,
-    })
-      .then(() => showToast('Field deleted and saved', 'success'))
+    saveFormConfig(
+      selectedForm,
+      createSavePayload({
+        fields: updatedFields,
+        history: updatedHistory,
+      }),
+    )
+      .then((res) => {
+        const savedData = res?.data;
+        if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+        if (savedData?.revision) setFormRevision(savedData.revision);
+        if (Array.isArray(savedData?.history)) setHistory(savedData.history);
+        showToast('Field deleted and saved', 'success');
+      })
       .catch(() => showToast('Field deleted — click Save to persist', 'info'));
   };
 
@@ -2131,14 +2248,20 @@ export default function FormBuilderScreen({
     setAddingToSection(null);
 
     // Auto-save with updated fields
-    saveFormConfig(selectedForm, {
-      fields: updatedFields,
-      customSections,
-      deletedSections,
-      history: updatedHistory,
-      isDefault: false,
-    })
-      .then(() => showToast(`Field "${trimmedLabel}" added and saved`, 'success'))
+    saveFormConfig(
+      selectedForm,
+      createSavePayload({
+        fields: updatedFields,
+        history: updatedHistory,
+      }),
+    )
+      .then((res) => {
+        const savedData = res?.data;
+        if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+        if (savedData?.revision) setFormRevision(savedData.revision);
+        if (Array.isArray(savedData?.history)) setHistory(savedData.history);
+        showToast(`Field "${trimmedLabel}" added and saved`, 'success');
+      })
       .catch(() => showToast(`Field added — click Save to persist`, 'info'));
   };
 
@@ -2263,14 +2386,20 @@ export default function FormBuilderScreen({
     setIsDirty(true);
 
     // Auto-save immediately
-    saveFormConfig(selectedForm, {
-      fields: updatedFields,
-      customSections,
-      deletedSections,
-      history: updatedHistory,
-      isDefault: false,
-    })
-      .then(() => showToast('Field updated and saved', 'success'))
+    saveFormConfig(
+      selectedForm,
+      createSavePayload({
+        fields: updatedFields,
+        history: updatedHistory,
+      }),
+    )
+      .then((res) => {
+        const savedData = res?.data;
+        if (savedData?.revisionNumber) setFormRevisionNumber(Number(savedData.revisionNumber));
+        if (savedData?.revision) setFormRevision(savedData.revision);
+        if (Array.isArray(savedData?.history)) setHistory(savedData.history);
+        showToast('Field updated and saved', 'success');
+      })
       .catch(() => showToast('Field updated — click Save to persist', 'info'));
   };
 
@@ -2299,27 +2428,41 @@ export default function FormBuilderScreen({
     }
     setIsSaving(true);
     try {
-      await saveFormConfig(selectedForm, {
-        fields,
-        customSections,
-        deletedSections,
-        history,
-        isDefault: false,
-        formId,
-        formName,
-        form_name: formName,
-        revision: formRevision,
-        pages: formPages,
-        metadata: {
-          formId,
-          formName,
-          revision: formRevision,
-          pages: formPages,
-        },
-      });
+      const payload = createSavePayload();
+      const res = await saveFormConfig(selectedForm, payload);
+      const savedData = res?.data || {};
+
+      // Immediately synchronize local state from backend response (avoids race conditions)
+      if (savedData.formName || savedData.form_name) {
+        setFormName(savedData.formName || savedData.form_name);
+      }
+      if (savedData.formId || savedData.form_id) {
+        setFormId(savedData.formId || savedData.form_id);
+      }
+      if (savedData.revision || savedData.metadata?.revision) {
+        setFormRevision(savedData.revision || savedData.metadata?.revision);
+      }
+      if (savedData.revisionNumber || savedData.revision_number) {
+        setFormRevisionNumber(Number(savedData.revisionNumber || savedData.revision_number));
+      }
+      if (savedData.organizationName || savedData.organization_name || savedData.organization) {
+        setFormOrganization(
+          savedData.organizationName || savedData.organization_name || savedData.organization,
+        );
+      }
+      if (savedData.revisionDate || savedData.revision_date) {
+        setFormRevisionDate(savedData.revisionDate || savedData.revision_date);
+      }
+      if (savedData.pages || savedData.metadata?.pages) {
+        setFormPages(savedData.pages || savedData.metadata?.pages);
+      }
+      if (Array.isArray(savedData.history)) {
+        setHistory(savedData.history);
+      }
+      setIsDefault(Boolean(savedData.isDefault));
       setDirty(false);
       setIsDirty(false);
-      await load();
+
       showToast(`Configuration for ${selectedForm} saved successfully!`, 'success');
     } catch (err) {
       showToast('Failed to save form configuration', 'error');
@@ -2423,6 +2566,10 @@ export default function FormBuilderScreen({
               <View style={styles.metaRowItem}>
                 <Text style={styles.metaLabel}>FORM NAME:</Text>
                 <Text style={styles.metaValue}>{formName}</Text>
+              </View>
+              <View style={styles.metaRowItem}>
+                <Text style={styles.metaLabel}>ORGANIZATION:</Text>
+                <Text style={styles.metaValue}>{formOrganization}</Text>
               </View>
             </View>
 
@@ -2640,12 +2787,14 @@ export default function FormBuilderScreen({
           )}
 
           {/* Quick Rating Scale Presets — Social Skills Questionnaire */}
-          {selectedForm === 'Social Skills Questionnaire' && (
+          {(selectedForm === 'Social Skills Questionnaire' ||
+            (!viewAllPages &&
+              formPagesList[currentPage - 1] === 'Social Skills Questionnaire')) && (
             <View style={styles.abllsPresetBar}>
               <View style={styles.abllsPresetHeader}>
                 <Feather name="sliders" size={14} color="#0369A1" />
                 <Text style={styles.abllsPresetTitle}>
-                  Apply Rating Scale Preset to All Social Skill Items:
+                  Apply Rating Scale Preset to Social Skill Items:
                 </Text>
               </View>
               <View style={styles.presetButtonsRow}>
@@ -2792,7 +2941,9 @@ export default function FormBuilderScreen({
                                   setAddingToSection(sec);
                                   setNewFieldSection(sec);
                                   const isAblls = selectedForm === 'ABLLS Assessment Form';
-                                  const isSocial = selectedForm === 'Social Skills Questionnaire';
+                                  const isSocial =
+                                    selectedForm === 'Social Skills Questionnaire' ||
+                                    sec === 'Social Skills Questionnaire';
                                   setNewFieldType(
                                     selectedForm === 'Behavioral Assessment' &&
                                       sec === 'ABC Tracking'
@@ -2858,7 +3009,9 @@ export default function FormBuilderScreen({
                                   setAddingToSection(sec);
                                   setNewFieldSection(sec);
                                   const isAblls = selectedForm === 'ABLLS Assessment Form';
-                                  const isSocial = selectedForm === 'Social Skills Questionnaire';
+                                  const isSocial =
+                                    selectedForm === 'Social Skills Questionnaire' ||
+                                    sec === 'Social Skills Questionnaire';
                                   setNewFieldType(
                                     selectedForm === 'Behavioral Assessment' &&
                                       sec === 'ABC Tracking'
@@ -3637,14 +3790,21 @@ export default function FormBuilderScreen({
           formName,
           revision: formRevision,
           pages: formPages,
+          organization: formOrganization,
+          revisionDate: formRevisionDate,
+          revisionNumber: formRevisionNumber,
         }}
         onSave={(vals) => {
           setFormId(vals.formId);
           setFormName(vals.formName);
           setFormRevision(vals.revision);
           setFormPages(vals.pages);
+          if (vals.organization) setFormOrganization(vals.organization);
+          if (vals.revisionDate) setFormRevisionDate(vals.revisionDate);
+          if (vals.revisionNumber) setFormRevisionNumber(Number(vals.revisionNumber));
           setIsDefault(false);
           setDirty(true);
+          setIsDirty(true);
           showToast('Form header updated. Click Save to persist.', 'success');
         }}
         onClose={() => setShowEditMetadataModal(false)}

@@ -268,6 +268,7 @@ describe('FormBuilder Assessment Integration', () => {
     expect(FORMS).toContain('Behavioral Assessment');
     expect(FORMS).toContain('Preference Assessment');
     expect(FORMS).toContain('Sensory Assessment');
+    expect(FORMS).not.toContain('Social Skills Questionnaire');
   });
 
   it('maps direct assessment routes accurately', () => {
@@ -687,6 +688,7 @@ describe('FormBuilder Assessment Integration', () => {
     expect(COMMON_INFO_TYPES).toContain('Emergency Contact Info');
     expect(COMMON_INFO_TYPES).toContain('Insurance & Billing');
     expect(COMMON_INFO_TYPES).toContain('Behavioral Background');
+    expect(COMMON_INFO_TYPES).toContain('Social Skills Questionnaire');
 
     // 2. Fetch default Enrollment Wizard config
     const { data: initialConfig } = await getFormConfig('Enrollment Wizard');
