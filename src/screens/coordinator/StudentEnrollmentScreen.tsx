@@ -190,7 +190,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         registerStudentPhotos(data);
       }
       setStudents(
-        (data as EnrollmentStudentRow[]).map((row) => ({
+        (data as unknown as EnrollmentStudentRow[]).map((row) => ({
           id: row.id,
           name: row.fullName,
           age: row.age,

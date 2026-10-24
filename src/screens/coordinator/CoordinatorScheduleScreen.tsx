@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
-import StudentAvatar from '../../components/StudentAvatar';
+
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
 import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
@@ -54,7 +54,7 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         getTeacherPerformanceMetrics({}),
         getOperationalSchedule({}),
       ]);
-      const rows = (Array.isArray(metrics) ? metrics : []) as MetricsRow[];
+      const rows = ((Array.isArray(metrics) ? metrics : []) as unknown) as MetricsRow[];
       const weekRows = (week ?? {}) as Record<number, WeekAppointment[]>;
 
       const nextTeachers: Teacher[] = [];
@@ -66,9 +66,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         const first = appts[0];
         const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
         const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
-        const teacherId = m.teacherId || (m as any).teacher_id || (m as any).id || `teacher-${i}`;
+        const teacherId = m.teacherId || ((m as Record<string, unknown>).teacher_id as string) || ((m as Record<string, unknown>).id as string) || `teacher-${i}`;
         const teacherName =
-          m.teacherName || (m as any).teacher_name || (m as any).name || 'Teacher';
+          m.teacherName || ((m as Record<string, unknown>).teacher_name as string) || ((m as Record<string, unknown>).name as string) || 'Teacher';
         nextTeachers.push({
           id: teacherId,
           name: teacherName,

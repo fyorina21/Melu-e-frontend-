@@ -5,6 +5,7 @@ import {
   getGroupedTabsForSession,
   isNavGroup,
   PD_ROUTE_BY_TAB,
+  type NavGroupTab,
 } from '../appNavConfig';
 import type { AuthSession } from '../../types';
 

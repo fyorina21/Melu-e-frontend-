@@ -35,7 +35,7 @@ export interface StudentProfileData {
   photo?: string | null;
   currentFocusStudentGoalId: string | null;
   goals: StudentGoal[];
-  customFields?: Record<string, any>;
+  customFields?: Record<string, unknown>;
 }
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentProfile'>;
@@ -49,16 +49,16 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     if (!studentId) return;
     try {
       const { data } = await getStudentProfile(studentId);
-      setProfile(data);
+      setProfile((data as unknown) as StudentProfileData | null);
       if (data) {
         saveStudentPhoto({
-          id: data.id,
-          name: data.fullName,
-          photo: (data as any).photoUrl || data.headshotUrl || (data as any).photo,
+          id: data.id ? String(data.id) : undefined,
+          name: data.fullName ? String(data.fullName) : '',
+          photo: ((data as Record<string, unknown>).photoUrl || (data as Record<string, unknown>).headshotUrl || (data as Record<string, unknown>).photo || '') as string,
         });
       }
       setLoadFailed(false);
-    } catch (err) {
+    } catch {
       setProfile(null);
       setLoadFailed(true);
     }
@@ -127,7 +127,7 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         <StudentAvatar
           name={profile.fullName}
           studentId={profile.id}
-          photoUrl={(profile as any).photoUrl || profile.headshotUrl || (profile as any).photo}
+          photoUrl={profile.photoUrl || profile.headshotUrl || profile.photo}
           size={52}
         />
         <View style={{ flex: 1 }}>

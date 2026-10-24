@@ -449,7 +449,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       const normLabel = (field?.label || '').toLowerCase();
       const normId = (field?.id || '').toLowerCase();
       if (normLabel.includes('birth') || normLabel.includes('dob') || normId === 'f2') {
-        const age = calculateAge(value);
+        const age = calculateAge(value ? String(value) : '');
         if (age !== null && age >= 3 && age <= 19) {
           const therapyField = formFields.find(
             (f) => f.id === 'f_therapy' || /therapy.*group/i.test(f.label),
@@ -470,30 +470,50 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   // Helper accessors for student information derived dynamically from schema
-  const getFieldVal = (idOrPattern: string | RegExp) => {
+  const getFieldVal = (idOrPattern: string | RegExp): string => {
     const f = formFields.find((field: FormField) =>
       typeof idOrPattern === 'string'
         ? field.id === idOrPattern || field.label?.toLowerCase() === idOrPattern.toLowerCase()
         : idOrPattern.test(field.id) || idOrPattern.test(field.label),
     );
-    if (!f) return formValues[typeof idOrPattern === 'string' ? idOrPattern : ''] || '';
-    return formValues[f.id] ?? '';
+    if (!f) {
+      const fallback = typeof idOrPattern === 'string' ? formValues[idOrPattern] : '';
+      return fallback != null ? String(fallback) : '';
+    }
+    const val = formValues[f.id];
+    return val != null ? String(val) : '';
   };
 
-  const studentName =
-    getFieldVal('f1') || getFieldVal(/student.*name|full.*name|^name$/i) || formValues.name || '';
-  const studentDob = getFieldVal('f2') || getFieldVal(/birth|dob/i) || formValues.dob || '';
-  const studentProgram =
-    getFieldVal('f_program') || getFieldVal(/program/i) || formValues.program || 'Regular';
-  const studentTherapyGroup =
-    getFieldVal('f_therapy') || getFieldVal(/therapy/i) || formValues.therapyGroup || 'Basic';
-  const assignedTherapist =
-    getFieldVal('f_therapist') || getFieldVal(/therapist/i) || formValues.therapist || '';
-  const studentPhoto =
+  const studentName: string =
+    getFieldVal('f1') ||
+    getFieldVal(/student.*name|full.*name|^name$/i) ||
+    (formValues.name != null ? String(formValues.name) : '') ||
+    '';
+  const studentDob: string =
+    getFieldVal('f2') ||
+    getFieldVal(/birth|dob/i) ||
+    (formValues.dob != null ? String(formValues.dob) : '') ||
+    '';
+  const studentProgram: string =
+    getFieldVal('f_program') ||
+    getFieldVal(/program/i) ||
+    (formValues.program != null ? String(formValues.program) : '') ||
+    'Regular';
+  const studentTherapyGroup: string =
+    getFieldVal('f_therapy') ||
+    getFieldVal(/therapy/i) ||
+    (formValues.therapyGroup != null ? String(formValues.therapyGroup) : '') ||
+    'Basic';
+  const assignedTherapist: string =
+    getFieldVal('f_therapist') ||
+    getFieldVal(/therapist/i) ||
+    (formValues.therapist != null ? String(formValues.therapist) : '') ||
+    '';
+  const studentPhoto: string =
     getFieldVal('f_photo') ||
     getFieldVal(/photo/i) ||
-    formValues.photoUri ||
-    formValues.photoBase64 ||
+    (formValues.photoUri != null ? String(formValues.photoUri) : '') ||
+    (formValues.photoBase64 != null ? String(formValues.photoBase64) : '') ||
     '';
 
   // Photo handlers
@@ -756,8 +776,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
     try {
       const res = await createStudentEnrollment(payload);
-      const createdData = res?.data;
-      const createdId = createdData?.id || createdData?.studentId;
+      const createdData = (res?.data || {}) as Record<string, unknown>;
+      const createdId = (createdData.id ? String(createdData.id) : createdData.studentId ? String(createdData.studentId) : undefined);
 
       markStudentActive(createdId, studentName.trim());
       registerStudentStatuses([
@@ -782,11 +802,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       }
 
       saveStudentPhoto({
-        id: createdData?.id,
+        id: createdId,
         name: studentName.trim(),
         fullName: studentName.trim(),
-        photo:
-          createdData?.headshotUrl || createdData?.photoUrl || createdData?.photo || studentPhoto,
+        photo: (createdData.headshotUrl || createdData.photoUrl || createdData.photo || studentPhoto) as string,
         photoBase64: studentPhoto,
         photoUri: studentPhoto,
       });
@@ -848,7 +867,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       return val ? 'Photo / Document Attached' : 'None';
     }
     if (normType === 'date') {
-      const age = calculateAge(val);
+      const age = calculateAge(String(val));
       const isDob = f.id === 'f2' || /birth|dob/i.test(f.label);
       return isDob && age !== null ? `${val} (${age} years old)` : String(val);
     }
@@ -865,7 +884,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const renderDynamicField = (field: FormField) => {
     const isRequired = Boolean(field.required);
     const normType = (field.type || 'text').toLowerCase().replace(/[- ]/g, '_');
-    const value = formValues[field.id] ?? '';
+    const value = formValues[field.id] != null ? String(formValues[field.id]) : '';
     const options = resolveFieldOptions(field);
 
     // 1. File / Image Upload

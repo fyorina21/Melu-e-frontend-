@@ -162,11 +162,11 @@ function getStoredEnrolledStudents(): Record<string, unknown>[] {
 function saveEnrolledStudentLocally(student: Record<string, unknown>): void {
   try {
     const list = getStoredEnrolledStudents();
-    const cleanName = (student.fullName || student.name || '').toLowerCase().trim();
+    const cleanName = String(student.fullName || student.name || '').toLowerCase().trim();
     const exists = list.some(
       (s) =>
         (s.id && student.id && String(s.id) === String(student.id)) ||
-        (cleanName && (s.fullName || s.name || '').toLowerCase().trim() === cleanName),
+        (cleanName && String(s.fullName || s.name || '').toLowerCase().trim() === cleanName),
     );
     if (!exists) {
       list.unshift(student);
@@ -181,7 +181,7 @@ function removeStoredEnrolledStudentByName(name: string): void {
     const cleanName = name.toLowerCase().trim();
     const list = getStoredEnrolledStudents();
     const filtered = list.filter((s) => {
-      const sName = (s.fullName || s.name || '').toLowerCase().trim();
+      const sName = String(s.fullName || s.name || '').toLowerCase().trim();
       return sName !== cleanName;
     });
     if (filtered.length !== list.length) {
@@ -221,12 +221,15 @@ export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, 
       teachers.forEach((t: Record<string, unknown>, idx: number) => {
         const teacherBlocks = Array.isArray(t.blocks) ? (t.blocks as Record<string, unknown>[]) : [];
         const activeBlock = teacherBlocks.find((b: Record<string, unknown>) => b.is_current) || teacherBlocks[0];
-        const studentCount = activeBlock?.students_count || (activeBlock?.assignments?.length ?? 0);
+        const assignments = Array.isArray(activeBlock?.assignments)
+          ? (activeBlock.assignments as Record<string, unknown>[])
+          : [];
+        const studentCount = Number(activeBlock?.students_count) || assignments.length;
         if (studentCount > 0 || idx < 3) {
           liveSessions.push({
             id: `sess-active-${t.teacher_id || idx}`,
             teacherName: t.teacher_name || 'Teacher',
-            stationName: activeBlock?.assignments?.[0]?.station_name || `Station ${idx + 1}`,
+            stationName: assignments[0]?.station_name || `Station ${idx + 1}`,
             studentCount: studentCount > 0 ? studentCount : 2,
             status: t.is_available ? 'on_track' : 'needs_attention',
           });
@@ -525,22 +528,29 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     const list = Array.isArray(res?.data)
       ? res.data
       : Array.isArray(res?.data?.session_summaries)
-        ? (res.data.session_summaries as Record<string, unknown>[]).map((s: Record<string, unknown>) => ({
-            id: s.id,
-            status: s.status,
-            teacher: s.session?.teacher?.name,
-            teacherName: s.session?.teacher?.name,
-            station: s.session?.station?.name,
-            stationName: s.session?.station?.name,
-            date: s.submitted_at || 'Today',
-            students: ((s.session as Record<string, unknown>)?.students as Record<string, unknown>[] || []).map((st: Record<string, unknown>) => st.name),
-            studentNames: ((s.session as Record<string, unknown>)?.students as Record<string, unknown>[] || []).map((st: Record<string, unknown>) => st.name),
-            trials: s.total_trials || 24,
-            independence: s.independence_percentage || 80,
-            independencePercent: s.independence_percentage || 80,
-            incidents: s.incident_count || 0,
-            notes: s.notes || 'Routine therapy progress.',
-          }))
+        ? (res.data.session_summaries as Record<string, unknown>[]).map((s: Record<string, unknown>) => {
+            const session = (s.session || {}) as Record<string, unknown>;
+            const teacher = (session.teacher || {}) as Record<string, unknown>;
+            const station = (session.station || {}) as Record<string, unknown>;
+            const sessionStudents = Array.isArray(session.students) ? (session.students as Record<string, unknown>[]) : [];
+            const studentNames = sessionStudents.map((st) => String(st.name || ''));
+            return {
+              id: s.id,
+              status: s.status,
+              teacher: teacher.name,
+              teacherName: teacher.name,
+              station: station.name,
+              stationName: station.name,
+              date: s.submitted_at || 'Today',
+              students: studentNames,
+              studentNames,
+              trials: s.total_trials || 24,
+              independence: s.independence_percentage || 80,
+              independencePercent: s.independence_percentage || 80,
+              incidents: s.incident_count || 0,
+              notes: s.notes || 'Routine therapy progress.',
+            };
+          })
         : [];
     if (list.length > 0) backendList = list;
   } catch {}
@@ -670,9 +680,16 @@ export const bulkApproveSummaries = async (summaryIds: string[]): Promise<{ data
 // SCR-TC-004: Student Progress Monitoring
 // ============================================================================
 export const getStudentProgressOverview = async (studentId: string): Promise<{ data: Record<string, unknown> }> => {
-  const assessmentLabel = (v: Record<string, unknown> | null | undefined): string => {
+  const assessmentLabel = (v: unknown): string => {
     if (!v) return 'Not Started';
-    const s = String(v.status ?? '').toLowerCase();
+    if (typeof v === 'string') {
+      const s = v.toLowerCase();
+      if (s.includes('complete') || s === 'done' || s === 'finalized') return 'Completed';
+      if (s.includes('not_started') || s.includes('not started')) return 'Not Started';
+      return 'In Progress';
+    }
+    const rec = v as Record<string, unknown>;
+    const s = String(rec.status ?? '').toLowerCase();
     if (s.includes('complete') || s === 'done' || s === 'finalized') return 'Completed';
     if (s.includes('not_started') || s.includes('not started')) return 'Not Started';
     return 'In Progress';
@@ -690,12 +707,12 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
     let d: Record<string, unknown> | null = null;
     try {
       const { data: res } = await client.get<Record<string, unknown>>(`/students/${studentId}/progress_monitoring`);
-      d = res?.data ?? res;
+      d = (res?.data && typeof res.data === 'object' ? res.data : res) as Record<string, unknown>;
     } catch {
       const { data: res } = await client.get<Record<string, unknown>>('/reports/student_progress', {
         params: { student_id: studentId },
       });
-      d = res?.data ?? res;
+      d = (res?.data && typeof res.data === 'object' ? res.data : res) as Record<string, unknown>;
     }
 
     if (d && (d.student || d.current_goals || d.assessment_summary)) {
@@ -713,35 +730,38 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         percent: Math.round(Number(g?.progress_percent) || 0),
         status: g?.status || (Number(g?.progress_percent) >= 100 ? 'Mastered' : 'In Progress'),
         domain: g?.domain || 'General',
-        trend: trendFor(g?.goal_name),
+        trend: trendFor(g?.goal_name ? String(g.goal_name) : undefined),
       }));
 
       const history = (d.session_history as Record<string, unknown>) ?? {};
       const rawSessions: Record<string, unknown>[] = Array.isArray(history.recent_sessions)
-        ? history.recent_sessions
+        ? (history.recent_sessions as Record<string, unknown>[])
         : [];
-      const sessionHistory = rawSessions.map((s, i) => ({
-        id: String(s?.session_id ?? i),
-        date: toDateStr(s?.started_at),
-        stationName: String(s?.teacher_name ? `${s.teacher_name} Session` : 'Session'),
-        bodyPreview: s?.summary?.strengths || s?.summary?.areas_for_growth || 'Session completed.',
-        status: s?.summary?.status || 'Approved',
-        independencePercent: Math.round(Number(s?.summary?.independence_percentage) || 75),
-      }));
+      const sessionHistory = rawSessions.map((s, i) => {
+        const summary = (s?.summary || {}) as Record<string, unknown>;
+        return {
+          id: String(s?.session_id ?? i),
+          date: toDateStr(s?.started_at ? String(s.started_at) : undefined),
+          stationName: String(s?.teacher_name ? `${s.teacher_name} Session` : 'Session'),
+          bodyPreview: String(summary.strengths || summary.areas_for_growth || 'Session completed.'),
+          status: String(summary.status || 'Approved'),
+          independencePercent: Math.round(Number(summary.independence_percentage) || 75),
+        };
+      });
 
       const behavior = (d.behavior_incident_trends as Record<string, unknown>) ?? {};
       const totalIncidents = Number(behavior.total_incidents) || 0;
       const recent: Record<string, unknown>[] = Array.isArray(behavior.recent_incidents)
-        ? behavior.recent_incidents
+        ? (behavior.recent_incidents as Record<string, unknown>[])
         : [];
       const incidents = recent.map((inc) => ({
-        date: toDateStr(inc?.occurred_at),
+        date: toDateStr(inc?.occurred_at ? String(inc.occurred_at) : undefined),
         type: String(inc?.behavior_name || 'Behavior Incident'),
         detail: String(inc?.antecedent || inc?.notes || 'Incident recorded during session'),
       }));
 
-      const assessment = d.assessment_summary ?? {};
-      const student = d.student ?? {};
+      const assessment = (d.assessment_summary || {}) as Record<string, unknown>;
+      const student = (d.student || {}) as Record<string, unknown>;
       const hasCycle =
         !!assessment.latest_cycle || Number(assessment.cycles_count) > 0 || !!assessment.status;
 
@@ -1263,14 +1283,14 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
   // Deduplicate between backendStudents and storedEnrolled.
   // Real backend records take precedence, removing any local duplicates.
   const backendNames = new Set(
-    backendStudents.map((b) => (b.fullName || b.name || '').toLowerCase().trim()).filter(Boolean),
+    backendStudents.map((b) => String(b.fullName || b.name || '').toLowerCase().trim()).filter(Boolean),
   );
   const backendIds = new Set(backendStudents.map((b) => String(b.id || '')).filter(Boolean));
 
   const cleanStored = storedEnrolled.filter((s) => {
     const idMatch = s.id && backendIds.has(String(s.id));
-    const nameMatch =
-      (s.fullName || s.name) && backendNames.has((s.fullName || s.name).toLowerCase().trim());
+    const sName = String(s.fullName || s.name || '').toLowerCase().trim();
+    const nameMatch = sName && backendNames.has(sName);
     return !idMatch && !nameMatch;
   });
 
@@ -1455,14 +1475,14 @@ export const getWorkloadDashboard = async () => {
     const res = await client.get('/therapy_coordinator/operational_management/performance_metrics');
     if (Array.isArray(res?.data) && res.data.length > 0) {
       const mapped = (res.data as Record<string, unknown>[]).map((m: Record<string, unknown>) => ({
-        teacherId: m.teacher_id || m.id,
-        teacherName: m.teacher_name || m.name,
-        students: m.student_count || 1,
+        teacherId: String(m.teacher_id || m.id || ''),
+        teacherName: String(m.teacher_name || m.name || ''),
+        students: Number(m.student_count) || 1,
         todaySessions: Math.min(Number(m.sessions_completed || 0), 2),
         weeklySessions: Number(m.sessions_completed || 0),
         hours: Math.round(Number(m.sessions_completed || 0) * 1.5),
         goals: Math.round(Number(m.total_trials || 0) / 10),
-        pendingNotes: Number(m.review_status?.pending_review_count || 0),
+        pendingNotes: Number((m.review_status as Record<string, unknown> | undefined)?.pending_review_count || 0),
         attendanceRate: Number(m.sessions_completed ? 95 : 100),
       }));
       return { ...res, data: filterOutDeletedStaff(mapped) };
@@ -1477,7 +1497,7 @@ export const getWorkloadDashboard = async () => {
       );
       const mapped = (teachers.length > 0 ? teachers : (res.data as Record<string, unknown>[])).map((t: Record<string, unknown>) => ({
         teacherId: String(t.id),
-        teacherName: t.name || t.label || 'Teacher',
+        teacherName: String(t.name || t.label || 'Teacher'),
         students: 1,
         todaySessions: 0,
         weeklySessions: 0,
@@ -1498,7 +1518,7 @@ export const getWorkloadTrend = async () => {
     const dashRes = await getWorkloadDashboard();
     const rows = Array.isArray(dashRes?.data) ? dashRes.data : [];
     const trend = (rows as Record<string, unknown>[]).map((r: Record<string, unknown>) => ({
-      label: r.teacherName || r.name || 'Therapist',
+      label: String(r.teacherName || r.name || 'Therapist'),
       sessions: Number(r.weeklySessions ?? r.sessions ?? r.sessions_completed ?? 0),
     }));
     return { data: filterOutDeletedStaff(trend) };
