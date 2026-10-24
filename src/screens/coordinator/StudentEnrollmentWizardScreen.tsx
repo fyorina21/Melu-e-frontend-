@@ -30,6 +30,7 @@ import {
 } from '../../api/optionsApi';
 import { createStudentEnrollment, updateStudentProfile } from '../../api/coordinatorApi';
 import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
+import type { FormField } from '../../types/forms';
 import { resolveFieldOptions } from '../../components/DynamicFormFields';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhotoHelper';
@@ -99,9 +100,9 @@ export function assignStudentToTherapist(
 export function resolveEnrichedTherapists(teachers: StaffOption[]): StaffOption[] {
   const store =
     storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
-  const enrolledCache = storage.getJSONSync<any[]>('melue_enrolled_students_cache', []) || [];
+  const enrolledCache = storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
 
-  let directorStore: Record<string, any> = {};
+  let directorStore: Record<string, { studentIds?: unknown[] }> = {};
   try {
     if (typeof localStorage !== 'undefined') {
       const raw = localStorage.getItem('melue_director_assignments_store_v1');
@@ -129,7 +130,7 @@ export function resolveEnrichedTherapists(teachers: StaffOption[]): StaffOption[
     }
 
     // 3. From enrolled students cache
-    enrolledCache.forEach((stu: any) => {
+    enrolledCache.forEach((stu: Record<string, unknown>) => {
       const stuTherapist = String(
         stu.therapist ||
           stu.assignedTherapist ||
@@ -153,7 +154,7 @@ export function resolveEnrichedTherapists(teachers: StaffOption[]): StaffOption[
     if (t.id && directorStore[String(t.id)]) {
       const rec = directorStore[String(t.id)];
       if (Array.isArray(rec.studentIds)) {
-        rec.studentIds.forEach((sid: any) => sid && assigned.add(String(sid)));
+        rec.studentIds.forEach((sid: unknown) => sid && assigned.add(String(sid)));
       }
     }
 
@@ -283,7 +284,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const { showToast } = useToast();
   const [step, setStep] = useState(0);
-  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [therapists, setTherapists] = useState<StaffOption[]>([]);
   const [existingStudents, setExistingStudents] = useState<StudentOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -291,7 +292,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     DEFAULT_ENROLLMENT_FORM.customSections || [],
   );
   const [deletedSections, setDeletedSections] = useState<string[]>([]);
-  const [formFields, setFormFields] = useState<any[]>(DEFAULT_ENROLLMENT_FORM.fields || []);
+  const [formFields, setFormFields] = useState<FormField[]>(DEFAULT_ENROLLMENT_FORM.fields || []);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [activePhotoFieldId, setActivePhotoFieldId] = useState<string | null>(null);
   const [activeDropdownFieldId, setActiveDropdownFieldId] = useState<string | null>(null);
@@ -343,7 +344,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             // Pre-seed default values for fields that don't have a value yet
             setFormValues((prev) => {
               const updated = { ...prev };
-              data.fields.forEach((f: any) => {
+              data.fields.forEach((f: FormField) => {
                 if (updated[f.id] === undefined) {
                   if (f.default_value !== undefined) {
                     updated[f.id] = f.default_value;
@@ -379,8 +380,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   );
 
   useEffect(() => {
-    const handler = (e: any) => {
-      const name = (e?.detail?.formName || '').toLowerCase();
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<{ formName?: string }>;
+      const name = (customEvent?.detail?.formName || '').toLowerCase();
       if (name.includes('enrollment')) {
         loadFormConfig();
       }
@@ -410,7 +412,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   });
 
   // 2. From section attributes on fields, preserving schema ordering
-  (formFields || []).forEach((f: any) => {
+  (formFields || []).forEach((f: FormField) => {
     const s = (f.section || 'General').trim();
     if (
       s &&
@@ -438,7 +440,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
 
   // Single dynamic field change handler
-  const handleFieldChange = (fieldId: string, value: any) => {
+  const handleFieldChange = (fieldId: string, value: unknown) => {
     setFormValues((prev) => {
       const updated = { ...prev, [fieldId]: value };
 
@@ -469,7 +471,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   // Helper accessors for student information derived dynamically from schema
   const getFieldVal = (idOrPattern: string | RegExp) => {
-    const f = formFields.find((field: any) =>
+    const f = formFields.find((field: FormField) =>
       typeof idOrPattern === 'string'
         ? field.id === idOrPattern || field.label?.toLowerCase() === idOrPattern.toLowerCase()
         : idOrPattern.test(field.id) || idOrPattern.test(field.label),
@@ -531,8 +533,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         }
         showToast('Photo uploaded successfully', 'success');
       }
-    } catch (err: any) {
-      showToast('Could not select photo: ' + (err?.message || 'Error occurred'), 'error');
+    } catch (err: unknown) {
+      const errObj = err as { message?: string };
+      showToast('Could not select photo: ' + (errObj?.message || 'Error occurred'), 'error');
     }
   };
 
@@ -565,7 +568,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
     // Dynamic field validation strictly based on active schema fields for the current step
     const currentStepFields = formFields.filter(
-      (f: any) =>
+      (f: FormField) =>
         f.visible !== false &&
         (f.section || 'General').toLowerCase().trim() === currentStep.toLowerCase().trim(),
     );
@@ -703,7 +706,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     const transportation = getFieldVal('f8') || getFieldVal(/transportation/i) || 'No';
 
     // Collect dynamic form values keyed strictly by their schema ID
-    const dynamicValuesById: Record<string, any> = {};
+    const dynamicValuesById: Record<string, unknown> = {};
     formFields.forEach((f) => {
       if (formValues[f.id] !== undefined) {
         dynamicValuesById[f.id] = formValues[f.id];
@@ -797,7 +800,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
       showToast(`${studentName} enrolled in ${studentProgram}`, 'success');
       navigation?.navigate?.('StudentEnrollment' as never);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as { message?: string; response?: { data?: { errors?: string[]; error?: string; message?: string } } };
       markStudentActive(undefined, studentName.trim());
       saveStudentPhoto({
         name: studentName.trim(),
@@ -807,10 +811,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         photoUri: studentPhoto,
       });
       const errorMsg =
-        (Array.isArray(err?.response?.data?.errors) ? err.response.data.errors.join(', ') : null) ||
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
+        (Array.isArray(errObj?.response?.data?.errors) ? errObj.response.data.errors.join(', ') : null) ||
+        errObj?.response?.data?.error ||
+        errObj?.response?.data?.message ||
+        errObj?.message ||
         'Could not save the enrollment. Please try again.';
       showToast(errorMsg, 'error');
     } finally {
@@ -830,7 +834,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   // Format display values for Review step
-  const getDisplayValueForField = (f: any) => {
+  const getDisplayValueForField = (f: FormField) => {
     const val = formValues[f.id];
     if (val === undefined || val === null || val === '') return '—';
 
@@ -858,7 +862,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   // Pure dynamic field renderer based strictly on schema field definitions
-  const renderDynamicField = (field: any) => {
+  const renderDynamicField = (field: FormField) => {
     const isRequired = Boolean(field.required);
     const normType = (field.type || 'text').toLowerCase().replace(/[- ]/g, '_');
     const value = formValues[field.id] ?? '';
@@ -1248,7 +1252,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   const currentStepFields = formFields.filter(
-    (f: any) =>
+    (f: FormField) =>
       f.visible !== false &&
       (f.section || 'General').toLowerCase().trim() === currentStep.toLowerCase().trim(),
   );

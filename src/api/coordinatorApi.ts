@@ -155,11 +155,11 @@ const DEFAULT_RESOURCES = [
 ];
 
 // Helper to access custom enrolled students in storage
-function getStoredEnrolledStudents(): any[] {
-  return storage.getJSONSync<any[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
+function getStoredEnrolledStudents(): Record<string, unknown>[] {
+  return storage.getJSONSync<Record<string, unknown>[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
 }
 
-function saveEnrolledStudentLocally(student: any): void {
+function saveEnrolledStudentLocally(student: Record<string, unknown>): void {
   try {
     const list = getStoredEnrolledStudents();
     const cleanName = (student.fullName || student.name || '').toLowerCase().trim();
@@ -203,24 +203,24 @@ function setSummaryStatusLocally(id: string, status: 'approved' | 'revision-requ
 }
 
 // In-memory message thread store for coordinator communications
-const coordinatorThreadStore: Record<string, any[]> = {};
+const coordinatorThreadStore: Record<string, Record<string, unknown>[]> = {};
 
 // ============================================================================
 // SCR-TC-001: Coordinator Dashboard
 // ============================================================================
-export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
+export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, unknown> }> => {
   try {
     const res = await client.get('/therapy_coordinator/operational_management');
     if (res?.data && (res.data.summary || res.data.teachers || res.data.blocks)) {
       const d = res.data;
       const teachers = Array.isArray(d.teachers) ? d.teachers : [];
       const blocks = Array.isArray(d.blocks) ? d.blocks : [];
-      const currentBlock = blocks.find((b: any) => b.is_current) || blocks[0];
+      const _currentBlock = blocks.find((b: Record<string, unknown>) => b.is_current) || blocks[0];
 
-      const liveSessions: any[] = [];
-      teachers.forEach((t: any, idx: number) => {
-        const teacherBlocks = Array.isArray(t.blocks) ? t.blocks : [];
-        const activeBlock = teacherBlocks.find((b: any) => b.is_current) || teacherBlocks[0];
+      const liveSessions: Record<string, unknown>[] = [];
+      teachers.forEach((t: Record<string, unknown>, idx: number) => {
+        const teacherBlocks = Array.isArray(t.blocks) ? (t.blocks as Record<string, unknown>[]) : [];
+        const activeBlock = teacherBlocks.find((b: Record<string, unknown>) => b.is_current) || teacherBlocks[0];
         const studentCount = activeBlock?.students_count || (activeBlock?.assignments?.length ?? 0);
         if (studentCount > 0 || idx < 3) {
           liveSessions.push({
@@ -234,10 +234,10 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
       });
 
       const totalStudents = teachers.reduce(
-        (acc: number, t: any) => acc + (t.capacity?.current || 0),
+        (acc: number, t: Record<string, unknown>) => acc + (Number((t.capacity as Record<string, unknown>)?.current) || 0),
         0,
       );
-      const activeTeachersCount = teachers.filter((t: any) => t.is_available).length;
+      const activeTeachersCount = teachers.filter((t: Record<string, unknown>) => t.is_available).length;
 
       return {
         data: {
@@ -250,7 +250,7 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
               ? activeTeachersCount
               : d.summary?.available_teachers || teachers.length,
           liveSessions,
-          pendingReviews: (d.unassigned_alerts || []).map((a: any, i: number) => ({
+          pendingReviews: (d.unassigned_alerts || []).map((a: Record<string, unknown>, i: number) => ({
             id: `alert-${i}`,
             teacherName: a.suggested_teacher_name || 'Staff Member',
             stationName: a.block_name || 'Session Block',
@@ -271,26 +271,26 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
   } catch {}
 
   // Fetch real students and staff from backend database
-  let realStudents: any[] = [];
+  let realStudents: Record<string, unknown>[] = [];
   try {
-    const { data: sData } = await client.get<any[]>('/options/students');
+    const { data: sData } = await client.get<Record<string, unknown>[]>('/options/students');
     if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
   } catch {}
 
-  let realStaff: any[] = [];
+  let realStaff: Record<string, unknown>[] = [];
   try {
-    const { data: stData } = await client.get<any[]>('/options/staff');
+    const { data: stData } = await client.get<Record<string, unknown>[]>('/options/staff');
     if (Array.isArray(stData) && stData.length > 0) realStaff = stData;
   } catch {}
 
-  const teachers = realStaff.filter((s: any) => s.role === 'teacher');
+  const teachers = realStaff.filter((s: Record<string, unknown>) => s.role === 'teacher');
   const teacherNames =
     teachers.length > 0
-      ? teachers.map((t: any) => t.name)
+      ? teachers.map((t: Record<string, unknown>) => String(t.name || ''))
       : ['Abeba Tadesse', 'Dawit Bekele', 'Selam Tesfaye', 'fyori'];
   const studentNames =
     realStudents.length > 0
-      ? realStudents.map((s: any) => s.name)
+      ? realStudents.map((s: Record<string, unknown>) => String(s.name || ''))
       : DEFAULT_COORDINATOR_STUDENTS.map((s) => s.name);
 
   // Real live sessions with authentic students and assigned teachers
@@ -361,7 +361,7 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
 // ============================================================================
 // SCR-TC-002: Live Session Monitoring
 // ============================================================================
-export const getActiveSessions = async (params: QueryParams): Promise<{ data: any }> => {
+export const getActiveSessions = async (params: QueryParams): Promise<{ data: unknown }> => {
   try {
     const res = await client.get('/coordinator/sessions/active', { params });
     if (Array.isArray(res?.data) && res.data.length > 0) {
@@ -373,9 +373,9 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
     }
   } catch {}
 
-  let realStudents: any[] = [];
+  let realStudents: Record<string, unknown>[] = [];
   try {
-    const { data: sData } = await client.get<any[]>('/options/students');
+    const { data: sData } = await client.get<Record<string, unknown>[]>('/options/students');
     if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
   } catch {}
 
@@ -483,7 +483,7 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
 export const sendAlertToTeacher = async (
   sessionId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   saveCoordinatorAlert({
     sessionId,
     teacherName: String(payload.teacherName || ''),
@@ -518,14 +518,14 @@ export const exportSessionLog = async (params: QueryParams): Promise<{ data: { c
 // ============================================================================
 // SCR-TC-003: Session Summary Review
 // ============================================================================
-export const getPendingSummaries = async (params: QueryParams): Promise<{ data: any }> => {
-  let backendList: any[] = [];
+export const getPendingSummaries = async (params: QueryParams): Promise<{ data: Record<string, unknown>[] }> => {
+  let backendList: Record<string, unknown>[] = [];
   try {
     const res = await client.get('/therapy_coordinator/session_summaries', { params });
     const list = Array.isArray(res?.data)
       ? res.data
       : Array.isArray(res?.data?.session_summaries)
-        ? res.data.session_summaries.map((s: any) => ({
+        ? (res.data.session_summaries as Record<string, unknown>[]).map((s: Record<string, unknown>) => ({
             id: s.id,
             status: s.status,
             teacher: s.session?.teacher?.name,
@@ -533,8 +533,8 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
             station: s.session?.station?.name,
             stationName: s.session?.station?.name,
             date: s.submitted_at || 'Today',
-            students: (s.session?.students || []).map((st: any) => st.name),
-            studentNames: (s.session?.students || []).map((st: any) => st.name),
+            students: ((s.session as Record<string, unknown>)?.students as Record<string, unknown>[] || []).map((st: Record<string, unknown>) => st.name),
+            studentNames: ((s.session as Record<string, unknown>)?.students as Record<string, unknown>[] || []).map((st: Record<string, unknown>) => st.name),
             trials: s.total_trials || 24,
             independence: s.independence_percentage || 80,
             independencePercent: s.independence_percentage || 80,
@@ -548,7 +548,7 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
   const statusMap = getStoredSummaryStatusMap();
 
   if (backendList.length > 0) {
-    const merged = backendList.map((item: any) => {
+    const merged = backendList.map((item: Record<string, unknown>) => {
       const id = String(item.id);
       if (statusMap[id]) {
         return { ...item, status: statusMap[id] };
@@ -614,7 +614,7 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
 export const approveSummary = async (
   summaryId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   setSummaryStatusLocally(summaryId, 'approved');
 
   try {
@@ -636,7 +636,7 @@ export const approveSummary = async (
 export const requestSummaryChanges = async (
   summaryId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   setSummaryStatusLocally(summaryId, 'revision-required');
 
   try {
@@ -655,7 +655,7 @@ export const requestSummaryChanges = async (
   return { data: { success: true, summaryId, status: 'revision-required', ...payload } };
 };
 
-export const bulkApproveSummaries = async (summaryIds: string[]): Promise<{ data: any }> => {
+export const bulkApproveSummaries = async (summaryIds: string[]): Promise<{ data: Record<string, unknown> }> => {
   (summaryIds || []).forEach((id) => setSummaryStatusLocally(id, 'approved'));
 
   try {
@@ -669,8 +669,8 @@ export const bulkApproveSummaries = async (summaryIds: string[]): Promise<{ data
 // ============================================================================
 // SCR-TC-004: Student Progress Monitoring
 // ============================================================================
-export const getStudentProgressOverview = async (studentId: string): Promise<{ data: any }> => {
-  const assessmentLabel = (v: any): string => {
+export const getStudentProgressOverview = async (studentId: string): Promise<{ data: Record<string, unknown> }> => {
+  const assessmentLabel = (v: Record<string, unknown> | null | undefined): string => {
     if (!v) return 'Not Started';
     const s = String(v.status ?? '').toLowerCase();
     if (s.includes('complete') || s === 'done' || s === 'finalized') return 'Completed';
@@ -687,26 +687,26 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
 
   // Query live student progress monitoring
   try {
-    let d: any = null;
+    let d: Record<string, unknown> | null = null;
     try {
-      const { data: res } = await client.get<any>(`/students/${studentId}/progress_monitoring`);
+      const { data: res } = await client.get<Record<string, unknown>>(`/students/${studentId}/progress_monitoring`);
       d = res?.data ?? res;
     } catch {
-      const { data: res } = await client.get<any>('/reports/student_progress', {
+      const { data: res } = await client.get<Record<string, unknown>>('/reports/student_progress', {
         params: { student_id: studentId },
       });
       d = res?.data ?? res;
     }
 
     if (d && (d.student || d.current_goals || d.assessment_summary)) {
-      const charts: any[] = Array.isArray(d.goal_progress_charts) ? d.goal_progress_charts : [];
+      const charts: Record<string, unknown>[] = Array.isArray(d.goal_progress_charts) ? (d.goal_progress_charts as Record<string, unknown>[]) : [];
       const trendFor = (goalName?: string): number[] => {
         const chart = charts.find((c) => c?.goal_name === goalName);
-        const pts = Array.isArray(chart?.data_points) ? chart.data_points : [];
-        return pts.map((p: any) => Math.round(Number(p?.progress_percent) || 0));
+        const pts = Array.isArray(chart?.data_points) ? (chart.data_points as Record<string, unknown>[]) : [];
+        return pts.map((p: Record<string, unknown>) => Math.round(Number(p?.progress_percent) || 0));
       };
 
-      const rawGoals: any[] = Array.isArray(d.current_goals) ? d.current_goals : [];
+      const rawGoals: Record<string, unknown>[] = Array.isArray(d.current_goals) ? (d.current_goals as Record<string, unknown>[]) : [];
       const goals = rawGoals.map((g) => ({
         id: String(g?.id ?? g?.goal_id ?? Math.random()),
         name: String(g?.goal_name ?? 'Goal'),
@@ -716,8 +716,8 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         trend: trendFor(g?.goal_name),
       }));
 
-      const history = d.session_history ?? {};
-      const rawSessions: any[] = Array.isArray(history.recent_sessions)
+      const history = (d.session_history as Record<string, unknown>) ?? {};
+      const rawSessions: Record<string, unknown>[] = Array.isArray(history.recent_sessions)
         ? history.recent_sessions
         : [];
       const sessionHistory = rawSessions.map((s, i) => ({
@@ -729,9 +729,9 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
         independencePercent: Math.round(Number(s?.summary?.independence_percentage) || 75),
       }));
 
-      const behavior = d.behavior_incident_trends ?? {};
+      const behavior = (d.behavior_incident_trends as Record<string, unknown>) ?? {};
       const totalIncidents = Number(behavior.total_incidents) || 0;
-      const recent: any[] = Array.isArray(behavior.recent_incidents)
+      const recent: Record<string, unknown>[] = Array.isArray(behavior.recent_incidents)
         ? behavior.recent_incidents
         : [];
       const incidents = recent.map((inc) => ({
@@ -928,7 +928,7 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
   return { data: overview };
 };
 
-export const flagStudent = async (studentId: string, payload: Payload): Promise<{ data: any }> => {
+export const flagStudent = async (studentId: string, payload: Payload): Promise<{ data: Record<string, unknown> }> => {
   try {
     const flagMap =
       storage.getJSONSync<Record<string, boolean>>(STUDENT_FLAGS_STORAGE_KEY, {}) || {};
@@ -947,8 +947,8 @@ export const flagStudent = async (studentId: string, payload: Payload): Promise<
 // ============================================================================
 // SCR-TC-005: Operational Management & Scheduling
 // ============================================================================
-export const getOperationalSchedule = async (params: QueryParams): Promise<{ data: any }> => {
-  let scheduleData: any = null;
+export const getOperationalSchedule = async (params: QueryParams): Promise<{ data: Record<string, unknown> }> => {
+  let scheduleData: Record<string, unknown> | null = null;
   try {
     const res = await client.get('/therapy_coordinator/operational_management', { params });
     if (res?.data) scheduleData = res.data;
@@ -960,7 +960,7 @@ export const getOperationalSchedule = async (params: QueryParams): Promise<{ dat
   }
 
   if (scheduleData && typeof scheduleData === 'object') {
-    const filtered: Record<string, any> = {};
+    const filtered: Record<string, unknown> = {};
     Object.keys(scheduleData).forEach((key) => {
       filtered[key] = Array.isArray(scheduleData[key])
         ? filterOutDeletedStaff(scheduleData[key])
@@ -970,7 +970,7 @@ export const getOperationalSchedule = async (params: QueryParams): Promise<{ dat
   }
 
   // Resilient fallback appointments grid using real students
-  const mockSchedule: Record<number, any[]> = {
+  const mockSchedule: Record<number, Record<string, unknown>[]> = {
     0: [
       {
         therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
@@ -1070,21 +1070,21 @@ export const getOperationalSchedule = async (params: QueryParams): Promise<{ dat
     ],
   };
 
-  const filteredMock: Record<number, any[]> = {};
-  Object.keys(mockSchedule).forEach((k: any) => {
+  const filteredMock: Record<number, Record<string, unknown>[]> = {};
+  Object.keys(mockSchedule).forEach((k) => {
     filteredMock[Number(k)] = filterOutDeletedStaff(mockSchedule[Number(k)]);
   });
   return { data: filteredMock };
 };
 
-export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise<{ data: any }> => {
+export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise<{ data: Record<string, unknown>[] }> => {
   try {
     const res = await client.get(
       '/therapy_coordinator/operational_management/performance_metrics',
       { params },
     );
-    const normalizeMetrics = (data: any[]): any[] =>
-      data.map((r: any) => ({
+    const normalizeMetrics = (data: Record<string, unknown>[]): Record<string, unknown>[] =>
+      data.map((r: Record<string, unknown>) => ({
         teacherId: r.teacher_id || r.teacherId || r.id || '',
         teacherName: r.teacher_name || r.teacherName || r.name || 'Teacher',
         sessions: r.sessions_completed ?? r.sessions ?? 0,
@@ -1140,12 +1140,12 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
 // SCR-TC-006: Parent Communication (Coordinator View)
 // ============================================================================
 export const getCoordinatorConversations = async (
-  params?: QueryParams,
-): Promise<{ data: any[] }> => {
+  _params?: QueryParams,
+): Promise<{ data: Record<string, unknown>[] }> => {
   try {
-    const { data: students } = await client.get<any[]>('/options/students');
+    const { data: students } = await client.get<Record<string, unknown>[]>('/options/students');
     if (Array.isArray(students) && students.length > 0) {
-      const convos = students.map((s: any) => ({
+      const convos = students.map((s: Record<string, unknown>) => ({
         id: String(s.id),
         studentId: String(s.id),
         studentName: s.name,
@@ -1175,7 +1175,7 @@ export const getCoordinatorConversations = async (
   return { data: defaultConvos };
 };
 
-export const getConversationThread = async (conversationId: string): Promise<{ data: any }> => {
+export const getConversationThread = async (conversationId: string): Promise<{ data: Record<string, unknown> }> => {
   if (coordinatorThreadStore[conversationId]) {
     return {
       data: {
@@ -1212,7 +1212,7 @@ export const getConversationThread = async (conversationId: string): Promise<{ d
 export const sendCoordinatorMessage = async (
   conversationId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   const text = String(payload.text || payload.content || payload.message || '');
   const newMsg = {
     id: `msg-${Date.now()}`,
@@ -1238,19 +1238,19 @@ export const sendCoordinatorMessage = async (
 export const escalateConversation = async (
   conversationId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   return { data: { success: true, conversationId, ...payload } };
 };
 
-export const markConversationResolved = async (conversationId: string): Promise<{ data: any }> => {
+export const markConversationResolved = async (conversationId: string): Promise<{ data: Record<string, unknown> }> => {
   return { data: { success: true, conversationId, resolved: true } };
 };
 
 // ============================================================================
 // MR-16/18/19: Student Enrollment & Profile
 // ============================================================================
-export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data: any[] }> => {
-  let backendStudents: any[] = [];
+export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data: Record<string, unknown>[] }> => {
+  let backendStudents: Record<string, unknown>[] = [];
   try {
     const res = await client.get('/coordinator/students', { params });
     if (Array.isArray(res?.data) && res.data.length > 0) {
@@ -1280,9 +1280,9 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     } catch {}
   }
 
-  let optionsPool: any[] = [];
+  let optionsPool: Record<string, unknown>[] = [];
   try {
-    const { data: opts } = await client.get<any[]>('/options/students');
+    const { data: opts } = await client.get<Record<string, unknown>[]>('/options/students');
     if (Array.isArray(opts) && opts.length > 0) optionsPool = opts;
   } catch {}
 
@@ -1329,7 +1329,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
   return { data: normalized };
 };
 
-export const createStudentEnrollment = async (payload: Payload): Promise<{ data: any }> => {
+export const createStudentEnrollment = async (payload: Payload): Promise<{ data: Record<string, unknown> }> => {
   const chosenTherapist =
     payload.therapist ||
     payload.assignedTherapist ||
@@ -1370,7 +1370,7 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
   return { data: newStudent };
 };
 
-export const getStudentProfile = async (studentId: string): Promise<{ data: any }> => {
+export const getStudentProfile = async (studentId: string): Promise<{ data: Record<string, unknown> }> => {
   try {
     const res = await client.get(`/coordinator/students/${studentId}/profile`);
     if (res?.data && res.data.fullName) {
@@ -1438,7 +1438,7 @@ export const getStudentProfile = async (studentId: string): Promise<{ data: any 
 export const updateStudentProfile = async (
   studentId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   try {
     const res = await client.patch(`/coordinator/students/${studentId}/profile`, payload);
     if (res?.data) return res;
@@ -1454,7 +1454,7 @@ export const getWorkloadDashboard = async () => {
   try {
     const res = await client.get('/therapy_coordinator/operational_management/performance_metrics');
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      const mapped = res.data.map((m: any) => ({
+      const mapped = (res.data as Record<string, unknown>[]).map((m: Record<string, unknown>) => ({
         teacherId: m.teacher_id || m.id,
         teacherName: m.teacher_name || m.name,
         students: m.student_count || 1,
@@ -1472,10 +1472,10 @@ export const getWorkloadDashboard = async () => {
   try {
     const res = await client.get('/options/staff');
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      const teachers = res.data.filter(
-        (s: any) => !s.role || s.role === 'teacher' || s.role === 'therapist',
+      const teachers = (res.data as Record<string, unknown>[]).filter(
+        (s: Record<string, unknown>) => !s.role || s.role === 'teacher' || s.role === 'therapist',
       );
-      const mapped = (teachers.length > 0 ? teachers : res.data).map((t: any) => ({
+      const mapped = (teachers.length > 0 ? teachers : (res.data as Record<string, unknown>[])).map((t: Record<string, unknown>) => ({
         teacherId: String(t.id),
         teacherName: t.name || t.label || 'Teacher',
         students: 1,
@@ -1497,7 +1497,7 @@ export const getWorkloadTrend = async () => {
   try {
     const dashRes = await getWorkloadDashboard();
     const rows = Array.isArray(dashRes?.data) ? dashRes.data : [];
-    const trend = rows.map((r: any) => ({
+    const trend = (rows as Record<string, unknown>[]).map((r: Record<string, unknown>) => ({
       label: r.teacherName || r.name || 'Therapist',
       sessions: Number(r.weeklySessions ?? r.sessions ?? r.sessions_completed ?? 0),
     }));
@@ -1510,16 +1510,16 @@ export const getWorkloadTrend = async () => {
 // ============================================================================
 // MR-41: Room & Resource Scheduling
 // ============================================================================
-export const getRoomsResources = async (params: QueryParams): Promise<{ data: any }> => {
+export const getRoomsResources = async (params: QueryParams): Promise<{ data: Record<string, unknown> }> => {
   try {
     const res = await client.get('/coordinator/rooms-resources', { params });
     if (res?.data && res.data.rooms) return res;
   } catch {}
 
   const storedRooms =
-    storage.getJSONSync<any[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) || DEFAULT_ROOMS;
+    storage.getJSONSync<Record<string, unknown>[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) || DEFAULT_ROOMS;
   const storedResources =
-    storage.getJSONSync<any[]>(RESOURCES_CACHE_STORAGE_KEY, DEFAULT_RESOURCES) || DEFAULT_RESOURCES;
+    storage.getJSONSync<Record<string, unknown>[]>(RESOURCES_CACHE_STORAGE_KEY, DEFAULT_RESOURCES) || DEFAULT_RESOURCES;
 
   const maintenance = [
     {
@@ -1542,10 +1542,10 @@ export const getRoomsResources = async (params: QueryParams): Promise<{ data: an
 export const updateRoomStatus = async (
   roomId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   try {
     const rooms =
-      storage.getJSONSync<any[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) || DEFAULT_ROOMS;
+      storage.getJSONSync<Record<string, unknown>[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) || DEFAULT_ROOMS;
     const match = rooms.find((r) => r.id === roomId);
     if (match && payload.status) {
       match.status = payload.status;
@@ -1564,10 +1564,10 @@ export const updateRoomStatus = async (
 export const updateResourceStatus = async (
   resourceId: string,
   payload: Payload,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   try {
     const resources =
-      storage.getJSONSync<any[]>(RESOURCES_CACHE_STORAGE_KEY, DEFAULT_RESOURCES) ||
+      storage.getJSONSync<Record<string, unknown>[]>(RESOURCES_CACHE_STORAGE_KEY, DEFAULT_RESOURCES) ||
       DEFAULT_RESOURCES;
     const match = resources.find((r) => r.id === resourceId);
     if (match && typeof payload.inUse === 'number') {
@@ -1587,7 +1587,7 @@ export const updateResourceStatus = async (
 // ============================================================================
 // Notifications
 // ============================================================================
-export const getCoordinatorNotifications = async (): Promise<{ data: any }> => {
+export const getCoordinatorNotifications = async (): Promise<{ data: Record<string, unknown>[] }> => {
   try {
     const res = await client.get('/notifications');
     if (Array.isArray(res?.data) && res.data.length > 0) return res;
@@ -1622,7 +1622,7 @@ export const getCoordinatorNotifications = async (): Promise<{ data: any }> => {
 
 export const markCoordinatorNotificationRead = async (
   notificationId: string,
-): Promise<{ data: any }> => {
+): Promise<{ data: Record<string, unknown> }> => {
   try {
     const res = await client.post(`/notifications/${notificationId}/mark_as_read`);
     if (res?.data) return res;
