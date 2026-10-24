@@ -1,7 +1,7 @@
 // Persistent, in-flow sidebar used by institutional admin and system admin.
 // Lists only that role's links and supports collapsing to an icon rail or hiding on mobile.
 
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,13 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NavigationState } from '@react-navigation/native';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
-import { ROLE_TABS, ROLE_LABELS, routeMapForRole, getTabsForSession } from './appNavConfig';
+import {
+  ROLE_TABS,
+  ROLE_LABELS,
+  routeMapForRole,
+  getTabsForSession,
+  getSidebarSectionsForSession,
+} from './appNavConfig';
 import { SidebarNavContext } from '../navigation/SidebarNavContext';
 import { useBreakpoint } from '../utils/useBreakpoint';
 import { useAuth } from '../context/AuthContext';
@@ -38,57 +44,106 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   Overview: 'home',
   Home: 'home',
   Notifications: 'bell',
+
+  // System Administration
+  'Staff Account Management': 'users',
   'Staff Accounts': 'users',
   'Staff account management': 'users',
   'Staff Management': 'users',
+  Staff: 'users',
   'Role Management': 'shield',
+  Roles: 'shield',
+  'Permission Configuration (RBAC)': 'lock',
   'Permission Configuration': 'lock',
+  Permissions: 'lock',
+  'System Audit Log': 'activity',
   'Audit Log': 'activity',
-  Goals: 'target',
+  'Audit Logs': 'activity',
+  Audit: 'activity',
+
+  // Institutional Administration
+  'Schedule & Capacity Configuration': 'calendar',
+  'Schedule & Capacity': 'calendar',
+  'Form Builder': 'file-plus',
+  'Assessment & Form Builder': 'file-plus',
+  Forms: 'file-plus',
+  'ABC Dropdown Lists': 'list',
+  'ABC Lists': 'list',
+  'Trial Logging Format Config': 'check-circle',
+  'Trial Logging Format': 'check-circle',
+  'Trial Logging': 'check-circle',
+  'Goal Bank / Domains': 'target',
   'Goal Domains': 'target',
+  Goals: 'target',
   'Task Analysis': 'check-square',
   'Task Analysis Templates': 'check-square',
-  'Schedule & Capacity': 'calendar',
-  'ABC Dropdown Lists': 'list',
-  'Trial Logging Format': 'check-circle',
-  'Form Builder': 'file-plus',
-  'Reports & Oversight': 'bar-chart-2',
-  'Report & Oversight': 'bar-chart-2',
-  Reports: 'bar-chart-2',
-  'Report Builder': 'file-text',
-  'Clinical Progress Charts': 'trending-up',
-  'Staff Scheduling': 'clock',
-  'Operational Management': 'calendar',
-  'Staff Management & Linking': 'users',
-  'Room Resource Scheduling': 'map-pin',
-  'Live Sessions': 'video',
-  Session: 'play-circle',
-  'Active Therapy': 'play-circle',
-  'Daily Notes': 'file-text',
-  'Session Summary': 'clipboard',
-  'Session Summary Review': 'clipboard',
-  Assessments: 'clipboard',
-  'Assessment Dashboard': 'clipboard',
-  'Assessment Review': 'check-circle',
-  'Assessment Summary Report': 'file-text',
-  'IUP Creation & Goal Assignment': 'plus-circle',
-  'Goal Mastery Approval': 'award',
-  'IUP Library Management': 'book',
-  'Clinical Quality Monitoring': 'activity',
-  'ABC Log': 'alert-triangle',
-  Parents: 'message-circle',
-  'Parent Communication': 'message-circle',
-  Messages: 'message-circle',
-  Progress: 'trending-up',
-  Observations: 'eye',
-  'Student Progress': 'trending-up',
-  'Enrollment Wizard': 'user-plus',
+
+  // Student Intake & Enrollment
   'Student Enrollment Wizard': 'user-plus',
+  'Enrollment Wizard': 'user-plus',
+  Enrollment: 'user-plus',
+  'Student Register & Roster List': 'user-check',
   'Student Register': 'user-check',
   'Registered Student': 'user-check',
   'Registered Students': 'user-check',
   'Student Registration': 'user-check',
+
+  // Assessments
+  'Assessment Dashboard': 'clipboard',
+  Assessments: 'clipboard',
+  'Assessment Review & Sign-Off': 'check-circle',
+  'Assessment Review': 'check-circle',
+  'Assessment Summary Report': 'file-text',
+
+  // IUP & Goals
+  'IUP Creation & Goal Assignment': 'plus-circle',
+  'IUP Library Management': 'book',
   'Student Caseload Management': 'users',
+  'Goal Bank': 'activity',
+  'Clinical Quality Monitoring': 'activity',
+
+  // Active Therapy & Clinical Delivery
+  'Session Data Collection': 'play-circle',
+  Session: 'play-circle',
+  'Active Therapy': 'play-circle',
+  'Daily Session Notes': 'file-text',
+  'Daily Notes': 'file-text',
+  'ABC Behavior Incident Log': 'alert-triangle',
+  'ABC Log': 'alert-triangle',
+  'Live Session Monitoring': 'video',
+  'Live Sessions': 'video',
+  'Session Summary Review': 'clipboard',
+  'Session Summary': 'clipboard',
+  'Goal Mastery Approval': 'award',
+
+  // Operations & Scheduling
+  'Staff Scheduling & Capacity': 'clock',
+  'Staff Scheduling': 'clock',
+  'Staff Workload & Therapist Linking': 'users',
+  'Staff Management & Linking': 'users',
+  Workload: 'users',
+  'Room Resource Scheduling': 'map-pin',
+  'Operational Management': 'calendar',
+
+  // Family Engagement & Parent Portal
+  'Parent Communication': 'message-circle',
+  'Parent Communication (Messages)': 'message-circle',
+  Parents: 'message-circle',
+  Messages: 'message-circle',
+  'Child Progress Tracker': 'trending-up',
+  Progress: 'trending-up',
+  'Home Observation Log': 'eye',
+  Observations: 'eye',
+
+  // Executive Oversight
+  'Reports & Executive Oversight': 'bar-chart-2',
+  'Reports & Oversight': 'bar-chart-2',
+  'Report & Oversight': 'bar-chart-2',
+  Reports: 'bar-chart-2',
+  'Custom Report Builder': 'file-text',
+  'Report Builder': 'file-text',
+  'Clinical Progress Charts': 'trending-up',
+  'Student Progress': 'trending-up',
   'Student Profile': 'user',
 };
 
@@ -102,16 +157,37 @@ export default function RoleSidebar({ role }: { role: Role }) {
   const { isDirty, setDirty } = useUnsavedChanges();
   const bp = useBreakpoint();
   const isCompact = bp !== 'desktop';
-  const defaultTabs = ROLE_TABS[role] ?? [];
-  const tabs = getTabsForSession(session, defaultTabs);
+
+  const sections = getSidebarSectionsForSession(session, role);
   const routeMap = routeMapForRole(role);
+  const hasDashboard = (ROLE_TABS[role] ?? []).includes('Dashboard');
+
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (title: string) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [title]: !prev[title],
+    }));
+  };
 
   const current = activeRouteName(navRef.current?.getState());
   void version; // re-render on navigation state changes
-  const activeTab = current ? tabs.find((tab) => routeMap?.[tab] === current) : undefined;
 
-  const handlePress = (tab: string) => {
-    const route = routeMap?.[tab];
+  const isDashboardActive =
+    current === 'TeacherDashboard' ||
+    current === 'CoordinatorDashboard' ||
+    current === 'DirectorDashboard' ||
+    current === 'ProgramDirectorDashboard' ||
+    current === 'ParentDashboard' ||
+    current === routeMap?.['Dashboard'];
+
+  const isItemActive = (label: string, route: string) => {
+    return current === route || routeMap?.[label] === current;
+  };
+
+  const handlePress = (tab: string, targetRoute?: string) => {
+    const route = targetRoute || routeMap?.[tab];
     if (route) {
       if (isDirty) {
         confirmAction({
@@ -163,27 +239,49 @@ export default function RoleSidebar({ role }: { role: Role }) {
           contentContainerStyle={styles.listCollapsed}
           showsVerticalScrollIndicator={false}
         >
-          {tabs.map((tab) => {
-            const active = tab === activeTab;
-            const iconName = TAB_ICONS[tab] ?? 'circle';
-            return (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.itemCollapsed, active && styles.itemActiveCollapsed]}
-                onPress={() => handlePress(tab)}
-                accessibilityRole="tab"
-                accessibilityLabel={tab}
-                accessibilityState={{ selected: active }}
-                {...(Platform.OS === 'web' ? { title: tab } : {})}
-              >
-                <Feather
-                  name={iconName}
-                  size={20}
-                  color={active ? colors.navyText : colors.mutedText}
-                />
-              </TouchableOpacity>
-            );
-          })}
+          {hasDashboard && (
+            <TouchableOpacity
+              style={[styles.itemCollapsed, isDashboardActive && styles.itemActiveCollapsed]}
+              onPress={() => handlePress('Dashboard')}
+              accessibilityRole="tab"
+              accessibilityLabel="Dashboard"
+              accessibilityState={{ selected: isDashboardActive }}
+              {...(Platform.OS === 'web' ? { title: 'Dashboard' } : {})}
+            >
+              <Feather
+                name="home"
+                size={20}
+                color={isDashboardActive ? colors.navyText : colors.mutedText}
+              />
+            </TouchableOpacity>
+          )}
+
+          {sections.map((section, sIdx) => (
+            <React.Fragment key={section.title}>
+              {(sIdx > 0 || hasDashboard) && <View style={styles.collapsedDivider} />}
+              {section.items.map((item) => {
+                const active = isItemActive(item.label, item.route);
+                const iconName = TAB_ICONS[item.label] ?? 'circle';
+                return (
+                  <TouchableOpacity
+                    key={item.label}
+                    style={[styles.itemCollapsed, active && styles.itemActiveCollapsed]}
+                    onPress={() => handlePress(item.label, item.route)}
+                    accessibilityRole="tab"
+                    accessibilityLabel={item.label}
+                    accessibilityState={{ selected: active }}
+                    {...(Platform.OS === 'web' ? { title: item.label } : {})}
+                  >
+                    <Feather
+                      name={iconName}
+                      size={20}
+                      color={active ? colors.navyText : colors.mutedText}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </React.Fragment>
+          ))}
         </ScrollView>
       </View>
     );
@@ -226,28 +324,84 @@ export default function RoleSidebar({ role }: { role: Role }) {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       >
-        {tabs.map((tab) => {
-          const active = tab === activeTab;
-          const iconName = TAB_ICONS[tab] ?? 'circle';
+        {hasDashboard && (
+          <TouchableOpacity
+            style={[styles.item, isDashboardActive && styles.itemActive]}
+            onPress={() => handlePress('Dashboard')}
+            accessibilityRole="tab"
+            accessibilityLabel="Dashboard"
+            accessibilityState={{ selected: isDashboardActive }}
+          >
+            <View style={styles.itemContent}>
+              <Feather
+                name="home"
+                size={16}
+                color={isDashboardActive ? colors.navyText : colors.mutedText}
+              />
+              <Text style={[styles.itemText, isDashboardActive && styles.itemTextActive]}>
+                Dashboard
+              </Text>
+            </View>
+            {isDashboardActive && (
+              <Feather name="chevron-right" size={14} color={colors.navyText} />
+            )}
+          </TouchableOpacity>
+        )}
+
+        {sections.map((section) => {
+          const isExpanded = !collapsedSections[section.title];
           return (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.item, active && styles.itemActive]}
-              onPress={() => handlePress(tab)}
-              accessibilityRole="tab"
-              accessibilityLabel={tab}
-              accessibilityState={{ selected: active }}
-            >
-              <View style={styles.itemContent}>
+            <View key={section.title} style={styles.sectionContainer}>
+              <TouchableOpacity
+                style={styles.sectionHeader}
+                onPress={() => toggleSection(section.title)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${section.title}, ${isExpanded ? 'collapse section' : 'expand section'}`}
+              >
+                <Text style={styles.sectionTitle} numberOfLines={1}>
+                  {section.title}
+                </Text>
                 <Feather
-                  name={iconName}
-                  size={16}
-                  color={active ? colors.navyText : colors.mutedText}
+                  name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                  size={13}
+                  color={colors.mutedText}
                 />
-                <Text style={[styles.itemText, active && styles.itemTextActive]}>{tab}</Text>
-              </View>
-              {active && <Feather name="chevron-right" size={14} color={colors.navyText} />}
-            </TouchableOpacity>
+              </TouchableOpacity>
+
+              {isExpanded && (
+                <View style={styles.sectionItems}>
+                  {section.items.map((item) => {
+                    const active = isItemActive(item.label, item.route);
+                    const iconName = TAB_ICONS[item.label] ?? 'circle';
+                    return (
+                      <TouchableOpacity
+                        key={item.label}
+                        style={[styles.item, active && styles.itemActive]}
+                        onPress={() => handlePress(item.label, item.route)}
+                        accessibilityRole="tab"
+                        accessibilityLabel={item.label}
+                        accessibilityState={{ selected: active }}
+                      >
+                        <View style={styles.itemContent}>
+                          <Feather
+                            name={iconName}
+                            size={16}
+                            color={active ? colors.navyText : colors.mutedText}
+                          />
+                          <Text style={[styles.itemText, active && styles.itemTextActive]}>
+                            {item.label}
+                          </Text>
+                        </View>
+                        {active && (
+                          <Feather name="chevron-right" size={14} color={colors.navyText} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           );
         })}
       </ScrollView>
@@ -390,5 +544,36 @@ const styles = StyleSheet.create({
   itemTextActive: {
     fontWeight: '700',
     color: colors.navyText,
+  },
+  sectionContainer: {
+    marginTop: spacing.xs,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', userSelect: 'none' } as any) : {}),
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    flex: 1,
+  },
+  sectionItems: {
+    gap: 2,
+    marginTop: 2,
+  },
+  collapsedDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    width: 32,
+    marginVertical: spacing.xs,
+    alignSelf: 'center',
   },
 });

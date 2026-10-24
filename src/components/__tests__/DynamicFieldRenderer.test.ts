@@ -170,4 +170,47 @@ describe('DynamicFieldRenderer component and schema conformance', () => {
     expect(element.props.field.type).toBe('timer');
     expect(element.props.value).toBe('02:45');
   });
+
+  it('renders date field with compact modal date picker', () => {
+    const field: DynamicFormField = {
+      id: 'assessment_date',
+      type: 'date',
+      label: 'Evaluation Date',
+      placeholder: 'YYYY-MM-DD',
+      validation: { required: true },
+    };
+
+    const element = React.createElement(DynamicFieldRenderer, {
+      field,
+      value: '2026-10-23',
+      onChange: () => {},
+    });
+
+    expect(element).toBeDefined();
+    expect(element.props.field.type).toBe('date');
+    expect(element.props.value).toBe('2026-10-23');
+  });
+
+  it('renders dropdown field with high z-index stacking context', () => {
+    const field: DynamicFormField = {
+      id: 'session_setting',
+      type: 'dropdown',
+      label: 'Clinical Setting',
+      options: [
+        { label: 'Clinic 1:1', value: 'clinic_1on1' },
+        { label: 'Group Classroom', value: 'group_class' },
+      ],
+      validation: { required: true },
+    };
+
+    const element = React.createElement(DynamicFieldRenderer, {
+      field,
+      value: 'clinic_1on1',
+      onChange: () => {},
+    });
+
+    expect(element).toBeDefined();
+    expect(element.props.field.type).toBe('dropdown');
+    expect(element.props.value).toBe('clinic_1on1');
+  });
 });

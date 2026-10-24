@@ -398,7 +398,11 @@ export const PreviewFormModal: React.FC<PreviewFormModalProps> = React.memo(
             )}
 
             {/* Main Content Body */}
-            <ScrollView style={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.modalScrollBody}
+              contentContainerStyle={{ overflow: 'visible', paddingBottom: spacing.xl }}
+              showsVerticalScrollIndicator={false}
+            >
               {/* STEP-BY-STEP MODE */}
               {viewMode === 'step' && (
                 <View style={styles.stepCard}>
@@ -705,7 +709,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    overflow: 'hidden',
+    overflow: 'visible',
     marginBottom: spacing.md,
   },
   stepCardHeader: {
@@ -717,6 +721,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
   },
   stepCardHeaderTitle: {
     fontSize: 15,

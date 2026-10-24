@@ -47,6 +47,7 @@ export default function DobPicker({
         fontFamily: 'inherit',
         maxWidth: 320,
         width: '100%',
+        minHeight: 44,
         boxSizing: 'border-box',
         outline: 'none',
       }}

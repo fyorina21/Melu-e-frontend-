@@ -56,7 +56,7 @@ export type DirectorStackParamList = {
   GoalMasteryApproval: undefined;
   DirectorParentCommunication: undefined;
   ReportsOversight: undefined;
-  DirectorStudentProgress: undefined;
+  DirectorStudentProgress: { studentId?: string } | undefined;
   ReportBuilder: undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
 };
