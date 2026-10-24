@@ -1,5 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, SafeAreaView, Alert, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+  Platform,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenLoader from '../../components/ScreenLoader';
@@ -7,8 +17,17 @@ import ScreenError from '../../components/ScreenError';
 import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import client, { createGoalMasteryCheck, getMasteryCheck, submitGoalMasteryVerification } from '../../api/sessionApi';
-import { getStudentOptions, getStaffOptions, type StudentOption, type StaffOption } from '../../api/optionsApi';
+import client, {
+  createGoalMasteryCheck,
+  getMasteryCheck,
+  submitGoalMasteryVerification,
+} from '../../api/sessionApi';
+import {
+  getStudentOptions,
+  getStaffOptions,
+  type StudentOption,
+  type StaffOption,
+} from '../../api/optionsApi';
 import { onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import {
   saveMasteryCheck,
@@ -130,7 +149,10 @@ function unwrapBody(res: { data?: unknown }): Record<string, any> | null {
 // it into the goal dropdown list and keep station names for display.
 const flattenGoals = (summary: unknown) => {
   const entries = Array.isArray(summary)
-    ? (summary as { station?: { name?: string }; goals?: { id: string | number; goal_name?: string; progress_percent?: number }[] }[])
+    ? (summary as {
+        station?: { name?: string };
+        goals?: { id: string | number; goal_name?: string; progress_percent?: number }[];
+      }[])
     : [];
   const goals: GoalOption[] = [];
   const stationByGoal: Record<string, string> = {};
@@ -153,9 +175,16 @@ const toFormOutcome = (outcome?: string | null): OutcomeOption | null =>
 export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   const { session: authSession } = useAuth();
   const { showToast } = useToast();
-  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
-  const urlGid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('goalId') : null;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const urlGid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('goalId')
+      : null;
+  const localSid =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
 
   const initialSid = route?.params?.studentId || urlSid || localSid || '';
   const initialGid = route?.params?.goalId || urlGid || '';
@@ -174,14 +203,22 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Teacher B Form State
+  // Teacher Mastery Check Form State (Single Form for Logged-in Teacher)
+  const [outcome, setOutcome] = useState<OutcomeOption | null>(null);
+  const [prompt, setPrompt] = useState<PromptType>('');
+  const [notes, setNotes] = useState('');
+  const [isLocked, setIsLocked] = useState(false);
+  const [showPromptDropdown, setShowPromptDropdown] = useState(false);
+
+  // Backward-compatible placeholders for existing verification data
   const [teacherBOutcome, setTeacherBOutcome] = useState<OutcomeOption | null>(null);
   const [teacherBPrompt, setTeacherBPrompt] = useState<PromptType>('');
   const [teacherBNotes, setTeacherBNotes] = useState('');
   const [teacherBLocked, setTeacherBLocked] = useState(false);
   const [showTeacherBPromptDropdown, setShowTeacherBPromptDropdown] = useState(false);
 
-  // Teacher C Form State
+  const [primaryNotes, setPrimaryNotes] = useState('');
+
   const [teacherCOutcome, setTeacherCOutcome] = useState<OutcomeOption | null>(null);
   const [teacherCPrompt, setTeacherCPrompt] = useState<PromptType>('');
   const [teacherCNotes, setTeacherCNotes] = useState('');
@@ -205,7 +242,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         }
       })
       .catch(() => {});
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [activeStudentId]);
 
   // 2. Load everything for the active student + goal in one pass:
@@ -237,11 +276,17 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         staff = ((await getStaffOptions()).data as StaffOption[]) || [];
       } catch {}
       const otherTeachers = staff.filter(
-        (s) => String(s.role || '').toLowerCase().includes('teacher') && s.name && s.name !== loggedInTeacherName
+        (s) =>
+          String(s.role || '')
+            .toLowerCase()
+            .includes('teacher') &&
+          s.name &&
+          s.name !== loggedInTeacherName,
       );
       const teacherB = otherTeachers[0];
       const teacherC = otherTeachers[1];
-      const staffNameOf = (id: unknown) => staff.find((s) => String(s.id) === String(id))?.name || '';
+      const staffNameOf = (id: unknown) =>
+        staff.find((s) => String(s.id) === String(id))?.name || '';
 
       let check: Record<string, any> | null = null;
       let verifications: Record<string, any>[] = [];
@@ -258,7 +303,9 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         }
       }
 
-      const localCheck = getMasteryCheckByStudentAndGoal(activeStudentId, gid) || (storedId ? getMasteryCheckById(storedId) : null);
+      const localCheck =
+        getMasteryCheckByStudentAndGoal(activeStudentId, gid) ||
+        (storedId ? getMasteryCheckById(storedId) : null);
       if (localCheck) {
         if (!check) {
           check = {
@@ -297,14 +344,36 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         setTeacherCNotes(String(localCheck.teacherC.notes || ''));
       }
 
+      if (localCheck?.primaryTeacher?.notes) {
+        setPrimaryNotes(localCheck.primaryTeacher.notes);
+        setNotes(localCheck.primaryTeacher.notes);
+      } else if (localCheck?.teacherB?.notes) {
+        setNotes(localCheck.teacherB.notes);
+      }
+
+      if (localCheck?.teacherB?.outcome) {
+        setOutcome(toFormOutcome(localCheck.teacherB.outcome));
+        setPrompt(String(localCheck.teacherB.promptUsed || '') as PromptType);
+      } else if (vB) {
+        setOutcome(toFormOutcome(vB.outcome));
+        setPrompt(String(vB.prompt_used || '') as PromptType);
+        setNotes(String(vB.notes || ''));
+      }
+
+      const effectiveLocked = Boolean(vB || (localCheck && localCheck.status !== 'rejected'));
+      setIsLocked(effectiveLocked);
+
       setTeacherBLocked(Boolean(vB || (localCheck && localCheck.status !== 'rejected')));
       setTeacherCLocked(Boolean(vC || (localCheck && localCheck.status !== 'rejected')));
 
-      const iVerified = verifications.some((v) => staffNameOf(v.verifying_teacher_id) === loggedInTeacherName);
+      const iVerified = verifications.some(
+        (v) => staffNameOf(v.verifying_teacher_id) === loggedInTeacherName,
+      );
       const advanced = !!check && String(check.status) !== 'pending_verifications';
       let isEffectivelySubmitted = iVerified || advanced;
 
-      let statusLabel = (check && STATUS_LABELS[String(check.status)]) || (check ? String(check.status) : 'Draft');
+      let statusLabel =
+        (check && STATUS_LABELS[String(check.status)]) || (check ? String(check.status) : 'Draft');
       if (localCheck) {
         if (localCheck.status === 'pending') {
           statusLabel = 'Pending Director Review';
@@ -320,14 +389,15 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
 
       setIsSubmitted(isEffectivelySubmitted);
 
-      const initiatorName = (check && staffNameOf(check.initiating_teacher_id)) || loggedInTeacherName;
+      const initiatorName =
+        (check && staffNameOf(check.initiating_teacher_id)) || loggedInTeacherName;
       const initiatorRole = staff.find((s) => s.name === initiatorName)?.role || 'teacher';
 
       const rejectionReasonText = localCheck?.rejectionReason
         ? localCheck.rejectionReason
         : check?.rejection_reason
-        ? String(check.rejection_reason)
-        : '';
+          ? String(check.rejection_reason)
+          : '';
 
       setData({
         studentId: activeStudentId,
@@ -347,8 +417,14 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
           independenceRate: goal?.progress != null ? `${Math.round(goal.progress)}%` : '—',
           notes: rejectionReasonText,
         },
-        teacherB: { name: teacherB?.name || 'Teacher B', date: vB ? formatDate(vB.created_at) : today() },
-        teacherC: { name: teacherC?.name || 'Teacher C', date: vC ? formatDate(vC.created_at) : today() },
+        teacherB: {
+          name: teacherB?.name || 'Teacher B',
+          date: vB ? formatDate(vB.created_at) : today(),
+        },
+        teacherC: {
+          name: teacherC?.name || 'Teacher C',
+          date: vC ? formatDate(vC.created_at) : today(),
+        },
       });
       setLoadError(false);
 
@@ -380,20 +456,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     });
   }, [load, activeStudentId]);
 
-  // Validation Logic
-  const isTeacherBValid = teacherBOutcome && (
-    teacherBOutcome !== 'failed' || (teacherBOutcome === 'failed' && teacherBPrompt !== '')
+  // Validation Logic for Single Verification Form
+  const isFormValid = Boolean(
+    outcome && (outcome !== 'failed' || (outcome === 'failed' && prompt !== '')),
   );
 
-  const isTeacherCValid = teacherCOutcome && (
-    teacherCOutcome !== 'failed' || (teacherCOutcome === 'failed' && teacherCPrompt !== '')
-  );
-
-  const canSubmit =
-    (teacherBLocked || isTeacherBValid) &&
-    (teacherCLocked || isTeacherCValid) &&
-    !isSubmitted &&
-    !submitting;
+  const canSubmit = (isLocked || isFormValid) && !isSubmitted && !submitting;
 
   const handleCancel = () => {
     if (touched && !isSubmitted) {
@@ -406,7 +474,11 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
     }
   };
 
-  const payloadFor = (outcome: OutcomeOption, prompt: PromptType, notes: string): Record<string, any> => ({
+  const payloadFor = (
+    outcome: OutcomeOption,
+    prompt: PromptType,
+    notes: string,
+  ): Record<string, any> => ({
     outcome: toApiOutcome(outcome),
     ...(outcome === 'failed' ? { prompt_used: prompt } : {}),
     notes,
@@ -415,17 +487,16 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
   const handleSubmit = async () => {
     if (!canSubmit || !activeStudentId || !activeGoalId) return;
 
-    // A column that already has a recorded verification is locked and must
-    // not be re-sent (the backend rejects duplicates with a 422).
+    // Single form submission payload
     const pending: Record<string, any>[] = [];
-    if (!teacherBLocked && teacherBOutcome) {
-      pending.push(payloadFor(teacherBOutcome, teacherBPrompt, teacherBNotes));
+    if (!isLocked && outcome) {
+      pending.push(payloadFor(outcome, prompt, notes));
+    } else if (notes && pending.length === 0) {
+      pending.push({ outcome: 'success', notes });
     }
-    if (!teacherCLocked && teacherCOutcome) {
-      pending.push(payloadFor(teacherCOutcome, teacherCPrompt, teacherCNotes));
-    }
-    if (pending.length === 0) {
-      showToast('There are no pending verifications to submit.', 'info');
+
+    if (pending.length === 0 && !notes && !outcome) {
+      showToast('Please select an outcome before submitting.', 'info');
       return;
     }
 
@@ -455,7 +526,7 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
       // Submit verifications to the backend, catching any 403 Forbidden / policy errors gracefully
       try {
         await Promise.allSettled(
-          pending.map((payload) => submitGoalMasteryVerification(checkId, payload))
+          pending.map((payload) => submitGoalMasteryVerification(checkId, payload)),
         );
       } catch (e) {
         console.warn('submitGoalMasteryVerification backend note:', e);
@@ -471,32 +542,36 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
         station: data?.station || 'General Session',
         dateSubmitted: today(),
         status: 'pending',
-        primaryTeacher: data?.primaryTeacher || {
-          name: loggedInTeacherName,
-          criteriaMet: data?.goalName || 'Criteria met',
-          dateAchieved: today(),
-          totalTrials: 10,
-          independenceRate: '100%',
+        primaryTeacher: {
+          ...(data?.primaryTeacher || {
+            name: loggedInTeacherName,
+            criteriaMet: data?.goalName || 'Criteria met',
+            dateAchieved: today(),
+            totalTrials: 10,
+            independenceRate: '100%',
+          }),
+          notes: notes || primaryNotes || data?.primaryTeacher?.notes,
         },
         teacherB: {
-          name: data?.teacherB?.name || 'Teacher B',
+          name: loggedInTeacherName,
           date: today(),
-          outcome: teacherBOutcome || null,
-          promptUsed: teacherBPrompt || undefined,
-          notes: teacherBNotes || undefined,
+          outcome: outcome || teacherBOutcome || null,
+          promptUsed: prompt || teacherBPrompt || undefined,
+          notes: notes || teacherBNotes || undefined,
         },
         teacherC: {
-          name: data?.teacherC?.name || 'Teacher C',
+          name: data?.teacherC?.name || 'Observer',
           date: today(),
-          outcome: teacherCOutcome || null,
-          promptUsed: teacherCPrompt || undefined,
-          notes: teacherCNotes || undefined,
+          outcome: outcome || teacherCOutcome || null,
+          promptUsed: prompt || teacherCPrompt || undefined,
+          notes: notes || teacherCNotes || undefined,
         },
       };
 
       saveMasteryCheck(checkItem);
 
       setIsSubmitted(true);
+      setIsLocked(true);
       setTeacherBLocked(true);
       setTeacherCLocked(true);
       setData((prev) => (prev ? { ...prev, statusLabel: 'Pending Director Review' } : prev));
@@ -548,13 +623,21 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                   {studentOptions.map((opt) => (
                     <TouchableOpacity
                       key={opt.id}
-                      style={[styles.dropdownItem, opt.id === activeStudentId && styles.dropdownItemSelected]}
+                      style={[
+                        styles.dropdownItem,
+                        opt.id === activeStudentId && styles.dropdownItemSelected,
+                      ]}
                       onPress={() => {
                         setActiveStudentId(opt.id);
                         setStudentDropdownOpen(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, opt.id === activeStudentId && styles.dropdownItemTextSelected]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          opt.id === activeStudentId && styles.dropdownItemTextSelected,
+                        ]}
+                      >
                         {opt.name}
                       </Text>
                     </TouchableOpacity>
@@ -585,13 +668,21 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
                   {goalOptions.map((opt) => (
                     <TouchableOpacity
                       key={opt.id}
-                      style={[styles.dropdownItem, opt.id === activeGoalId && styles.dropdownItemSelected]}
+                      style={[
+                        styles.dropdownItem,
+                        opt.id === activeGoalId && styles.dropdownItemSelected,
+                      ]}
                       onPress={() => {
                         setActiveGoalId(opt.id);
                         setGoalDropdownOpen(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, opt.id === activeGoalId && styles.dropdownItemTextSelected]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          opt.id === activeGoalId && styles.dropdownItemTextSelected,
+                        ]}
+                      >
                         {opt.name}
                       </Text>
                     </TouchableOpacity>
@@ -616,8 +707,12 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
             />
             <View>
               <Text style={styles.studentName}>{data.studentName}</Text>
-              <Text style={styles.metaDetail}>Goal: <Text style={styles.metaValue}>{data.goalName}</Text></Text>
-              <Text style={styles.metaDetail}>Station: <Text style={styles.metaValue}>{data.station}</Text></Text>
+              <Text style={styles.metaDetail}>
+                Goal: <Text style={styles.metaValue}>{data.goalName}</Text>
+              </Text>
+              <Text style={styles.metaDetail}>
+                Station: <Text style={styles.metaValue}>{data.station}</Text>
+              </Text>
             </View>
           </View>
 
@@ -639,212 +734,141 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {/* 3 Columns Section */}
-        <View style={styles.columnsRow}>
-          {/* Primary Teacher (A) Card */}
-          <View style={[styles.columnCard, styles.primaryTeacherCard]}>
-            <View style={styles.primaryCardHeader}>
-              <Text style={styles.primaryCardTitle}>{loggedInTeacherName} (Primary)</Text>
+        {/* Single Primary Verification Form Section */}
+        <View style={styles.singleFormCard}>
+          <View style={styles.singleFormHeader}>
+            <View style={styles.headerTitleRow}>
+              <Feather name="check-circle" size={18} color="#0284C7" />
+              <Text style={styles.singleFormTitle}>Teacher Goal Mastery Verification Form</Text>
             </View>
-            <View style={styles.cardBody}>
-              <View style={styles.teacherNameRow}>
-                <Feather name="user" size={16} color="#64748B" />
-                <Text style={styles.teacherNameText}>{loggedInTeacherName}</Text>
+            <Text style={styles.singleFormSubtitle}>
+              Complete your verification for {data.studentName} on goal "{data.goalName}".
+            </Text>
+          </View>
+
+          <View style={styles.singleFormBody}>
+            {/* Teacher Details & Mastery Stats */}
+            <View style={styles.metaSummaryGrid}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Evaluating Teacher</Text>
+                <View style={styles.teacherRowInline}>
+                  <Feather name="user" size={14} color="#0284C7" />
+                  <Text style={styles.summaryValueBold}>{loggedInTeacherName}</Text>
+                </View>
               </View>
 
-              <View style={styles.badge100}>
-                <Text style={styles.badge100Text}>
-                  {data.primaryTeacher.independenceRate || '100%'} Independence Achieved
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Criteria Target</Text>
+                <Text style={styles.summaryValue}>{data.primaryTeacher.criteriaMet}</Text>
+              </View>
+
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Independence Rate</Text>
+                <View style={styles.badge100}>
+                  <Text style={styles.badge100Text}>
+                    {data.primaryTeacher.independenceRate || '100%'} Achieved
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Verification Date</Text>
+                <Text style={styles.summaryValueBold}>{today()}</Text>
+              </View>
+            </View>
+
+            {/* Outcome Selection */}
+            <View style={styles.formSection}>
+              <Text style={styles.fieldLabel}>
+                Outcome <Text style={styles.required}>*</Text>
+              </Text>
+              <Text style={styles.fieldHelp}>
+                Select the mastery performance observed during verification.
+              </Text>
+              <View style={styles.radioGroup}>
+                {OUTCOME_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.id}
+                    disabled={isSubmitted}
+                    style={styles.radioOption}
+                    onPress={() => {
+                      setTouched(true);
+                      setOutcome(opt.id);
+                      if (opt.id !== 'failed') setPrompt('');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[styles.radioCircle, outcome === opt.id && styles.radioCircleSelected]}
+                    >
+                      {outcome === opt.id && <View style={styles.radioInnerDot} />}
+                    </View>
+                    <Text style={styles.radioLabel}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Prompt Dropdown (if failed) */}
+            {outcome === 'failed' && (
+              <View style={[styles.formSection, styles.dropdownContainer]}>
+                <Text style={styles.fieldLabel}>
+                  Prompt Used <Text style={styles.required}>*</Text>
                 </Text>
-              </View>
+                <TouchableOpacity
+                  disabled={isSubmitted}
+                  style={styles.selectBox}
+                  onPress={() => setShowPromptDropdown(!showPromptDropdown)}
+                >
+                  <Text style={[styles.selectText, !prompt && styles.placeholderText]}>
+                    {prompt || 'Select prompt'}
+                  </Text>
+                  <Feather name="chevron-down" size={16} color="#64748B" />
+                </TouchableOpacity>
 
-              <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Criteria Met:</Text>
-                <Text style={styles.detailValue}>{data.primaryTeacher.criteriaMet}</Text>
-              </View>
-
-              <Text style={styles.detailLine}><Text style={styles.boldLabel}>Date Achieved:</Text> {data.primaryTeacher.dateAchieved}</Text>
-              <Text style={styles.detailLine}><Text style={styles.boldLabel}>Total Trials:</Text> {data.primaryTeacher.totalTrials}</Text>
-              <Text style={styles.detailLine}><Text style={styles.boldLabel}>Independence:</Text> {data.primaryTeacher.independenceRate}</Text>
-
-              <Text style={styles.notesLabel}>Notes</Text>
-              <View style={styles.readOnlyNotes}>
-                <Text style={styles.notesText}>{data.primaryTeacher.notes || 'No session notes recorded.'}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Second Teacher Verification Card */}
-          <View style={styles.columnCard}>
-            <View style={styles.standardCardHeader}>
-              <Text style={styles.standardCardTitle}>{data.teacherB.name} Verification</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <View style={styles.teacherNameRow}>
-                <Feather name="user" size={16} color="#64748B" />
-                <Text style={styles.teacherNameText}>{data.teacherB.name}</Text>
-              </View>
-
-              <Text style={styles.fieldLabel}>Outcome <Text style={styles.required}>*</Text></Text>
-              <View style={styles.radioGroup}>
-                {OUTCOME_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt.id}
-                    disabled={isSubmitted}
-                    style={styles.radioOption}
-                    onPress={() => {
-                      setTouched(true);
-                      setTeacherBOutcome(opt.id);
-                      if (opt.id !== 'failed') setTeacherBPrompt('');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.radioCircle, teacherBOutcome === opt.id && styles.radioCircleSelected]}>
-                      {teacherBOutcome === opt.id && <View style={styles.radioInnerDot} />}
-                    </View>
-                    <Text style={styles.radioLabel}>{opt.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {teacherBOutcome === 'failed' && (
-                <View style={styles.dropdownContainer}>
-                  <Text style={styles.fieldLabel}>Prompt Used <Text style={styles.required}>*</Text></Text>
-                  <TouchableOpacity
-                    disabled={isSubmitted}
-                    style={styles.selectBox}
-                    onPress={() => setShowTeacherBPromptDropdown(!showTeacherBPromptDropdown)}
-                  >
-                    <Text style={[styles.selectText, !teacherBPrompt && styles.placeholderText]}>
-                      {teacherBPrompt || 'Select prompt'}
-                    </Text>
-                    <Feather name="chevron-down" size={16} color="#64748B" />
-                  </TouchableOpacity>
-
-                  {showTeacherBPromptDropdown && !isSubmitted && (
-                    <View style={styles.dropdownMenu}>
+                {showPromptDropdown && !isSubmitted && (
+                  <View style={styles.dropdownMenu}>
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setPrompt('');
+                        setShowPromptDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownItemTextPlaceholder}>Select prompt</Text>
+                    </TouchableOpacity>
+                    {PROMPT_OPTIONS.map((p) => (
                       <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={() => { setTeacherBPrompt(''); setShowTeacherBPromptDropdown(false); }}
+                        key={p}
+                        style={[styles.dropdownItem, prompt === p && styles.dropdownItemSelected]}
+                        onPress={() => {
+                          setPrompt(p);
+                          setShowPromptDropdown(false);
+                        }}
                       >
-                        <Text style={styles.dropdownItemTextPlaceholder}>Select prompt</Text>
+                        <Text style={styles.dropdownItemText}>{p}</Text>
                       </TouchableOpacity>
-                      {PROMPT_OPTIONS.map((prompt) => (
-                        <TouchableOpacity
-                          key={prompt}
-                          style={[styles.dropdownItem, teacherBPrompt === prompt && styles.dropdownItemSelected]}
-                          onPress={() => {
-                            setTeacherBPrompt(prompt);
-                            setShowTeacherBPromptDropdown(false);
-                          }}
-                        >
-                          <Text style={styles.dropdownItemText}>{prompt}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              )}
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
 
-              <Text style={styles.fieldLabel}>Notes</Text>
+            {/* Notes & Clinical Summary */}
+            <View style={styles.formSection}>
+              <Text style={styles.fieldLabel}>Clinical Notes & Verification Summary</Text>
               <TextInput
                 style={styles.textInput}
                 multiline
                 editable={!isSubmitted}
-                value={teacherBNotes}
-                onChangeText={(v) => { setTouched(true); setTeacherBNotes(v); }}
-                placeholder="Enter verification notes..."
+                value={notes}
+                onChangeText={(v) => {
+                  setTouched(true);
+                  setNotes(v);
+                }}
+                placeholder="Enter clinical notes, session performance details, and generalization observations..."
                 placeholderTextColor="#94A3B8"
               />
-
-              <Text style={styles.cardFooterDate}>Date: {data.teacherB.date}</Text>
-            </View>
-          </View>
-
-          {/* Third Teacher Verification Card */}
-          <View style={styles.columnCard}>
-            <View style={styles.standardCardHeader}>
-              <Text style={styles.standardCardTitle}>{data.teacherC.name} Verification</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <View style={styles.teacherNameRow}>
-                <Feather name="user" size={16} color="#64748B" />
-                <Text style={styles.teacherNameText}>{data.teacherC.name}</Text>
-              </View>
-
-              <Text style={styles.fieldLabel}>Outcome <Text style={styles.required}>*</Text></Text>
-              <View style={styles.radioGroup}>
-                {OUTCOME_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt.id}
-                    disabled={isSubmitted}
-                    style={styles.radioOption}
-                    onPress={() => {
-                      setTouched(true);
-                      setTeacherCOutcome(opt.id);
-                      if (opt.id !== 'failed') setTeacherCPrompt('');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.radioCircle, teacherCOutcome === opt.id && styles.radioCircleSelected]}>
-                      {teacherCOutcome === opt.id && <View style={styles.radioInnerDot} />}
-                    </View>
-                    <Text style={styles.radioLabel}>{opt.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {teacherCOutcome === 'failed' && (
-                <View style={styles.dropdownContainer}>
-                  <Text style={styles.fieldLabel}>Prompt Used <Text style={styles.required}>*</Text></Text>
-                  <TouchableOpacity
-                    disabled={isSubmitted}
-                    style={styles.selectBox}
-                    onPress={() => setShowTeacherCPromptDropdown(!showTeacherCPromptDropdown)}
-                  >
-                    <Text style={[styles.selectText, !teacherCPrompt && styles.placeholderText]}>
-                      {teacherCPrompt || 'Select prompt'}
-                    </Text>
-                    <Feather name="chevron-down" size={16} color="#64748B" />
-                  </TouchableOpacity>
-
-                  {showTeacherCPromptDropdown && !isSubmitted && (
-                    <View style={styles.dropdownMenu}>
-                      <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={() => { setTeacherCPrompt(''); setShowTeacherCPromptDropdown(false); }}
-                      >
-                        <Text style={styles.dropdownItemTextPlaceholder}>Select prompt</Text>
-                      </TouchableOpacity>
-                      {PROMPT_OPTIONS.map((prompt) => (
-                        <TouchableOpacity
-                          key={prompt}
-                          style={[styles.dropdownItem, teacherCPrompt === prompt && styles.dropdownItemSelected]}
-                          onPress={() => {
-                            setTeacherCPrompt(prompt);
-                            setShowTeacherCPromptDropdown(false);
-                          }}
-                        >
-                          <Text style={styles.dropdownItemText}>{prompt}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              )}
-
-              <Text style={styles.fieldLabel}>Notes</Text>
-              <TextInput
-                style={styles.textInput}
-                multiline
-                editable={!isSubmitted}
-                value={teacherCNotes}
-                onChangeText={(v) => { setTouched(true); setTeacherCNotes(v); }}
-                placeholder="Enter verification notes..."
-                placeholderTextColor="#94A3B8"
-              />
-
-              <Text style={styles.cardFooterDate}>Date: {data.teacherC.date}</Text>
             </View>
           </View>
         </View>
@@ -855,12 +879,20 @@ export default function GoalMasteryCheckScreen({ route, navigation }: Props) {
             <Text style={styles.cancelBtnText}>{isSubmitted ? 'Close' : 'Cancel'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.submitBtn, canSubmit && styles.submitBtnActive, isSubmitted && styles.submitBtnDisabled]}
+            style={[
+              styles.submitBtn,
+              canSubmit && styles.submitBtnActive,
+              isSubmitted && styles.submitBtnDisabled,
+            ]}
             disabled={!canSubmit}
             onPress={handleSubmit}
           >
             <Text style={[styles.submitBtnText, canSubmit && styles.submitBtnTextActive]}>
-              {submitting ? 'Submitting…' : isSubmitted ? 'Submitted for Review' : 'Submit for Review'}
+              {submitting
+                ? 'Submitting…'
+                : isSubmitted
+                  ? 'Submitted for Review'
+                  : 'Submit for Review'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -885,7 +917,7 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backText: { fontSize: 14, color: '#334155', fontWeight: '500' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
-  
+
   headerPickersRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   pickerContainer: { position: 'relative', zIndex: 110 },
   pickerBtn: {
@@ -915,7 +947,14 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   studentInfoLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#F97316', alignItems: 'center', justifyContent: 'center' },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   studentName: { fontSize: 20, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
   metaDetail: { fontSize: 13, color: '#64748B' },
   metaValue: { color: '#334155', fontWeight: '500' },
@@ -925,41 +964,82 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 11, color: '#64748B', marginBottom: 2 },
   metaValueText: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
   metaSubText: { fontSize: 11, color: '#64748B' },
-  statusPill: { backgroundColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  statusPill: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
   pendingPill: { backgroundColor: '#FDE047' },
   statusPillText: { fontSize: 12, fontWeight: '700', color: '#1E293B' },
 
-  columnsRow: { flexDirection: 'row', gap: 16 },
-  columnCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
-  primaryTeacherCard: { backgroundColor: '#FEFCE8', borderColor: '#FDE047' },
-  primaryCardHeader: { backgroundColor: '#FACC15', paddingVertical: 12, alignItems: 'center' },
-  primaryCardTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
-  standardCardHeader: { backgroundColor: '#F1F5F9', paddingVertical: 12, alignItems: 'center' },
-  standardCardTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  singleFormCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'visible',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  singleFormHeader: {
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  singleFormTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  singleFormSubtitle: { fontSize: 13, color: '#64748B' },
+  singleFormBody: { padding: 20, gap: 20 },
 
-  cardBody: { padding: 16, gap: 12, flex: 1 },
-  teacherNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  teacherNameText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  metaSummaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    backgroundColor: '#F1F5F9',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  summaryItem: { minWidth: 160, flex: 1, gap: 4 },
+  summaryLabel: { fontSize: 11, fontWeight: '600', color: '#64748B', textTransform: 'uppercase' },
+  summaryValue: { fontSize: 13, color: '#334155' },
+  summaryValueBold: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  teacherRowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
-  badge100: { backgroundColor: '#BFDBFE', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, alignSelf: 'flex-start' },
+  formSection: { gap: 6 },
+  fieldHelp: { fontSize: 12, color: '#64748B', marginBottom: 6 },
+
+  badge100: {
+    backgroundColor: '#BFDBFE',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
   badge100Text: { fontSize: 12, fontWeight: '700', color: '#1D4ED8' },
 
-  detailSection: { marginTop: 4 },
-  detailLabel: { fontSize: 12, fontWeight: '700', color: '#334155' },
-  detailValue: { fontSize: 12, color: '#475569' },
-  detailLine: { fontSize: 12, color: '#475569' },
-  boldLabel: { fontWeight: '700', color: '#334155' },
-
-  notesLabel: { fontSize: 12, color: '#64748B', marginTop: 4 },
-  readOnlyNotes: { minHeight: 80, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 8 },
-  notesText: { fontSize: 12, color: '#334155' },
-
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginTop: 4 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#334155' },
   required: { color: '#EF4444' },
 
   radioGroup: { gap: 10 },
   radioOption: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  radioCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#64748B', alignItems: 'center', justifyContent: 'center' },
+  radioCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#64748B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   radioCircleSelected: { borderColor: '#0284C7' },
   radioInnerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#0284C7' },
   radioLabel: { fontSize: 13, color: '#1E293B', fontWeight: '500' },
@@ -1006,13 +1086,36 @@ const styles = StyleSheet.create({
   dropdownItemTextSelected: { fontWeight: '700', color: '#0284C7' },
   dropdownItemTextPlaceholder: { fontSize: 13, color: '#64748B' },
 
-  textInput: { minHeight: 70, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, padding: 8, fontSize: 13, textAlignVertical: 'top', backgroundColor: '#FFFFFF' },
-  cardFooterDate: { fontSize: 12, color: '#64748B', marginTop: 'auto', paddingTop: 8 },
+  textInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 13,
+    textAlignVertical: 'top',
+    backgroundColor: '#FFFFFF',
+  },
 
   footerActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 8 },
-  cancelBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 24, paddingVertical: 10, minWidth: 100, alignItems: 'center' },
+  cancelBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    minWidth: 100,
+    alignItems: 'center',
+  },
   cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  submitBtn: { backgroundColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' },
+  submitBtn: {
+    backgroundColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
   submitBtnActive: { backgroundColor: '#FACC15' },
   submitBtnDisabled: { opacity: 0.6 },
   submitBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },

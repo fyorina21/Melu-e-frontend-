@@ -27,7 +27,7 @@ const DEFAULT_THERAPIST_NAMES = ['Abeba Tadesse', 'Dawit Bekele', 'Selam Tesfaye
 
 const DEFAULT_PD_STUDENTS = [
   {
-    id: 'e12bff1b-a000-4fcd-ab3b-f8d035e45ba8',
+    id: 'eef25df9-1248-4687-b1f9-143e42946024',
     fullName: 'Amir Hassan',
     name: 'Amir Hassan',
     age: 7,
@@ -41,7 +41,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: false,
   },
   {
-    id: '56cae7c9-9236-4a47-80f5-6b1e73f34cf1',
+    id: 'e3d79947-9e3e-4f10-9725-052043576b6d',
     fullName: 'Tigist Bekele',
     name: 'Tigist Bekele',
     age: 8,
@@ -55,7 +55,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: false,
   },
   {
-    id: '0a73af05-9dc3-401b-a6c8-3b36f55ce3f2',
+    id: '01339746-231d-4305-9846-4379f8c82b54',
     fullName: 'Saron Tekle',
     name: 'Saron Tekle',
     age: 9,
@@ -69,7 +69,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: false,
   },
   {
-    id: 'cfa7e157-3eda-4401-ac85-407125485273',
+    id: '624eca75-ce90-4f99-b974-24fc258f12d0',
     fullName: 'Biniam Hailu',
     name: 'Biniam Hailu',
     age: 13,
@@ -83,7 +83,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: true,
   },
   {
-    id: '961005d2-0e53-4ab8-832b-3e2fb49c12e5',
+    id: '707fc30a-a7c2-45ed-a79d-475d01cf049d',
     fullName: 'Yonas Girma',
     name: 'Yonas Girma',
     age: 8,
@@ -97,7 +97,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: true,
   },
   {
-    id: 'a159de5b-c23e-4c47-8c6f-a9db265c6b44',
+    id: '05c2ac4c-2aa2-4e58-acb7-29fcb7c7d567',
     fullName: 'Meron Haile',
     name: 'Meron Haile',
     age: 9,
@@ -111,7 +111,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: true,
   },
   {
-    id: '4274554a-40b0-4fa9-b7b2-c6bc2d7395f9',
+    id: '86d62dd8-b7f3-4d7e-9430-d941aa98bd09',
     fullName: 'Abel Tadesse',
     name: 'Abel Tadesse',
     age: 7,
@@ -125,7 +125,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: true,
   },
   {
-    id: '89415b84-15af-4bf9-88a3-af66596051dc',
+    id: 'f437dc45-3eee-4d57-81a9-e85f3800f674',
     fullName: 'Liya Belay',
     name: 'Liya Belay',
     age: 10,
@@ -139,7 +139,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: true,
   },
   {
-    id: '6baa027d-f0c3-4943-bae8-85487ebcfb60',
+    id: 'a4357018-af5e-418b-a034-bbe98175c293',
     fullName: 'Natnael Worku',
     name: 'Natnael Worku',
     age: 13,
@@ -153,7 +153,7 @@ const DEFAULT_PD_STUDENTS = [
     sessionAssigned: true,
   },
   {
-    id: 'e513eb74-14e1-424d-a3ed-0160e75b10c7',
+    id: 'df5fa280-e15b-43c9-b54d-3ceb35b51e4f',
     fullName: 'Hiwot Alemu',
     name: 'Hiwot Alemu',
     age: 12,
@@ -165,6 +165,20 @@ const DEFAULT_PD_STUDENTS = [
     status: 'In Session',
     assessmentStatus: 'completed' as const,
     sessionAssigned: true,
+  },
+  {
+    id: '6e24ea27-cf53-496b-a2cb-f0d6d142ab26',
+    fullName: 'new student',
+    name: 'new student',
+    age: 6,
+    programType: 'Regular',
+    program: 'Regular',
+    therapyGroup: 'Basic',
+    therapist: 'Abeba Tadesse',
+    currentStage: 'enrolled',
+    status: 'Not Started',
+    assessmentStatus: 'not-started' as const,
+    sessionAssigned: false,
   },
 ];
 
@@ -409,21 +423,32 @@ const pdThreadStore: Record<string, any[]> = {};
 // ============================================================================
 export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   // Parallel fetch of dashboard endpoints
-  const [metricsRes, studentsRes, pipelineRes, staffRes, notifRes] = await Promise.allSettled([
-    client.get('/program_director/dashboard'),
-    client.get<any[]>('/options/students'),
-    client.get<any>('/program_director/assessment_pipeline'),
-    client.get<any[]>('/options/staff'),
-    client.get<any>('/notifications'),
-  ]);
+  const [metricsRes, optionsStudentsRes, fullStudentsRes, pipelineRes, staffRes, notifRes] =
+    await Promise.allSettled([
+      client.get('/program_director/dashboard'),
+      client.get<any[]>('/options/students'),
+      client.get<any>('/students'),
+      client.get<any>('/program_director/assessment_pipeline'),
+      client.get<any[]>('/options/staff'),
+      client.get<any>('/notifications'),
+    ]);
   let metrics: any = {};
   if (metricsRes.status === 'fulfilled' && metricsRes.value?.data) {
     metrics = metricsRes.value.data;
   }
 
   let rawStudents: any[] = [];
-  if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value?.data)) {
-    rawStudents = studentsRes.value.data;
+  if (fullStudentsRes.status === 'fulfilled' && fullStudentsRes.value?.data) {
+    const sData = fullStudentsRes.value.data;
+    const list = Array.isArray(sData?.data) ? sData.data : Array.isArray(sData) ? sData : [];
+    if (list.length > 0) rawStudents = list;
+  }
+  if (
+    rawStudents.length === 0 &&
+    optionsStudentsRes.status === 'fulfilled' &&
+    Array.isArray(optionsStudentsRes.value?.data)
+  ) {
+    rawStudents = optionsStudentsRes.value.data;
   }
 
   let pipelineStudents: any[] = [];
@@ -469,82 +494,32 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
     ];
   }
 
-  const defaultTherapistNames = [
-    'Sarah Miller',
-    'Alex Tan',
-    'Emma Watson',
-    'Michael Brown',
-    'Rachel Green',
-  ];
+  const defaultTherapistNames = ['Abeba Tadesse', 'Dawit Bekele', 'Selam Tesfaye', 'fyori'];
   const safeTherapistNames = defaultTherapistNames.filter((name) => !isStaffDeleted(name));
   const fallbackTherapist = safeTherapistNames[0] || 'Unassigned';
 
-  const defaultStudents = [
-    {
-      id: 'std-1',
-      fullName: 'Leo Miller',
-      programType: 'Comprehensive ABA',
-      therapyGroup: 'Station 1 · Early Learners',
-      therapist: 'Sarah Miller',
-      currentStage: 'in-assessment',
-      status: 'In Assessment',
-      assessmentStatus: 'in-progress' as const,
-      sessionAssigned: false,
-    },
-    {
-      id: 'std-2',
-      fullName: 'Mia Chen',
-      programType: 'Focused Behavior',
-      therapyGroup: 'Station 2 · Social Play',
-      therapist: 'Alex Tan',
-      currentStage: 'assessment-complete',
-      status: 'Assessment Completed',
-      assessmentStatus: 'completed' as const,
-      sessionAssigned: false,
-    },
-    {
-      id: 'std-3',
-      fullName: 'Lucas Davies',
-      programType: 'Comprehensive ABA',
-      therapyGroup: 'Station 1 · Early Learners',
-      therapist: 'Emma Watson',
-      currentStage: 'session-assigned',
-      status: 'Session Assigned',
-      assessmentStatus: 'completed' as const,
-      sessionAssigned: true,
-    },
-    {
-      id: 'std-4',
-      fullName: 'Noah Wilson',
-      programType: 'School Readiness',
-      therapyGroup: 'Station 3 · Academic Prep',
-      therapist: 'Michael Brown',
-      currentStage: 'in-session',
-      status: 'In Session',
-      assessmentStatus: 'completed' as const,
-      sessionAssigned: true,
-    },
-    {
-      id: 'std-5',
-      fullName: 'Sophia Taylor',
-      programType: 'Comprehensive ABA',
-      therapyGroup: 'Station 2 · Social Play',
-      therapist: 'Rachel Green',
-      currentStage: 'enrolled',
-      status: 'Not Started',
-      assessmentStatus: 'not-started' as const,
-      sessionAssigned: false,
-    },
-  ].map((ds) => (isStaffDeleted(ds.therapist) ? { ...ds, therapist: fallbackTherapist } : ds));
   let dashboardStudents: any[] = [];
   if (rawStudents.length > 0) {
-    const STAGE_ROTATION = [
-      'in-assessment',
-      'assessment-complete',
-      'session-assigned',
-      'in-session',
-      'enrolled',
-    ];
+    const normalizeStatusKey = (rawStatus: string): string => {
+      const s = String(rawStatus || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[\s-]+/g, '_');
+      if (s === 'in_assessment' || s === 'assessment') return 'in_assessment';
+      if (
+        s === 'ready_for_iup' ||
+        s === 'ready_for_plan' ||
+        s === 'assessment_complete' ||
+        s === 'assessment_completed'
+      )
+        return 'ready_for_iup';
+      if (s === 'active_therapy' || s === 'in_session' || s === 'active') return 'active_therapy';
+      if (s === 'session_assigned') return 'session_assigned';
+      if (s === 'registered' || s === 'enrolled' || s === 'not_started' || s === 'draft')
+        return 'enrolled';
+      return s;
+    };
+
     const STATUS_MAP: Record<
       string,
       {
@@ -568,11 +543,12 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
       },
       ready_for_iup: {
         stage: 'assessment-complete',
-        label: 'Assessment Completed',
+        label: 'Ready for IUP',
         assess: 'completed',
         sess: false,
       },
       active_therapy: { stage: 'in-session', label: 'In Session', assess: 'completed', sess: true },
+      in_session: { stage: 'in-session', label: 'In Session', assess: 'completed', sess: true },
       session_assigned: {
         stage: 'session-assigned',
         label: 'Session Assigned',
@@ -580,37 +556,52 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         sess: true,
       },
       enrolled: { stage: 'enrolled', label: 'Not Started', assess: 'not-started', sess: false },
+      registered: { stage: 'enrolled', label: 'Not Started', assess: 'not-started', sess: false },
     };
 
     dashboardStudents = rawStudents.map((s: any, idx: number) => {
       const id = String(s.id);
       const fullName =
-        s.name || `${s.first_name || ''} ${s.last_name || ''}`.trim() || `Student ${idx + 1}`;
-      const programType = s.program || 'Comprehensive ABA';
-      const therapyGroup = s.therapy_group || s.station || `Station ${(idx % 3) + 1}`;
+        s.full_name ||
+        s.name ||
+        `${s.first_name || ''} ${s.last_name || ''}`.trim() ||
+        `Student ${idx + 1}`;
+      const programType = s.program_type
+        ? String(s.program_type).replace(/_/g, ' ')
+        : s.program || 'Regular';
+      const therapyGroup = s.therapy_group
+        ? String(s.therapy_group).replace(/_/g, ' ')
+        : s.station || `Station ${(idx % 3) + 1}`;
       const cleanStaff = filterOutDeletedStaff(staffList);
       const therapistPool =
         cleanStaff.map((st) => st.name).filter(Boolean).length > 0
           ? cleanStaff.map((st) => st.name)
           : safeTherapistNames;
       const therapist =
-        therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist;
+        s.therapist ||
+        (therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist);
 
       const pipeMatch = pipelineStudents.find((p) => String(p.student_id) === id);
-      let stageInfo = STATUS_MAP[s.status];
+      const rawStatusKey = normalizeStatusKey(s.rawStatus || s.status);
+      let stageInfo = STATUS_MAP[rawStatusKey];
       if (!stageInfo && pipeMatch) {
-        stageInfo = STATUS_MAP[pipeMatch.status] || STATUS_MAP[pipeMatch.stage];
+        stageInfo = STATUS_MAP[normalizeStatusKey(pipeMatch.status || pipeMatch.stage)];
       }
       if (!stageInfo) {
-        const fallbackStage = STAGE_ROTATION[idx % STAGE_ROTATION.length];
-        stageInfo =
-          Object.values(STATUS_MAP).find((sm) => sm.stage === fallbackStage) || STATUS_MAP.enrolled;
+        stageInfo = STATUS_MAP.enrolled;
       }
 
       return {
         id,
         fullName,
+        name: fullName,
+        age:
+          s.age ||
+          (s.date_of_birth
+            ? new Date().getFullYear() - new Date(s.date_of_birth).getFullYear()
+            : 7),
         programType,
+        program: programType,
         therapyGroup,
         therapist,
         currentStage: stageInfo.stage,
@@ -654,7 +645,13 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   const totalStudents = dashboardStudents.length;
   const inAssessment = metrics.students_in_assessment ?? workflowStages[1].count;
   const assessmentCompleted = metrics.assessment_complete ?? workflowStages[2].count;
-  const readyForSessions = workflowStages[2].count + workflowStages[3].count;
+  const readyForSessions =
+    dashboardStudents.filter(
+      (s) =>
+        s.currentStage === 'in-session' ||
+        s.currentStage === 'session-assigned' ||
+        s.sessionAssigned,
+    ).length || workflowStages[3].count + workflowStages[4].count;
 
   const dashboardPayload = {
     notifications,

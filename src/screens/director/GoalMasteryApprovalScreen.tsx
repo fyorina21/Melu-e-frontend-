@@ -23,7 +23,7 @@ import ExportPreviewModal from '../../components/ExportPreviewModal';
 import StatusPill from '../../components/StatusPill';
 import { usePermission } from '../../auth/usePermission';
 import { useAuth, ROLES } from '../../context/AuthContext';
-import { notify } from '../../utils/dialogs';
+import { notify, confirmAction } from '../../utils/dialogs';
 import {
   getPendingMasteryApprovals,
   getMasteryApprovalDetail,
@@ -70,6 +70,18 @@ interface MasteryDetail {
   goalId: string;
   studentName: string;
   goalName: string;
+  station?: string;
+  dateSubmitted?: string;
+  status?: string;
+  primaryTeacher?: {
+    name: string;
+    criteriaMet?: string;
+    independenceRate?: string;
+    dateAchieved?: string;
+    totalTrials?: number | string;
+    summary?: string;
+    notes?: string;
+  };
   teacherA: { summary: string };
   teacherB: TeacherVerification;
   teacherC: TeacherVerification;
@@ -132,64 +144,78 @@ function ApprovalDetailModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-            {/* 3-Therapist Verification Track */}
-            <View style={styles.verificationSection}>
-              <Text style={styles.sectionHeading}>3-THERAPIST CLINICAL VERIFICATION</Text>
+          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            {/* Goal & Station Summary Header */}
+            <View style={styles.detailSummaryBox}>
+              <View style={styles.detailSummaryRow}>
+                <View style={styles.detailSummaryItem}>
+                  <Text style={styles.detailSummaryLabel}>Station</Text>
+                  <Text style={styles.detailSummaryVal}>{detail.station || 'General Session'}</Text>
+                </View>
+                <View style={styles.detailSummaryItem}>
+                  <Text style={styles.detailSummaryLabel}>Date Submitted</Text>
+                  <Text style={styles.detailSummaryVal}>{detail.dateSubmitted || '—'}</Text>
+                </View>
+                <View style={styles.detailSummaryItem}>
+                  <Text style={styles.detailSummaryLabel}>Status</Text>
+                  <StatusPill status="pending" label="Pending Approval" />
+                </View>
+              </View>
+            </View>
 
-              {/* Primary Teacher A */}
+            {/* Teacher Verification Form Details */}
+            <View style={styles.verificationSection}>
+              <Text style={styles.sectionHeading}>
+                TEACHER GOAL MASTERY VERIFICATION SUBMISSION
+              </Text>
+
+              {/* Primary Evaluating Teacher */}
               <View style={styles.verifyCard}>
                 <View style={styles.verifyCardHeader}>
                   <View style={styles.teacherAvatar}>
-                    <Text style={styles.teacherAvatarText}>A</Text>
+                    <Feather name="user-check" size={14} color={colors.navyText} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.teacherRoleTitle}>Primary Therapist (Teacher A)</Text>
+                    <Text style={styles.teacherRoleTitle}>
+                      {detail.primaryTeacher?.name || 'Evaluating Teacher'} (Primary Evaluation)
+                    </Text>
                     <Text style={styles.teacherOutcome}>
-                      Initial 3-Consecutive Mastery Submission
+                      Criteria Target: {detail.primaryTeacher?.criteriaMet || detail.goalName}
                     </Text>
                   </View>
-                  <StatusPill status="approved" label="Mastered (3x)" />
+                  <View style={styles.modalBadge}>
+                    <Text style={styles.modalBadgeText}>
+                      {detail.primaryTeacher?.independenceRate || '100%'} Achieved
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.verifyNotes}>{detail.teacherA.summary}</Text>
-              </View>
 
-              {/* Generalization Teacher B */}
-              <View style={styles.verifyCard}>
-                <View style={styles.verifyCardHeader}>
-                  <View style={[styles.teacherAvatar, { backgroundColor: '#DBEAFE' }]}>
-                    <Text style={[styles.teacherAvatarText, { color: '#1E40AF' }]}>B</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.teacherRoleTitle}>Cross-Observer (Teacher B)</Text>
-                    <Text style={styles.teacherOutcome}>
-                      Outcome: {detail.teacherB.outcome || 'Verified Independent'}
+                {/* Outcome & Prompt from Verification Form */}
+                <View style={styles.verificationOutcomeRow}>
+                  <View style={styles.outcomePill}>
+                    <Text style={styles.outcomePillLabel}>Outcome:</Text>
+                    <Text style={styles.outcomePillVal}>
+                      {detail.teacherB.outcome || 'Independent'}
                     </Text>
                   </View>
-                  <StatusPill status="approved" label="Verified" />
+                  {detail.teacherB.promptUsed ? (
+                    <View style={styles.promptPill}>
+                      <Text style={styles.promptPillLabel}>Prompt Used:</Text>
+                      <Text style={styles.promptPillVal}>{detail.teacherB.promptUsed}</Text>
+                    </View>
+                  ) : null}
                 </View>
-                {detail.teacherB.notes ? (
-                  <Text style={styles.verifyNotes}>{detail.teacherB.notes}</Text>
-                ) : null}
-              </View>
 
-              {/* Generalization Teacher C */}
-              <View style={styles.verifyCard}>
-                <View style={styles.verifyCardHeader}>
-                  <View style={[styles.teacherAvatar, { backgroundColor: '#DCFCE7' }]}>
-                    <Text style={[styles.teacherAvatarText, { color: '#166534' }]}>C</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.teacherRoleTitle}>Cross-Observer (Teacher C)</Text>
-                    <Text style={styles.teacherOutcome}>
-                      Outcome: {detail.teacherC.outcome || 'Verified Independent'}
-                    </Text>
-                  </View>
-                  <StatusPill status="approved" label="Verified" />
+                {/* Clinical Notes & Summary */}
+                <View style={styles.notesBlock}>
+                  <Text style={styles.notesBlockLabel}>Clinical Notes & Summary:</Text>
+                  <Text style={styles.verifyNotes}>
+                    {detail.teacherB.notes ||
+                      detail.primaryTeacher?.notes ||
+                      detail.teacherA.summary ||
+                      'No clinical notes provided.'}
+                  </Text>
                 </View>
-                {detail.teacherC.notes ? (
-                  <Text style={styles.verifyNotes}>{detail.teacherC.notes}</Text>
-                ) : null}
               </View>
             </View>
 
@@ -223,10 +249,10 @@ function ApprovalDetailModal({
               style={styles.rejectBtn}
               onPress={() => {
                 if (!rejectReason.trim()) {
-                  Alert.alert('Feedback Required', 'Please enter a rejection reason.');
+                  notify('Feedback Required', 'Please enter a rejection reason.');
                   return;
                 }
-                onReject(detail.checkId, rejectReason, notes);
+                onReject(detail.checkId, rejectReason.trim(), notes.trim());
               }}
             >
               <Feather name="x-circle" size={15} color="#EF4444" />
@@ -310,10 +336,20 @@ export default function GoalMasteryApprovalScreen({
         goalName:
           row.goalName ||
           (row.studentGoalId ? row.studentGoalId.replace(/-/g, ' ') : 'Goal Mastery'),
+        station: row.station || 'General Session',
+        dateSubmitted: formatDate(row.dateSubmitted || row.requestedAt),
+        status: row.status || 'pending',
+        primaryTeacher: row.primaryTeacher || {
+          name: row.requestedByName || 'Lead Teacher',
+          criteriaMet: row.goalName || 'Goal Mastery',
+          independenceRate: '100%',
+          notes: row.primaryTeacher?.notes || row.teacherB?.notes || '',
+        },
         teacherA: {
           summary:
             row.primaryTeacher?.summary ||
             row.primaryTeacher?.notes ||
+            row.teacherB?.notes ||
             (row.primaryTeacher?.independenceRate
               ? `Achieved ${row.primaryTeacher.independenceRate} independence under primary instruction (${row.primaryTeacher.criteriaMet || 'Criteria Met'}).`
               : 'Achieved 3 consecutive unprompted sessions (100% independence) under primary instruction.'),
@@ -344,26 +380,29 @@ export default function GoalMasteryApprovalScreen({
       notify('Permission Denied', 'You do not have permission to approve goal mastery.');
       return;
     }
-    Alert.alert('Approve Goal Mastery', 'Confirm approval and mark this goal as fully mastered?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm Approval',
-        onPress: async () => {
-          try {
-            await approveMastery(checkId, { notes });
-            setDetail(null);
-            await load();
-            Alert.alert('Mastery Approved', 'Goal marked as fully mastered and approved.');
-          } catch {
-            Alert.alert('Error', 'Failed to approve goal mastery.');
-          }
-        },
+    confirmAction({
+      title: 'Approve Goal Mastery',
+      message: 'Confirm approval and mark this goal as fully mastered?',
+      confirmLabel: 'Confirm Approval',
+      onConfirm: async () => {
+        try {
+          await approveMastery(checkId, { notes });
+          setDetail(null);
+          await load();
+          notify('Mastery Approved', 'Goal marked as fully mastered and approved.');
+        } catch {
+          notify('Error', 'Failed to approve goal mastery.');
+        }
       },
-    ]);
+    });
   };
 
   const handleReject = async (checkId: string, reason: string, notes: string) => {
-    if (!canApprove) {
+    if (
+      !canApprove &&
+      session?.role !== ROLES.DIRECTOR &&
+      session?.role !== ROLES.PROGRAM_DIRECTOR
+    ) {
       notify('Permission Denied', 'You do not have permission to reject goal mastery requests.');
       return;
     }
@@ -371,9 +410,9 @@ export default function GoalMasteryApprovalScreen({
       await rejectMastery(checkId, { reason, notes });
       setDetail(null);
       await load();
-      Alert.alert('Sent Back', 'Mastery request was returned to Teacher with feedback.');
+      notify('Sent Back', 'Mastery request was returned to Teacher with feedback.');
     } catch {
-      Alert.alert('Error', 'Failed to reject mastery request.');
+      notify('Error', 'Failed to reject mastery request.');
     }
   };
 
@@ -460,20 +499,18 @@ export default function GoalMasteryApprovalScreen({
                 <StatusPill status="pending" label="Pending Director" />
               </View>
 
-              {/* Observers Row */}
+              {/* Teacher Evaluator Row */}
               <View style={styles.observersWrap}>
                 <View style={styles.obsItem}>
-                  <Text style={styles.obsLabel}>Teacher A (Primary):</Text>
+                  <Text style={styles.obsLabel}>Evaluating Teacher:</Text>
                   <Text style={styles.obsVal}>{g.teacherA}</Text>
                 </View>
-                <View style={styles.obsItem}>
-                  <Text style={styles.obsLabel}>Teacher B (Cross):</Text>
-                  <Text style={styles.obsVal}>{g.teacherB}</Text>
-                </View>
-                <View style={styles.obsItem}>
-                  <Text style={styles.obsLabel}>Teacher C (Cross):</Text>
-                  <Text style={styles.obsVal}>{g.teacherC}</Text>
-                </View>
+                {g.teacherB && g.teacherB !== g.teacherA ? (
+                  <View style={styles.obsItem}>
+                    <Text style={styles.obsLabel}>Observer:</Text>
+                    <Text style={styles.obsVal}>{g.teacherB}</Text>
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.cardBottomRow}>
@@ -670,12 +707,99 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  detailSummaryBox: {
+    backgroundColor: colors.bgApp,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  detailSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  detailSummaryItem: { minWidth: 100, gap: 2 },
+  detailSummaryLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+  },
+  detailSummaryVal: { fontSize: 13, fontWeight: '600', color: colors.navyText },
+
+  modalBadge: {
+    backgroundColor: '#BFDBFE',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  modalBadgeText: { fontSize: 11, fontWeight: '700', color: '#1D4ED8' },
+
+  verificationOutcomeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  outcomePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  outcomePillLabel: { fontSize: 11, fontWeight: '600', color: colors.mutedText },
+  outcomePillVal: { fontSize: 12, fontWeight: '700', color: colors.navyText },
+
+  promptPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE047',
+  },
+  promptPillLabel: { fontSize: 11, fontWeight: '600', color: '#854D0E' },
+  promptPillVal: { fontSize: 12, fontWeight: '700', color: '#854D0E' },
+
+  notesBlock: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.xs,
+  },
+  notesBlockLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.mutedText,
+    marginBottom: 2,
+  },
+
   verificationSection: { gap: spacing.sm, marginBottom: spacing.md },
   verifyCard: {
     backgroundColor: colors.bgApp,
     borderRadius: radius.md,
     padding: spacing.md,
     gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   verifyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   teacherAvatar: {
@@ -689,7 +813,7 @@ const styles = StyleSheet.create({
   teacherAvatarText: { fontSize: 12, fontWeight: '800', color: colors.navyText },
   teacherRoleTitle: { fontSize: 12, fontWeight: '700', color: colors.navyText },
   teacherOutcome: { fontSize: 11, color: colors.bodyText },
-  verifyNotes: { fontSize: 12, color: colors.navyText, marginTop: 4, fontStyle: 'italic' },
+  verifyNotes: { fontSize: 12, color: colors.navyText, lineHeight: 18 },
 
   field: { gap: spacing.xs, marginTop: spacing.xs },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
