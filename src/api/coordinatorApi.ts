@@ -1326,25 +1326,44 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     }
   }
 
-  const normalized = pool.map((s, idx) => ({
-    id: String(s.id || `std-${idx + 1}`),
-    fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
-    name: String(s.fullName || s.name || `Student ${idx + 1}`),
-    age: Number(s.age || 6),
-    programType: String(s.programType || s.program || 'Comprehensive ABA'),
-    therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
-    therapist: String(
-      s.therapist ||
-        s.assignedTherapist ||
-        s.assigned_therapist ||
-        s.therapistName ||
-        s.teacher ||
-        s.teacherName ||
-        'Abeba Tadesse',
-    ),
-    status: s.status === 'inactive' ? 'inactive' : 'active',
-    headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
-  }));
+  const optionsMap = new Map<string, Record<string, unknown>>();
+  optionsPool.forEach((o) => {
+    if (o.id) optionsMap.set(String(o.id).toLowerCase(), o);
+    if (o.studentId) optionsMap.set(String(o.studentId).toLowerCase(), o);
+    if (o.student_id) optionsMap.set(String(o.student_id).toLowerCase(), o);
+    if (o.name) optionsMap.set(String(o.name).toLowerCase().trim(), o);
+  });
+
+  const normalized = pool.map((s, idx) => {
+    const opt =
+      optionsMap.get(String(s.id || '').toLowerCase()) ||
+      optionsMap.get(String(s.studentId || s.student_id || '').toLowerCase()) ||
+      optionsMap.get(String(s.fullName || s.name || '').toLowerCase().trim());
+
+    const resolvedStatus = opt?.status
+      ? String(opt.status)
+      : String(s.raw_status || s.status || 'active');
+
+    return {
+      id: String(s.id || `std-${idx + 1}`),
+      fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
+      name: String(s.fullName || s.name || `Student ${idx + 1}`),
+      age: Number(s.age || 6),
+      programType: String(s.programType || s.program || 'Comprehensive ABA'),
+      therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
+      therapist: String(
+        s.therapist ||
+          s.assignedTherapist ||
+          s.assigned_therapist ||
+          s.therapistName ||
+          s.teacher ||
+          s.teacherName ||
+          'Abeba Tadesse',
+      ),
+      status: resolvedStatus,
+      headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
+    };
+  });
 
   return { data: normalized };
 };

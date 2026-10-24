@@ -66,9 +66,9 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
         const first = appts[0];
         const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
         const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
-        const teacherId = m.teacherId || ((m as Record<string, unknown>).teacher_id as string) || ((m as Record<string, unknown>).id as string) || `teacher-${i}`;
+        const teacherId = m.teacherId || `teacher-${i}`;
         const teacherName =
-          m.teacherName || ((m as Record<string, unknown>).teacher_name as string) || ((m as Record<string, unknown>).name as string) || 'Teacher';
+          m.teacherName || 'Teacher';
         nextTeachers.push({
           id: teacherId,
           name: teacherName,
