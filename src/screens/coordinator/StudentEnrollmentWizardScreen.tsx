@@ -280,10 +280,11 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       navRef?.current?.navigate?.('StudentEnrollment' as never);
     } catch {}
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.location.pathname !== '/StudentEnrollment') {
-        window.history.pushState(null, '', '/StudentEnrollment');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
+      setTimeout(() => {
+        if (window.location.pathname !== '/StudentEnrollment') {
+          window.location.href = '/StudentEnrollment';
+        }
+      }, 200);
     }
   }, [navigation, directNav, navRef]);
 

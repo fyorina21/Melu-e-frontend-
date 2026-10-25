@@ -1375,13 +1375,32 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     };
   });
 
-  // Locally enrolled students not present in backendStudents
-  const unpersistedStored = storedEnrolled.filter((s) => {
-    const sId = String(s.id || s.studentId || s.student_id || '');
-    const idMatch = sId && backendIds.has(sId);
+  // 1. All newly and locally enrolled students ALWAYS appear at the very top of the roster list
+  const enrolledTop: Record<string, unknown>[] = [];
+  const enrolledKeys = new Set<string>();
+
+  storedEnrolled.forEach((s) => {
+    const sId = String(s.id || s.studentId || s.student_id || '').toLowerCase();
     const sName = String(s.fullName || s.name || '').toLowerCase().trim();
-    const nameMatch = sName && backendNames.has(sName);
-    return !idMatch && !nameMatch;
+    if (isDeleted(sId, sName)) return;
+
+    // Merge any enhanced backend fields if matched
+    const bMatch =
+      (sId ? enhancedBackendStudents.find((b) => String(b.id || b.studentId || b.student_id || '').toLowerCase() === sId) : undefined) ||
+      (sName ? enhancedBackendStudents.find((b) => String(b.fullName || b.name || '').toLowerCase().trim() === sName) : undefined);
+
+    const merged = bMatch ? { ...bMatch, ...s } : { ...s };
+    enrolledTop.push(merged);
+
+    if (sId) enrolledKeys.add(sId);
+    if (sName) enrolledKeys.add(sName);
+  });
+
+  // Remaining backend students that are not already at the top
+  const remainingBackend = enhancedBackendStudents.filter((b) => {
+    const bId = String(b.id || b.studentId || b.student_id || '').toLowerCase();
+    const bName = String(b.fullName || b.name || '').toLowerCase().trim();
+    return (!bId || !enrolledKeys.has(bId)) && (!bName || !enrolledKeys.has(bName));
   });
 
   let optionsPool: Record<string, unknown>[] = [];
@@ -1390,8 +1409,8 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     if (Array.isArray(opts) && opts.length > 0) optionsPool = opts;
   } catch {}
 
-  // 1. Newly enrolled students appear at the top of the roster list
-  const pool: Record<string, unknown>[] = [...unpersistedStored, ...enhancedBackendStudents];
+  // Newly enrolled students appear at the top of the roster list
+  const pool: Record<string, unknown>[] = [...enrolledTop, ...remainingBackend];
 
   const poolIds = new Set(
     pool.map((s) => String(s.id || s.studentId || s.student_id || '')).filter(Boolean),
