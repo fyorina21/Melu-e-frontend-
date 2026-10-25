@@ -15,6 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -162,7 +163,7 @@ function ReportModal({
             <Text style={typography.body}>{report.behaviorSummary}</Text>
 
             <Text style={[typography.h3, { marginTop: spacing.md }]}>Top Preferences</Text>
-            <Text style={typography.body}>{(report.preferences || []).join(', ')}</Text>
+            <Text style={typography.body}>{(report.preferences || []).join(', ') || 'None recorded'}</Text>
 
             {Boolean(report.notes && report.notes !== 'No notes recorded.') && (
               <>
@@ -360,6 +361,25 @@ export default function AssessmentReviewScreen({
     load();
   }, [load]);
 
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleUpdate = () => {
+      load();
+    };
+    window.addEventListener('melue_assessment_updated', handleUpdate);
+    window.addEventListener('melue_student_enrolled_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('melue_assessment_updated', handleUpdate);
+      window.removeEventListener('melue_student_enrolled_updated', handleUpdate);
+    };
+  }, [load]);
+
   const filtered = useMemo(() => {
     if (!Array.isArray(list)) return [];
     let items = list;
@@ -445,7 +465,7 @@ export default function AssessmentReviewScreen({
     }
 
     lines.push('', 'BEHAVIOR ASSESSMENT (MASS/FAST)', report.behaviorSummary || '');
-    lines.push('', 'TOP PREFERENCES', (report.preferences || []).join(', '));
+    lines.push('', 'TOP PREFERENCES', (report.preferences || []).length > 0 ? (report.preferences || []).join(', ') : 'None recorded');
 
     if (report.notes && report.notes !== 'No notes recorded.') {
       lines.push('', 'TEACHER NOTES', report.notes);

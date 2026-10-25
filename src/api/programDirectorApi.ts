@@ -15,10 +15,18 @@ import {
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
   isStudentAssessmentSubmitted,
+  getStudentIdAliases,
 } from '../utils/studentLifecycleHelper';
 
+import {
+  DEFAULT_ABLLS_DOMAINS,
+  loadStorageAssessment,
+} from '../screens/assessments/abllsConfigHelper';
+
+
+
 // ============================================================================
-// Storage Keys
+
 // ============================================================================
 export const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
 export const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
@@ -858,6 +866,23 @@ export const getAssessmentsForReview = async (
     } catch {}
   }
 
+  // Include locally enrolled real students from storage
+  const storedEnrolled =
+    storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+  for (const es of storedEnrolled) {
+    const esId = String(es.id || es.studentId || '').trim();
+    const esName = String(es.fullName || es.name || '').toLowerCase().trim();
+    if (
+      !rawStudents.some(
+        (s) =>
+          (esId && String(s.id || s.studentId || '') === esId) ||
+          (esName && String(s.fullName || s.name || '').toLowerCase().trim() === esName),
+      )
+    ) {
+      rawStudents.push(es);
+    }
+  }
+
   let rawPipeline: any[] = [];
   if (pipelineRes.status === 'fulfilled' && pipelineRes.value?.data) {
     const data = pipelineRes.value.data;
@@ -893,7 +918,16 @@ export const getAssessmentsForReview = async (
     const isRev = Boolean(
       (sId && reviewedMap[sId]?.reviewed) || (student && reviewedMap[String(student.id)]?.reviewed),
     );
-    const progress = Number(a.assessment_progress ?? a.abllsPct ?? 0);
+    const realSkills = getStudentSkillsProgress(sId || (student ? String(student.id) : ''));
+    const isSubmitted = isStudentAssessmentSubmitted(sId || (student ? String(student.id) : ''));
+    const progress = Math.min(
+      100,
+      Math.max(
+        Number(a.assessment_progress ?? a.abllsPct ?? 0),
+        realSkills.progress,
+        isSubmitted ? 100 : 0,
+      ),
+    );
     const rawStatus = String(a.status || '')
       .toLowerCase()
       .trim();
@@ -902,6 +936,7 @@ export const getAssessmentsForReview = async (
     if (isRev || rawStatus === 'reviewed' || rawStatus === 'approved') {
       status = 'Reviewed';
     } else if (
+      isSubmitted ||
       rawStatus === 'complete' ||
       rawStatus === 'completed' ||
       rawStatus === 'ready_for_iup' ||
@@ -911,6 +946,18 @@ export const getAssessmentsForReview = async (
     } else if (rawStatus === 'in_progress' || rawStatus === 'in_assessment' || progress > 0) {
       status = 'In Progress';
     }
+
+    const assignedTherapistRaw = String(
+      student?.therapist ??
+        student?.therapist_name ??
+        a.therapist ??
+        a.therapist_name ??
+        'Unassigned',
+    );
+    const therapist = isStaffDeleted(assignedTherapistRaw) ? 'Unassigned' : assignedTherapistRaw;
+
+    const submission = getStudentAssessmentSubmission(sId);
+    const dateCompleted = a.completed_at || a.completed_on || a.dateCompleted || (isSubmitted ? submission?.submittedAt?.slice(0, 10) : null) || null;
 
     const item = {
       studentId: sId || (student ? String(student.id || student.studentId) : ''),
@@ -923,18 +970,12 @@ export const getAssessmentsForReview = async (
       therapyGroup: String(
         student?.therapyGroup ?? student?.therapy_group ?? a.therapyGroup ?? a.therapy_group ?? '',
       ),
-      therapist: String(
-        student?.therapist ??
-          student?.therapist_name ??
-          a.therapist ??
-          a.therapist_name ??
-          'Unassigned',
-      ),
+      therapist,
       status,
       abllsPct: progress,
       behaviorStatus: String(a.behavior_assessment ?? a.behaviorStatus ?? 'notStarted'),
       sessionStatus: String(a.sessionStatus ?? ''),
-      dateCompleted: a.completed_at || a.completed_on || a.dateCompleted || null,
+      dateCompleted,
       reviewNotes: reviewedMap[sId]?.notes || '',
       createdAt: a.created_at || null,
     };
@@ -966,7 +1007,13 @@ export const getAssessmentsForReview = async (
             .trim() === sName.toLowerCase(),
       );
 
-      const progress = Number(pipe?.assessment_progress ?? 0);
+      const realSkills = getStudentSkillsProgress(sId);
+      const isSubmitted = isStudentAssessmentSubmitted(sId);
+      const pipeProgress = Number(pipe?.assessment_progress ?? 0);
+      const progress = Math.min(
+        100,
+        Math.max(pipeProgress, realSkills.progress, isSubmitted ? 100 : 0),
+      );
       let status = 'Not Started';
       const pipeStatus = String(pipe?.status || '')
         .toLowerCase()
@@ -974,11 +1021,17 @@ export const getAssessmentsForReview = async (
 
       if (isRev) {
         status = 'Reviewed';
-      } else if (pipeStatus === 'ready_for_iup' || pipeStatus === 'complete' || progress >= 100) {
+      } else if (isSubmitted || pipeStatus === 'ready_for_iup' || pipeStatus === 'complete' || progress >= 100) {
         status = 'Complete';
       } else if (pipeStatus === 'in_assessment' || pipeStatus === 'in_progress' || progress > 0) {
         status = 'In Progress';
       }
+
+      const assignedTherapistRaw = String(s.therapist ?? s.therapist_name ?? 'Unassigned');
+      const therapist = isStaffDeleted(assignedTherapistRaw) ? 'Unassigned' : assignedTherapistRaw;
+
+      const submission = getStudentAssessmentSubmission(sId);
+      const dateCompleted = isSubmitted ? submission?.submittedAt?.slice(0, 10) || null : null;
 
       itemsByStudent.set(key, {
         studentId: sId,
@@ -986,12 +1039,12 @@ export const getAssessmentsForReview = async (
         age: Number(s.age ?? 0),
         program: String(s.programType ?? s.program ?? 'Regular'),
         therapyGroup: String(s.therapyGroup ?? s.therapy_group ?? ''),
-        therapist: String(s.therapist ?? s.therapist_name ?? 'Unassigned'),
+        therapist,
         status,
         abllsPct: progress,
         behaviorStatus: String(pipe?.behavior_assessment ?? 'notStarted'),
         sessionStatus: '',
-        dateCompleted: null,
+        dateCompleted,
         reviewNotes: reviewedMap[sId]?.notes || '',
       });
     }
@@ -1011,35 +1064,155 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
 
   try {
     const res = await client.get(`/program_director/assessments/${studentId}/report`);
-    if (res?.data) return res;
+    if (res?.data && (res.data.student || res.data.skills)) {
+      return res;
+    }
   } catch {}
 
-  // Resilient fallback: Synthesize detailed clinical report for this student
+  // Resolve real student details from live options, coordinator list, or local storage
   let studentName = 'Student';
-  let studentAge = 6;
-  let studentProgram = 'Comprehensive ABA';
-  let studentTherapist = 'Abeba Tadesse';
+  let studentAge = 0;
+  let studentProgram = 'Regular';
+  let studentTherapist = 'Unassigned';
+  let studentTherapyGroup = '';
 
   try {
     const { data: students } = await client.get<any[]>('/options/students');
     const match = Array.isArray(students)
-      ? students.find((s) => String(s.id) === String(studentId))
+      ? students.find(
+          (s) =>
+            String(s.id) === String(studentId) || String(s.studentId) === String(studentId),
+        )
       : null;
     if (match) {
-      studentName = match.name || studentName;
-      studentAge = match.age || studentAge;
-      studentProgram = match.program || studentProgram;
+      studentName = match.fullName || match.name || studentName;
+      studentAge = Number(match.age) || studentAge;
+      studentProgram = match.programType || match.program || studentProgram;
+      studentTherapist = match.therapist || match.teacher || studentTherapist;
+      studentTherapyGroup = match.therapyGroup || match.therapy_group || studentTherapyGroup;
     }
   } catch {}
 
-  const defaultMatch = DEFAULT_PD_STUDENTS.find((s) => s.id === studentId);
-  if (defaultMatch) {
-    studentName = defaultMatch.name;
-    studentAge = defaultMatch.age;
-    studentProgram = defaultMatch.program;
-    studentTherapist = defaultMatch.therapist;
+  const storedEnrolled =
+    storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+  const localEnrolledMatch = storedEnrolled.find(
+    (s) => String(s.id) === String(studentId) || String(s.studentId) === String(studentId),
+  );
+  if (localEnrolledMatch) {
+    studentName = String(localEnrolledMatch.fullName || localEnrolledMatch.name || studentName);
+    studentAge = Number(localEnrolledMatch.age) || studentAge;
+    studentProgram = String(
+      localEnrolledMatch.programType || localEnrolledMatch.program || studentProgram,
+    );
+    studentTherapist = String(localEnrolledMatch.therapist || studentTherapist);
+    studentTherapyGroup = String(
+      localEnrolledMatch.therapyGroup || localEnrolledMatch.therapy_group || studentTherapyGroup,
+    );
   }
 
+  // Load real ABLLS skills assessment from storage
+  const storageData = loadStorageAssessment(studentId);
+  const scores = storageData?.scores || {};
+  const domainScores: any[] = [];
+  let totalScoredItems = 0;
+
+  for (const domain of DEFAULT_ABLLS_DOMAINS) {
+    const scoredInDomain: any[] = [];
+    for (const item of domain.items) {
+      const itemScore = scores[item.id];
+      if (itemScore !== undefined && itemScore !== null) {
+        scoredInDomain.push({
+          id: item.id,
+          description: item.description,
+          score: itemScore,
+        });
+      }
+    }
+    totalScoredItems += scoredInDomain.length;
+    domainScores.push({
+      code: domain.code,
+      name: domain.name,
+      scoredCount: scoredInDomain.length,
+      total: domain.items.length,
+      items: scoredInDomain,
+    });
+  }
+
+  const activeDomainsCount = domainScores.filter((d) => d.scoredCount > 0).length;
+  const skillsStatus =
+    totalScoredItems >= 55
+      ? 'completed'
+      : totalScoredItems > 0
+        ? 'in_progress'
+        : 'not_started';
+  const skillsSummary =
+    totalScoredItems > 0
+      ? `${totalScoredItems} ABLLS-R milestone skills assessed across ${activeDomainsCount} domain(s).`
+      : 'No skills assessment recorded yet.';
+
+  // Load real Behavior assessment from storage
+  let behaviorSummary = 'No behavior assessment recorded.';
+  let behaviorStatus = 'not_started';
+  let massScores: any = {};
+  let fastScores: any = {};
+  let abcCount = 0;
+
+  const aliases = getStudentIdAliases(studentId);
+  for (const sid of aliases) {
+    const bData = storage.getJSONSync<any>(`melue_behavior_assessment_${sid}`);
+    if (bData) {
+      behaviorStatus = bData.status || (bData.records?.length ? 'completed' : 'in_progress');
+      abcCount = Array.isArray(bData.records) ? bData.records.length : 0;
+      massScores = bData.massAnswers || {};
+      fastScores = bData.fastAnswers || {};
+      behaviorSummary =
+        bData.summary ||
+        bData.notes ||
+        (abcCount > 0
+          ? `${abcCount} ABC incident(s) logged during session observation.`
+          : Object.keys(massScores).length > 0 || Object.keys(fastScores).length > 0
+            ? 'MASS and FAST questionnaires recorded.'
+            : 'Behavior assessment in progress.');
+      break;
+    }
+  }
+
+  // Load real Preferences from storage
+  let realPreferences: string[] = [];
+  for (const sid of aliases) {
+    const prefData =
+      storage.getJSONSync<any>(`melue_preference_assessment_${sid}`) ||
+      (typeof localStorage !== 'undefined'
+        ? JSON.parse(localStorage.getItem(`melue_preference_assessment_${sid}`) || 'null')
+        : null);
+    if (prefData) {
+      const rawPrefs =
+        prefData.top_items || prefData.selectedItems || prefData.preferences || prefData.items || [];
+      if (Array.isArray(rawPrefs) && rawPrefs.length > 0) {
+        realPreferences = rawPrefs
+          .map((p: any) => (typeof p === 'string' ? p : p.name || p.item_name || ''))
+          .filter(Boolean);
+        break;
+      }
+    }
+  }
+
+  // Real submission status and date
+  const isSubmitted = isStudentAssessmentSubmitted(studentId);
+  const submissionData = getStudentAssessmentSubmission(studentId);
+  const dateCompleted = isSubmitted ? submissionData?.submittedAt?.slice(0, 10) || null : null;
+
+  // Real IUP goals from IUP draft
+  const iupDraft = getStoredIupDraft(studentId);
+  const assignedGoals = Array.isArray(iupDraft?.goals)
+    ? iupDraft.goals.map((g: any) => ({
+        id: g.id || `g-${g.name}`,
+        name: g.name || g.goalName || 'Goal',
+        status: g.status || 'Active',
+      }))
+    : [];
+
+  // Review status
   const reviewedMap = getStoredReviewedMap();
   const isReviewed = Boolean(reviewedMap[studentId]?.reviewed);
   const reviewNotes = reviewedMap[studentId]?.notes || '';
@@ -1052,94 +1225,47 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
       age: studentAge,
       program_type: studentProgram,
       program: studentProgram,
-      therapy_group: 'Station 1 · Early Learners',
+      therapy_group: studentTherapyGroup,
       therapist: studentTherapist,
     },
     assessment: {
-      status: isReviewed ? 'Reviewed' : 'Complete',
-      completed_on: '2026-03-28',
+      status: isReviewed
+        ? 'Reviewed'
+        : isSubmitted
+          ? 'Complete'
+          : skillsStatus === 'completed'
+            ? 'Complete'
+            : skillsStatus === 'in_progress'
+              ? 'In Progress'
+              : 'Not Started',
+      completed_on: dateCompleted,
     },
     skills: {
-      summary:
-        'Demonstrates foundational receptive language and motor imitation skills. ABLLS-R protocol fully administered across all foundational domains with steady trial responding.',
-      status: 'completed',
-      domains: [
-        {
-          code: 'A',
-          name: 'Cooperation & Reinforcer Effectiveness',
-          scoredCount: 14,
-          total: 15,
-          items: [
-            { id: 'A1', description: 'Take reinforcer from instructor', score: 2 },
-            { id: 'A2', description: 'Take reinforcer from table', score: 2 },
-            { id: 'A3', description: 'Look at instructor for reinforcer', score: 2 },
-          ],
-        },
-        {
-          code: 'B',
-          name: 'Visual Performance',
-          scoredCount: 12,
-          total: 12,
-          items: [
-            { id: 'B1', description: 'Match identical objects to objects', score: 2 },
-            { id: 'B2', description: 'Match objects to pictures', score: 2 },
-            { id: 'B3', description: 'Sort non-identical items', score: 1 },
-          ],
-        },
-        {
-          code: 'C',
-          name: 'Receptive Language',
-          scoredCount: 16,
-          total: 20,
-          items: [
-            { id: 'C1', description: 'Follow one-step instructions in context', score: 2 },
-            { id: 'C2', description: 'Touch common items upon verbal request', score: 1 },
-            { id: 'C3', description: 'Identify body parts', score: 2 },
-          ],
-        },
-        {
-          code: 'D',
-          name: 'Motor Imitation',
-          scoredCount: 10,
-          total: 10,
-          items: [
-            { id: 'D1', description: 'Gross motor imitation with objects', score: 2 },
-            { id: 'D2', description: 'Fine motor imitation with blocks', score: 2 },
-          ],
-        },
-      ],
+      summary: skillsSummary,
+      status: skillsStatus,
+      domains: domainScores,
     },
     behavior: {
-      summary:
-        'Low-rate escape-maintained avoidance during prolonged tabletop tasks. MASS and FAST scores indicate sensitivity to visual cues and frequent access to tactile sensory reinforcers.',
-      status: 'completed',
-      mass: { scores: { task_transition: 2, non_compliance: 1 } },
-      fast: { scores: { attention: 4, escape: 3 } },
+      summary: behaviorSummary,
+      status: behaviorStatus,
+      mass: { scores: massScores },
+      fast: { scores: fastScores },
       abc_summary: {
-        incidents_count: 2,
-        common_antecedents: ['Task Demand', 'Peer Transition'],
+        incidents_count: abcCount,
       },
     },
     preferences: {
-      top_items: ['Sensory swing', 'Visual timer', 'Kinetic sand', 'Bubbles'],
+      top_items: realPreferences,
     },
     notes:
       reviewNotes ||
-      'Assessment cycle completed within targeted timeline. Student demonstrated strong engagement when given structured tactile breaks.',
-    iupStatus: isReviewed ? 'Ready for IUP' : 'Pending Sign-off',
+      (storageData?.notes
+        ? Object.values(storageData.notes).filter(Boolean).join('; ')
+        : 'No notes recorded.'),
+    dateCompleted,
+    iupStatus: isReviewed ? 'Ready for IUP' : isSubmitted ? 'Ready for Review' : 'In Assessment',
     reviewNotes,
-    assignedGoals: [
-      {
-        id: 'g-receptive-id',
-        name: 'Receptive Identification of Common Objects',
-        status: 'Active',
-      },
-      {
-        id: 'g-manding-snack',
-        name: 'Independent Manding with Vocal Approximation',
-        status: 'Active',
-      },
-    ],
+    assignedGoals,
   };
 
   return { data: reportPayload };

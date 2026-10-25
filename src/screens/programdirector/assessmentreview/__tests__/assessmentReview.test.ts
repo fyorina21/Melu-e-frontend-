@@ -1,6 +1,7 @@
 // src/screens/programdirector/assessmentreview/__tests__/assessmentReview.test.ts
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import client from '../../../../api/sessionApi';
 import {
   scoreColor,
   normalizeStatus,
@@ -9,6 +10,9 @@ import {
   generateAssessmentReportText,
   type AssessmentReport,
 } from '../reviewTypes';
+import { getAssessmentReport, getAssessmentsForReview } from '../../../../api/programDirectorApi';
+import { saveStorageAssessment } from '../../../assessments/abllsConfigHelper';
+import { storage } from '../../../../utils/storage';
 
 describe('Assessment Review types and helpers', () => {
   describe('scoreColor', () => {
@@ -141,6 +145,98 @@ describe('Assessment Review types and helpers', () => {
       expect(text).toContain('A Cooperation: 2/2 items scored');
       expect(text).toContain('TOP PREFERENCES');
       expect(text).toContain('Blocks, Painting');
+    });
+  });
+
+  describe('Real Data Assessment Review & Report integration', () => {
+    beforeEach(() => {
+      vi.spyOn(client, 'get').mockRejectedValue(new Error('Unit test mock network reject'));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.clear();
+      }
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('generates real report from stored assessments without fake dummy fallbacks', async () => {
+      const studentId = 'real-stu-888';
+
+      // Save real enrolled student
+      storage.setJSONSync('melue_enrolled_students_cache', [
+        {
+          id: studentId,
+          studentId,
+          fullName: 'Dawit Mengistu',
+          name: 'Dawit Mengistu',
+          age: 8,
+          program: 'Regular',
+          therapyGroup: 'Station 2',
+          therapist: 'Bethlehem Tsegaye',
+        },
+      ]);
+
+      // Record authentic ABLLS assessment scores
+      saveStorageAssessment(studentId, {
+        scores: {
+          A1: 2,
+          A2: 2,
+          B1: 1,
+        },
+        progress: 15,
+        status: 'in_progress',
+      });
+
+      // Record authentic preferences
+      storage.setJSONSync(`melue_preference_assessment_${studentId}`, {
+        top_items: ['Toy Train', 'Puzzle Map'],
+      });
+
+      // Record authentic behavior
+      storage.setJSONSync(`melue_behavior_assessment_${studentId}`, {
+        status: 'in_progress',
+        records: [{ id: 'inc-1', antecedent: 'Transition', behavior: 'Protest' }],
+      });
+
+      const { data: report } = await getAssessmentReport(studentId);
+
+      expect(report.student.id).toBe(studentId);
+      expect(report.student.name).toBe('Dawit Mengistu');
+      expect(report.student.therapist).toBe('Bethlehem Tsegaye');
+      expect(report.skills.domains.find((d: any) => d.code === 'A')?.scoredCount).toBe(2);
+      expect(report.skills.domains.find((d: any) => d.code === 'B')?.scoredCount).toBe(1);
+      expect(report.skills.domains.find((d: any) => d.code === 'C')?.scoredCount).toBe(0);
+      expect(report.preferences.top_items).toEqual(['Toy Train', 'Puzzle Map']);
+      expect(report.behavior.summary).toContain('1 ABC incident(s) logged');
+      expect(report.dateCompleted).toBeNull();
+
+      const { data: reviewList } = await getAssessmentsForReview();
+      expect(reviewList.some((s: any) => s.studentId === studentId)).toBe(true);
+    });
+
+    it('handles student with no recorded assessments showing authentic empty states rather than fake data', async () => {
+      const studentId = 'unassessed-stu-999';
+
+      storage.setJSONSync('melue_enrolled_students_cache', [
+        {
+          id: studentId,
+          fullName: 'Kidus Yohannes',
+          name: 'Kidus Yohannes',
+          age: 5,
+          program: 'Pulled Out',
+          therapist: 'Selam Tesfaye',
+        },
+      ]);
+
+      const { data: report } = await getAssessmentReport(studentId);
+
+      expect(report.student.name).toBe('Kidus Yohannes');
+      expect(report.skills.summary).toBe('No skills assessment recorded yet.');
+      expect(report.skills.domains.every((d: any) => d.scoredCount === 0)).toBe(true);
+      expect(report.behavior.summary).toBe('No behavior assessment recorded.');
+      expect(report.preferences.top_items).toEqual([]);
+      expect(report.dateCompleted).toBeNull();
     });
   });
 });

@@ -180,7 +180,7 @@ export function generateAssessmentReportText(
   }
 
   lines.push('', 'BEHAVIOR ASSESSMENT (MASS/FAST)', report.behaviorSummary || '');
-  lines.push('', 'TOP PREFERENCES', (report.preferences || []).join(', '));
+  lines.push('', 'TOP PREFERENCES', (report.preferences || []).length > 0 ? (report.preferences || []).join(', ') : 'None recorded');
 
   if (report.notes && report.notes !== 'No notes recorded.') {
     lines.push('', 'TEACHER NOTES', report.notes);
