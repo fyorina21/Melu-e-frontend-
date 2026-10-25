@@ -43,6 +43,11 @@ import {
   isStaffDeleted,
   onDeletedStaffChanged,
 } from '../../utils/deletedStaffHelper';
+import {
+  filterOutDeletedStudents,
+  isStudentDeleted,
+  onDeletedStudentChanged,
+} from '../../utils/deletedStudentHelper';
 import { getAlertsForTeacher } from '../../utils/alertNotificationHelper';
 import type { SessionStackParamList, FeatherIconName } from '../../types';
 
@@ -186,8 +191,9 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       const staffList = filterOutDeletedStaff(
         staffRes.status === 'fulfilled' ? staffRes.value?.data || [] : [],
       );
-      const studentOpts =
-        studentOptsRes.status === 'fulfilled' ? studentOptsRes.value?.data || [] : [];
+      const studentOpts = filterOutDeletedStudents(
+        studentOptsRes.status === 'fulfilled' ? studentOptsRes.value?.data || [] : [],
+      );
 
       if (studentOpts.length > 0) {
         registerStudentStatuses(studentOpts);
@@ -221,10 +227,12 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       );
 
       // 4. Resolve eligible student objects (strictly 100% completed assessments, capped at 2)
-      const teacherEligibleStudents = resolveEligibleTeacherStudents(
-        assignedStudentIds,
-        studentOpts,
-        res?.todaySchedule?.students || [],
+      const teacherEligibleStudents = filterOutDeletedStudents(
+        resolveEligibleTeacherStudents(
+          assignedStudentIds,
+          studentOpts,
+          res?.todaySchedule?.students || [],
+        ),
       );
 
       const scheduleData: TodaySchedule = {
@@ -242,8 +250,9 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       };
 
       // Collect assessment tasks directly from Assessment Page data, strictly filtered to students assigned to this teacher
-      const rawAssessmentStudents = assessData?.students || [];
+      const rawAssessmentStudents = filterOutDeletedStudents(assessData?.students || []);
       const assessmentStudents = rawAssessmentStudents.filter((s: any) =>
+        !isStudentDeleted(s) &&
         isStudentAssignedToTherapist(s, targetTeacher || {
           name: session?.userName,
           id: session?.userId ? String(session.userId) : undefined,
@@ -262,8 +271,9 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
       // Merge with backend assessmentTasks if any, deduplicating by studentId
       const existingTaskStudentIds = new Set(derivedTasks.map((t) => t.studentId));
-      const backendTasks = (res?.assessmentTasks || []).filter((t: any) => {
+      const backendTasks: AssessmentTask[] = filterOutDeletedStudents<AssessmentTask>(res?.assessmentTasks || []).filter((t: any) => {
         const sid = t.studentId || t.id.replace('assess-', '');
+        if (isStudentDeleted(sid) || isStudentDeleted(t.studentName)) return false;
         if (existingTaskStudentIds.has(sid)) return false;
         return isStudentAssignedToTherapist(
           { id: sid, name: t.studentName },
@@ -275,7 +285,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
         );
       });
 
-      const finalTasks = [...derivedTasks, ...backendTasks];
+      const finalTasks: AssessmentTask[] = filterOutDeletedStudents<AssessmentTask>([...derivedTasks, ...(backendTasks as AssessmentTask[])]);
 
       const localAlerts = getAlertsForTeacher(
         targetTeacher?.name || session?.userName,
@@ -316,6 +326,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   }, [load]);
   useEffect(() => onDeletedStaffChanged(load), [load]);
   useEffect(() => onScheduleAssignmentsChanged(load), [load]);
+  useEffect(() => onDeletedStudentChanged(load), [load]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleAlerts = () => {
@@ -323,9 +334,13 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
     };
     window.addEventListener('melue_alerts_updated', handleAlerts);
     window.addEventListener('melue_therapist_assignment_updated', handleAlerts);
+    window.addEventListener('melue_student_deleted', handleAlerts);
+    window.addEventListener('melue_student_enrolled_updated', handleAlerts);
     return () => {
       window.removeEventListener('melue_alerts_updated', handleAlerts);
       window.removeEventListener('melue_therapist_assignment_updated', handleAlerts);
+      window.removeEventListener('melue_student_deleted', handleAlerts);
+      window.removeEventListener('melue_student_enrolled_updated', handleAlerts);
     };
   }, [load]);
 
@@ -336,12 +351,13 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   );
 
   const eligibleSessionStudents = useMemo(() => {
-    return (data?.todaySchedule?.students ?? []).filter(isStudentEligibleForSession);
+    return filterOutDeletedStudents(data?.todaySchedule?.students ?? []).filter(isStudentEligibleForSession);
   }, [data?.todaySchedule?.students]);
 
   const pendingAssessmentTasks = useMemo(() => {
-    return (data?.assessmentTasks ?? []).filter((t) => {
+    return filterOutDeletedStudents(data?.assessmentTasks ?? []).filter((t) => {
       const sid = (t as any).studentId || t.id.replace('assess-', '');
+      if (isStudentDeleted(sid) || isStudentDeleted(t.studentName)) return false;
       return (
         !isStudentAssessment100PercentCompleted({ id: sid, name: t.studentName }) &&
         !isStudentInSession({ id: sid })

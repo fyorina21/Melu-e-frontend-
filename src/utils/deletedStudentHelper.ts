@@ -124,23 +124,58 @@ export function filterStudentResponse(url: string, data: any): any {
     normUrl.includes('/coordinator/students') ||
     normUrl.includes('/program_director/caseload') ||
     normUrl.includes('/program_director/assessments') ||
-    normUrl.includes('/caseload');
+    normUrl.includes('/caseload') ||
+    normUrl.includes('/teacher/dashboard') ||
+    normUrl.includes('/coordinator/sessions') ||
+    normUrl.includes('/sessions') ||
+    normUrl.includes('/director/schedule');
 
   if (!isStudentEndpoint) return data;
 
   if (Array.isArray(data)) {
-    return filterOutDeletedStudents(data);
+    return filterOutDeletedStudents(
+      data.map((item) => {
+        if (item && Array.isArray(item.studentIds)) {
+          return {
+            ...item,
+            studentIds: item.studentIds.filter((sid: any) => !isStudentDeleted(sid)),
+          };
+        }
+        if (item && Array.isArray(item.students)) {
+          return {
+            ...item,
+            students: filterOutDeletedStudents(item.students),
+          };
+        }
+        return item;
+      })
+    );
   }
 
   if (typeof data === 'object') {
     if (Array.isArray(data.data)) {
-      return { ...data, data: filterOutDeletedStudents(data.data) };
+      data = { ...data, data: filterOutDeletedStudents(data.data) };
     }
     if (Array.isArray(data.students)) {
-      return { ...data, students: filterOutDeletedStudents(data.students) };
+      data = { ...data, students: filterOutDeletedStudents(data.students) };
     }
     if (Array.isArray(data.caseload)) {
-      return { ...data, caseload: filterOutDeletedStudents(data.caseload) };
+      data = { ...data, caseload: filterOutDeletedStudents(data.caseload) };
+    }
+    if (Array.isArray(data.assessments)) {
+      data = { ...data, assessments: filterOutDeletedStudents(data.assessments) };
+    }
+    if (Array.isArray(data.assessmentTasks)) {
+      data = { ...data, assessmentTasks: filterOutDeletedStudents(data.assessmentTasks) };
+    }
+    if (data.todaySchedule && Array.isArray(data.todaySchedule.students)) {
+      data = {
+        ...data,
+        todaySchedule: {
+          ...data.todaySchedule,
+          students: filterOutDeletedStudents(data.todaySchedule.students),
+        },
+      };
     }
   }
 
@@ -327,6 +362,27 @@ export function recordDeletedStudent(student: {
       }
     } catch {}
 
+    // Purge from session students cache (melue_session_students_cache)
+    try {
+      const sessStudentsRaw = s ? s.getItem('melue_session_students_cache') : null;
+      if (sessStudentsRaw) {
+        const sessMap = JSON.parse(sessStudentsRaw);
+        let changed = false;
+        for (const k of Object.keys(sessMap)) {
+          if (Array.isArray(sessMap[k])) {
+            const filtered = sessMap[k].filter((item: any) => !isStudentDeleted(item));
+            if (filtered.length !== sessMap[k].length) {
+              sessMap[k] = filtered;
+              changed = true;
+            }
+          }
+        }
+        if (changed && s) {
+          s.setItem('melue_session_students_cache', JSON.stringify(sessMap));
+        }
+      }
+    } catch {}
+
     // 12. Dispatch notification events to refresh all screens and views across the application
     dispatchStudentEvent('melue_student_deleted', { student: newRecord });
     dispatchStudentEvent('melue_student_enrolled_updated');
@@ -334,6 +390,7 @@ export function recordDeletedStudent(student: {
     dispatchStudentEvent('melue_therapist_assignment_updated');
     dispatchStudentEvent('melue_assessment_updated');
     dispatchStudentEvent('melue_schedule_assignments_updated');
+    dispatchStudentEvent('melue_session_updated');
   } catch {}
 }
 

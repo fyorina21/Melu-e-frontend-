@@ -1,3 +1,4 @@
+import { isStudentDeleted, filterOutDeletedStudents } from './deletedStudentHelper';
 import { storage } from './storage';
 
 export const THERAPIST_ASSIGNMENTS_STORAGE_KEY = 'melue_therapist_assigned_students_v1';
@@ -91,6 +92,7 @@ export function isStudentAssignedToTherapist(
   therapist: TherapistRef | string | null | undefined,
 ): boolean {
   if (!student || !therapist) return false;
+  if (isStudentDeleted(student)) return false;
 
   // 1. Collect all therapist identifier tokens
   const therapistTokens = new Set<string>();

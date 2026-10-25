@@ -1,3 +1,4 @@
+import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
 // src/stores/trialsStore.ts
 //
 // Persistent local store for session trials. Ensures that trials recorded
@@ -469,14 +470,15 @@ const STUDENTS_STORAGE_KEY = 'melue_session_students_cache';
 export function setStoredSessionStudents(sessionId: string = 'active', students: any[], teacherId?: string): void {
   if (typeof localStorage === 'undefined' || !Array.isArray(students)) return;
   try {
+    const cleanStudents = filterOutDeletedStudents(students);
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
     const map = raw ? JSON.parse(raw) : {};
-    map[sessionId] = students;
+    map[sessionId] = cleanStudents;
     if (teacherId) {
-      map[`${sessionId}_${teacherId}`] = students;
-      map[`teacher_${teacherId}`] = students;
+      map[`${sessionId}_${teacherId}`] = cleanStudents;
+      map[`teacher_${teacherId}`] = cleanStudents;
     } else {
-      map['active'] = students;
+      map['active'] = cleanStudents;
     }
     localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(map));
   } catch {}
@@ -488,12 +490,17 @@ export function getStoredSessionStudents(sessionId: string = 'active', teacherId
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
     if (!raw) return null;
     const map = JSON.parse(raw);
+    let list: any[] = [];
     if (teacherId) {
       const scoped = map[`${sessionId}_${teacherId}`] || map[`teacher_${teacherId}`];
-      if (Array.isArray(scoped)) return scoped;
+      if (Array.isArray(scoped)) list = scoped;
     }
-    const list = map[sessionId] || map['active'];
-    return Array.isArray(list) && list.length > 0 ? list : null;
+    if (list.length === 0) {
+      const fallbackList = map[sessionId] || map['active'];
+      if (Array.isArray(fallbackList)) list = fallbackList;
+    }
+    const clean = filterOutDeletedStudents(list);
+    return clean.length > 0 ? clean : null;
   } catch {
     return null;
   }

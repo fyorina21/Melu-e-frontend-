@@ -1,3 +1,6 @@
+import { resolveEligibleTeacherStudents } from '../../utils/teacherScheduleHelper';
+import { isStudentAssignedToTherapist } from '../../utils/therapistAssignmentHelper';
+import { recordDeletedStudent, isStudentDeleted, filterOutDeletedStudents } from '../../utils/deletedStudentHelper';
 import { describe, it, expect } from 'vitest';
 import { getCountdown, NOTIF_ICON_MAP } from './teacherDashboardTypes';
 
@@ -51,5 +54,29 @@ describe('teacherDashboardTypes - NOTIF_ICON_MAP', () => {
 
     expect(NOTIF_ICON_MAP.message).toBeDefined();
     expect(NOTIF_ICON_MAP.message.name).toBe('message-circle');
+  });
+});
+
+describe('Teacher Dashboard - Deleted Student Filtering', () => {
+  it('excludes deleted students from eligible teacher session students', () => {
+    const student1 = { id: 's-dash-keep', name: 'Active Student', status: 'ready_for_iup' };
+    const student2 = { id: 's-dash-del', name: 'Deleted Student', status: 'ready_for_iup' };
+
+    recordDeletedStudent({ id: 's-dash-del', name: 'Deleted Student' });
+    expect(isStudentDeleted('s-dash-del')).toBe(true);
+
+    const assignedIds = ['s-dash-keep', 's-dash-del'];
+    const resolved = resolveEligibleTeacherStudents(assignedIds, [student1, student2]);
+
+    expect(resolved.map((s) => s.id)).toContain('s-dash-keep');
+    expect(resolved.map((s) => s.id)).not.toContain('s-dash-del');
+  });
+
+  it('prevents deleted student from being matched to any therapist', () => {
+    const student = { id: 's-therapist-del', name: 'Tom Hardy', therapist: 'Abeba Tadesse' };
+    recordDeletedStudent({ id: 's-therapist-del', name: 'Tom Hardy' });
+
+    expect(isStudentAssignedToTherapist(student, 'Abeba Tadesse')).toBe(false);
+    expect(isStudentAssignedToTherapist(student, { name: 'Abeba Tadesse', id: 't-1' })).toBe(false);
   });
 });
