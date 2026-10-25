@@ -44,14 +44,22 @@ export function resolveMediaUrl(url?: string | null): string {
   const trimmed = url.trim();
   if (!trimmed) return '';
 
-  if (
-    trimmed.startsWith('data:') ||
-    trimmed.startsWith('blob:') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('file:')
-  ) {
+  const lower = trimmed.toLowerCase();
+
+  // Allow only expected/safe URL types for media
+  if (lower.startsWith('https://') || lower.startsWith('http://') || lower.startsWith('blob:')) {
     return trimmed;
+  }
+
+  if (lower.startsWith('data:')) {
+    // Restrict data URLs to expected media MIME types only
+    const safeDataUrl = /^data:(image\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/pdf);base64,[a-z0-9+/=\s]+$/i;
+    return safeDataUrl.test(trimmed) ? trimmed : '';
+  }
+
+  if (lower.startsWith('file:')) {
+    // Avoid file: URLs on web; allow on native for local media preview
+    return Platform.OS === 'web' ? '' : trimmed;
   }
 
   if (trimmed.startsWith('/')) {
@@ -59,7 +67,8 @@ export function resolveMediaUrl(url?: string | null): string {
     return `${base}${trimmed}`;
   }
 
-  return trimmed;
+  // Reject unknown/unsafe schemes (e.g. javascript:, vbscript:, etc.)
+  return '';
 }
 
 /**
@@ -181,6 +190,7 @@ export default function MediaViewerModal({
   const sizeText = typeof fileSize === 'number' ? formatFileSize(fileSize) : fileSize || '';
 
   const handleDownload = () => {
+    if (!resolvedUrl) return;
     try {
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const link = document.createElement('a');
@@ -200,7 +210,9 @@ export default function MediaViewerModal({
         Linking.openURL(resolvedUrl);
       }
     } catch {
-      Linking.openURL(resolvedUrl);
+      if (resolvedUrl) {
+        Linking.openURL(resolvedUrl);
+      }
     }
   };
 
