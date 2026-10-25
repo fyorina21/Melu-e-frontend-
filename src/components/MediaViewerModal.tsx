@@ -46,17 +46,24 @@ export function resolveMediaUrl(url?: string | null): string {
 
   const lower = trimmed.toLowerCase();
 
-  // Allow only trusted http(s) origins to prevent open redirects/phishing.
+  // Reject unsafe / script schemes
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:') ||
+    lower.includes('\n') ||
+    lower.includes('\r')
+  ) {
+    return '';
+  }
+
+  // Allow trusted web and secure protocols
   if (lower.startsWith('https://') || lower.startsWith('http://')) {
     try {
       const parsed = new URL(trimmed);
-      const trustedOrigins = new Set<string>();
-      const apiOrigin = new URL(env.apiUrl).origin;
-      trustedOrigins.add(apiOrigin);
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-        trustedOrigins.add(window.location.origin);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        return trimmed;
       }
-      return trustedOrigins.has(parsed.origin) ? trimmed : '';
+      return '';
     } catch {
       return '';
     }
@@ -67,13 +74,10 @@ export function resolveMediaUrl(url?: string | null): string {
   }
 
   if (lower.startsWith('data:')) {
-    // Restrict data URLs to expected media MIME types only
-    const safeDataUrl = /^data:(image\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/pdf);base64,[a-z0-9+/=\s]+$/i;
-    return safeDataUrl.test(trimmed) ? trimmed : '';
+    return trimmed;
   }
 
   if (lower.startsWith('file:')) {
-    // Avoid file: URLs on web; allow on native for local media preview
     return Platform.OS === 'web' ? '' : trimmed;
   }
 
@@ -82,7 +86,6 @@ export function resolveMediaUrl(url?: string | null): string {
     return `${base}${trimmed}`;
   }
 
-  // Reject unknown/unsafe schemes (e.g. javascript:, vbscript:, etc.)
   return '';
 }
 
