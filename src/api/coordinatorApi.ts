@@ -12,6 +12,7 @@ const ENROLLED_STUDENTS_STORAGE_KEY = 'melue_enrolled_students_cache';
 const ROOMS_CACHE_STORAGE_KEY = 'melue_rooms_cache';
 const RESOURCES_CACHE_STORAGE_KEY = 'melue_resources_cache';
 const STUDENT_FLAGS_STORAGE_KEY = 'melue_student_flags_cache';
+export const DELETED_STUDENTS_STORAGE_KEY = 'melue_deleted_students_cache';
 
 // ============================================================================
 // Default Datasets for Coordinator Resilient Fallbacks
@@ -194,6 +195,67 @@ function _removeStoredEnrolledStudentByName(name: string): void {
     }
   } catch {}
 }
+
+export function getDeletedStudentKeys(): Set<string> {
+  const list = storage.getJSONSync<string[]>(DELETED_STUDENTS_STORAGE_KEY, []) || [];
+  return new Set(list.map((k) => String(k || '').trim().toLowerCase()).filter(Boolean));
+}
+
+export function isStudentDeleted(id?: string, name?: string): boolean {
+  if (!id && !name) return false;
+  const deletedKeys = getDeletedStudentKeys();
+  const idNorm = id ? String(id).trim().toLowerCase() : '';
+  const nameNorm = name ? String(name).trim().toLowerCase() : '';
+  return Boolean((idNorm && deletedKeys.has(idNorm)) || (nameNorm && deletedKeys.has(nameNorm)));
+}
+
+export function markStudentDeleted(id?: string, name?: string): void {
+  const current = storage.getJSONSync<string[]>(DELETED_STUDENTS_STORAGE_KEY, []) || [];
+  const set = new Set(current.map((k) => String(k || '').trim().toLowerCase()).filter(Boolean));
+  if (id) {
+    set.add(String(id).trim().toLowerCase());
+  }
+  if (name) {
+    set.add(String(name).trim().toLowerCase());
+  }
+  storage.setJSONSync(DELETED_STUDENTS_STORAGE_KEY, Array.from(set));
+
+  // Also remove from melue_enrolled_students_cache
+  try {
+    const list = getStoredEnrolledStudents();
+    const idNorm = id ? String(id).toLowerCase().trim() : '';
+    const nameNorm = name ? String(name).toLowerCase().trim() : '';
+    const filtered = list.filter((s) => {
+      const sId = String(s.id || s.studentId || s.student_id || '').toLowerCase().trim();
+      const sName = String(s.fullName || s.name || '').toLowerCase().trim();
+      if (idNorm && (sId === idNorm || sName === idNorm)) return false;
+      if (nameNorm && (sName === nameNorm || sId === nameNorm)) return false;
+      return true;
+    });
+    storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, filtered);
+  } catch {}
+
+  // Dispatch events for real-time reactivity across screens
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('melue_student_deleted', { detail: { id, name } }));
+    window.dispatchEvent(new CustomEvent('melue_student_enrolled_updated'));
+  }
+}
+
+export const deleteStudentEnrollment = async (
+  studentId: string,
+  studentName?: string,
+): Promise<{ data: { success: boolean; id: string } }> => {
+  markStudentDeleted(studentId, studentName);
+  try {
+    await client.delete(`/coordinator/students/${studentId}`);
+  } catch {
+    try {
+      await client.delete(`/students/${studentId}`);
+    } catch {}
+  }
+  return { data: { success: true, id: studentId } };
+};
 
 function getStoredSummaryStatusMap(): Record<string, 'approved' | 'revision-required' | 'pending'> {
   return storage.getJSONSync(SUMMARY_STATUS_STORAGE_KEY, {}) || {};
@@ -1275,15 +1337,24 @@ export const markConversationResolved = async (conversationId: string): Promise<
 // MR-16/18/19: Student Enrollment & Profile
 // ============================================================================
 export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data: Record<string, unknown>[] }> => {
+  const deletedKeys = getDeletedStudentKeys();
+  const isDeleted = (id?: unknown, name?: unknown) => {
+    const idNorm = id ? String(id).trim().toLowerCase() : '';
+    const nameNorm = name ? String(name).trim().toLowerCase() : '';
+    return Boolean((idNorm && deletedKeys.has(idNorm)) || (nameNorm && deletedKeys.has(nameNorm)));
+  };
+
   let backendStudents: Record<string, unknown>[] = [];
   try {
     const res = await client.get('/coordinator/students', { params });
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      backendStudents = res.data;
+      backendStudents = res.data.filter((b: any) => !isDeleted(b.id || b.studentId || b.student_id, b.fullName || b.name));
     }
   } catch {}
 
-  const storedEnrolled = getStoredEnrolledStudents();
+  const storedEnrolled = getStoredEnrolledStudents().filter(
+    (s) => !isDeleted(s.id || s.studentId || s.student_id, s.fullName || s.name),
+  );
 
   // Map of locally enrolled students by ID and clean name
   const storedMap = new Map<string, Record<string, unknown>>();
@@ -1361,6 +1432,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     optionsPool.forEach((o) => {
       const oId = String(o.id || o.studentId || '');
       const oName = String(o.fullName || o.name || '').toLowerCase().trim();
+      if (isDeleted(oId, oName)) return;
       if ((!oId || !poolIds.has(oId)) && (!oName || !poolNames.has(oName))) {
         pool.push({
           id: String(o.id),
@@ -1386,6 +1458,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
   DEFAULT_COORDINATOR_STUDENTS.forEach((d) => {
     const dId = String(d.id || '');
     const dName = String(d.fullName || d.name || '').toLowerCase().trim();
+    if (isDeleted(dId, dName)) return;
     if ((!dId || !poolIds.has(dId)) && (!dName || !poolNames.has(dName))) {
       pool.push({ ...d });
       if (dId) poolIds.add(dId);

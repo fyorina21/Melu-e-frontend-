@@ -18,7 +18,9 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
-import { getEnrollmentStudents, getStoredEnrolledStudents } from '../../api/coordinatorApi';
+import { getEnrollmentStudents, getStoredEnrolledStudents, deleteStudentEnrollment } from '../../api/coordinatorApi';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import { getStaffOptions } from '../../api/optionsApi';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import {
@@ -159,7 +161,27 @@ function FilterDropdown({
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollment'>;
 
 export default function StudentEnrollmentScreen({ navigation }: Props) {
+  const { showToast } = useToast();
   const [students, setStudents] = useState<EnrolledStudent[]>([]);
+
+  const handleDeleteStudent = (student: EnrolledStudent) => {
+    confirmAction({
+      title: 'Delete Student',
+      message: `Are you sure you want to delete ${student.name}? This will remove the student from the roster list.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteStudentEnrollment(student.id, student.name);
+          showToast(`${student.name} deleted successfully`, 'success');
+          load();
+        } catch {
+          showToast('Failed to delete student', 'error');
+        }
+      },
+    });
+  };
   const [therapistOptions, setTherapistOptions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [programFilter, setProgramFilter] = useState('All');
@@ -245,10 +267,12 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       load();
     };
     window.addEventListener('melue_student_enrolled_updated', handleRefresh);
+    window.addEventListener('melue_student_deleted', handleRefresh);
     window.addEventListener('melue_student_status_changed', handleRefresh);
     window.addEventListener('melue_therapist_assignment_updated', handleRefresh);
     return () => {
       window.removeEventListener('melue_student_enrolled_updated', handleRefresh);
+      window.removeEventListener('melue_student_deleted', handleRefresh);
       window.removeEventListener('melue_student_status_changed', handleRefresh);
       window.removeEventListener('melue_therapist_assignment_updated', handleRefresh);
     };
@@ -473,6 +497,17 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
                 label={s.status}
               />
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                handleDeleteStudent(s);
+              }}
+              style={styles.deleteBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete ${s.name}`}
+            >
+              <Feather name="trash-2" size={16} color="#DC2626" />
+            </TouchableOpacity>
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         ))}
@@ -677,4 +712,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  deleteBtn: {
+    padding: 8,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEE2E2',
+  },
 });

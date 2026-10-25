@@ -5,6 +5,9 @@ import {
   saveEnrolledStudentLocally,
   getEnrollmentStudents,
   getStoredEnrolledStudents,
+  deleteStudentEnrollment,
+  isStudentDeleted,
+  markStudentDeleted,
 } from '../../api/coordinatorApi';
 import {
   markStudentActive,
@@ -103,5 +106,46 @@ describe('Student Enrollment Active Status Management', () => {
     expect(first.status).toBe('active');
     // Existing students are preserved
     expect(data.some((s) => s.fullName === 'Amir Hassan' || s.name === 'Amir Hassan')).toBe(true);
+  });
+it('deletes a student, permanently removing them from stored cache and roster list', async () => {
+    const student = {
+      id: 'stu-delete-target-99',
+      studentId: 'stu-delete-target-99',
+      name: 'Jonah Miller',
+      fullName: 'Jonah Miller',
+      age: 6,
+      gender: 'Male',
+      program: 'Regular',
+      programType: 'Regular',
+      therapyGroup: 'Basic',
+      therapist: 'Abeba Tadesse',
+      status: 'active',
+    };
+
+    saveEnrolledStudentLocally(student);
+    let { data: initialList } = await getEnrollmentStudents({});
+    expect(initialList.some((s) => s.fullName === 'Jonah Miller')).toBe(true);
+
+    // Delete student
+    const res = await deleteStudentEnrollment('stu-delete-target-99', 'Jonah Miller');
+    expect(res.data.success).toBe(true);
+    expect(isStudentDeleted('stu-delete-target-99', 'Jonah Miller')).toBe(true);
+
+    // Verify removed from cache
+    const stored = getStoredEnrolledStudents();
+    expect(stored.some((s) => s.fullName === 'Jonah Miller')).toBe(false);
+
+    // Verify removed from getEnrollmentStudents
+    const { data: updatedList } = await getEnrollmentStudents({});
+    expect(updatedList.some((s) => s.fullName === 'Jonah Miller' || s.name === 'Jonah Miller')).toBe(false);
+  });
+
+  it('filters out deleted default students from the roster list', async () => {
+    // Delete Amir Hassan from default list
+    markStudentDeleted('e12bff1b-a000-4fcd-ab3b-f8d035e45ba8', 'Amir Hassan');
+    expect(isStudentDeleted('e12bff1b-a000-4fcd-ab3b-f8d035e45ba8', 'Amir Hassan')).toBe(true);
+
+    const { data } = await getEnrollmentStudents({});
+    expect(data.some((s) => s.fullName === 'Amir Hassan' || s.name === 'Amir Hassan')).toBe(false);
   });
 });
