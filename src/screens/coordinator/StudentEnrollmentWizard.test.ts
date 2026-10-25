@@ -50,6 +50,7 @@ import {
   resolveEnrichedTherapists,
   assignStudentToTherapist,
   THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+  ENROLLMENT_DRAFT_KEY,
 } from './StudentEnrollmentWizardScreen';
 import { storage } from '../../utils/storage';
 import { MAX_CASELOAD } from './enrollmentWizardTypes';
@@ -223,4 +224,65 @@ describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
     );
     expect(placementFields.map((f) => f.id)).toEqual(['f_program', 'f_therapy']);
   });
+  it('saves enrollment draft and retains logged information in storage', () => {
+    const draftData = {
+      formValues: {
+        f1: 'Samuel Bekele',
+        f2: '2018-05-14',
+        f_gender: 'Male',
+        f4: 'Bekele T.',
+        f5: '+251 91 123 4567',
+        f6: 'bekele@example.com',
+        f_photo: 'data:image/jpeg;base64,mockphoto123',
+        photoUri: 'mockphoto123',
+        f_program: 'Comprehensive ABA',
+        f_therapy: 'Basic',
+      },
+      step: 2,
+      savedAt: new Date().toISOString(),
+      studentName: 'Samuel Bekele',
+    };
+
+    storage.setJSONSync(ENROLLMENT_DRAFT_KEY, draftData);
+
+    const saved = storage.getJSONSync<typeof draftData>(ENROLLMENT_DRAFT_KEY);
+    expect(saved).toBeDefined();
+    expect(saved?.formValues.f1).toBe('Samuel Bekele');
+    expect(saved?.formValues.f2).toBe('2018-05-14');
+    expect(saved?.formValues.f_photo).toBe('data:image/jpeg;base64,mockphoto123');
+    expect(saved?.step).toBe(2);
+
+    // Clean up
+    storage.removeSync(ENROLLMENT_DRAFT_KEY);
+    expect(storage.getJSONSync(ENROLLMENT_DRAFT_KEY)).toBeNull();
+  });
+
+  it('draft retains all logged fields when user leaves and returns', () => {
+    const draft = {
+      formValues: {
+        f1: 'Amina Roba',
+        f_photo: 'data:image/jpeg;base64,mockphoto456',
+        f_program: 'Early Intervention',
+        therapist: 'Abeba Tadesse',
+      },
+      step: 3,
+      savedAt: new Date().toISOString(),
+      studentName: 'Amina Roba',
+    };
+
+    storage.setJSONSync(ENROLLMENT_DRAFT_KEY, draft);
+
+    // Simulate returning to the page
+    const restored = storage.getJSONSync<typeof draft>(ENROLLMENT_DRAFT_KEY);
+    expect(restored).not.toBeNull();
+    expect(restored?.formValues.f1).toBe('Amina Roba');
+    expect(restored?.formValues.f_photo).toBe('data:image/jpeg;base64,mockphoto456');
+    expect(restored?.formValues.therapist).toBe('Abeba Tadesse');
+    expect(restored?.step).toBe(3);
+
+    // Discarding draft clears it completely
+    storage.removeSync(ENROLLMENT_DRAFT_KEY);
+    expect(storage.getJSONSync(ENROLLMENT_DRAFT_KEY)).toBeNull();
+  });
 });
+

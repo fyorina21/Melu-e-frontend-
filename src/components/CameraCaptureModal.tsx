@@ -144,9 +144,11 @@ export default function CameraCaptureModal({
   const handleTakeSnapshot = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -156,10 +158,16 @@ export default function CameraCaptureModal({
       ctx.scale(-1, 1);
     }
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    setCapturedImage(dataUrl);
-    stopTracks();
+    try {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      if (dataUrl && dataUrl.length > 50) {
+        setCapturedImage(dataUrl);
+        stopTracks();
+      }
+    } catch (e) {
+      console.error('Snapshot capture error:', e);
+    }
   };
 
   const handleConfirmPhoto = () => {
@@ -356,7 +364,7 @@ export default function CameraCaptureModal({
 
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmPhoto}>
                   <Feather name="check" size={18} color="#FFFFFF" />
-                  <Text style={styles.confirmBtnText}>Save & Use Photo</Text>
+                  <Text style={styles.confirmBtnText}>Use Photo</Text>
                 </TouchableOpacity>
               </View>
             )}

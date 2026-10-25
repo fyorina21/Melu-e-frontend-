@@ -44,6 +44,7 @@ import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '.
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const MAX_CASELOAD = 2;
+export const ENROLLMENT_DRAFT_KEY = 'melue_enrollment_wizard_draft_v1';
 
 const C_YELLOW = '#FCD34D';
 const C_SKY = '#38BDF8';
@@ -300,8 +301,43 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [activePhotoFieldId, setActivePhotoFieldId] = useState<string | null>(null);
   const [activeDropdownFieldId, setActiveDropdownFieldId] = useState<string | null>(null);
+  const [hasSavedDraft, setHasSavedDraft] = useState(false);
 
   const duplicateConfirmed = useRef(false);
+  const draftRestoredRef = useRef(false);
+
+  // Restore saved draft when screen is opened
+  const restoreDraft = useCallback(() => {
+    try {
+      let draft = storage.getJSONSync<{
+        formValues?: Record<string, unknown>;
+        step?: number;
+        savedAt?: string;
+        studentName?: string;
+      }>(ENROLLMENT_DRAFT_KEY);
+
+      if (!draft && typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(ENROLLMENT_DRAFT_KEY);
+        if (raw) draft = JSON.parse(raw);
+      }
+
+      if (draft && draft.formValues && Object.keys(draft.formValues).length > 0) {
+        setHasSavedDraft(true);
+        setFormValues((prev) => ({
+          ...prev,
+          ...draft.formValues,
+        }));
+        if (typeof draft.step === 'number' && draft.step >= 0) {
+          setStep(draft.step);
+        }
+        showToast('Restored saved enrollment draft', 'info');
+      }
+    } catch {}
+  }, [showToast]);
+
+  useEffect(() => {
+    restoreDraft();
+  }, [restoreDraft]);
 
   // Load therapists and existing students
   useEffect(() => {
@@ -380,7 +416,11 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       loadFormConfig();
-    }, [loadFormConfig]),
+      if (!draftRestoredRef.current) {
+        draftRestoredRef.current = true;
+        restoreDraft();
+      }
+    }, [loadFormConfig, restoreDraft]),
   );
 
   useEffect(() => {
@@ -590,15 +630,18 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     (formValues.therapist != null ? String(formValues.therapist) : '') ||
     '';
   const studentPhoto: string =
+    (activePhotoFieldId && formValues[activePhotoFieldId] != null && String(formValues[activePhotoFieldId]) !== ''
+      ? String(formValues[activePhotoFieldId])
+      : '') ||
     getFieldVal('f_photo') ||
     getFieldVal(/photo/i) ||
-    (formValues.photoUri != null ? String(formValues.photoUri) : '') ||
-    (formValues.photoBase64 != null ? String(formValues.photoBase64) : '') ||
+    (formValues.photoUri != null && String(formValues.photoUri) !== '' ? String(formValues.photoUri) : '') ||
+    (formValues.photoBase64 != null && String(formValues.photoBase64) !== '' ? String(formValues.photoBase64) : '') ||
     '';
 
   // Photo handlers
   const handleTakePhoto = (fieldId: string) => {
-    setActivePhotoFieldId(fieldId);
+    setActivePhotoFieldId(fieldId || 'f_photo');
     setCameraModalOpen(true);
   };
 
@@ -621,17 +664,26 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         const photoData = asset.base64
           ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
           : asset.uri;
-        handleFieldChange(fieldId, photoData);
-        if (studentName.trim()) {
-          saveStudentPhoto({
-            name: studentName.trim(),
-            fullName: studentName.trim(),
-            photo: photoData,
-            photoBase64: photoData,
-            photoUri: asset.uri,
-          });
-        }
-        showToast('Photo uploaded successfully', 'success');
+        const targetFieldId =
+          fieldId ||
+          activePhotoFieldId ||
+          formFields.find(
+            (f) =>
+              f.id === 'f_photo' ||
+              /photo/i.test(f.id) ||
+              /photo/i.test(f.label),
+          )?.id ||
+          'f_photo';
+
+        handleFieldChange(targetFieldId, photoData);
+        setFormValues((prev) => ({
+          ...prev,
+          [targetFieldId]: photoData,
+          photoUri: asset.uri,
+          photoBase64: photoData,
+          f_photo: photoData,
+        }));
+        showToast('Photo attached to form', 'success');
       }
     } catch (err: unknown) {
       const errObj = err as { message?: string };
@@ -641,6 +693,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   const handleRemovePhoto = (fieldId: string) => {
     handleFieldChange(fieldId, '');
+    setFormValues((prev) => ({
+      ...prev,
+      [fieldId]: '',
+      photoUri: '',
+      photoBase64: '',
+      f_photo: '',
+    }));
     showToast('Photo removed', 'info');
   };
 
@@ -755,21 +814,36 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   const saveProgress = () => {
     try {
-      const key = `enrollment-draft-${studentName.trim().toLowerCase() || 'untitled'}`;
-      localStorage.setItem(key, JSON.stringify(formValues));
-      if (studentName.trim() && studentPhoto) {
-        saveStudentPhoto({
-          name: studentName.trim(),
-          fullName: studentName.trim(),
-          photo: studentPhoto,
-          photoBase64: studentPhoto,
-          photoUri: studentPhoto,
-        });
+      const draftData = {
+        formValues: { ...formValues },
+        step,
+        savedAt: new Date().toISOString(),
+        studentName: studentName.trim(),
+      };
+      storage.setJSONSync(ENROLLMENT_DRAFT_KEY, draftData);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(ENROLLMENT_DRAFT_KEY, JSON.stringify(draftData));
       }
-      showToast('Draft stored locally on this device', 'success');
+      setHasSavedDraft(true);
+      showToast('Enrollment progress saved as draft', 'success');
     } catch {
       showToast('This device does not support local drafts', 'error');
     }
+  };
+
+  const handleDiscardDraft = () => {
+    try {
+      storage.removeSync(ENROLLMENT_DRAFT_KEY);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(ENROLLMENT_DRAFT_KEY);
+      }
+    } catch {}
+    setHasSavedDraft(false);
+    draftRestoredRef.current = false;
+    setFormValues({});
+    setStep(0);
+    loadFormConfig();
+    showToast('Draft discarded', 'info');
   };
 
   // Clean Submission Payload: Keys dynamic form values by their schema id
@@ -961,6 +1035,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         headshotUrl: studentPhoto || null,
       });
 
+      // Clear draft on successful enrollment
+      try {
+        storage.removeSync(ENROLLMENT_DRAFT_KEY);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(ENROLLMENT_DRAFT_KEY);
+        }
+      } catch {}
+      setHasSavedDraft(false);
+      draftRestoredRef.current = false;
+
       showToast(`${finalStudentFullName} enrolled in ${studentProgram}`, 'success');
       navigateToEnrollment();
     } catch (err: unknown) {
@@ -1061,6 +1145,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     ) {
       const isPhoto =
         field.id === 'f_photo' || /photo/i.test(field.id) || /photo/i.test(field.label);
+      const displayValue =
+        formValues[field.id] != null && String(formValues[field.id]) !== ''
+          ? String(formValues[field.id])
+          : isPhoto
+          ? (formValues.f_photo != null && String(formValues.f_photo) !== '' ? String(formValues.f_photo) : '') ||
+            (formValues.photoUri != null && String(formValues.photoUri) !== '' ? String(formValues.photoUri) : '') ||
+            (formValues.photoBase64 != null && String(formValues.photoBase64) !== '' ? String(formValues.photoBase64) : '') ||
+            ''
+          : '';
       return (
         <View key={field.id} style={styles.photoUploadCard}>
           <Text style={styles.fieldLabel}>
@@ -1069,9 +1162,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           </Text>
           <View style={styles.photoRow}>
             <View style={styles.photoAvatarContainer}>
-              {value ? (
+              {displayValue ? (
                 <View style={styles.photoWrapper}>
-                  <Image source={{ uri: value }} style={styles.photoImage} />
+                  <Image source={{ uri: displayValue }} style={styles.photoImage} />
                   <TouchableOpacity
                     style={styles.photoRemoveBtn}
                     onPress={() => handleRemovePhoto(field.id)}
@@ -1612,6 +1705,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               <Feather name="bookmark" size={14} color={colors.navyText} />
               <Text style={styles.secondaryBtnText}>Save Progress</Text>
             </TouchableOpacity>
+            {hasSavedDraft && (
+              <TouchableOpacity style={styles.discardBtn} onPress={handleDiscardDraft}>
+                <Feather name="trash-2" size={14} color="#EF4444" />
+                <Text style={styles.discardBtnText}>Discard Draft</Text>
+              </TouchableOpacity>
+            )}
             {step < steps.length - 1 ? (
               <TouchableOpacity style={styles.nextBtn} onPress={next}>
                 <Text style={styles.nextBtnText}>Next</Text>
@@ -1644,19 +1743,26 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         onClose={() => setCameraModalOpen(false)}
         onCapture={(uri, b64) => {
           const photoData = b64 || uri;
-          if (activePhotoFieldId) {
-            handleFieldChange(activePhotoFieldId, photoData);
-          }
-          if (studentName.trim()) {
-            saveStudentPhoto({
-              name: studentName.trim(),
-              fullName: studentName.trim(),
-              photo: photoData,
-              photoBase64: photoData,
-              photoUri: uri,
-            });
-          }
-          showToast('Student photo captured successfully', 'success');
+          if (!photoData) return;
+          const targetFieldId =
+            activePhotoFieldId ||
+            formFields.find(
+              (f) =>
+                f.id === 'f_photo' ||
+                /photo/i.test(f.id) ||
+                /photo/i.test(f.label),
+            )?.id ||
+            'f_photo';
+
+          handleFieldChange(targetFieldId, photoData);
+          setFormValues((prev) => ({
+            ...prev,
+            [targetFieldId]: photoData,
+            photoUri: uri,
+            photoBase64: b64 || photoData,
+            f_photo: photoData,
+          }));
+          showToast('Student photo attached to form', 'success');
         }}
       />
     </SafeAreaView>
@@ -2118,6 +2224,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
     color: colors.navyText,
+    textAlign: 'center',
+  },
+  discardBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  discardBtnText: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: '#DC2626',
     textAlign: 'center',
   },
   nextBtn: {
