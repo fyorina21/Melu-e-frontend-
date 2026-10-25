@@ -32,8 +32,6 @@ export const GENDERS = ['Female', 'Male', 'Other'];
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const MAX_CASELOAD = 2;
-
 export const INITIAL_STATE: WizardState = {
   name: '',
   dob: '',

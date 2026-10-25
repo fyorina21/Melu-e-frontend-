@@ -50,7 +50,6 @@ import type { ProgramDirectorStackParamList } from '../../types';
 
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const MAX_CASELOAD = 2;
 
 const C_YELLOW = '#FCD34D';
 const C_SKY = '#38BDF8';
@@ -440,10 +439,10 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
     }
   }, [routeSection, routeInitialStep, steps]);
 
-  // Helpers for caseload checking
+  // Helpers for caseload checking (hardcoded capacity limit removed)
   const caseloadOf = (name: string) =>
     therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
-  const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
+  const isFull = (_name: string) => false;
 
   // Single dynamic field change handler
   const handleFieldChange = (fieldId: string, value: any) => {
@@ -945,17 +944,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
         }
       }
 
-      // Therapist field capacity check
-      if (f.id === 'f_therapist' || /therapist/i.test(f.label)) {
-        if (val && isFull(String(val))) {
-          errors.push({
-            fieldId: f.id,
-            label: f.label,
-            section: sectionName,
-            error: `${val} is at maximum capacity (2 students). Choose another therapist.`,
-          });
-        }
-      }
+      // Therapist field capacity check removed
     }
 
     // 2. Validate Assign Therapist step if included
@@ -965,12 +954,6 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
           label: 'Primary Therapist',
           section: 'Assign Therapist',
           error: 'Please assign a primary therapist',
-        });
-      } else if (isFull(assignedTherapist)) {
-        errors.push({
-          label: 'Primary Therapist',
-          section: 'Assign Therapist',
-          error: `${assignedTherapist} is at maximum capacity (2 students). Choose another therapist.`,
         });
       }
     }
@@ -1462,17 +1445,14 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                   </View>
                   <ScrollView style={styles.dropdownModalList}>
                     {dropdownOpts.map((opt) => {
-                      const full = isTherapistField ? isFull(opt) : false;
                       const count = isTherapistField ? caseloadOf(opt) : 0;
                       const selected = value === opt;
                       return (
                         <TouchableOpacity
                           key={opt}
-                          disabled={full}
                           style={[
                             styles.dropdownOptionItem,
                             selected && styles.dropdownOptionItemSelected,
-                            full && styles.dropdownOptionItemDisabled,
                           ]}
                           onPress={() => {
                             handleFieldChange(field.id, opt);
@@ -1483,10 +1463,9 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                             style={[
                               styles.dropdownOptionText,
                               selected && styles.dropdownOptionTextSelected,
-                              full && styles.dropdownOptionTextDisabled,
                             ]}
                           >
-                            {opt} {isTherapistField ? `(${count}/${MAX_CASELOAD})` : ''}
+                            {opt} {isTherapistField && count > 0 ? `(${count} assigned)` : ''}
                           </Text>
                           {selected && <Feather name="check" size={16} color="#0284C7" />}
                         </TouchableOpacity>
@@ -1496,12 +1475,6 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                 </View>
               </TouchableOpacity>
             </Modal>
-          )}
-
-          {isTherapistField && value && isFull(value) && (
-            <Text style={styles.capacityWarning}>
-              {value} is at maximum capacity (2 students). Please select another therapist.
-            </Text>
           )}
 
           {Boolean(field.helpText || field.help_text) && (
@@ -1797,23 +1770,17 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                   Assigned Primary Therapist <Text style={styles.requiredStar}>*</Text>
                 </Text>
                 <Text style={styles.fieldHint}>
-                  Each therapist can be assigned up to {MAX_CASELOAD} students at a time.
+                  Select an assigned primary therapist for this student.
                 </Text>
                 {therapists.length > 0 ? (
                   <View style={styles.chipRow}>
                     {therapists.map((t) => {
                       const count = t.assignedStudents?.length ?? 0;
-                      const full = count >= MAX_CASELOAD;
                       const selected = assignedTherapist === t.name;
                       return (
                         <TouchableOpacity
                           key={t.name}
-                          disabled={full}
-                          style={[
-                            styles.chip,
-                            selected && styles.chipSelected,
-                            full && styles.chipDisabled,
-                          ]}
+                          style={[styles.chip, selected && styles.chipSelected]}
                           onPress={() => {
                             const therapistField = formFields.find(
                               (f) => f.id === 'f_therapist' || /therapist/i.test(f.label),
@@ -1824,14 +1791,9 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                             handleFieldChange('therapist', t.name);
                           }}
                         >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              selected && styles.chipTextSelected,
-                              full && styles.chipTextDisabled,
-                            ]}
-                          >
-                            {t.name} ({count}/{MAX_CASELOAD})
+                          <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                            {t.name}
+                            {count > 0 ? ` (${count} assigned)` : ''}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1839,11 +1801,6 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                   </View>
                 ) : (
                   <Text style={styles.fieldHint}>No therapists available.</Text>
-                )}
-                {assignedTherapist && isFull(assignedTherapist) && (
-                  <Text style={styles.capacityWarning}>
-                    {assignedTherapist} is at capacity — pick an available therapist to continue.
-                  </Text>
                 )}
               </View>
 

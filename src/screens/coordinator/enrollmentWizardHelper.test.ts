@@ -116,7 +116,7 @@ describe('Enrollment Wizard Helpers', () => {
         ),
       ).toEqual({
         valid: false,
-        error: 'Sarah Miller is at maximum capacity (2 students). Choose another therapist.',
+        error: 'Sarah Miller is at maximum capacity. Choose another therapist.',
       });
     });
   });

@@ -100,7 +100,7 @@ export function TeacherStudentLinkingModal({ teacher, onClose }: TeacherStudentL
   if (programFilter !== 'all')
     availableStudents = availableStudents.filter((s) => s.program === programFilter);
 
-  const canAssignMore = assignedStudentIds.length < TEACHER_CAPACITY;
+  const canAssignMore = true;
 
   const switchContext = (fn: () => void) => {
     setSelectedForAssign([]);
@@ -113,7 +113,6 @@ export function TeacherStudentLinkingModal({ teacher, onClose }: TeacherStudentL
       if (selectedForAssign.includes(studentId)) {
         setSelectedForAssign((prev) => prev.filter((id) => id !== studentId));
       } else {
-        if (selectedForAssign.length + assignedStudentIds.length >= TEACHER_CAPACITY) return;
         setSelectedForAssign((prev) => [...prev, studentId]);
       }
     } else {
@@ -183,8 +182,7 @@ export function TeacherStudentLinkingModal({ teacher, onClose }: TeacherStudentL
               <View style={{ flex: 1 }}>
                 <Text style={typography.h2}>Teacher-Student Linking</Text>
                 <Text style={typography.caption}>
-                  {teacher.name} — assign students to a station &amp; room (max {TEACHER_CAPACITY}{' '}
-                  per room).
+                  {teacher.name} — assign students to a station &amp; room.
                 </Text>
               </View>
               <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
@@ -346,9 +344,7 @@ export function TeacherStudentLinkingModal({ teacher, onClose }: TeacherStudentL
               <View style={styles.panel}>
                 <View style={styles.panelHeader}>
                   <Text style={typography.bodyBold}>Assigned Students</Text>
-                  <Text style={typography.caption}>
-                    {assignedStudentIds.length}/{TEACHER_CAPACITY}
-                  </Text>
+                  <Text style={typography.caption}>{assignedStudentIds.length} assigned</Text>
                 </View>
 
                 <ScrollView

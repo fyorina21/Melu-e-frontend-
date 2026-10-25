@@ -4,7 +4,6 @@ import {
   getTherapyGroupAgeWarning,
   INITIAL_STATE,
   STEPS,
-  MAX_CASELOAD,
 } from './enrollmentWizardTypes';
 
 describe('Student Enrollment Wizard Utilities', () => {
@@ -62,7 +61,6 @@ describe('Student Enrollment Wizard Utilities', () => {
         'Assign Therapist',
         'Review',
       ]);
-      expect(MAX_CASELOAD).toBe(2);
       expect(INITIAL_STATE.gender).toBe('Female');
       expect(INITIAL_STATE.program).toBe('Regular Morning');
     });

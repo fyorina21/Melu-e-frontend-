@@ -231,13 +231,9 @@ export const DYNAMIC_MODEL_OPTIONS: Record<string, string[]> = {
     'David Kim, M.Ed. (Special Education)',
     'Rachel Adams, OTR/L (Occupational Therapist)',
   ],
-  therapists: [
-    'Sarah Jenkins, BCBA (Clinical Lead)',
-    'Marcus Vance, RBT (Senior Tech)',
-    'Elena Rostova, M.S., CCC-SLP (Speech)',
-    'Chloe Bennett, RBT (Behavior Tech)',
-    'Alex Mercer, BCBA (Clinical Supervisor)',
-  ],
+  get therapists() {
+    return this.teachers;
+  },
   rooms: [
     'Sensory Room A (Ground Floor)',
     'Motor Gym 1 (Gross Motor)',
@@ -356,11 +352,14 @@ export function resolveFieldOptions(field: DynamicFormField): string[] {
   ) {
     return DYNAMIC_MODEL_OPTIONS['students'];
   }
-  if (normLabel.includes('teacher') || normLabel.includes('instructor')) {
+  if (
+    normLabel.includes('teacher') ||
+    normLabel.includes('instructor') ||
+    normLabel.includes('therapist') ||
+    normLabel.includes('rbt') ||
+    normLabel.includes('bcba')
+  ) {
     return DYNAMIC_MODEL_OPTIONS['teachers'];
-  }
-  if (normLabel.includes('therapist') || normLabel.includes('rbt') || normLabel.includes('bcba')) {
-    return DYNAMIC_MODEL_OPTIONS['therapists'];
   }
   if (
     normLabel.includes('room') ||

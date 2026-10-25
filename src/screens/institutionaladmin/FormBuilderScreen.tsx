@@ -662,7 +662,6 @@ const FieldPropertyEditor: React.FC<FieldPropertyEditorProps> = ({
             'Task Analysis Templates',
             'Students',
             'Teachers',
-            'Therapists',
             'Rooms',
           ].map((model) => {
             const isSelected =
