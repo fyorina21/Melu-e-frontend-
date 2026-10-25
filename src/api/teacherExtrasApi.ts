@@ -5,6 +5,7 @@ import {
 } from '../utils/therapistAssignmentHelper';
 import type { QueryParams, Payload } from '../types';
 import storage from '../utils/storage';
+import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
 import {
   isStudentInSession,
   isStudentAssessment100PercentCompleted,
@@ -187,7 +188,7 @@ export const getAssessmentDashboard = async () => {
   });
 
   // Filter out any student in session
-  const activeStudents = backendStudents.filter((s) => !isStudentInSession(s));
+  const activeStudents = filterOutDeletedStudents(backendStudents.filter((s) => !isStudentInSession(s)));
 
   let completedCount = 0;
   let notStartedCount = 0;

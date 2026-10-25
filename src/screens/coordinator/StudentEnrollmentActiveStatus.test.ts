@@ -148,4 +148,66 @@ it('deletes a student, permanently removing them from stored cache and roster li
     const { data } = await getEnrollmentStudents({});
     expect(data.some((s) => s.fullName === 'Amir Hassan' || s.name === 'Amir Hassan')).toBe(false);
   });
+
+  it('completely purges student across therapist assignments, caseload, iup drafts, and assessments upon deletion', async () => {
+    const studentId = 'stu-complete-purge-1';
+    const studentName = 'Elena Rostova';
+
+    // Seed student in various caches
+    saveEnrolledStudentLocally({
+      id: studentId,
+      name: studentName,
+      fullName: studentName,
+      status: 'active',
+    });
+
+    localStorage.setItem(
+      'melue_therapist_assigned_students_v1',
+      JSON.stringify({ 'Abeba Tadesse': [studentId, 'other-student-1'] })
+    );
+    localStorage.setItem(
+      'melue_caseload_assignments_cache',
+      JSON.stringify({ 'Abeba Tadesse': [studentId] })
+    );
+    localStorage.setItem(
+      'melue_director_assignments_store_v1',
+      JSON.stringify({ 'dir-1': { studentIds: [studentId, 'keep-stu-2'] } })
+    );
+    localStorage.setItem(
+      'melue_iup_drafts_cache',
+      JSON.stringify({ [studentId]: { goals: ['Goal 1'] } })
+    );
+    localStorage.setItem(`melue_skills_assessment_${studentId}`, JSON.stringify({ progress: 50 }));
+    localStorage.setItem(`melue_behavior_assessment_${studentId}`, JSON.stringify({ progress: 30 }));
+
+    // Perform complete deletion
+    await deleteStudentEnrollment(studentId, studentName);
+
+    // 1. Verify removed from therapist assignments
+    const thStore = JSON.parse(localStorage.getItem('melue_therapist_assigned_students_v1') || '{}');
+    expect(thStore['Abeba Tadesse']).not.toContain(studentId);
+    expect(thStore['Abeba Tadesse']).toContain('other-student-1');
+
+    // 2. Verify removed from caseload assignments
+    const csStore = JSON.parse(localStorage.getItem('melue_caseload_assignments_cache') || '{}');
+    expect(csStore['Abeba Tadesse']).not.toContain(studentId);
+
+    // 3. Verify removed from director assignments
+    const dirStore = JSON.parse(localStorage.getItem('melue_director_assignments_store_v1') || '{}');
+    expect(dirStore['dir-1'].studentIds).not.toContain(studentId);
+    expect(dirStore['dir-1'].studentIds).toContain('keep-stu-2');
+
+    // 4. Verify removed from IUP drafts
+    const iupDrafts = JSON.parse(localStorage.getItem('melue_iup_drafts_cache') || '{}');
+    expect(iupDrafts[studentId]).toBeUndefined();
+
+    // 5. Verify assessments cleared
+    expect(localStorage.getItem(`melue_skills_assessment_${studentId}`)).toBeNull();
+    expect(localStorage.getItem(`melue_behavior_assessment_${studentId}`)).toBeNull();
+
+    // 6. Verify removed from enrollment roster list
+    const { data } = await getEnrollmentStudents({});
+    expect(data.some((s) => s.id === studentId || s.name === studentName)).toBe(false);
+  });
 });
+

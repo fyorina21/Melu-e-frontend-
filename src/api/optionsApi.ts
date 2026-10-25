@@ -6,6 +6,7 @@
 
 import client from './sessionApi';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
+import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
 
 export interface StudentOption {
   id: string;
@@ -29,7 +30,13 @@ export interface RoomOption {
   name: string;
 }
 
-export const getStudentOptions = () => client.get<StudentOption[]>('/options/students');
+export const getStudentOptions = async () => {
+  const res = await client.get<StudentOption[]>('/options/students');
+  if (Array.isArray(res?.data)) {
+    return { ...res, data: filterOutDeletedStudents(res.data) };
+  }
+  return res;
+};
 export const getStaffOptions = async () => {
   const res = await client.get<StaffOption[]>('/options/staff');
   if (Array.isArray(res?.data)) {

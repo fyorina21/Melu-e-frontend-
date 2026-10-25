@@ -15,6 +15,7 @@ import { apiBaseUrl, env, isDemoMode } from '../config/env';
 import { getAccessToken, setAccessToken, clearAuthTokens, getUserRoles } from '../token';
 import { toApiError, ApiError } from './errors';
 import { filterStaffResponse } from '../../utils/deletedStaffHelper';
+import { filterStudentResponse } from '../../utils/deletedStudentHelper';
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -283,6 +284,7 @@ function createHttpClient(): AxiosInstance {
       }
       if (response && response.data && cfg?.url) {
         response.data = filterStaffResponse(cfg.url, response.data);
+        response.data = filterStudentResponse(cfg.url, response.data);
       }
       return response;
     },

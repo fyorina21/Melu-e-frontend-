@@ -8,6 +8,7 @@ import {
   getDeletedGoalIds,
 } from '../stores/goalBankStore';
 import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
+import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 import {
   getRegisteredStudentStatus,
@@ -1050,7 +1051,7 @@ export const getAssessmentsForReview = async (
     }
   }
 
-  const finalItems = Array.from(itemsByStudent.values());
+  const finalItems = filterOutDeletedStudents(Array.from(itemsByStudent.values()));
   return { data: finalItems, assessments: finalItems };
 };
 

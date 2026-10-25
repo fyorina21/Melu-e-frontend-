@@ -3,6 +3,11 @@ import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
+import {
+  recordDeletedStudent,
+  isStudentDeleted as isStudentDeletedHelper,
+  filterOutDeletedStudents,
+} from '../utils/deletedStudentHelper';
 
 // ============================================================================
 // Storage Keys
@@ -203,50 +208,18 @@ export function getDeletedStudentKeys(): Set<string> {
 
 export function isStudentDeleted(id?: string, name?: string): boolean {
   if (!id && !name) return false;
-  const deletedKeys = getDeletedStudentKeys();
-  const idNorm = id ? String(id).trim().toLowerCase() : '';
-  const nameNorm = name ? String(name).trim().toLowerCase() : '';
-  return Boolean((idNorm && deletedKeys.has(idNorm)) || (nameNorm && deletedKeys.has(nameNorm)));
+  return Boolean((id && isStudentDeletedHelper(id)) || (name && isStudentDeletedHelper(name)));
 }
 
 export function markStudentDeleted(id?: string, name?: string): void {
-  const current = storage.getJSONSync<string[]>(DELETED_STUDENTS_STORAGE_KEY, []) || [];
-  const set = new Set(current.map((k) => String(k || '').trim().toLowerCase()).filter(Boolean));
-  if (id) {
-    set.add(String(id).trim().toLowerCase());
-  }
-  if (name) {
-    set.add(String(name).trim().toLowerCase());
-  }
-  storage.setJSONSync(DELETED_STUDENTS_STORAGE_KEY, Array.from(set));
-
-  // Also remove from melue_enrolled_students_cache
-  try {
-    const list = getStoredEnrolledStudents();
-    const idNorm = id ? String(id).toLowerCase().trim() : '';
-    const nameNorm = name ? String(name).toLowerCase().trim() : '';
-    const filtered = list.filter((s) => {
-      const sId = String(s.id || s.studentId || s.student_id || '').toLowerCase().trim();
-      const sName = String(s.fullName || s.name || '').toLowerCase().trim();
-      if (idNorm && (sId === idNorm || sName === idNorm)) return false;
-      if (nameNorm && (sName === nameNorm || sId === nameNorm)) return false;
-      return true;
-    });
-    storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, filtered);
-  } catch {}
-
-  // Dispatch events for real-time reactivity across screens
-  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-    window.dispatchEvent(new CustomEvent('melue_student_deleted', { detail: { id, name } }));
-    window.dispatchEvent(new CustomEvent('melue_student_enrolled_updated'));
-  }
+  recordDeletedStudent({ id, fullName: name });
 }
 
 export const deleteStudentEnrollment = async (
   studentId: string,
   studentName?: string,
 ): Promise<{ data: { success: boolean; id: string } }> => {
-  markStudentDeleted(studentId, studentName);
+  recordDeletedStudent({ id: studentId, fullName: studentName });
   try {
     await client.delete(`/coordinator/students/${studentId}`);
   } catch {
@@ -1518,7 +1491,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     };
   });
 
-  return { data: normalized };
+  return { data: filterOutDeletedStudents(normalized) };
 };
 
 export const createStudentEnrollment = async (payload: Payload): Promise<{ data: Record<string, unknown> }> => {
