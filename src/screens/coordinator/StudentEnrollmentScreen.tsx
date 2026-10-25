@@ -18,7 +18,7 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
-import { getEnrollmentStudents } from '../../api/coordinatorApi';
+import { getEnrollmentStudents, getStoredEnrolledStudents } from '../../api/coordinatorApi';
 import { getStaffOptions } from '../../api/optionsApi';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import {
@@ -192,13 +192,14 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       if (Array.isArray(data)) {
         registerStudentPhotos(data);
       }
+      const rawList = Array.isArray(data) && data.length > 0 ? data : getStoredEnrolledStudents();
       setStudents(
-        (data as unknown as EnrollmentStudentRow[]).map((row) => ({
+        (rawList as unknown as EnrollmentStudentRow[]).map((row) => ({
           id: row.id,
           name: row.fullName || row.name || '',
           age: Number(row.age) || 6,
           gender: row.gender || '',
-          program: row.programType || row.program || '',
+          program: row.programType || row.program || 'Regular',
           therapist: row.therapist || row.therapyGroup || '',
           status: resolveStudentStatus(row.id, row.fullName || row.name, row.status),
           studentId: row.studentId || row.id,
@@ -206,7 +207,20 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         })),
       );
     } catch {
-      setStudents([]);
+      const stored = getStoredEnrolledStudents();
+      setStudents(
+        (stored as unknown as EnrollmentStudentRow[]).map((row) => ({
+          id: row.id,
+          name: row.fullName || row.name || '',
+          age: Number(row.age) || 6,
+          gender: row.gender || '',
+          program: row.programType || row.program || 'Regular',
+          therapist: row.therapist || row.therapyGroup || '',
+          status: resolveStudentStatus(row.id, row.fullName || row.name, row.status),
+          studentId: row.studentId || row.id,
+          photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
+        })),
+      );
     }
   }, []);
 

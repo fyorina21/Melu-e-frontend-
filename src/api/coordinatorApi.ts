@@ -1346,26 +1346,52 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     if (Array.isArray(opts) && opts.length > 0) optionsPool = opts;
   } catch {}
 
-  // Newly enrolled students appear at the top of the roster list
-  const pool = [...unpersistedStored, ...enhancedBackendStudents];
-  if (pool.length === 0) {
-    if (optionsPool.length > 0) {
-      optionsPool.forEach((o) => {
+  // 1. Newly enrolled students appear at the top of the roster list
+  const pool: Record<string, unknown>[] = [...unpersistedStored, ...enhancedBackendStudents];
+
+  const poolIds = new Set(
+    pool.map((s) => String(s.id || s.studentId || s.student_id || '')).filter(Boolean),
+  );
+  const poolNames = new Set(
+    pool.map((s) => String(s.fullName || s.name || '').toLowerCase().trim()).filter(Boolean),
+  );
+
+  // 2. Merge optionsPool students not yet in pool
+  if (Array.isArray(optionsPool)) {
+    optionsPool.forEach((o) => {
+      const oId = String(o.id || o.studentId || '');
+      const oName = String(o.fullName || o.name || '').toLowerCase().trim();
+      if ((!oId || !poolIds.has(oId)) && (!oName || !poolNames.has(oName))) {
         pool.push({
           id: String(o.id),
-          fullName: o.name,
-          name: o.name,
-          age: o.age || 6,
-          programType: o.program || 'Comprehensive ABA',
-          therapyGroup: 'Station 1 · Early Learners',
-          therapist: 'Abeba Tadesse',
-          status: 'active',
+          studentId: String(o.studentId || o.id),
+          fullName: o.fullName || o.name,
+          name: o.name || o.fullName,
+          age: Number(o.age) || 6,
+          gender: String(o.gender || ''),
+          program: String(o.programType || o.program || 'Regular'),
+          programType: String(o.programType || o.program || 'Regular'),
+          therapyGroup: String(o.therapyGroup || o.therapy_group || 'Basic'),
+          therapist: String(o.therapist || o.assignedTherapist || o.teacher || 'Abeba Tadesse'),
+          status: String(o.status || 'active'),
+          headshotUrl: o.headshotUrl || o.photoUrl || o.photo || null,
         });
-      });
-    } else {
-      pool.push(...DEFAULT_COORDINATOR_STUDENTS);
-    }
+        if (oId) poolIds.add(oId);
+        if (oName) poolNames.add(oName);
+      }
+    });
   }
+
+  // 3. Fallback to default coordinator students if still empty or missing standard roster
+  DEFAULT_COORDINATOR_STUDENTS.forEach((d) => {
+    const dId = String(d.id || '');
+    const dName = String(d.fullName || d.name || '').toLowerCase().trim();
+    if ((!dId || !poolIds.has(dId)) && (!dName || !poolNames.has(dName))) {
+      pool.push({ ...d });
+      if (dId) poolIds.add(dId);
+      if (dName) poolNames.add(dName);
+    }
+  });
 
   const optionsMap = new Map<string, Record<string, unknown>>();
   optionsPool.forEach((o) => {
@@ -1381,9 +1407,19 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
       optionsMap.get(String(s.studentId || s.student_id || '').toLowerCase()) ||
       optionsMap.get(String(s.fullName || s.name || '').toLowerCase().trim());
 
-    const resolvedStatus = opt?.status
-      ? String(opt.status)
-      : String(s.raw_status || s.status || 'active');
+    const isExplicitlyActive =
+      s.status === 'active' ||
+      s.raw_status === 'active' ||
+      s.enrollment_status === 'active' ||
+      s.is_active === true;
+
+    const resolvedStatus = isExplicitlyActive
+      ? 'active'
+      : (opt?.status
+        ? String(opt.status)
+        : String(s.raw_status || s.status || 'active'));
+
+    const prog = String(s.programType || s.program || 'Regular');
 
     return {
       id: String(s.id || `std-${idx + 1}`),
@@ -1392,7 +1428,8 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
       name: String(s.fullName || s.name || `Student ${idx + 1}`),
       age: Number(s.age || 6),
       gender: String(s.gender || ''),
-      programType: String(s.programType || s.program || 'Comprehensive ABA'),
+      program: prog,
+      programType: prog,
       therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
       therapist: String(
         s.therapist ||
@@ -1431,8 +1468,9 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
   const newStudent = {
     id: `stu-${Date.now()}`,
     age: Number(payload.age || 6),
-    programType: payload.program || payload.programType || 'Comprehensive ABA',
-    therapyGroup: payload.therapyGroup || 'Station 1 · Early Learners',
+    programType: payload.program || payload.programType || 'Regular',
+    program: payload.program || payload.programType || 'Regular',
+    therapyGroup: payload.therapyGroup || 'Basic',
     status: 'active',
     ...payload,
     fullName: studentFullName,

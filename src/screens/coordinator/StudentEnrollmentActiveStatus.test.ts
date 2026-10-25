@@ -93,7 +93,7 @@ describe('Student Enrollment Active Status Management', () => {
     expect(stored.some((s) => s.fullName === 'Zara Williams')).toBe(true);
 
     const { data } = await getEnrollmentStudents({});
-    expect(data.length).toBeGreaterThan(0);
+    expect(data.length).toBeGreaterThan(1);
     // Newly enrolled student should be at the top of the roster list
     const first = data[0];
     expect(first.fullName).toBe('Zara Williams');
@@ -101,5 +101,7 @@ describe('Student Enrollment Active Status Management', () => {
     expect(first.gender).toBe('Female');
     expect(first.therapist).toBe('Abeba Tadesse');
     expect(first.status).toBe('active');
+    // Existing students are preserved
+    expect(data.some((s) => s.fullName === 'Amir Hassan' || s.name === 'Amir Hassan')).toBe(true);
   });
 });

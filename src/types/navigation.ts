@@ -61,6 +61,7 @@ export type DirectorStackParamList = {
   DirectorStudentProgress: { studentId?: string } | undefined;
   ReportBuilder: undefined;
   StudentEnrollment?: undefined;
+  StudentEnrollmentWizard?: undefined;
   StudentProfile?: { studentId?: string } | undefined;
 
 

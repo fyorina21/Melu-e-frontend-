@@ -11,11 +11,13 @@ import {
   Image,
   Modal,
   Switch,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DobPicker from '../../components/DobPicker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSidebarNav } from '../../navigation/SidebarNavContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing, makeShadow } from '../../theme/colors';
 import AppNavbar from '../../components/AppNavbar';
@@ -259,6 +261,31 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
+  const directNav = useNavigation<any>();
+  let navRef: any = null;
+  try {
+    const sidebar = useSidebarNav();
+    navRef = sidebar?.navRef;
+  } catch {}
+
+  const navigateToEnrollment = useCallback(() => {
+    try {
+      navigation?.navigate?.('StudentEnrollment' as never);
+    } catch {}
+    try {
+      directNav?.navigate?.('StudentEnrollment' as never);
+    } catch {}
+    try {
+      navRef?.current?.navigate?.('StudentEnrollment' as never);
+    } catch {}
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.location.pathname !== '/StudentEnrollment') {
+        window.history.pushState(null, '', '/StudentEnrollment');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  }, [navigation, directNav, navRef]);
+
   const { showToast } = useToast();
   const [step, setStep] = useState(0);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
@@ -935,7 +962,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       });
 
       showToast(`${finalStudentFullName} enrolled in ${studentProgram}`, 'success');
-      navigation?.navigate?.('StudentEnrollment' as never);
+      navigateToEnrollment();
     } catch (err: unknown) {
       const errObj = err as { message?: string; response?: { data?: { errors?: string[]; error?: string; message?: string } } };
       markStudentActive(undefined, finalStudentFullName);
