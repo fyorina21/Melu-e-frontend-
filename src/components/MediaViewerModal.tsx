@@ -46,8 +46,23 @@ export function resolveMediaUrl(url?: string | null): string {
 
   const lower = trimmed.toLowerCase();
 
-  // Allow only expected/safe URL types for media
-  if (lower.startsWith('https://') || lower.startsWith('http://') || lower.startsWith('blob:')) {
+  // Allow only trusted http(s) origins to prevent open redirects/phishing.
+  if (lower.startsWith('https://') || lower.startsWith('http://')) {
+    try {
+      const parsed = new URL(trimmed);
+      const trustedOrigins = new Set<string>();
+      const apiOrigin = new URL(env.apiUrl).origin;
+      trustedOrigins.add(apiOrigin);
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+        trustedOrigins.add(window.location.origin);
+      }
+      return trustedOrigins.has(parsed.origin) ? trimmed : '';
+    } catch {
+      return '';
+    }
+  }
+
+  if (lower.startsWith('blob:')) {
     return trimmed;
   }
 
@@ -217,8 +232,9 @@ export default function MediaViewerModal({
   };
 
   const handleOpenNewTab = () => {
+    if (!resolvedUrl) return;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(resolvedUrl, '_blank');
+      window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
     } else {
       Linking.openURL(resolvedUrl);
     }
