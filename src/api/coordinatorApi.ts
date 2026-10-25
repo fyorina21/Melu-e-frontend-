@@ -155,22 +155,27 @@ const DEFAULT_RESOURCES = [
 ];
 
 // Helper to access custom enrolled students in storage
-function getStoredEnrolledStudents(): Record<string, unknown>[] {
+export function getStoredEnrolledStudents(): Record<string, unknown>[] {
   return storage.getJSONSync<Record<string, unknown>[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
 }
 
-function saveEnrolledStudentLocally(student: Record<string, unknown>): void {
+export function saveEnrolledStudentLocally(student: Record<string, unknown>): void {
   try {
     const list = getStoredEnrolledStudents();
     const cleanName = String(student.fullName || student.name || '').toLowerCase().trim();
-    const exists = list.some(
+    const existingIndex = list.findIndex(
       (s) =>
         (s.id && student.id && String(s.id) === String(student.id)) ||
         (cleanName && String(s.fullName || s.name || '').toLowerCase().trim() === cleanName),
     );
-    if (!exists) {
+    if (existingIndex >= 0) {
+      list[existingIndex] = { ...list[existingIndex], ...student };
+    } else {
       list.unshift(student);
-      storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
+    }
+    storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('melue_student_enrolled_updated', { detail: student }));
     }
   } catch {}
 }
@@ -1280,25 +1285,60 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
 
   const storedEnrolled = getStoredEnrolledStudents();
 
-  // Deduplicate between backendStudents and storedEnrolled.
-  // Real backend records take precedence, removing any local duplicates.
+  // Map of locally enrolled students by ID and clean name
+  const storedMap = new Map<string, Record<string, unknown>>();
+  storedEnrolled.forEach((s) => {
+    if (s.id) storedMap.set(String(s.id).toLowerCase(), s);
+    if (s.studentId) storedMap.set(String(s.studentId).toLowerCase(), s);
+    if (s.student_id) storedMap.set(String(s.student_id).toLowerCase(), s);
+    const sName = String(s.fullName || s.name || '').toLowerCase().trim();
+    if (sName) storedMap.set(sName, s);
+  });
+
   const backendNames = new Set(
     backendStudents.map((b) => String(b.fullName || b.name || '').toLowerCase().trim()).filter(Boolean),
   );
-  const backendIds = new Set(backendStudents.map((b) => String(b.id || '')).filter(Boolean));
+  const backendIds = new Set(
+    backendStudents.map((b) => String(b.id || b.studentId || b.student_id || '')).filter(Boolean),
+  );
 
-  const cleanStored = storedEnrolled.filter((s) => {
-    const idMatch = s.id && backendIds.has(String(s.id));
+  // Enhance backend students with local overrides (preserves assigned therapist, gender, age, photo, active status)
+  const enhancedBackendStudents = backendStudents.map((b) => {
+    const sName = String(b.fullName || b.name || '').toLowerCase().trim();
+    const bId = String(b.id || b.studentId || b.student_id || '').toLowerCase();
+    const localMatch = storedMap.get(bId) || storedMap.get(sName);
+    if (!localMatch) return b;
+
+    return {
+      ...b,
+      ...localMatch,
+      id: b.id || localMatch.id,
+      fullName: b.fullName || localMatch.fullName || b.name || localMatch.name,
+      name: b.name || localMatch.name || b.fullName || localMatch.fullName,
+      age: Number(localMatch.age || b.age || 6),
+      gender: String(localMatch.gender || b.gender || ''),
+      programType: String(localMatch.programType || localMatch.program || b.programType || b.program || 'Comprehensive ABA'),
+      therapyGroup: String(localMatch.therapyGroup || localMatch.therapy_group || b.therapyGroup || b.therapy_group || 'Station 1 · Early Learners'),
+      therapist: String(
+        (localMatch.therapist && localMatch.therapist !== 'Unassigned')
+          ? localMatch.therapist
+          : (b.therapist && b.therapist !== 'Unassigned')
+          ? b.therapist
+          : localMatch.therapist || 'Abeba Tadesse',
+      ),
+      status: String(localMatch.status || b.status || 'active'),
+      headshotUrl: localMatch.photo || localMatch.photoUrl || localMatch.headshotUrl || b.headshotUrl || b.photoUrl || null,
+    };
+  });
+
+  // Locally enrolled students not present in backendStudents
+  const unpersistedStored = storedEnrolled.filter((s) => {
+    const sId = String(s.id || s.studentId || s.student_id || '');
+    const idMatch = sId && backendIds.has(sId);
     const sName = String(s.fullName || s.name || '').toLowerCase().trim();
     const nameMatch = sName && backendNames.has(sName);
     return !idMatch && !nameMatch;
   });
-
-  if (cleanStored.length !== storedEnrolled.length) {
-    try {
-      storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, cleanStored);
-    } catch {}
-  }
 
   let optionsPool: Record<string, unknown>[] = [];
   try {
@@ -1306,7 +1346,8 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
     if (Array.isArray(opts) && opts.length > 0) optionsPool = opts;
   } catch {}
 
-  const pool = [...backendStudents, ...cleanStored];
+  // Newly enrolled students appear at the top of the roster list
+  const pool = [...unpersistedStored, ...enhancedBackendStudents];
   if (pool.length === 0) {
     if (optionsPool.length > 0) {
       optionsPool.forEach((o) => {
@@ -1346,9 +1387,11 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
 
     return {
       id: String(s.id || `std-${idx + 1}`),
+      studentId: String(s.studentId || s.student_id || s.id || `std-${idx + 1}`),
       fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
       name: String(s.fullName || s.name || `Student ${idx + 1}`),
       age: Number(s.age || 6),
+      gender: String(s.gender || ''),
       programType: String(s.programType || s.program || 'Comprehensive ABA'),
       therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
       therapist: String(

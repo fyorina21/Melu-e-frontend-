@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -47,6 +48,8 @@ export interface EnrolledStudent {
 interface EnrollmentStudentRow {
   id: string;
   fullName: string;
+  name?: string;
+  studentId?: string;
   age: number;
   programType?: string;
   program?: string;
@@ -192,13 +195,13 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       setStudents(
         (data as unknown as EnrollmentStudentRow[]).map((row) => ({
           id: row.id,
-          name: row.fullName,
-          age: row.age,
+          name: row.fullName || row.name || '',
+          age: Number(row.age) || 6,
           gender: row.gender || '',
           program: row.programType || row.program || '',
           therapist: row.therapist || row.therapyGroup || '',
-          status: resolveStudentStatus(row.id, row.fullName, row.status),
-          studentId: row.id,
+          status: resolveStudentStatus(row.id, row.fullName || row.name, row.status),
+          studentId: row.studentId || row.id,
           photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
         })),
       );
@@ -213,6 +216,28 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
 
   useEffect(() => {
     return onStudentStatusChanged(load);
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      fetchTherapists();
+    }, [load, fetchTherapists]),
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleRefresh = () => {
+      load();
+    };
+    window.addEventListener('melue_student_enrolled_updated', handleRefresh);
+    window.addEventListener('melue_student_status_changed', handleRefresh);
+    window.addEventListener('melue_therapist_assignment_updated', handleRefresh);
+    return () => {
+      window.removeEventListener('melue_student_enrolled_updated', handleRefresh);
+      window.removeEventListener('melue_student_status_changed', handleRefresh);
+      window.removeEventListener('melue_therapist_assignment_updated', handleRefresh);
+    };
   }, [load]);
 
   // Dynamic program options derived from real enrolled students data and system options

@@ -29,6 +29,9 @@ function setStoredJson<T>(key: string, value: T): void {
 }
 
 function notifyListeners(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('melue_student_status_changed'));
+  }
   listeners.forEach((fn) => {
     try {
       fn();

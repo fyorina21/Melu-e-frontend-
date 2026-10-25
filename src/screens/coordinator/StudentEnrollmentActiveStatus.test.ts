@@ -2,6 +2,11 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  saveEnrolledStudentLocally,
+  getEnrollmentStudents,
+  getStoredEnrolledStudents,
+} from '../../api/coordinatorApi';
+import {
   markStudentActive,
   resolveStudentStatus,
   toggleStudentStatus,
@@ -65,5 +70,36 @@ describe('Student Enrollment Active Status Management', () => {
     const next2 = toggleStudentStatus(studentId, studentName, 'Inactive');
     expect(next2).toBe('Active');
     expect(resolveStudentStatus(studentId, studentName, 'inactive')).toBe('Active');
+  });
+
+  it('saves newly enrolled student locally and displays them at top of getEnrollmentStudents', async () => {
+    const student = {
+      id: 'stu-test-enrolled-1',
+      studentId: 'stu-test-enrolled-1',
+      name: 'Zara Williams',
+      fullName: 'Zara Williams',
+      age: 7,
+      gender: 'Female',
+      program: 'Comprehensive ABA',
+      programType: 'Comprehensive ABA',
+      therapyGroup: 'Basic',
+      therapist: 'Abeba Tadesse',
+      status: 'active',
+    };
+
+    saveEnrolledStudentLocally(student);
+
+    const stored = getStoredEnrolledStudents();
+    expect(stored.some((s) => s.fullName === 'Zara Williams')).toBe(true);
+
+    const { data } = await getEnrollmentStudents({});
+    expect(data.length).toBeGreaterThan(0);
+    // Newly enrolled student should be at the top of the roster list
+    const first = data[0];
+    expect(first.fullName).toBe('Zara Williams');
+    expect(first.age).toBe(7);
+    expect(first.gender).toBe('Female');
+    expect(first.therapist).toBe('Abeba Tadesse');
+    expect(first.status).toBe('active');
   });
 });

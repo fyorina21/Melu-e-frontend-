@@ -28,7 +28,7 @@ import {
   type StaffOption,
   type StudentOption,
 } from '../../api/optionsApi';
-import { createStudentEnrollment, updateStudentProfile } from '../../api/coordinatorApi';
+import { createStudentEnrollment, updateStudentProfile, saveEnrolledStudentLocally } from '../../api/coordinatorApi';
 import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 import type { FormField } from '../../types/forms';
 import { resolveFieldOptions } from '../../components/DynamicFormFields';
@@ -750,8 +750,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     if (saving) return;
     setSaving(true);
 
+    const studentAge = studentDob ? calculateAge(studentDob) : 6;
     if (studentDob) {
-      const studentAge = calculateAge(studentDob);
       if (studentAge === null || studentAge < 3 || studentAge > 19) {
         showToast(
           `Student must be between 3 and 19 years old for enrollment (current age: ${studentAge ?? 'unknown'} yrs)`,
@@ -918,6 +918,22 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         }
       }
 
+      saveEnrolledStudentLocally({
+        id: createdId || `stu-${Date.now()}`,
+        studentId: createdId || `stu-${Date.now()}`,
+        name: finalStudentFullName,
+        fullName: finalStudentFullName,
+        age: Number(studentAge || 6),
+        gender: payload.gender || 'Female',
+        program: studentProgram,
+        programType: studentProgram,
+        therapyGroup: studentTherapyGroup,
+        therapist: assignedTherapist || 'Abeba Tadesse',
+        status: 'active',
+        photoUrl: studentPhoto || null,
+        headshotUrl: studentPhoto || null,
+      });
+
       showToast(`${finalStudentFullName} enrolled in ${studentProgram}`, 'success');
       navigation?.navigate?.('StudentEnrollment' as never);
     } catch (err: unknown) {
@@ -936,6 +952,21 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         );
         assignStudentToTherapist(assignedTherapist, finalStudentFullName, matchingTeacher?.id);
       }
+      saveEnrolledStudentLocally({
+        id: `stu-${Date.now()}`,
+        studentId: `stu-${Date.now()}`,
+        name: finalStudentFullName,
+        fullName: finalStudentFullName,
+        age: Number(studentAge || 6),
+        gender: payload.gender || 'Female',
+        program: studentProgram,
+        programType: studentProgram,
+        therapyGroup: studentTherapyGroup,
+        therapist: assignedTherapist || 'Abeba Tadesse',
+        status: 'active',
+        photoUrl: studentPhoto || null,
+        headshotUrl: studentPhoto || null,
+      });
       const errorMsg =
         (Array.isArray(errObj?.response?.data?.errors) ? errObj.response.data.errors.join(', ') : null) ||
         errObj?.response?.data?.error ||
