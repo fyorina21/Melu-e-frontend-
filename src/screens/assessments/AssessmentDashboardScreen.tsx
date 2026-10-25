@@ -203,16 +203,20 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       window.addEventListener?.('storage', handleSync);
       window.addEventListener?.('melue_assessment_updated' as any, handleSync);
       window.addEventListener?.('melue_therapist_assignment_updated' as any, handleSync);
+      window.addEventListener?.('melue_student_enrolled_updated' as any, handleSync);
+      window.addEventListener?.('melue_student_deleted' as any, handleSync);
       return () => {
         window.removeEventListener?.('storage', handleSync);
         window.removeEventListener?.('melue_assessment_updated' as any, handleSync);
         window.removeEventListener?.('melue_therapist_assignment_updated' as any, handleSync);
+        window.removeEventListener?.('melue_student_enrolled_updated' as any, handleSync);
+        window.removeEventListener?.('melue_student_deleted' as any, handleSync);
       };
     }
   }, [load]);
 
   const isTeacher = session?.role === 'teacher';
-  const currentTherapistName = session?.userName || (session as any)?.user?.name;
+  const currentTherapistName = session?.userName || (session as any)?.user?.name || (session as any)?.name;
 
   // Memoize filteredStudents using useMemo: for teacher role, show ONLY students assigned to this therapist
   const filteredStudents = useMemo(() => {

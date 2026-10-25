@@ -821,4 +821,34 @@ describe('Assessment Dashboard Progress Sync', () => {
     expect(toSecureKey('prefix:colon@special.key')).toBe('prefix_colon_special.key');
     expect(toSecureKey('')).toBe('melue_default_key');
   });
+
+  it('enriches students enrolled from wizard and matches them to the assigned teacher in getAssessmentDashboard', async () => {
+    storage.setJSONSync('melue_enrolled_students_cache', [
+      {
+        id: 'stu-enroll-assess-1',
+        studentId: 'stu-enroll-assess-1',
+        fullName: 'Dawit Getachew',
+        name: 'Dawit Getachew',
+        age: 8,
+        program: 'Comprehensive ABA',
+        therapist: 'Abeba Tadesse',
+        status: 'active',
+      },
+    ]);
+    storage.setJSONSync('melue_therapist_assigned_students_v1', {
+      'Abeba Tadesse': ['Dawit Getachew'],
+    });
+
+    const { getAssessmentDashboard } = await import('../../api/teacherExtrasApi');
+    const { data } = await getAssessmentDashboard();
+
+    expect(data.students.some((s: any) => s.name === 'Dawit Getachew')).toBe(true);
+    const dawit = data.students.find((s: any) => s.name === 'Dawit Getachew');
+    expect(dawit.therapist).toBe('Abeba Tadesse');
+    expect(dawit.lastAssessment).toBe('Not Started');
+
+    // Clean up
+    storage.setJSONSync('melue_enrolled_students_cache', []);
+    storage.setJSONSync('melue_therapist_assigned_students_v1', {});
+  });
 });

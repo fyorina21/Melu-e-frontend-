@@ -282,7 +282,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       setTimeout(() => {
         if (window.location.pathname !== '/StudentEnrollment') {
-          window.location.href = '/StudentEnrollment';
+          window.location.replace('/StudentEnrollment');
         }
       }, 200);
     }

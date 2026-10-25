@@ -5,7 +5,7 @@ import {
 } from '../utils/therapistAssignmentHelper';
 import type { QueryParams, Payload } from '../types';
 import storage from '../utils/storage';
-import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
+import { filterOutDeletedStudents, isStudentDeleted } from '../utils/deletedStudentHelper';
 import {
   isStudentInSession,
   isStudentAssessment100PercentCompleted,
@@ -73,6 +73,106 @@ export const getAssessmentDashboard = async () => {
       studentList.forEach((stuIdent) => {
         if (stuIdent) {
           studentTherapistMap.set(String(stuIdent).toLowerCase().trim(), thName);
+        }
+      });
+    }
+  }
+
+  // Enrich with students enrolled through the enrollment wizard
+  storedEnrolled.forEach((es: any) => {
+    const sid = String(es.id || es.studentId || '').trim();
+    const sName = String(es.fullName || es.name || '').trim();
+    if (!sid && !sName) return;
+    if (isStudentDeleted(sid) || isStudentDeleted(sName)) return;
+    if (isStudentInSession(es)) return;
+
+    const existingIndex = backendStudents.findIndex((b) => {
+      const bId = String(b.id || b.studentId || '').toLowerCase().trim();
+      const bName = String(b.fullName || b.name || '').toLowerCase().trim();
+      return (sid && bId === sid.toLowerCase()) || (sName && bName === sName.toLowerCase());
+    });
+
+    const th =
+      studentTherapistMap.get(sid.toLowerCase()) ||
+      studentTherapistMap.get(sName.toLowerCase()) ||
+      es.therapist ||
+      es.assignedTherapist ||
+      es.teacher ||
+      es.teacherName ||
+      'Unassigned';
+
+    const skillsInfo = getStudentSkillsProgress(sid, 0, 'Not Started');
+    const behaviorInfo = getStudentBehaviorProgress(sid, 0, 'Not Started');
+
+    const enrolledRecord = {
+      id: sid || `stu-${Date.now()}`,
+      studentId: sid || `stu-${Date.now()}`,
+      name: sName || 'Enrolled Student',
+      fullName: sName || 'Enrolled Student',
+      initial: (sName[0] || 'S').toUpperCase(),
+      age: Number(es.age) || 6,
+      program: es.program || es.programType || 'ABA Early Intervention',
+      programType: es.program || es.programType || 'ABA Early Intervention',
+      therapist: th,
+      assignedTherapist: th,
+      lastAssessment: 'Not Started',
+      score: Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2)),
+      ablls: { status: skillsInfo.status, progress: skillsInfo.progress },
+      behavior: { status: behaviorInfo.status, progress: behaviorInfo.progress },
+      phase: '6-week',
+      photoUrl: es.photoUrl || es.headshotUrl || es.photo || null,
+      headshotUrl: es.photoUrl || es.headshotUrl || es.photo || null,
+    };
+
+    if (existingIndex >= 0) {
+      backendStudents[existingIndex] = {
+        ...backendStudents[existingIndex],
+        ...enrolledRecord,
+        therapist: th !== 'Unassigned' ? th : backendStudents[existingIndex].therapist,
+        assignedTherapist: th !== 'Unassigned' ? th : backendStudents[existingIndex].assignedTherapist,
+      };
+    } else {
+      backendStudents.unshift(enrolledRecord);
+    }
+  });
+
+  // Ensure any students specifically assigned in therapist assignments store appear in backendStudents
+  for (const [thName, studentList] of Object.entries(therapistAssignmentsStore)) {
+    if (Array.isArray(studentList)) {
+      studentList.forEach((stuIdent) => {
+        if (!stuIdent) return;
+        const normIdent = String(stuIdent).trim();
+        if (isStudentDeleted(normIdent)) return;
+
+        const match = backendStudents.find((b) => {
+          const bId = String(b.id || b.studentId || '').toLowerCase().trim();
+          const bName = String(b.fullName || b.name || '').toLowerCase().trim();
+          return bId === normIdent.toLowerCase() || bName === normIdent.toLowerCase();
+        });
+
+        if (match) {
+          match.therapist = thName;
+          match.assignedTherapist = thName;
+        } else {
+          const skillsInfo = getStudentSkillsProgress(normIdent, 0, 'Not Started');
+          const behaviorInfo = getStudentBehaviorProgress(normIdent, 0, 'Not Started');
+          backendStudents.unshift({
+            id: normIdent,
+            studentId: normIdent,
+            name: normIdent,
+            fullName: normIdent,
+            initial: (normIdent[0] || 'S').toUpperCase(),
+            age: 6,
+            program: 'ABA Early Intervention',
+            programType: 'ABA Early Intervention',
+            therapist: thName,
+            assignedTherapist: thName,
+            lastAssessment: 'Not Started',
+            score: Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2)),
+            ablls: { status: skillsInfo.status, progress: skillsInfo.progress },
+            behavior: { status: behaviorInfo.status, progress: behaviorInfo.progress },
+            phase: '6-week',
+          });
         }
       });
     }

@@ -26,18 +26,44 @@ export default function RootLayout() {
       window.addEventListener('pageshow', handlePageShow);
     }
 
-    // Filter out false-alarm Metro disconnect warnings emitted during bfcache / pagehide transitions
+    // Filter out false-alarm Metro disconnect and WebSocket bfcache warnings/errors
     const originalWarn = console.warn;
     console.warn = (...args: any[]) => {
       const msg = typeof args[0] === 'string' ? args[0] : '';
       if (
-        msg.includes('Cannot connect to Metro') &&
-        (document.visibilityState === 'hidden' || msg.includes('Error: undefined'))
+        (msg.includes('Cannot connect to Metro') &&
+          (document.visibilityState === 'hidden' || msg.includes('Error: undefined'))) ||
+        msg.includes('Back-Forward Cache') ||
+        (msg.includes('WebSocket') && msg.includes('/hot'))
       ) {
         return;
       }
       originalWarn.apply(console, args);
     };
+
+    const originalError = console.error;
+    console.error = (...args: any[]) => {
+      const msg = typeof args[0] === 'string' ? args[0] : String(args[0] || '');
+      if (
+        (msg.includes('WebSocket') || msg.includes('ws://')) &&
+        (msg.includes('Back-Forward Cache') || msg.includes('/hot') || msg.includes('failed: Page entered'))
+      ) {
+        return;
+      }
+      originalError.apply(console, args);
+    };
+
+    const handleGlobalError = (event: ErrorEvent) => {
+      const msg = String(event?.message || '');
+      if (
+        (msg.includes('WebSocket') || msg.includes('ws://')) &&
+        (msg.includes('Back-Forward Cache') || msg.includes('/hot') || msg.includes('failed: Page entered'))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener('error', handleGlobalError, true);
 
     // Inject runtime font-display: swap for any dynamically generated web font styles
     if (typeof document !== 'undefined' && !document.getElementById('font-swap-enforcer')) {
@@ -58,6 +84,8 @@ export default function RootLayout() {
         window.removeEventListener('pageshow', handlePageShow);
       }
       console.warn = originalWarn;
+      console.error = originalError;
+      window.removeEventListener('error', handleGlobalError, true);
     };
   }, []);
 
