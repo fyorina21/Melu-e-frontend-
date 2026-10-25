@@ -1177,6 +1177,60 @@ export default function DynamicFormFields({
           );
         }
 
+        if (normType === 'video' || normType === 'video_upload' || normType === 'videoupload') {
+          return (
+            <View key={field.id} style={styles.field}>
+              <Text style={typography.label}>
+                {field.label} {field.required && <Text style={styles.required}>*</Text>}
+              </Text>
+              <View style={styles.fileUploadRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.fileUploadBtn,
+                    { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' },
+                  ]}
+                  onPress={async () => {
+                    try {
+                      const res = await DocumentPicker.getDocumentAsync({
+                        type: ['video/*'],
+                        copyToCacheDirectory: true,
+                      });
+                      if (!res.canceled && res.assets && res.assets.length > 0) {
+                        const file = res.assets[0];
+                        onChange(field.id, file.name);
+                        onChange(field.label, file.name);
+                      }
+                    } catch {}
+                  }}
+                >
+                  <Feather name="video" size={14} color="#4338CA" />
+                  <Text style={[styles.fileUploadBtnText, { color: '#4338CA' }]}>
+                    {val ? 'Replace Video' : 'Choose Video (MP4/WebM/MOV)'}
+                  </Text>
+                </TouchableOpacity>
+                {val ? (
+                  <Text style={styles.fileNameText} numberOfLines={1}>
+                    {String(val)}
+                  </Text>
+                ) : (
+                  <Text style={styles.noFileText}>
+                    {field.placeholder
+                      ? `No video chosen (${field.placeholder})`
+                      : 'No video chosen'}
+                  </Text>
+                )}
+              </View>
+              {Boolean(field.placeholder || field.helpText || field.help_text) && (
+                <Text style={styles.fieldSpecText}>
+                  {field.helpText ||
+                    field.help_text ||
+                    `Expected: ${field.placeholder || 'MP4, WebM, MOV'}`}
+                </Text>
+              )}
+            </View>
+          );
+        }
+
         if (normType === 'file' || normType === 'fileupload' || normType === 'file_upload') {
           return (
             <View key={field.id} style={styles.field}>

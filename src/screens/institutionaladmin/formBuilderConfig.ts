@@ -22,10 +22,12 @@ export const FIELD_TYPES = [
   'Phone',
   'Image',
   'File',
+  'Video',
   'Counter',
   'Timer',
 ] as const;
-export type FieldType = (typeof FIELD_TYPES)[number] | 'CheckboxGroup' | 'ImagePicker';
+export type FieldType =
+  (typeof FIELD_TYPES)[number] | 'CheckboxGroup' | 'ImagePicker' | 'VideoUpload' | 'video_upload';
 
 export const ENROLLMENT_SECTIONS = [
   'Student Info',

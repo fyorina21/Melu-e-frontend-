@@ -46,6 +46,12 @@ import {
   saveEnrollmentDraft,
   deleteEnrollmentDraft,
 } from '../../utils/enrollmentDraftHelper';
+import DocumentAttachmentCard, {
+  extractDocumentMeta,
+} from '../../components/DocumentAttachmentCard';
+import VideoPlayerView from '../../components/VideoPlayerView';
+import MediaViewerModal from '../../components/MediaViewerModal';
+import StudentAvatar from '../../components/StudentAvatar';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
@@ -217,6 +223,12 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [activePhotoFieldId, setActivePhotoFieldId] = useState<string | null>(null);
   const [activeDropdownFieldId, setActiveDropdownFieldId] = useState<string | null>(null);
+  const [previewModal, setPreviewModal] = useState<{
+    isOpen: boolean;
+    fileUrl: string;
+    fileName: string;
+    fileType?: 'image' | 'video' | 'pdf' | 'document';
+  }>({ isOpen: false, fileUrl: '', fileName: '' });
 
   const duplicateConfirmed = useRef(false);
 
@@ -440,8 +452,10 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
   }, [routeSection, routeInitialStep, steps]);
 
   // Helpers for caseload checking (hardcoded capacity limit removed)
-  const caseloadOf = (name: string) =>
-    therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
+  const caseloadOf = (name: string) => {
+    const t = therapists.find((th) => th.name === name);
+    return t ? ((t as any).assignedStudentCount ?? t.assignedStudents?.length ?? 0) : 0;
+  };
   const isFull = (_name: string) => false;
 
   // Single dynamic field change handler
@@ -1254,12 +1268,60 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       normType === 'image_picker'
     ) {
       const isPhoto =
-        field.id === 'f_photo' ||
-        /photo/i.test(field.id) ||
-        /photo/i.test(field.label) ||
-        /headshot/i.test(field.id) ||
-        /headshot/i.test(field.label);
+        (field.id === 'f_photo' ||
+          field.id === 'enr_headshot' ||
+          /headshot/i.test(field.id) ||
+          /headshot/i.test(field.label) ||
+          /student.*photo/i.test(field.label)) &&
+        !/certificate|paper|agreement|document/i.test(field.id) &&
+        !/certificate|paper|agreement|document/i.test(field.label);
       const isVideo = /video/i.test(field.id) || /video/i.test(field.label);
+
+      // If Video and already attached
+      if (isVideo && value) {
+        const vidUrl = typeof value === 'string' ? value : value?.url || value?.fileUrl || '';
+        return (
+          <View key={field.id} style={{ marginVertical: 6 }}>
+            <Text style={styles.fieldLabel}>
+              {field.label}
+              {isRequired && <Text style={styles.requiredStar}> *</Text>}
+            </Text>
+            <VideoPlayerView
+              videoUrl={vidUrl}
+              title={field.label || 'Baseline Behavioral Video'}
+              subtitle={field.description || 'Intake assessment behavioral session sample'}
+              onUploadPress={() => handleUploadDocument(field.id)}
+              onRemovePress={() => handleRemovePhoto(field.id)}
+            />
+          </View>
+        );
+      }
+
+      // If Document and already attached
+      if (!isPhoto && !isVideo && value) {
+        const docMeta = extractDocumentMeta(value, field.label || 'Document');
+        return (
+          <View key={field.id} style={{ marginVertical: 6 }}>
+            <Text style={styles.fieldLabel}>
+              {field.label}
+              {isRequired && <Text style={styles.requiredStar}> *</Text>}
+            </Text>
+            {docMeta ? (
+              <DocumentAttachmentCard
+                label={field.label}
+                fileUrl={docMeta.url}
+                fileName={docMeta.fileName}
+                fileSize={docMeta.fileSize}
+                uploadDate={docMeta.uploadDate}
+                fileType={docMeta.fileType}
+                editable={true}
+                onReplace={() => handleUploadDocument(field.id)}
+                onRemove={() => handleRemovePhoto(field.id)}
+              />
+            ) : null}
+          </View>
+        );
+      }
 
       return (
         <View key={field.id} style={styles.photoUploadCard}>
@@ -1277,7 +1339,20 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                     value.startsWith('http') ||
                     value.startsWith('file:') ||
                     value.startsWith('blob:')) ? (
-                    <Image source={{ uri: value }} style={styles.photoImage} />
+                    <TouchableOpacity
+                      onPress={() =>
+                        setPreviewModal({
+                          isOpen: true,
+                          fileUrl: value,
+                          fileName: `${studentName || 'student'}_photo.jpg`,
+                          fileType: 'image',
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="Preview Photo"
+                    >
+                      <Image source={{ uri: value }} style={styles.photoImage} />
+                    </TouchableOpacity>
                   ) : (
                     <View style={[styles.photoPlaceholder, { backgroundColor: '#E0F2FE' }]}>
                       <Feather name={isVideo ? 'video' : 'file-text'} size={28} color="#0284C7" />
@@ -1293,11 +1368,11 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                 </View>
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Feather
-                    name={isPhoto ? 'user' : isVideo ? 'video' : 'file-text'}
-                    size={30}
-                    color="#94A3B8"
-                  />
+                  {isPhoto ? (
+                    <StudentAvatar name={studentName} size={48} />
+                  ) : (
+                    <Feather name={isVideo ? 'video' : 'file-text'} size={28} color="#94A3B8" />
+                  )}
                 </View>
               )}
             </View>
@@ -1465,7 +1540,10 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                               selected && styles.dropdownOptionTextSelected,
                             ]}
                           >
-                            {opt} {isTherapistField && count > 0 ? `(${count} assigned)` : ''}
+                            {opt}{' '}
+                            {isTherapistField
+                              ? `(${count} ${count === 1 ? 'student' : 'students'} assigned)`
+                              : ''}
                           </Text>
                           {selected && <Feather name="check" size={16} color="#0284C7" />}
                         </TouchableOpacity>
@@ -1775,7 +1853,8 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                 {therapists.length > 0 ? (
                   <View style={styles.chipRow}>
                     {therapists.map((t) => {
-                      const count = t.assignedStudents?.length ?? 0;
+                      const count =
+                        (t as any).assignedStudentCount ?? t.assignedStudents?.length ?? 0;
                       const selected = assignedTherapist === t.name;
                       return (
                         <TouchableOpacity
@@ -1793,7 +1872,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                         >
                           <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
                             {t.name}
-                            {count > 0 ? ` (${count} assigned)` : ''}
+                            {` (${count} ${count === 1 ? 'student' : 'students'} assigned)`}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1950,6 +2029,16 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
           }
           showToast('Student photo captured successfully', 'success');
         }}
+      />
+
+      {/* Document / Media Preview Modal */}
+      <MediaViewerModal
+        visible={previewModal.isOpen}
+        onClose={() => setPreviewModal({ isOpen: false, fileUrl: '', fileName: '' })}
+        mediaUrl={previewModal.fileUrl}
+        fileName={previewModal.fileName}
+        mediaType={previewModal.fileType}
+        title={previewModal.fileName}
       />
     </SafeAreaView>
   );

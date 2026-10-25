@@ -107,6 +107,8 @@ export const getTypeBadgeStyle = (rawType: string) => {
       text: '#BE123C',
       label: t.includes('image') ? 'Image' : 'File',
     };
+  if (t === 'video' || t === 'videoupload')
+    return { bg: '#E0E7FF', border: '#C7D2FE', text: '#3730A3', label: 'Video' };
   if (t === 'sectionheader' || t === 'divider')
     return {
       bg: '#F1F5F9',
@@ -2279,6 +2281,7 @@ export default function FormBuilderScreen({
     else if (raw === 'phone') matchedType = 'Phone';
     else if (raw === 'image' || raw === 'imagepicker') matchedType = 'Image';
     else if (raw === 'file' || raw === 'fileupload') matchedType = 'File';
+    else if (raw === 'video' || raw === 'videoupload') matchedType = 'Video';
     else {
       const found = FIELD_TYPES.find((ft) => ft.toLowerCase() === field.type?.toLowerCase());
       matchedType = found || 'Text';

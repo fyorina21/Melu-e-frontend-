@@ -25,6 +25,11 @@ import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalA
 import { calculateAge } from './enrollmentWizardTypes';
 import { useToast } from '../../context/ToastContext';
 import { exportStudentProfileToPdf } from '../../utils/studentProfilePdfHelper';
+import DocumentAttachmentCard, {
+  extractDocumentMeta,
+} from '../../components/DocumentAttachmentCard';
+import VideoPlayerView from '../../components/VideoPlayerView';
+import MediaViewerModal from '../../components/MediaViewerModal';
 import type { CoordinatorStackParamList } from '../../types';
 
 const C_SKY = '#0284C7';
@@ -125,6 +130,12 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
     index?: number;
   } | null>(null);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [previewModal, setPreviewModal] = useState<{
+    isOpen: boolean;
+    fileUrl: string;
+    fileName: string;
+    fileType?: 'image' | 'video' | 'pdf' | 'document';
+  }>({ isOpen: false, fileUrl: '', fileName: '' });
 
   useEffect(() => {
     const sub = Dimensions.addEventListener('change', ({ window }) => {
@@ -1242,19 +1253,25 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
               const normLabel = String(f.label || '').toLowerCase();
 
               const isPhotoField =
-                normFid.includes('headshot') ||
-                normFid.includes('photo') ||
-                normFid.includes('avatar') ||
-                normLabel.includes('headshot') ||
-                normLabel.includes('photo') ||
-                ['image', 'photo', 'imagepicker', 'image_picker'].includes(fieldType) ||
-                (typeof val === 'string' && val.startsWith('data:image'));
+                (normFid === 'enr_headshot' ||
+                  normFid === 'f_photo' ||
+                  normFid === 'photo' ||
+                  normFid === 'headshot' ||
+                  normLabel === 'headshot' ||
+                  normLabel === 'student photo' ||
+                  normLabel === 'official headshot' ||
+                  ['image', 'photo', 'imagepicker', 'image_picker'].includes(fieldType)) &&
+                !normFid.includes('certificate') &&
+                !normFid.includes('paper') &&
+                !normFid.includes('document') &&
+                !normLabel.includes('certificate') &&
+                !normLabel.includes('paper') &&
+                !normLabel.includes('document');
 
               const isVideoField =
                 normFid.includes('video') ||
                 normLabel.includes('video') ||
-                ['video', 'video_upload', 'videorecording'].includes(fieldType) ||
-                (typeof val === 'string' && val.startsWith('data:video'));
+                ['video', 'video_upload', 'videorecording'].includes(fieldType);
 
               const isDocField =
                 !isPhotoField &&
@@ -1266,19 +1283,18 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                   normFid.includes('certificate') ||
                   normFid.includes('agreement') ||
                   normFid.includes('diagnosis_paper') ||
+                  normFid.includes('document') ||
                   normLabel.includes('certificate') ||
                   normLabel.includes('agreement') ||
                   normLabel.includes('paper') ||
-                  normLabel.includes('document') ||
-                  (typeof val === 'string' &&
-                    (val.startsWith('data:application') || val.startsWith('data:'))));
+                  normLabel.includes('document'));
 
-              // 1. Headshot Photo Field
+              // 1. Headshot Photo Field (Strictly isolated from general file/doc attachments)
               if (isPhotoField) {
                 const photoUri =
                   typeof val === 'string' &&
                   (val.startsWith('http') ||
-                    val.startsWith('data:image') ||
+                    val.startsWith('data:image/') ||
                     val.startsWith('blob:'))
                     ? val
                     : studentPhoto;
@@ -1286,11 +1302,23 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                 return (
                   <View style={styles.headshotBox} key={f.id}>
                     {photoUri ? (
-                      <Image source={{ uri: photoUri }} style={styles.headshotThumb} />
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() =>
+                          setPreviewModal({
+                            isOpen: true,
+                            fileUrl: photoUri,
+                            fileName: `${profile.id}_photo.jpg`,
+                            fileType: 'image',
+                          })
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel="Preview Headshot Photo"
+                      >
+                        <Image source={{ uri: photoUri }} style={styles.headshotThumb} />
+                      </TouchableOpacity>
                     ) : (
-                      <View style={styles.headshotPlaceholder}>
-                        <Feather name="user" size={24} color="#94A3B8" />
-                      </View>
+                      <StudentAvatar name={profile.fullName} studentId={profile.id} size={50} />
                     )}
                     <View style={styles.headshotDetails}>
                       <View style={styles.headshotTitleRow}>
@@ -1307,7 +1335,7 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                         </View>
                       </View>
                       <Text style={styles.headshotFilename} numberOfLines={1}>
-                        {photoUri ? `${profile.id}_photo.jpg` : 'No file on record'}
+                        {photoUri ? `${profile.id}_photo.jpg` : 'No headshot photo on record'}
                       </Text>
                       <View style={styles.headshotActions}>
                         <TouchableOpacity
@@ -1323,7 +1351,14 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                           <>
                             <Text style={styles.metaDot}>•</Text>
                             <TouchableOpacity
-                              onPress={() => showToast('Full photo viewer opened', 'info')}
+                              onPress={() =>
+                                setPreviewModal({
+                                  isOpen: true,
+                                  fileUrl: photoUri,
+                                  fileName: `${profile.id}_photo.jpg`,
+                                  fileType: 'image',
+                                })
+                              }
                             >
                               <Text style={styles.headshotActionLink}>View Full Size</Text>
                             </TouchableOpacity>
@@ -1335,97 +1370,19 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                 );
               }
 
-              // 2. Video Upload Field (e.g. Baseline Video)
+              // 2. Video Upload Field (e.g. Baseline Video with authentic HTML5 video controls)
               if (isVideoField) {
-                const hasVid = Boolean(profile.videoUrl || profile.hasVideo || val);
+                const rawVid = val || profile.videoUrl || '';
+                const vidUrl =
+                  typeof rawVid === 'string' ? rawVid : rawVid?.url || rawVid?.fileUrl || '';
                 return (
-                  <View key={f.id} style={{ gap: 8 }}>
-                    <View style={styles.docRow}>
-                      <View style={styles.docIconWrap}>
-                        <Feather name="video" size={15} color={C_SKY} />
-                      </View>
-                      <View style={styles.docMeta}>
-                        <Text style={styles.docTitle}>{f.label || 'Baseline Video'}</Text>
-                        <Text style={styles.docSubtitle}>
-                          {f.description || 'Behavioral intake assessment sample'}
-                        </Text>
-                      </View>
-                      {hasVid ? (
-                        <TouchableOpacity onPress={() => setVideoModalOpen(true)}>
-                          <Text style={styles.docStatusAction}>View Recording</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.docUploadActionPill}
-                          onPress={() => handleUploadDocuments(secName)}
-                        >
-                          <Feather name="upload" size={11} color={C_SKY} />
-                          <Text style={styles.docUploadActionText}>Upload Video</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-
-                    {/* Interactive video preview card if video is attached */}
-                    {hasVid && (
-                      <View style={styles.videoPlayerContainer}>
-                        <View style={styles.videoHeaderRow}>
-                          <View style={styles.videoHeaderLeft}>
-                            <View style={[styles.dot, { backgroundColor: C_EMERALD }]} />
-                            <Text style={styles.videoSectionTitle}>
-                              Baseline Behavioral Assessment Video (HQ)
-                            </Text>
-                          </View>
-                          <Text style={styles.videoRecordDate}>Assessment Recording</Text>
-                        </View>
-                        <View style={styles.videoScreenWrap}>
-                          <Image
-                            source={{ uri: profile.videoUrl || '' }}
-                            style={styles.videoScreenImage}
-                          />
-                          <TouchableOpacity
-                            style={styles.videoBigPlayBtn}
-                            onPress={() => setVideoModalOpen(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Play Assessment Video"
-                          >
-                            <Feather
-                              name="play"
-                              size={28}
-                              color="#FFFFFF"
-                              style={{ marginLeft: 3 }}
-                            />
-                          </TouchableOpacity>
-                          <View style={styles.videoBottomOverlay}>
-                            <Text style={styles.overlayTitle}>
-                              Behavioral Assessment Observation
-                            </Text>
-                            <Text style={styles.overlaySubtitle}>
-                              Activity Observation & Joint Attention Screening
-                            </Text>
-                            <View style={styles.scrubBarTrack}>
-                              <View style={styles.scrubBarProgress} />
-                              <View style={styles.scrubBarThumb} />
-                            </View>
-                          </View>
-                        </View>
-                        <View style={styles.videoControlsFooter}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.videoEvaluatorText}>
-                              Student ID: {profile.id} • Protocol Intake Verification
-                            </Text>
-                          </View>
-                          <View style={styles.videoFooterActions}>
-                            <TouchableOpacity
-                              style={styles.playSessionBtn}
-                              onPress={() => setVideoModalOpen(true)}
-                            >
-                              <Feather name="play" size={13} color="#FFFFFF" />
-                              <Text style={styles.playSessionBtnText}>Play Session</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    )}
+                  <View key={f.id} style={{ marginVertical: 6 }}>
+                    <VideoPlayerView
+                      videoUrl={vidUrl}
+                      title={f.label || 'Baseline Behavioral Assessment Video (HQ)'}
+                      subtitle={f.description || 'Intake assessment behavioral session sample'}
+                      onUploadPress={() => handleUploadDocuments(secName)}
+                    />
                   </View>
                 );
               }
@@ -1433,12 +1390,25 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
               // 3. Document / File Upload Field (Birth Certificate, Medical Diagnosis Paper, Agreement, etc.)
               if (isDocField) {
                 const isAttached = Boolean(val);
-                return (
+                const docMeta = isAttached ? extractDocumentMeta(val, f.label || 'Document') : null;
+                return isAttached && docMeta ? (
+                  <View key={f.id} style={{ marginVertical: 4 }}>
+                    <DocumentAttachmentCard
+                      label={f.label || 'Document'}
+                      fileUrl={docMeta.url}
+                      fileName={docMeta.fileName}
+                      fileSize={docMeta.fileSize}
+                      uploadDate={docMeta.uploadDate}
+                      fileType={docMeta.fileType}
+                      editable={false}
+                    />
+                  </View>
+                ) : (
                   <TouchableOpacity
                     key={f.id}
                     style={styles.docRow}
-                    onPress={isAttached ? undefined : () => handleUploadDocuments(secName)}
-                    activeOpacity={isAttached ? 1 : 0.7}
+                    onPress={() => handleUploadDocuments(secName)}
+                    activeOpacity={0.7}
                     accessibilityRole="button"
                     accessibilityLabel={f.label}
                   >
@@ -1448,20 +1418,13 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                     <View style={styles.docMeta}>
                       <Text style={styles.docTitle}>{f.label}</Text>
                       <Text style={styles.docSubtitle}>
-                        {f.description ||
-                          (isAttached
-                            ? 'Document attached on record'
-                            : 'Required verification document')}
+                        {f.description || 'Required verification document (Not Uploaded)'}
                       </Text>
                     </View>
-                    {isAttached ? (
-                      <Text style={styles.docStatusAttached}>Attached</Text>
-                    ) : (
-                      <View style={styles.docUploadActionPill}>
-                        <Feather name="upload" size={11} color={C_SKY} />
-                        <Text style={styles.docUploadActionText}>Upload</Text>
-                      </View>
-                    )}
+                    <View style={styles.docUploadActionPill}>
+                      <Feather name="upload" size={11} color={C_SKY} />
+                      <Text style={styles.docUploadActionText}>Upload</Text>
+                    </View>
                   </TouchableOpacity>
                 );
               }
@@ -1688,7 +1651,22 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
         {/* ── 2. Header Hero Card ────────────────────────────────────── */}
         <View style={styles.heroCard}>
           <View style={styles.heroLeft}>
-            <View style={styles.heroAvatarWrap}>
+            <TouchableOpacity
+              style={styles.heroAvatarWrap}
+              activeOpacity={studentPhoto ? 0.75 : 1}
+              onPress={() => {
+                if (studentPhoto) {
+                  setPreviewModal({
+                    isOpen: true,
+                    fileUrl: studentPhoto,
+                    fileName: `${profile.fullName || profile.id}_photo.jpg`,
+                    fileType: 'image',
+                  });
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Student Photo"
+            >
               {studentPhoto ? (
                 <Image source={{ uri: studentPhoto }} style={styles.heroAvatarImage} />
               ) : (
@@ -1697,7 +1675,7 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
               <View
                 style={[styles.onlineDot, { backgroundColor: isDraft ? C_AMBER : C_EMERALD }]}
               />
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.heroInfo}>
               <View style={styles.heroTitleRow}>
@@ -1894,19 +1872,11 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
                 <Feather name="x" size={20} color={C_SLATE} />
               </TouchableOpacity>
             </View>
-            {profile.videoUrl ? (
-              <Image source={{ uri: profile.videoUrl }} style={styles.modalVideoScreen} />
-            ) : (
-              <View
-                style={[
-                  styles.modalVideoScreen,
-                  { backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
-                ]}
-              >
-                <Feather name="video" size={40} color="#64748B" />
-                <Text style={{ color: '#FFFFFF', marginTop: 8 }}>Session Recording Preview</Text>
-              </View>
-            )}
+            <VideoPlayerView
+              videoUrl={profile.videoUrl || ''}
+              title="Baseline Behavioral Assessment"
+              subtitle={`Student: ${profile.fullName}`}
+            />
             <View style={styles.modalVideoFooter}>
               <Text style={styles.videoEvaluatorText}>
                 Student ID: {profile.id} • Verified Assessment
@@ -1925,6 +1895,16 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           </View>
         </View>
       </Modal>
+
+      {/* ── Document / Image / PDF Lightbox Modal ─────────────────── */}
+      <MediaViewerModal
+        visible={previewModal.isOpen}
+        onClose={() => setPreviewModal({ isOpen: false, fileUrl: '', fileName: '' })}
+        mediaUrl={previewModal.fileUrl}
+        fileName={previewModal.fileName}
+        mediaType={previewModal.fileType}
+        title={previewModal.fileName}
+      />
     </SafeAreaView>
   );
 }
