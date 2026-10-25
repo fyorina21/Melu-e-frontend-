@@ -93,9 +93,11 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
       expect(defaults['parent_home_observations']?.CREATE).toBe(true);
     });
 
-    it('enforces that Institutional Admin is restricted from System Admin permission configuration', () => {
+    it('enforces that Institutional Admin is restricted from staff management and permission configuration', () => {
       const defaults = getDefaultMatrixForRole('Institutional Administrator');
 
+      expect(defaults['sys_staff_accounts']?.VIEW).toBe(false);
+      expect(defaults['sys_staff_accounts']?.EDIT).toBe(false);
       expect(defaults['sys_permissions']?.VIEW).toBe(false);
       expect(defaults['sys_permissions']?.EDIT).toBe(false);
       expect(defaults['sys_role_management']?.VIEW).toBe(false);
@@ -103,17 +105,36 @@ describe('PermissionConfiguration Production RBAC & Integrity Tests', () => {
       // But has full access to institutional config pages
       expect(defaults['ia_form_builder']?.VIEW).toBe(true);
       expect(defaults['ia_schedule_capacity']?.EDIT).toBe(true);
+
+      // Test mapBackendPermissionsToMatrix prevents staff mgt and perm config even if broad backend perms exist
+      const backendPerms = [
+        { resource: 'staff_members', action: 'view' },
+        { resource: 'clinical_configs', action: 'view' },
+        { resource: 'form_configurations', action: 'view' },
+      ];
+      const mapped = mapBackendPermissionsToMatrix(backendPerms, 'Institutional Administrator');
+      expect(mapped['sys_staff_accounts']?.VIEW).toBe(false);
+      expect(mapped['sys_permissions']?.VIEW).toBe(false);
+      expect(mapped['ia_form_builder']?.VIEW).toBe(true);
     });
 
-    it('enforces that System Admin has full access everywhere', () => {
+    it('enforces that System Admin has access restricted to IT governance & security pages', () => {
       const defaults = getDefaultMatrixForRole('System Administrator');
 
       ALL_PAGE_MODULES.forEach((page) => {
-        expect(defaults[page.id]?.VIEW).toBe(true);
-        expect(defaults[page.id]?.CREATE).toBe(true);
-        expect(defaults[page.id]?.EDIT).toBe(true);
-        expect(defaults[page.id]?.DELETE).toBe(true);
-        expect(defaults[page.id]?.APPROVE).toBe(true);
+        if (page.roleKey === 'system_admin') {
+          expect(defaults[page.id]?.VIEW).toBe(true);
+          expect(defaults[page.id]?.CREATE).toBe(true);
+          expect(defaults[page.id]?.EDIT).toBe(true);
+          expect(defaults[page.id]?.DELETE).toBe(true);
+          expect(defaults[page.id]?.APPROVE).toBe(true);
+        } else {
+          expect(defaults[page.id]?.VIEW).toBe(false);
+          expect(defaults[page.id]?.CREATE).toBe(false);
+          expect(defaults[page.id]?.EDIT).toBe(false);
+          expect(defaults[page.id]?.DELETE).toBe(false);
+          expect(defaults[page.id]?.APPROVE).toBe(false);
+        }
       });
     });
   });

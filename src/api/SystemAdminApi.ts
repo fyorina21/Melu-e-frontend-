@@ -95,28 +95,15 @@ export const getRoles = async () => {
     const res = await client.get('/sysadmin/roles');
     if (res?.data && Array.isArray(res.data)) {
       storage.setJSONSync('sysadmin_roles', res.data);
-      const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-      const combined = [...res.data];
-      for (const c of custom) {
-        if (!combined.some((r) => r.id === c.id || r.name.toLowerCase() === c.name.toLowerCase())) {
-          combined.push(c);
-        }
-      }
-      return { data: combined };
+      storage.removeSync('sysadmin_custom_roles');
+      return { data: res.data };
     }
   } catch (err) {
     console.warn('getRoles network error, reading local cache:', err);
   }
 
   const cached = storage.getJSONSync<any[]>('sysadmin_roles') || [];
-  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-  const combined = [...cached];
-  for (const c of custom) {
-    if (!combined.some((r) => r.id === c.id || r.name.toLowerCase() === c.name.toLowerCase())) {
-      combined.push(c);
-    }
-  }
-  return { data: combined };
+  return { data: cached };
 };
 
 export const createRole = async (payload: Payload) => {
@@ -129,8 +116,9 @@ export const createRole = async (payload: Payload) => {
     has_permissions: false,
   };
 
-  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-  storage.setJSONSync('sysadmin_custom_roles', [...custom, roleRecord]);
+  const currentList = storage.getJSONSync<any[]>('sysadmin_roles') || [];
+  storage.setJSONSync('sysadmin_roles', [...currentList, roleRecord]);
+  storage.removeSync('sysadmin_custom_roles');
   addAuditLogEntry({
     action: 'created',
     resource: `Role: ${roleRecord.name}`,
@@ -144,11 +132,12 @@ export const updateRole = async (roleId: string, payload: Payload) => {
   const res = await client.patch(`/sysadmin/roles/${roleId}`, payload);
   const updated = res?.data;
 
-  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-  const nextCustom = custom.map((r) =>
+  const currentList = storage.getJSONSync<any[]>('sysadmin_roles') || [];
+  const nextList = currentList.map((r) =>
     r.id === roleId ? { ...r, ...payload, ...(updated || {}) } : r,
   );
-  storage.setJSONSync('sysadmin_custom_roles', nextCustom);
+  storage.setJSONSync('sysadmin_roles', nextList);
+  storage.removeSync('sysadmin_custom_roles');
   addAuditLogEntry({
     action: 'updated',
     resource: `Role: ${payload.name || roleId}`,
@@ -161,12 +150,13 @@ export const updateRole = async (roleId: string, payload: Payload) => {
 export const deleteRole = async (roleId: string) => {
   await client.delete(`/sysadmin/roles/${roleId}`);
 
-  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-  const deleted = custom.find((r) => r.id === roleId);
+  const currentList = storage.getJSONSync<any[]>('sysadmin_roles') || [];
+  const deleted = currentList.find((r) => r.id === roleId);
   storage.setJSONSync(
-    'sysadmin_custom_roles',
-    custom.filter((r) => r.id !== roleId),
+    'sysadmin_roles',
+    currentList.filter((r) => r.id !== roleId),
   );
+  storage.removeSync('sysadmin_custom_roles');
   addAuditLogEntry({
     action: 'deleted',
     resource: `Role: ${deleted?.name || roleId}`,
@@ -234,9 +224,9 @@ export const savePermissionMatrix = async (
     storage.setJSONSync(`sysadmin_perm_matrix_${roleId}`, pageMatrix);
   }
 
-  // Cross-reference custom roles
-  const custom = storage.getJSONSync<any[]>('sysadmin_custom_roles') || [];
-  const foundRole = custom.find(
+  // Cross-reference roles
+  const roles = storage.getJSONSync<any[]>('sysadmin_roles') || [];
+  const foundRole = roles.find(
     (r) => r.id === roleId || r.name?.toLowerCase() === roleId.toLowerCase(),
   );
   const roleName = foundRole?.name || roleId;
@@ -251,12 +241,13 @@ export const savePermissionMatrix = async (
   }
 
   // Update role metadata (has_permissions and permission_count)
-  const updatedCustom = custom.map((r) =>
+  const updatedRoles = roles.map((r) =>
     r.id === roleId || r.name === roleId || r.name?.toLowerCase() === roleId.toLowerCase()
       ? { ...r, has_permissions: permissionIds.length > 0, permission_count: permissionIds.length }
       : r,
   );
-  storage.setJSONSync('sysadmin_custom_roles', updatedCustom);
+  storage.setJSONSync('sysadmin_roles', updatedRoles);
+  storage.removeSync('sysadmin_custom_roles');
 
   // Central audit log entry
   addAuditLogEntry({
@@ -351,10 +342,13 @@ export const addAuditLogEntry = (entry: Record<string, any>) => {
 export const getAuditLogs = async (params?: QueryParams) => {
   try {
     const res = await client.get('/sysadmin/audit-logs', { params });
-    if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
+    if (res?.data && Array.isArray(res.data)) {
+      storage.removeSync('sysadmin_audit_logs');
       return res;
     }
-  } catch {}
+  } catch (err) {
+    console.warn('getAuditLogs network error, reading local cache:', err);
+  }
 
   const dynamic = storage.getJSONSync<any[]>('sysadmin_audit_logs') || [];
 

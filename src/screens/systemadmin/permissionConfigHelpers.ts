@@ -600,8 +600,12 @@ export function getDefaultMatrixForRole(roleName: string): PermissionMatrix {
     mat[page.id] = blankActions();
 
     if (norm.includes('system admin') || norm.includes('super admin')) {
-      // Full administrative access
-      mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
+      // System admin is strictly restricted to IT governance & security: Staff Accounts, Role Management, RBAC Permissions, Audit Log
+      if (page.roleKey === 'system_admin') {
+        mat[page.id] = { VIEW: true, CREATE: true, EDIT: true, DELETE: true, APPROVE: true };
+      } else {
+        mat[page.id] = { VIEW: false, CREATE: false, EDIT: false, DELETE: false, APPROVE: false };
+      }
     } else if (
       norm.includes('institutional admin') ||
       norm.includes('institutional administrator')
@@ -707,7 +711,9 @@ export function getDefaultMatrixForRole(roleName: string): PermissionMatrix {
  */
 export function isPageInRoleScope(page: AppPageModule, roleName: string): boolean {
   const norm = (roleName || '').toLowerCase().trim();
-  if (norm.includes('system admin') || norm.includes('super admin')) return true;
+  if (norm.includes('system admin') || norm.includes('super admin')) {
+    return page.roleKey === 'system_admin';
+  }
   if (norm.includes('institutional admin') || norm.includes('institutional administrator')) {
     return page.roleKey !== 'system_admin';
   }
@@ -759,6 +765,10 @@ export function mapBackendPermissionsToMatrix(
     return mat;
   }
 
+  const isSysAdmin = normRole.includes('system admin') || normRole.includes('super admin');
+  const isInstAdmin =
+    normRole.includes('institutional admin') || normRole.includes('institutional administrator');
+
   // Set of granted resource:action strings from backend
   const granted = new Set<string>();
   backendPerms.forEach((p) => {
@@ -774,32 +784,47 @@ export function mapBackendPermissionsToMatrix(
   });
 
   ALL_PAGE_MODULES.forEach((page) => {
+    // System Administrator RBAC strictly restricts access to IT security & governance pages
+    if (isSysAdmin && page.roleKey !== 'system_admin') {
+      return;
+    }
+
+    // Institutional Administrator RBAC strictly restricts access from system admin pages (staff mgt, perm config, role mgt)
+    if (
+      isInstAdmin &&
+      (page.id === 'sys_staff_accounts' ||
+        page.id === 'sys_permissions' ||
+        page.id === 'sys_role_management')
+    ) {
+      return;
+    }
+
     ACTIONS.forEach((act) => {
       const actLower = act.toLowerCase();
 
-      // 0. Direct page-level match (e.g. 'teacher_session_collection:view' or 'coord_live_sessions:view')
-      if (granted.has(`${page.id.toLowerCase()}:${actLower}`)) {
+      // 0. Direct page-level match (only if in role scope)
+      if (
+        isPageInRoleScope(page, roleName) &&
+        granted.has(`${page.id.toLowerCase()}:${actLower}`)
+      ) {
         mat[page.id][act] = true;
         return;
       }
 
-      // 1. Direct sub-resource match (e.g. 'staff_members:view')
+      // 1. Direct sub-resource match (e.g. 'staff_members:view', 'roles:view', 'audit_logs:view', 'form_configurations:view')
       if (page.subResource && granted.has(`${page.subResource.toLowerCase()}:${actLower}`)) {
-        mat[page.id][act] = true;
-        return;
+        if (isPageInRoleScope(page, roleName) || (isInstAdmin && page.id === 'sys_audit_log')) {
+          mat[page.id][act] = true;
+          return;
+        }
       }
 
       // 2. Primary backend resource match (e.g. 'sessions:view')
-      // CRITICAL FIX: Only apply if this page is legitimately within the role's scope!
-      if (granted.has(`${page.backendResource.toLowerCase()}:${actLower}`)) {
-        if (isPageInRoleScope(page, roleName)) {
-          mat[page.id][act] = true;
-        } else if (normRole.includes('system admin') || normRole.includes('institutional admin')) {
-          // Administrators can see broad resource grants across allowed pages
-          if (page.roleKey !== 'system_admin' || normRole.includes('system admin')) {
-            mat[page.id][act] = true;
-          }
-        }
+      if (
+        isPageInRoleScope(page, roleName) &&
+        granted.has(`${page.backendResource.toLowerCase()}:${actLower}`)
+      ) {
+        mat[page.id][act] = true;
       }
     });
   });
@@ -963,6 +988,11 @@ export function buildSavePayload(
   activeCount: number;
   highRiskCount: number;
 } {
+  const normRole = (roleName || '').toLowerCase();
+  const isSysAdmin = normRole.includes('system admin') || normRole.includes('super admin');
+  const isInstAdmin =
+    normRole.includes('institutional admin') || normRole.includes('institutional administrator');
+  const isStrictScopedRole = isSysAdmin || isInstAdmin;
   const backendMatrix: Record<string, Record<string, boolean>> = {};
   const permissionIdsSet = new Set<string>();
   let count = 0;
@@ -978,51 +1008,65 @@ export function buildSavePayload(
         const hr = checkHighRiskPermission(page, act, roleName);
         if (hr.isHighRisk) highRisk++;
 
-        const res = page.backendResource;
+        const effectiveRes = page.subResource || page.backendResource;
         const actLower = act.toLowerCase();
 
-        backendMatrix[res] = backendMatrix[res] || {
-          view: false,
-          create: false,
-          edit: false,
-          delete: false,
-          approve: false,
-        };
-        backendMatrix[res][actLower] = true;
-
-        // Also add sub-resource if defined
-        if (page.subResource) {
-          backendMatrix[page.subResource] = backendMatrix[page.subResource] || {
+        if (isStrictScopedRole) {
+          backendMatrix[effectiveRes] = backendMatrix[effectiveRes] || {
             view: false,
             create: false,
             edit: false,
             delete: false,
             approve: false,
           };
-          backendMatrix[page.subResource][actLower] = true;
+          backendMatrix[effectiveRes][actLower] = true;
+        } else {
+          const res = page.backendResource;
+          backendMatrix[res] = backendMatrix[res] || {
+            view: false,
+            create: false,
+            edit: false,
+            delete: false,
+            approve: false,
+          };
+          backendMatrix[res][actLower] = true;
+
+          if (page.subResource) {
+            backendMatrix[page.subResource] = backendMatrix[page.subResource] || {
+              view: false,
+              create: false,
+              edit: false,
+              delete: false,
+              approve: false,
+            };
+            backendMatrix[page.subResource][actLower] = true;
+          }
         }
 
         // Map catalog permission ID
         let matchedCatalog = false;
         if (Array.isArray(catalogPermissions) && catalogPermissions.length > 0) {
-          const match = catalogPermissions.find(
-            (cp) =>
-              (cp.resource === res || (page.subResource && cp.resource === page.subResource)) &&
-              cp.action.toLowerCase() === actLower,
-          );
-          if (match?.id) {
-            permissionIdsSet.add(match.id);
-            matchedCatalog = true;
+          const targetResources = isStrictScopedRole
+            ? [effectiveRes.toLowerCase()]
+            : page.subResource
+              ? [page.subResource.toLowerCase(), page.backendResource.toLowerCase()]
+              : [page.backendResource.toLowerCase()];
+
+          for (const targetRes of targetResources) {
+            const match = catalogPermissions.find(
+              (cp) =>
+                cp.resource.toLowerCase() === targetRes && cp.action.toLowerCase() === actLower,
+            );
+            if (match?.id) {
+              permissionIdsSet.add(match.id);
+              matchedCatalog = true;
+              break;
+            }
           }
         }
         if (!matchedCatalog) {
-          permissionIdsSet.add(`${res}:${actLower}`);
-          if (page.subResource) {
-            permissionIdsSet.add(`${page.subResource}:${actLower}`);
-          }
+          permissionIdsSet.add(`${effectiveRes}:${actLower}`);
         }
-        // Always include exact page module identifier so page-level precision is preserved
-        permissionIdsSet.add(`${page.id}:${actLower}`);
       }
     });
   });
