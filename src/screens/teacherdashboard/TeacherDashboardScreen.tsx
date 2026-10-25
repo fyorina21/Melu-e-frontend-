@@ -21,6 +21,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherDashboard, getAssessmentDashboard } from '../../api/teacherExtrasApi';
+import { isStudentAssignedToTherapist } from '../../utils/therapistAssignmentHelper';
 import { getSessionRoster } from '../../api/sessionApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { getDirectorSchedule } from '../../api/directorApi';
@@ -240,8 +241,15 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
         students: teacherEligibleStudents,
       };
 
-      // Collect assessment tasks directly from Assessment Page data to ensure 100% sync
-      const assessmentStudents = assessData?.students || [];
+      // Collect assessment tasks directly from Assessment Page data, strictly filtered to students assigned to this teacher
+      const rawAssessmentStudents = assessData?.students || [];
+      const assessmentStudents = rawAssessmentStudents.filter((s: any) =>
+        isStudentAssignedToTherapist(s, targetTeacher || {
+          name: session?.userName,
+          id: session?.userId ? String(session.userId) : undefined,
+          email: session?.email,
+        }),
+      );
       const derivedTasks: AssessmentTask[] = assessmentStudents.map((s: any) => ({
         id: `assess-${s.id}`,
         studentId: s.id,
@@ -256,7 +264,15 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       const existingTaskStudentIds = new Set(derivedTasks.map((t) => t.studentId));
       const backendTasks = (res?.assessmentTasks || []).filter((t: any) => {
         const sid = t.studentId || t.id.replace('assess-', '');
-        return !existingTaskStudentIds.has(sid);
+        if (existingTaskStudentIds.has(sid)) return false;
+        return isStudentAssignedToTherapist(
+          { id: sid, name: t.studentName },
+          targetTeacher || {
+            name: session?.userName,
+            id: session?.userId ? String(session.userId) : undefined,
+            email: session?.email,
+          },
+        );
       });
 
       const finalTasks = [...derivedTasks, ...backendTasks];
@@ -306,7 +322,11 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       load();
     };
     window.addEventListener('melue_alerts_updated', handleAlerts);
-    return () => window.removeEventListener('melue_alerts_updated', handleAlerts);
+    window.addEventListener('melue_therapist_assignment_updated', handleAlerts);
+    return () => {
+      window.removeEventListener('melue_alerts_updated', handleAlerts);
+      window.removeEventListener('melue_therapist_assignment_updated', handleAlerts);
+    };
   }, [load]);
 
   useFocusEffect(

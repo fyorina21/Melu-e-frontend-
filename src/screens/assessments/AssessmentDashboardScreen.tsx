@@ -12,6 +12,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
+import { isStudentAssignedToTherapist } from '../../utils/therapistAssignmentHelper';
 import storage from '../../utils/storage';
 import {
   isStudentInSession,
@@ -201,9 +202,11 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     if (typeof window !== 'undefined') {
       window.addEventListener?.('storage', handleSync);
       window.addEventListener?.('melue_assessment_updated' as any, handleSync);
+      window.addEventListener?.('melue_therapist_assignment_updated' as any, handleSync);
       return () => {
         window.removeEventListener?.('storage', handleSync);
         window.removeEventListener?.('melue_assessment_updated' as any, handleSync);
+        window.removeEventListener?.('melue_therapist_assignment_updated' as any, handleSync);
       };
     }
   }, [load]);
@@ -211,10 +214,20 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   const isTeacher = session?.role === 'teacher';
   const currentTherapistName = session?.userName || (session as any)?.user?.name;
 
-  // Memoize filteredStudents using useMemo to avoid repeated executions
+  // Memoize filteredStudents using useMemo: for teacher role, show ONLY students assigned to this therapist
   const filteredStudents = useMemo(() => {
-    return (data?.students ?? []).filter((s: any) => !isStudentInSession(s));
-  }, [data?.students]);
+    let list = (data?.students ?? []).filter((s: any) => !isStudentInSession(s));
+    if (isTeacher) {
+      list = list.filter((s: any) =>
+        isStudentAssignedToTherapist(s, {
+          name: currentTherapistName,
+          id: session?.userId ? String(session.userId) : undefined,
+          email: session?.email,
+        }),
+      );
+    }
+    return list;
+  }, [data?.students, isTeacher, currentTherapistName, session]);
 
   // Sync submission status whenever students change
   useEffect(() => {

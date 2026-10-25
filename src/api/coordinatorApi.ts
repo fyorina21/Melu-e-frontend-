@@ -175,7 +175,7 @@ function saveEnrolledStudentLocally(student: Record<string, unknown>): void {
   } catch {}
 }
 
-function removeStoredEnrolledStudentByName(name: string): void {
+function _removeStoredEnrolledStudentByName(name: string): void {
   try {
     if (!name) return;
     const cleanName = name.toLowerCase().trim();
@@ -1378,28 +1378,55 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     payload.teacherName ||
     '';
 
+  const studentFullName =
+    `${payload.firstName || ''} ${payload.lastName || ''}`.trim() ||
+    String(payload.fullName || payload.name || 'New Student');
+
+  const firstName = String(payload.firstName || studentFullName.split(' ')[0] || 'Student');
+  const lastName = String(payload.lastName || studentFullName.split(' ').slice(1).join(' ') || '-');
+
   const newStudent = {
     id: `stu-${Date.now()}`,
-    fullName: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
-    name: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
     age: Number(payload.age || 6),
     programType: payload.program || payload.programType || 'Comprehensive ABA',
     therapyGroup: payload.therapyGroup || 'Station 1 · Early Learners',
-    therapist: chosenTherapist || 'Abeba Tadesse',
     status: 'active',
     ...payload,
+    fullName: studentFullName,
+    name: studentFullName,
+    firstName,
+    first_name: firstName,
+    lastName,
+    last_name: lastName,
+    therapist: chosenTherapist || 'Abeba Tadesse',
+    assignedTherapist: chosenTherapist || 'Abeba Tadesse',
     ...(chosenTherapist ? { therapist: chosenTherapist, assignedTherapist: chosenTherapist } : {}),
   };
 
   try {
     const res = await client.post('/coordinator/students', {
       ...payload,
+      fullName: studentFullName,
+      name: studentFullName,
+      firstName,
+      first_name: firstName,
+      lastName,
+      last_name: lastName,
       ...(chosenTherapist
         ? { therapist: chosenTherapist, assignedTherapist: chosenTherapist }
         : {}),
     });
     if (res?.data) {
-      removeStoredEnrolledStudentByName(newStudent.fullName);
+      const savedStudent = {
+        ...newStudent,
+        ...res.data,
+        id: String(res.data.id || newStudent.id),
+        fullName: studentFullName,
+        name: studentFullName,
+        therapist: chosenTherapist || newStudent.therapist,
+        assignedTherapist: chosenTherapist || newStudent.therapist,
+      };
+      saveEnrolledStudentLocally(savedStudent);
       return res;
     }
   } catch {}

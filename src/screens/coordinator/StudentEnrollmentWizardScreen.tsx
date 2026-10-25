@@ -62,40 +62,17 @@ export function calculateAge(dobIso: string): number | null {
   return age >= 0 ? age : 0;
 }
 
-export const THERAPIST_ASSIGNMENTS_STORAGE_KEY = 'melue_therapist_assigned_students_v1';
+import {
+  THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+  getTherapistAssignedStudents,
+  assignStudentToTherapist,
+} from '../../utils/therapistAssignmentHelper';
 
-export function getTherapistAssignedStudents(therapistKey: string): string[] {
-  if (!therapistKey) return [];
-  const store =
-    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
-  const normKey = therapistKey.trim().toLowerCase();
-  for (const [k, v] of Object.entries(store)) {
-    if (k.trim().toLowerCase() === normKey && Array.isArray(v)) {
-      return v;
-    }
-  }
-  return [];
-}
-
-export function assignStudentToTherapist(
-  therapistName: string,
-  studentName: string,
-  therapistId?: string,
-): void {
-  if (!therapistName || !studentName) return;
-  const store =
-    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
-  const key = therapistName.trim();
-  const current = Array.isArray(store[key]) ? [...store[key]] : [];
-  if (!current.includes(studentName.trim())) {
-    current.push(studentName.trim());
-  }
-  store[key] = current;
-  if (therapistId && therapistId.trim() && therapistId.trim() !== key) {
-    store[therapistId.trim()] = current;
-  }
-  storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, store);
-}
+export {
+  THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+  getTherapistAssignedStudents,
+  assignStudentToTherapist,
+};
 
 export function resolveEnrichedTherapists(teachers: StaffOption[]): StaffOption[] {
   const store =
@@ -484,11 +461,87 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     return val != null ? String(val) : '';
   };
 
-  const studentName: string =
-    getFieldVal('f1') ||
-    getFieldVal(/student.*name|full.*name|^name$/i) ||
-    (formValues.name != null ? String(formValues.name) : '') ||
+  const getStudentFieldVal = (idOrPattern: string | RegExp): string => {
+    const f = formFields.find((field: FormField) => {
+      const normLabel = (field.label || '').toLowerCase();
+      const normId = (field.id || '').toLowerCase();
+      if (
+        /guardian|parent|emergency|contact|father|mother/.test(normLabel) ||
+        /guardian|parent|emergency|contact|father|mother/.test(normId)
+      ) {
+        return false;
+      }
+      return typeof idOrPattern === 'string'
+        ? field.id === idOrPattern || normLabel === idOrPattern.toLowerCase()
+        : idOrPattern.test(field.id) || idOrPattern.test(field.label);
+    });
+    if (!f) {
+      if (typeof idOrPattern === 'string') {
+        const fallback = formValues[idOrPattern];
+        return fallback != null ? String(fallback) : '';
+      }
+      return '';
+    }
+    const val = formValues[f.id];
+    return val != null ? String(val) : '';
+  };
+
+  const getGuardianFieldVal = (idOrPattern: string | RegExp): string => {
+    const f = formFields.find((field: FormField) => {
+      const normLabel = (field.label || '').toLowerCase();
+      const normId = (field.id || '').toLowerCase();
+      if (
+        (/child|student/.test(normLabel) && !/relationship|parent.*child/i.test(normLabel)) ||
+        /child|student/.test(normId)
+      ) {
+        return false;
+      }
+      return typeof idOrPattern === 'string'
+        ? field.id === idOrPattern || normLabel === idOrPattern.toLowerCase()
+        : idOrPattern.test(field.id) || idOrPattern.test(field.label);
+    });
+    if (!f) {
+      if (typeof idOrPattern === 'string') {
+        const fallback = formValues[idOrPattern];
+        return fallback != null ? String(fallback) : '';
+      }
+      return '';
+    }
+    const val = formValues[f.id];
+    return val != null ? String(val) : '';
+  };
+
+  const childFirst =
+    getStudentFieldVal('enr_first_name') ||
+    getStudentFieldVal('first_name') ||
+    getStudentFieldVal('firstName') ||
+    getStudentFieldVal(/child.*first.*name|student.*first.*name|^first.*name$/i) ||
     '';
+  const childLast =
+    getStudentFieldVal('enr_last_name') ||
+    getStudentFieldVal('last_name') ||
+    getStudentFieldVal('lastName') ||
+    getStudentFieldVal(/child.*last.*name|student.*last.*name|^last.*name$/i) ||
+    '';
+
+  const singleStudentName =
+    getStudentFieldVal('f1') ||
+    getStudentFieldVal(/child.*(full\s*)?name|student.*(full\s*)?name/i) ||
+    getStudentFieldVal(/^student\s*name$/i) ||
+    getStudentFieldVal(/^child\s*name$/i) ||
+    getStudentFieldVal(/^full\s*name$/i) ||
+    getStudentFieldVal(/^name$/i) ||
+    (formValues.student_name != null ? String(formValues.student_name) : '') ||
+    (formValues.child_name != null ? String(formValues.child_name) : '') ||
+    '';
+
+  const studentName: string = (
+    childFirst || childLast
+      ? `${childFirst} ${childLast}`.trim()
+      : singleStudentName ||
+        (formValues.studentName != null ? String(formValues.studentName) : '') ||
+        (formValues.name != null ? String(formValues.name) : '')
+  ).trim();
   const studentDob: string =
     getFieldVal('f2') ||
     getFieldVal(/birth|dob/i) ||
@@ -715,15 +768,48 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       }
     }
 
-    const [firstName, ...rest] = (studentName || 'Student').trim().split(/\s+/);
-    const parentName = getFieldVal('f4') || getFieldVal(/parent.*name|guardian/i) || 'Guardian';
-    const parentPhone = getFieldVal('f5') || getFieldVal(/phone/i) || '555-0100';
-    const parentEmail = getFieldVal('f6') || getFieldVal(/email/i) || '';
+    const [firstNameFromSingle, ...restFromSingle] = (studentName || 'Student').trim().split(/\s+/);
+    const firstName = (childFirst || firstNameFromSingle || 'Student').trim();
+    const lastName = (childLast || restFromSingle.join(' ') || '-').trim();
+    const finalStudentFullName = `${firstName} ${lastName}`.trim();
+
+    const parentName =
+      getGuardianFieldVal('enr_guardian_name') ||
+      getGuardianFieldVal('f4') ||
+      getGuardianFieldVal(/guardian|parent.*name/i) ||
+      getGuardianFieldVal(/parent/i) ||
+      (formValues.guardian_name != null ? String(formValues.guardian_name) : '') ||
+      (formValues.parentName != null ? String(formValues.parentName) : '') ||
+      'Guardian';
+    const parentPhone =
+      getGuardianFieldVal('enr_guardian_phone') ||
+      getGuardianFieldVal('f5') ||
+      getGuardianFieldVal(/phone|telephone/i) ||
+      '555-0100';
+    const parentEmail =
+      getGuardianFieldVal('enr_guardian_email') ||
+      getGuardianFieldVal('f6') ||
+      getGuardianFieldVal(/email/i) ||
+      '';
     const diagnosis =
-      getFieldVal('f_diagnosis') || getFieldVal(/diagnosis/i) || 'Autism Spectrum Disorder';
-    const medicalNotes = getFieldVal('f7') || getFieldVal(/medical.*notes/i) || '';
-    const emergencyContact = getFieldVal('f9') || getFieldVal(/emergency/i) || '';
-    const transportation = getFieldVal('f8') || getFieldVal(/transportation/i) || 'No';
+      getFieldVal('enr_diagnosis') ||
+      getFieldVal('f_diagnosis') ||
+      getFieldVal(/diagnosis/i) ||
+      'Autism Spectrum Disorder';
+    const medicalNotes =
+      getFieldVal('enr_medical_restrictions') ||
+      getFieldVal('f7') ||
+      getFieldVal(/medical.*notes|medical.*restrictions/i) ||
+      '';
+    const emergencyContact =
+      getFieldVal('enr_emergency_contact') ||
+      getFieldVal('f9') ||
+      getFieldVal(/emergency/i) ||
+      '';
+    const transportation =
+      getFieldVal('f8') ||
+      getFieldVal(/transportation/i) ||
+      'No';
 
     // Collect dynamic form values keyed strictly by their schema ID
     const dynamicValuesById: Record<string, unknown> = {};
@@ -742,8 +828,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       custom_fields: dynamicValuesById,
       firstName,
       first_name: firstName,
-      lastName: rest.join(' ') || '-',
-      last_name: rest.join(' ') || '-',
+      lastName,
+      last_name: lastName,
+      name: finalStudentFullName,
+      fullName: finalStudentFullName,
+      enr_first_name: firstName,
+      enr_last_name: lastName,
       dateOfBirth: studentDob,
       date_of_birth: studentDob,
       programType: studentProgram,
@@ -752,13 +842,20 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       therapy_group: studentTherapyGroup.toLowerCase().includes('function')
         ? 'functional_living'
         : 'basic',
-      gender: getFieldVal('f_gender') || getFieldVal(/gender/i) || 'Female',
+      gender:
+        getStudentFieldVal('enr_gender') ||
+        getStudentFieldVal('f_gender') ||
+        getStudentFieldVal(/gender/i) ||
+        'Female',
       parentName: parentName.trim(),
       guardian_name: parentName.trim(),
+      enr_guardian_name: parentName.trim(),
       parentPhone: parentPhone.trim(),
       guardian_phone: parentPhone.trim(),
+      enr_guardian_phone: parentPhone.trim(),
       parentEmail: parentEmail.trim(),
       guardian_email: parentEmail.trim(),
+      enr_guardian_email: parentEmail.trim(),
       diagnosis: diagnosis.trim(),
       medicalNotes: medicalNotes.trim(),
       emergencyContact,
@@ -766,6 +863,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       transportation,
       transportation_required: transportation,
       assignedTherapist,
+      therapist: assignedTherapist,
       status: 'active',
       enrollment_status: 'active',
       is_active: true,
@@ -779,12 +877,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       const createdData = (res?.data || {}) as Record<string, unknown>;
       const createdId = (createdData.id ? String(createdData.id) : createdData.studentId ? String(createdData.studentId) : undefined);
 
-      markStudentActive(createdId, studentName.trim());
+      markStudentActive(createdId, finalStudentFullName);
       registerStudentStatuses([
         {
           id: createdId,
-          name: studentName.trim(),
-          fullName: studentName.trim(),
+          name: finalStudentFullName,
+          fullName: finalStudentFullName,
           status: 'active',
           rawStatus: 'active',
         },
@@ -803,8 +901,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
       saveStudentPhoto({
         id: createdId,
-        name: studentName.trim(),
-        fullName: studentName.trim(),
+        name: finalStudentFullName,
+        fullName: finalStudentFullName,
         photo: (createdData.headshotUrl || createdData.photoUrl || createdData.photo || studentPhoto) as string,
         photoBase64: studentPhoto,
         photoUri: studentPhoto,
@@ -814,21 +912,30 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         const matchingTeacher = therapists.find(
           (t) => t.name.trim().toLowerCase() === assignedTherapist.trim().toLowerCase(),
         );
-        assignStudentToTherapist(assignedTherapist, studentName.trim(), matchingTeacher?.id);
+        assignStudentToTherapist(assignedTherapist, finalStudentFullName, matchingTeacher?.id);
+        if (createdId) {
+          assignStudentToTherapist(assignedTherapist, String(createdId), matchingTeacher?.id);
+        }
       }
 
-      showToast(`${studentName} enrolled in ${studentProgram}`, 'success');
+      showToast(`${finalStudentFullName} enrolled in ${studentProgram}`, 'success');
       navigation?.navigate?.('StudentEnrollment' as never);
     } catch (err: unknown) {
       const errObj = err as { message?: string; response?: { data?: { errors?: string[]; error?: string; message?: string } } };
-      markStudentActive(undefined, studentName.trim());
+      markStudentActive(undefined, finalStudentFullName);
       saveStudentPhoto({
-        name: studentName.trim(),
-        fullName: studentName.trim(),
+        name: finalStudentFullName,
+        fullName: finalStudentFullName,
         photo: studentPhoto,
         photoBase64: studentPhoto,
         photoUri: studentPhoto,
       });
+      if (assignedTherapist) {
+        const matchingTeacher = therapists.find(
+          (t) => t.name.trim().toLowerCase() === assignedTherapist.trim().toLowerCase(),
+        );
+        assignStudentToTherapist(assignedTherapist, finalStudentFullName, matchingTeacher?.id);
+      }
       const errorMsg =
         (Array.isArray(errObj?.response?.data?.errors) ? errObj.response.data.errors.join(', ') : null) ||
         errObj?.response?.data?.error ||

@@ -1,4 +1,8 @@
 import client from './sessionApi';
+import {
+  THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+  ENROLLED_STUDENTS_CACHE_KEY,
+} from '../utils/therapistAssignmentHelper';
 import type { QueryParams, Payload } from '../types';
 import storage from '../utils/storage';
 import {
@@ -31,6 +35,48 @@ export const getAssessmentDashboard = async () => {
     }
   } catch {}
 
+  // Fetch coordinator students to map each student's genuine assigned therapist from backend assignments
+  const studentTherapistMap = new Map<string, string>();
+  try {
+    const coordRes = await client.get('/coordinator/students');
+    if (Array.isArray(coordRes?.data)) {
+      coordRes.data.forEach((cs: any) => {
+        const th = cs.therapist;
+        if (th && th !== 'Unassigned') {
+          if (cs.id) studentTherapistMap.set(String(cs.id).toLowerCase(), th);
+          if (cs.studentId) studentTherapistMap.set(String(cs.studentId).toLowerCase(), th);
+          if (cs.fullName) studentTherapistMap.set(String(cs.fullName).toLowerCase().trim(), th);
+          if (cs.name) studentTherapistMap.set(String(cs.name).toLowerCase().trim(), th);
+        }
+      });
+    }
+  } catch {}
+
+  // Also check local enrolled students cache and therapist assignments store
+  const storedEnrolled =
+    storage.getJSONSync<Record<string, unknown>[]>(ENROLLED_STUDENTS_CACHE_KEY, []) || [];
+  storedEnrolled.forEach((es) => {
+    const th = String(es.therapist || es.assignedTherapist || es.teacher || '').trim();
+    if (th && th !== 'Unassigned' && th.toLowerCase() !== 'lead teacher') {
+      if (es.id) studentTherapistMap.set(String(es.id).toLowerCase(), th);
+      if (es.studentId) studentTherapistMap.set(String(es.studentId).toLowerCase(), th);
+      if (es.fullName) studentTherapistMap.set(String(es.fullName).toLowerCase().trim(), th);
+      if (es.name) studentTherapistMap.set(String(es.name).toLowerCase().trim(), th);
+    }
+  });
+
+  const therapistAssignmentsStore =
+    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
+  for (const [thName, studentList] of Object.entries(therapistAssignmentsStore)) {
+    if (Array.isArray(studentList)) {
+      studentList.forEach((stuIdent) => {
+        if (stuIdent) {
+          studentTherapistMap.set(String(stuIdent).toLowerCase().trim(), thName);
+        }
+      });
+    }
+  }
+
   // Enrich with students from /options/students who are currently in assessment
   try {
     const { data: optionsStudents } = await client.get<any[]>('/options/students');
@@ -62,7 +108,12 @@ export const getAssessmentDashboard = async () => {
             initial: (s.name[0] || 'S').toUpperCase(),
             age: s.age || 6,
             program: s.program || 'ABA Early Intervention',
-            therapist: 'Lead Teacher',
+            therapist:
+              studentTherapistMap.get(sid.toLowerCase()) ||
+              studentTherapistMap.get(String(s.studentId || '').toLowerCase()) ||
+              studentTherapistMap.get(String(s.name || '').toLowerCase().trim()) ||
+              s.therapist ||
+              'Unassigned',
             lastAssessment: 'In Progress',
             score: Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2)),
             ablls: { status: skillsInfo.status, progress: skillsInfo.progress },
@@ -77,6 +128,15 @@ export const getAssessmentDashboard = async () => {
   // Update all students with their saved assessment progress across all 4 assessments
   backendStudents.forEach((s) => {
     const sid = String(s.id);
+    if (!s.therapist || s.therapist === 'Lead Teacher' || s.therapist === 'Unassigned') {
+      const resolved =
+        studentTherapistMap.get(sid.toLowerCase()) ||
+        studentTherapistMap.get(String(s.studentId || '').toLowerCase()) ||
+        studentTherapistMap.get(String(s.name || '').toLowerCase().trim());
+      if (resolved) {
+        s.therapist = resolved;
+      }
+    }
     const skillsInfo = getStudentSkillsProgress(
       sid,
       s.ablls?.progress ?? 0,
