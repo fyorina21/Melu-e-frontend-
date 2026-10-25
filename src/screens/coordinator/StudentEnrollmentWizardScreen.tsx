@@ -481,7 +481,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   // Helpers for caseload checking
   const caseloadOf = (name: string) =>
     therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
-  const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
+  // Teachers can be assigned to more than two students at a time for assessment
+  const isFull = (_name: string) => false;
 
   // Single dynamic field change handler
   const handleFieldChange = (fieldId: string, value: unknown) => {
@@ -712,7 +713,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       }
       if (isFull(assignedTherapist)) {
         showToast(
-          `${assignedTherapist} is at maximum capacity (2 students). Choose another therapist.`,
+          `${assignedTherapist} is at maximum capacity. Choose another therapist.`,
           'error',
         );
         return;
@@ -787,7 +788,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       if (f.id === 'f_therapist' || /therapist/i.test(f.label)) {
         if (val && isFull(String(val))) {
           showToast(
-            `${val} is at maximum capacity (2 students). Choose another therapist.`,
+            `${val} is at maximum capacity. Choose another therapist.`,
             'error',
           );
           return;
@@ -1316,7 +1317,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                               full && styles.dropdownOptionTextDisabled,
                             ]}
                           >
-                            {opt} {isTherapistField ? `(${count}/${MAX_CASELOAD})` : ''}
+                            {opt} {isTherapistField ? `(${count})` : ''}
                           </Text>
                           {selected && <Feather name="check" size={16} color="#0284C7" />}
                         </TouchableOpacity>
@@ -1330,7 +1331,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
           {isTherapistField && value && isFull(value) && (
             <Text style={styles.capacityWarning}>
-              {value} is at maximum capacity (2 students). Please select another therapist.
+              {value} is at maximum capacity. Please select another therapist.
             </Text>
           )}
 
@@ -1586,13 +1587,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   Assigned Primary Therapist <Text style={styles.requiredStar}>*</Text>
                 </Text>
                 <Text style={styles.fieldHint}>
-                  Each therapist can be assigned up to {MAX_CASELOAD} students at a time.
+                  Teachers can be assigned to more than two students at a time for assessment.
                 </Text>
                 {therapists.length > 0 ? (
                   <View style={styles.chipRow}>
                     {therapists.map((t) => {
                       const count = t.assignedStudents?.length ?? 0;
-                      const full = count >= MAX_CASELOAD;
+                      const full = isFull(t.name);
                       const selected = assignedTherapist === t.name;
                       return (
                         <TouchableOpacity
@@ -1620,7 +1621,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                               full && styles.chipTextDisabled,
                             ]}
                           >
-                            {t.name} ({count}/{MAX_CASELOAD})
+                            {t.name} ({count})
                           </Text>
                         </TouchableOpacity>
                       );

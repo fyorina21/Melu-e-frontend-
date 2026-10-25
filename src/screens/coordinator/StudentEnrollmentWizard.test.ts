@@ -182,6 +182,30 @@ describe('Student Enrollment Wizard Validation & Dynamic Fields', () => {
     storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
   });
 
+  it('allows a teacher to be assigned to more than two students at a time for assessment', () => {
+    storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
+    storage.setJSONSync('melue_enrolled_students_cache', []);
+
+    const teachers = [{ id: 't-1', name: 'Abeba Tadesse', role: 'teacher' }];
+
+    assignStudentToTherapist('Abeba Tadesse', 'Student 1', 't-1');
+    assignStudentToTherapist('Abeba Tadesse', 'Student 2', 't-1');
+    assignStudentToTherapist('Abeba Tadesse', 'Student 3', 't-1');
+    assignStudentToTherapist('Abeba Tadesse', 'Student 4', 't-1');
+
+    const enriched = resolveEnrichedTherapists(teachers);
+    expect(enriched[0].assignedStudents?.length).toBe(4);
+    expect(enriched[0].assignedStudents).toEqual([
+      'Student 1',
+      'Student 2',
+      'Student 3',
+      'Student 4',
+    ]);
+
+    // Clean up
+    storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
+  });
+
   it('reflects students from enrolled students cache in therapist caseload', () => {
     storage.setJSONSync(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {});
     storage.setJSONSync('melue_enrolled_students_cache', [

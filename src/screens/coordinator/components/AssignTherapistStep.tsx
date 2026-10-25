@@ -18,7 +18,8 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
   );
   const caseloadOf = (name: string) =>
     enrichedTherapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
-  const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
+  // Teachers can be assigned to more than two students at a time for assessment
+  const isFull = (_name: string) => false;
   const therapistNames = enrichedTherapists.map((t) => t.name);
 
   return (
@@ -28,13 +29,13 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
           Therapist / Staff Member <Text style={styles.requiredStar}>*</Text>
         </Text>
         <Text style={styles.fieldHint}>
-          Each staff member can be assigned up to {MAX_CASELOAD} students at a time.
+          Teachers can be assigned to more than two students at a time for assessment.
         </Text>
         {therapistNames.length ? (
           <View style={styles.chipRow}>
             {enrichedTherapists.map((t) => {
               const count = t.assignedStudents?.length ?? 0;
-              const full = count >= MAX_CASELOAD;
+              const full = isFull(t.name);
               const selected = form.therapist === t.name;
               return (
                 <TouchableOpacity
@@ -47,7 +48,7 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
                   ]}
                   onPress={() => set('therapist', t.name)}
                   accessibilityRole="radio"
-                  accessibilityLabel={`${t.name}, ${count} of ${MAX_CASELOAD} students assigned`}
+                  accessibilityLabel={`${t.name}, ${count} students assigned for assessment`}
                   accessibilityState={{ selected, disabled: full }}
                 >
                   <Text
@@ -57,7 +58,7 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
                       full && styles.chipTextDisabled,
                     ]}
                   >
-                    {t.name} ({count}/{MAX_CASELOAD})
+                    {t.name} ({count})
                   </Text>
                 </TouchableOpacity>
               );
@@ -75,7 +76,7 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
 
         {therapistNames.length > 0 && therapistNames.every(isFull) && (
           <Text style={styles.capacityWarning}>
-            All staff members are at maximum capacity (2/2). Reassign a student before enrolling
+            All staff members are at maximum capacity. Reassign a student before enrolling
             another.
           </Text>
         )}
