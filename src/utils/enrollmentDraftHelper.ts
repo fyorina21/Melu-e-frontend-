@@ -6,6 +6,8 @@
 
 import { storage } from './storage';
 import { calculateAge } from '../screens/coordinator/enrollmentWizardTypes';
+import { secureRandomId } from './cryptoRandom';
+import { maskSensitiveDemographic } from './sensitiveDataSanitizer';
 
 export interface EnrollmentDraftItem {
   id: string;
@@ -62,7 +64,7 @@ export function saveEnrollmentDraft(
   currentStepName?: string,
 ): EnrollmentDraftItem {
   const drafts = getEnrollmentDrafts();
-  const id = existingDraftId || `draft-${Date.now()}`;
+  const id = existingDraftId || secureRandomId('draft');
   const now = new Date().toISOString();
 
   const isDataPayload = (val: any) =>
@@ -158,7 +160,7 @@ export function saveEnrollmentDraft(
       '',
   ).trim();
   const age = dob ? (calculateAge(dob) ?? 0) : 0;
-  const gender = String(
+  const gender = maskSensitiveDemographic(
     findTextVal('f_gender') ||
       findTextVal('enr_gender') ||
       findTextVal(/gender/i) ||

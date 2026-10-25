@@ -20,6 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { usePermission } from '../../auth/usePermission';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
+import { secureRandomId } from '../../utils/cryptoRandom';
 import StudentSessionCard from './components/StudentSessionCard';
 import BehaviorIncidentModal from './components/BehaviorIncidentModal';
 import type { IncidentPayload } from './components/BehaviorIncidentModal';
@@ -779,7 +780,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     }
 
     const resolvedGoalId = activeGoal.id;
-    const trialId = `trial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const trialId = secureRandomId('trial');
     const timeStr = new Date().toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
@@ -1059,8 +1060,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
       incidentData.student_goal_id ||
       '';
 
-    const incidentId =
-      incidentData.id || `inc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const incidentId = incidentData.id || secureRandomId('inc');
 
     const fullIncident: IncidentPayload = {
       ...incidentData,

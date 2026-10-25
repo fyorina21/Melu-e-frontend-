@@ -25,6 +25,7 @@ import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalA
 import { calculateAge } from './enrollmentWizardTypes';
 import { useToast } from '../../context/ToastContext';
 import { exportStudentProfileToPdf } from '../../utils/studentProfilePdfHelper';
+import { maskSensitiveDemographic } from '../../utils/sensitiveDataSanitizer';
 import DocumentAttachmentCard, {
   extractDocumentMeta,
 } from '../../components/DocumentAttachmentCard';
@@ -303,7 +304,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
             extractVal(formVals, ['f_photo', 'enr_headshot', 'photoUrl', 'photo']) ||
             draft.photo ||
             null,
-          gender: extractVal(formVals, ['enr_gender', 'f_gender', 'gender']),
+          gender: maskSensitiveDemographic(
+            extractVal(formVals, ['enr_gender', 'f_gender', 'gender']),
+          ),
           guardianName:
             cleanField(
               extractVal(formVals, ['enr_guardian_name', 'f4', 'guardianName', 'parentName']),

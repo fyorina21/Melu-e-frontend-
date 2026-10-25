@@ -4,6 +4,8 @@ import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
 import { getEnrollmentDraft } from '../utils/enrollmentDraftHelper';
+import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
+import { maskSensitiveDemographic } from '../utils/sensitiveDataSanitizer';
 export { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from './optionsApi';
 
 // ============================================================================
@@ -687,7 +689,7 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
 
       const rawGoals: any[] = Array.isArray(d.current_goals) ? d.current_goals : [];
       const goals = rawGoals.map((g) => ({
-        id: String(g?.id ?? g?.goal_id ?? Math.random()),
+        id: String(g?.id ?? g?.goal_id ?? secureRandomId('goal')),
         name: String(g?.goal_name ?? 'Goal'),
         percent: Math.round(Number(g?.progress_percent) || 0),
         status: g?.status || (Number(g?.progress_percent) >= 100 ? 'Mastered' : 'In Progress'),
@@ -1294,7 +1296,7 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
 
 export const createStudentEnrollment = async (payload: Payload): Promise<{ data: any }> => {
   const currentYearSuffix = String(new Date().getFullYear()).slice(-2);
-  const seq = String(Math.floor(1 + Math.random() * 9999)).padStart(4, '0');
+  const seq = secureRandomDigits(4);
   const generatedStudentId = `MEL-${seq}-${currentYearSuffix}`;
 
   const newStudent = {
@@ -1309,6 +1311,7 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     therapist: payload.therapist || 'Abeba Tadesse',
     status: 'active',
     ...payload,
+    gender: maskSensitiveDemographic(payload.gender || 'Female'),
   };
 
   try {
@@ -1395,7 +1398,7 @@ export const getStudentProfile = async (studentId: string): Promise<{ data: any 
         goals: [],
         customFields: draft.formValues || {},
         formValues: draft.formValues || {},
-        gender: draft.gender || draft.formValues?.f_gender || 'Female',
+        gender: maskSensitiveDemographic(draft.gender || draft.formValues?.f_gender || 'Female'),
         guardianName:
           draft.formValues?.f4 ||
           draft.formValues?.guardian_name ||

@@ -3,6 +3,7 @@ import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { storage } from '../utils/storage';
 import { FALLBACK_MODULES } from '../screens/systemadmin/permissions/permissionTypes';
+import { secureRandomId } from '../utils/cryptoRandom';
 
 // SCR-SYS-001: Staff Account Management
 export const getStaffAccounts = async (params: QueryParams) => {
@@ -327,7 +328,7 @@ export const addAuditLogEntry = (entry: Record<string, any>) => {
   const existing = storage.getJSONSync<any[]>('sysadmin_audit_logs') || [];
   const now = new Date();
   const newEntry = {
-    id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: secureRandomId('aud'),
     date: now.toISOString().slice(0, 10),
     time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     user: 'System Admin',

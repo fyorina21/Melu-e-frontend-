@@ -40,6 +40,7 @@ import CameraCaptureModal from '../../components/CameraCaptureModal';
 import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { markStudentActive } from '../../utils/studentStatusHelper';
 import { registerStudentStatuses } from '../../utils/studentLifecycleHelper';
+import { maskSensitiveDemographic } from '../../utils/sensitiveDataSanitizer';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import {
   getEnrollmentDraft,
@@ -1092,7 +1093,9 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       therapy_group: studentTherapyGroup.toLowerCase().includes('function')
         ? 'functional_living'
         : 'basic',
-      gender: getFieldVal('f_gender') || getFieldVal(/gender/i) || 'Female',
+      gender: maskSensitiveDemographic(
+        getFieldVal('f_gender') || getFieldVal(/gender/i) || 'Female',
+      ),
       parentName: parentName.trim(),
       guardian_name: parentName.trim(),
       parentPhone: parentPhone.trim(),

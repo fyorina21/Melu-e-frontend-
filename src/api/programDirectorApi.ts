@@ -9,6 +9,7 @@ import {
 } from '../stores/goalBankStore';
 import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
+import { secureRandomInt } from '../utils/cryptoRandom';
 
 // ============================================================================
 // Storage Keys
@@ -1936,9 +1937,9 @@ export const getChartData = async (params: QueryParams): Promise<{ data: any }> 
       const stations = res.data?.stations || [];
       stations.forEach((st: any) => {
         (st.goals || []).forEach((g: any) => {
-          const baseline = Math.floor(Math.random() * 20) + 35;
-          const mid = Math.min(100, baseline + Math.floor(Math.random() * 20) + 10);
-          const current = Math.min(100, mid + Math.floor(Math.random() * 20) + 10);
+          const baseline = secureRandomInt(35, 54);
+          const mid = Math.min(100, baseline + secureRandomInt(10, 29));
+          const current = Math.min(100, mid + secureRandomInt(10, 29));
           goalCharts.push({
             goalId: String(g.id || g.student_goal_id || `goal-${goalCharts.length + 1}`),
             goalName: String(g.name || g.description || 'Target Skill'),

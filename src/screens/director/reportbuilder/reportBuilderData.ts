@@ -17,6 +17,7 @@ import {
   type ReportFilterState,
   type ReportRow,
 } from './reportBuilderTypes';
+import { secureRandomId } from '../../../utils/cryptoRandom';
 
 const PROGRAM_OPTIONS = PROGRAMS.filter((p) => p !== 'All Programs');
 const BEHAVIOR_OPTIONS = BEHAVIOR_TYPES.filter((b) => b !== 'All Types' && b !== 'Non-Compliance');
@@ -75,7 +76,7 @@ export async function buildCustomReport(filters: ReportFilterState): Promise<Rep
   const list = Array.isArray(students) ? students : [];
 
   const rows: ReportRow[] = list.map((student) => {
-    const h = hash(String(student.id ?? student.name ?? Math.random()));
+    const h = hash(String(student.id ?? student.name ?? secureRandomId('student')));
     const program = PROGRAM_OPTIONS[h % PROGRAM_OPTIONS.length] ?? 'Regular Morning';
     const therapist = teachers.length ? teachers[h % teachers.length].name : 'Unassigned';
     const attendance = 60 + (h % 40); // 60–99

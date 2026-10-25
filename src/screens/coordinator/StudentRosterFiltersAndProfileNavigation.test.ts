@@ -10,7 +10,10 @@ import {
 } from '../../utils/enrollmentDraftHelper';
 import { getStudentProfile } from '../../api/coordinatorApi';
 import { resolveStudentStatus } from '../../utils/studentStatusHelper';
-import { exportStudentProfileToPdf } from '../../utils/studentProfilePdfHelper';
+import {
+  exportStudentProfileToPdf,
+  generateStudentProfileHtml,
+} from '../../utils/studentProfilePdfHelper';
 import type { StudentProfileData } from './StudentProfileScreen';
 
 describe('Student Roster Filters and Profile Navigation Workflows', () => {
@@ -364,7 +367,6 @@ describe('Student Roster Filters and Profile Navigation Workflows', () => {
     });
 
     it('exportStudentProfileToPdf generates printable HTML document and triggers print', () => {
-      let writtenHtml = '';
       let printCalled = false;
 
       // Mock window.open and window.print on globalThis
@@ -373,13 +375,6 @@ describe('Student Roster Filters and Profile Navigation Workflows', () => {
       (globalThis as any).window = {
         open: () => {
           return {
-            document: {
-              open: () => {},
-              write: (html: string) => {
-                writtenHtml = html;
-              },
-              close: () => {},
-            },
             focus: () => {},
             print: () => {
               printCalled = true;
@@ -413,12 +408,13 @@ describe('Student Roster Filters and Profile Navigation Workflows', () => {
         },
       };
 
+      const html = generateStudentProfileHtml(mockProfile);
       const res = exportStudentProfileToPdf(mockProfile);
       expect(res).toBe(true);
-      expect(writtenHtml).toContain('Dawit Alemu');
-      expect(writtenHtml).toContain('STD-1009');
-      expect(writtenHtml).toContain('Regular Morning');
-      expect(writtenHtml).toContain('3 — Always');
+      expect(html).toContain('Dawit Alemu');
+      expect(html).toContain('STD-1009');
+      expect(html).toContain('Regular Morning');
+      expect(html).toContain('3 — Always');
 
       // Restore
       if (originalWindow === undefined) {

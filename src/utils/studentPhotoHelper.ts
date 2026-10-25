@@ -1,5 +1,6 @@
 // src/utils/studentPhotoHelper.ts
 import { env } from '../api/config/env';
+import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
 
 const STORAGE_KEY = 'melue_student_photos_registry_v1';
 
@@ -16,8 +17,9 @@ function loadRegistry() {
   try {
     if (typeof localStorage !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
+      const decoded = unprotectStoragePayload(stored) || stored;
+      if (decoded) {
+        const parsed = JSON.parse(decoded);
         if (parsed && typeof parsed === 'object') {
           Object.entries(parsed).forEach(([k, v]) => {
             if (typeof v === 'string' && v) {
@@ -40,7 +42,8 @@ function persistRegistry() {
       memoryRegistry.forEach((v, k) => {
         obj[k] = v;
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      const protectedVal = sanitizeStoragePayload(JSON.stringify(obj));
+      localStorage.setItem(STORAGE_KEY, protectedVal);
     }
   } catch (err) {
     // Ignore storage quota errors

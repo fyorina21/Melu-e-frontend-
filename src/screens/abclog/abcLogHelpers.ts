@@ -7,6 +7,8 @@
 // - Weekly stats calculation strictly excluding future dates
 // - RFC 4180 CSV export and printable PDF report generation
 
+import { secureRandomId } from '../../utils/cryptoRandom';
+
 export interface AbcStats {
   totalIncidents: number;
   mostCommonBehavior: string;
@@ -66,7 +68,7 @@ export function getDefaultDateRange(): { from: string; to: string } {
 
 export function filterAbcIncidents(
   incidents: AbcIncident[],
-  filters: AbcFilterParams
+  filters: AbcFilterParams,
 ): AbcIncident[] {
   if (!Array.isArray(incidents)) return [];
   const { from, to, behaviorFilter, categoryFilter } = filters;
@@ -83,13 +85,16 @@ export function filterAbcIncidents(
 
 export function mergeAndDeduplicateIncidents(
   stored: AbcIncident[],
-  api: AbcIncident[]
+  api: AbcIncident[],
 ): AbcIncident[] {
   const seenIds = new Set<string>();
   const seenSignatures = new Set<string>();
   const combined: AbcIncident[] = [];
 
-  const allCandidates = [...(Array.isArray(stored) ? stored : []), ...(Array.isArray(api) ? api : [])];
+  const allCandidates = [
+    ...(Array.isArray(stored) ? stored : []),
+    ...(Array.isArray(api) ? api : []),
+  ];
 
   allCandidates.forEach((item, index) => {
     const dateStr = extractDateStr(item.date);
@@ -111,7 +116,7 @@ export function mergeAndDeduplicateIncidents(
 
     let safeId = item.id ? String(item.id).trim() : '';
     if (!safeId || seenIds.has(safeId)) {
-      safeId = `abc-${dateStr || 'nodate'}-${timeStr.replace(/[^0-9]/g, '') || index}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+      safeId = secureRandomId(`abc-${dateStr || 'nodate'}`);
     }
 
     seenIds.add(safeId);
@@ -139,10 +144,7 @@ export function mergeAndDeduplicateIncidents(
   return combined;
 }
 
-export function computeAbcStats(
-  incidents: AbcIncident[],
-  referenceDate = new Date()
-): AbcStats {
+export function computeAbcStats(incidents: AbcIncident[], referenceDate = new Date()): AbcStats {
   if (!Array.isArray(incidents) || incidents.length === 0) {
     return {
       totalIncidents: 0,
@@ -203,12 +205,15 @@ export function computeAbcStats(
 
 export function generateAbcCsv(
   incidents: AbcIncident[],
-  columns: Array<{ key: keyof AbcIncident; label: string }>
+  columns: Array<{ key: keyof AbcIncident; label: string }>,
 ): string {
   const headers = columns.map((c) => c.label).concat(['Notes']);
   const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
   const rows = incidents.map((r) =>
-    columns.map((c) => escapeCsv(r[c.key])).concat([escapeCsv(r.notes)]).join(',')
+    columns
+      .map((c) => escapeCsv(r[c.key]))
+      .concat([escapeCsv(r.notes)])
+      .join(','),
   );
   return [headers.join(','), ...rows].join('\r\n');
 }
@@ -276,15 +281,23 @@ export function generateAbcPrintHtml(options: {
         </thead>
         <tbody>
           ${incidents.length === 0 ? '<tr><td colspan="10" style="padding: 16px; text-align: center; color: #64748b;">No incidents found for the selected filters.</td></tr>' : ''}
-          ${incidents.map((inc, i) => `
+          ${incidents
+            .map(
+              (inc, i) => `
             <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-              ${columns.map((col) => `
+              ${columns
+                .map(
+                  (col) => `
                 <td style="padding: 6px; border: 1px solid #e2e8f0; ${col.key === 'behavior' ? 'font-weight: 600;' : ''}">
                   ${inc[col.key] || '—'}
                 </td>
-              `).join('')}
+              `,
+                )
+                .join('')}
             </tr>
-          `).join('')}
+          `,
+            )
+            .join('')}
         </tbody>
       </table>
     </div>

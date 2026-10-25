@@ -6,6 +6,8 @@
 // which may not serialize trial logs in the roster response.
 
 import type { Trial, SessionIncident } from '../types';
+import { secureRandomId } from '../utils/cryptoRandom';
+import { sanitizeStoragePayload, unprotectStoragePayload } from '../utils/sensitiveDataSanitizer';
 
 const STORAGE_KEY = 'melue_session_trials_cache';
 
@@ -36,11 +38,7 @@ function writeAllStored(data: StoredTrialMap): void {
   }
 }
 
-export function getStoredTrials(
-  sessionId: string,
-  studentId: string,
-  goalId?: string
-): Trial[] {
+export function getStoredTrials(sessionId: string, studentId: string, goalId?: string): Trial[] {
   const all = readAllStored();
   const key = `${sessionId}:${studentId}`;
   const list = all[key] || [];
@@ -52,7 +50,7 @@ export function recordTrialInStore(
   sessionId: string,
   studentId: string,
   goalId: string,
-  trial: Trial
+  trial: Trial,
 ): void {
   if (!sessionId || !studentId || !goalId || !trial) return;
   const all = readAllStored();
@@ -70,7 +68,7 @@ export function recordTrialInStore(
         trial.timestamp &&
         t.timestamp === trial.timestamp &&
         t.promptLevel === trial.promptLevel &&
-        t.studentGoalId === goalId
+        t.studentGoalId === goalId,
     );
     if (!isDup) {
       all[key] = [...current, { ...trial, studentGoalId: goalId }];
@@ -83,7 +81,7 @@ export function updateTrialIdInStore(
   sessionId: string,
   studentId: string,
   oldTrialId: string,
-  newTrialId: string
+  newTrialId: string,
 ): void {
   if (!sessionId || !studentId || !oldTrialId || !newTrialId) return;
   const all = readAllStored();
@@ -107,7 +105,7 @@ export function undoTrialInStore(
   sessionId: string,
   studentId: string,
   goalId?: string,
-  trialId?: string
+  trialId?: string,
 ): Trial | null {
   if (!sessionId || !studentId) return null;
   const all = readAllStored();
@@ -158,7 +156,8 @@ function generateOfflineSyncIdSuffix(): string {
 
 export interface OfflineSyncItem {
   id: string;
-  type: 'logTrial' | 'undoTrial' | 'recordIncident' | 'log_trial' | 'undo_trial' | 'behavior_incident';
+  type:
+    'logTrial' | 'undoTrial' | 'recordIncident' | 'log_trial' | 'undo_trial' | 'behavior_incident';
   sessionId: string;
   studentId?: string;
   goalId?: string;
@@ -179,7 +178,7 @@ export function getOfflineSyncQueue(): OfflineSyncItem[] {
 }
 
 export function enqueueOfflineSync(
-  item: Omit<OfflineSyncItem, 'id' | 'createdAt' | 'retryCount'>
+  item: Omit<OfflineSyncItem, 'id' | 'createdAt' | 'retryCount'>,
 ): OfflineSyncItem {
   const newItem: OfflineSyncItem = {
     ...item,
@@ -209,7 +208,7 @@ export function incrementOfflineSyncRetry(id: string): void {
   if (typeof localStorage === 'undefined' || !id) return;
   try {
     const queue = getOfflineSyncQueue().map((item) =>
-      item.id === id ? { ...item, retryCount: item.retryCount + 1 } : item
+      item.id === id ? { ...item, retryCount: item.retryCount + 1 } : item,
     );
     localStorage.setItem(OFFLINE_SYNC_QUEUE_KEY, JSON.stringify(queue));
   } catch {}
@@ -251,7 +250,9 @@ export function getStoredIncidents(sessionId: string): SessionIncident[] {
     const seen = new Set<string>();
     const result: SessionIncident[] = [];
     for (const item of list) {
-      const idKey = (item as any).id || `${(item as any).date}-${(item as any).time}-${(item as any).behavior}-${(item as any).studentId}`;
+      const idKey =
+        (item as any).id ||
+        `${(item as any).date}-${(item as any).time}-${(item as any).behavior}-${(item as any).studentId}`;
       if (!seen.has(idKey)) {
         seen.add(idKey);
         result.push(item);
@@ -278,7 +279,7 @@ export function recordIncidentInStore(sessionId: string, incident: SessionIncide
           (i.date === (incident as any).date &&
             i.time === (incident as any).time &&
             i.studentId === (incident as any).studentId &&
-            i.behavior === (incident as any).behavior)
+            i.behavior === (incident as any).behavior),
       );
 
       if (existingIndex >= 0) {
@@ -296,7 +297,10 @@ export function recordIncidentInStore(sessionId: string, incident: SessionIncide
   recordAbcIncidentInStore(incident);
 }
 
-export function removeStoredSessionIncident(sessionId: string, incidentIdOrIndex: string | number): void {
+export function removeStoredSessionIncident(
+  sessionId: string,
+  incidentIdOrIndex: string | number,
+): void {
   if (typeof localStorage === 'undefined' || !sessionId) return;
   try {
     const raw = localStorage.getItem(INCIDENTS_STORAGE_KEY);
@@ -327,25 +331,64 @@ const ABC_STORAGE_KEY = 'melue_abc_incidents_cache';
 
 export function normalizeAbcIncident(incident: any): any {
   if (!incident) return null;
-  const incidentId =
-    incident.id ||
-    `abc-inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const incidentId = incident.id || secureRandomId('abc-inc');
 
   return {
     ...incident,
     id: incidentId,
     date: incident.date || new Date().toISOString().split('T')[0],
-    time: incident.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time:
+      incident.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     studentId: incident.studentId || incident.student_id || '',
     studentName: incident.studentName || 'Student',
-    location: incident.location || incident['Location'] || incident.customFields?.['Location'] || incident.customFields?.['b_loc'] || '',
-    behavior: incident.behavior || incident['Behavior Type'] || incident['Behavior'] || incident.customFields?.['Behavior Type'] || incident.customFields?.['b_beh'] || '',
-    intensity: incident.intensity || incident['Intensity'] || incident.customFields?.['Intensity'] || incident.customFields?.['b_int'] || '',
-    frequency: incident.frequency || incident['Duration (mins)'] || incident['Duration'] || incident['Frequency'] || incident.duration || '1',
+    location:
+      incident.location ||
+      incident['Location'] ||
+      incident.customFields?.['Location'] ||
+      incident.customFields?.['b_loc'] ||
+      '',
+    behavior:
+      incident.behavior ||
+      incident['Behavior Type'] ||
+      incident['Behavior'] ||
+      incident.customFields?.['Behavior Type'] ||
+      incident.customFields?.['b_beh'] ||
+      '',
+    intensity:
+      incident.intensity ||
+      incident['Intensity'] ||
+      incident.customFields?.['Intensity'] ||
+      incident.customFields?.['b_int'] ||
+      '',
+    frequency:
+      incident.frequency ||
+      incident['Duration (mins)'] ||
+      incident['Duration'] ||
+      incident['Frequency'] ||
+      incident.duration ||
+      '1',
     category: incident.category || incident['Category'] || 'General',
-    antecedent: incident.antecedent || incident['Antecedent / Trigger'] || incident['Antecedent'] || incident.customFields?.['Antecedent / Trigger'] || incident.customFields?.['b_ant'] || '',
-    consequence: incident.consequence || incident['Consequence / Action Taken'] || incident['Consequence'] || incident.customFields?.['Consequence / Action Taken'] || incident.customFields?.['b_con'] || '',
-    notes: incident.notes || incident.additionalNotes || incident['Notes & Observations'] || incident['Note'] || incident.customFields?.['Notes & Observations'] || '',
+    antecedent:
+      incident.antecedent ||
+      incident['Antecedent / Trigger'] ||
+      incident['Antecedent'] ||
+      incident.customFields?.['Antecedent / Trigger'] ||
+      incident.customFields?.['b_ant'] ||
+      '',
+    consequence:
+      incident.consequence ||
+      incident['Consequence / Action Taken'] ||
+      incident['Consequence'] ||
+      incident.customFields?.['Consequence / Action Taken'] ||
+      incident.customFields?.['b_con'] ||
+      '',
+    notes:
+      incident.notes ||
+      incident.additionalNotes ||
+      incident['Notes & Observations'] ||
+      incident['Note'] ||
+      incident.customFields?.['Notes & Observations'] ||
+      '',
     teacher: incident.teacher || incident.recordedBy || 'Rosa Delgado',
   };
 }
@@ -413,11 +456,20 @@ export function getStoredAbcIncidents(studentId?: string, studentName?: string):
     const normTargetName = (studentName || '').trim().toLowerCase();
 
     return arr.filter((item: any) => {
-      const matchId = studentId && (String(item.studentId) === String(studentId) || String(item.student_id) === String(studentId));
+      const matchId =
+        studentId &&
+        (String(item.studentId) === String(studentId) ||
+          String(item.student_id) === String(studentId));
       if (matchId) return true;
 
       const itemStudentName = (item.studentName || '').trim().toLowerCase();
-      if (normTargetName && itemStudentName && (itemStudentName === normTargetName || itemStudentName.includes(normTargetName) || normTargetName.includes(itemStudentName))) {
+      if (
+        normTargetName &&
+        itemStudentName &&
+        (itemStudentName === normTargetName ||
+          itemStudentName.includes(normTargetName) ||
+          normTargetName.includes(itemStudentName))
+      ) {
         return true;
       }
       return false;
@@ -459,14 +511,20 @@ export function removeStoredAbcIncident(incidentId: string): void {
     } catch {}
 
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('melue_abc_updated', { detail: { id: incidentId, deleted: true } }));
+      window.dispatchEvent(
+        new CustomEvent('melue_abc_updated', { detail: { id: incidentId, deleted: true } }),
+      );
     }
   } catch {}
 }
 
 const STUDENTS_STORAGE_KEY = 'melue_session_students_cache';
 
-export function setStoredSessionStudents(sessionId: string = 'active', students: any[], teacherId?: string): void {
+export function setStoredSessionStudents(
+  sessionId: string = 'active',
+  students: any[],
+  teacherId?: string,
+): void {
   if (typeof localStorage === 'undefined' || !Array.isArray(students)) return;
   try {
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
@@ -478,16 +536,21 @@ export function setStoredSessionStudents(sessionId: string = 'active', students:
     } else {
       map['active'] = students;
     }
-    localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(map));
+    const protectedVal = sanitizeStoragePayload(JSON.stringify(map));
+    localStorage.setItem(STUDENTS_STORAGE_KEY, protectedVal);
   } catch {}
 }
 
-export function getStoredSessionStudents(sessionId: string = 'active', teacherId?: string): any[] | null {
+export function getStoredSessionStudents(
+  sessionId: string = 'active',
+  teacherId?: string,
+): any[] | null {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
     if (!raw) return null;
-    const map = JSON.parse(raw);
+    const decoded = unprotectStoragePayload(raw) || raw;
+    const map = JSON.parse(decoded);
     if (teacherId) {
       const scoped = map[`${sessionId}_${teacherId}`] || map[`teacher_${teacherId}`];
       if (Array.isArray(scoped)) return scoped;
@@ -498,4 +561,3 @@ export function getStoredSessionStudents(sessionId: string = 'active', teacherId
     return null;
   }
 }
-

@@ -4,6 +4,7 @@
 // 2. Session display rule: A student can be displayed on session page if and only if assessment is 100% completed.
 
 import { getStoredIupDraft } from '../api/programDirectorApi';
+import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
 
 export interface StudentLifecycleRecord {
   id: string | number;
@@ -31,7 +32,8 @@ export function registerStudentStatuses(students: any[]): void {
   if (typeof localStorage === 'undefined' || !Array.isArray(students)) return;
   try {
     const raw = localStorage.getItem(STUDENT_STATUS_REGISTRY_KEY);
-    const registry = raw ? JSON.parse(raw) : {};
+    const decoded = unprotectStoragePayload(raw) || raw;
+    const registry = decoded ? JSON.parse(decoded) : {};
     students.forEach((s) => {
       if (!s || !s.id) return;
       const sid = String(s.id);
@@ -43,7 +45,8 @@ export function registerStudentStatuses(students: any[]): void {
         name: s.name || s.fullName || registry[sid]?.name,
       };
     });
-    localStorage.setItem(STUDENT_STATUS_REGISTRY_KEY, JSON.stringify(registry));
+    const protectedVal = sanitizeStoragePayload(JSON.stringify(registry));
+    localStorage.setItem(STUDENT_STATUS_REGISTRY_KEY, protectedVal);
   } catch {}
 }
 
@@ -55,7 +58,8 @@ export function getRegisteredStudentStatus(studentId: string | number): any {
   try {
     const raw = localStorage.getItem(STUDENT_STATUS_REGISTRY_KEY);
     if (!raw) return null;
-    const registry = JSON.parse(raw);
+    const decoded = unprotectStoragePayload(raw) || raw;
+    const registry = JSON.parse(decoded);
     return registry[String(studentId)] || null;
   } catch {
     return null;
@@ -114,7 +118,7 @@ export function clearStudentAssessmentCompleted(studentId: string | number): voi
 export function getStudentSkillsProgress(
   studentId: string | number,
   fallbackProgress: number = 0,
-  fallbackStatus: string = 'Not Started'
+  fallbackStatus: string = 'Not Started',
 ): { progress: number; status: string } {
   if (typeof localStorage === 'undefined' || !studentId) {
     return { progress: fallbackProgress, status: fallbackStatus };
@@ -147,7 +151,8 @@ export function getStudentSkillsProgress(
       }
       if (parsed.scores && typeof parsed.scores === 'object') {
         const scoredKeys = Object.keys(parsed.scores).filter(
-          (k) => parsed.scores[k] !== undefined && parsed.scores[k] !== null && parsed.scores[k] !== ''
+          (k) =>
+            parsed.scores[k] !== undefined && parsed.scores[k] !== null && parsed.scores[k] !== '',
         );
         const answered = scoredKeys.length;
         const prog = Math.min(100, Math.round((answered / 55) * 100));
@@ -165,7 +170,7 @@ export function getStudentSkillsProgress(
 export function getStudentBehaviorProgress(
   studentId: string | number,
   fallbackProgress: number = 0,
-  fallbackStatus: string = 'Not Started'
+  fallbackStatus: string = 'Not Started',
 ): { progress: number; status: string } {
   if (typeof localStorage === 'undefined' || !studentId) {
     return { progress: fallbackProgress, status: fallbackStatus };
@@ -194,7 +199,8 @@ export function getStudentBehaviorProgress(
           : 0;
       const fastCount =
         parsed.fastAnswers && typeof parsed.fastAnswers === 'object'
-          ? Object.keys(parsed.fastAnswers).filter((k) => parsed.fastAnswers[k] !== undefined).length
+          ? Object.keys(parsed.fastAnswers).filter((k) => parsed.fastAnswers[k] !== undefined)
+              .length
           : 0;
       const totalAnswered = massCount + fastCount;
       if (totalAnswered > 0) {
@@ -227,15 +233,25 @@ export function isStudentAssessment100PercentCompleted(student: any): boolean {
   if (sid) {
     try {
       const draft = getStoredIupDraft(sid);
-      if (draft && ((Array.isArray(draft.goals) && draft.goals.length > 0) || (draft.slots && typeof draft.slots === 'object'))) {
+      if (
+        draft &&
+        ((Array.isArray(draft.goals) && draft.goals.length > 0) ||
+          (draft.slots && typeof draft.slots === 'object'))
+      ) {
         return true;
       }
     } catch {}
   }
 
-  const status = String(student.rawStatus || student.status || '').toLowerCase().trim();
-  const stage = String(student.currentStage || student.stage || '').toLowerCase().trim();
-  const assessStatus = String(student.assessmentStatus || '').toLowerCase().trim();
+  const status = String(student.rawStatus || student.status || '')
+    .toLowerCase()
+    .trim();
+  const stage = String(student.currentStage || student.stage || '')
+    .toLowerCase()
+    .trim();
+  const assessStatus = String(student.assessmentStatus || '')
+    .toLowerCase()
+    .trim();
 
   // If student object is minimal (only id/name), look up registered status
   if (!status && !stage && !assessStatus && sid) {
@@ -321,8 +337,12 @@ export function isStudentAssessment100PercentCompleted(student: any): boolean {
  */
 export function isStudentInSession(student: any): boolean {
   if (!student) return false;
-  const status = String(student.rawStatus || student.status || '').toLowerCase().trim();
-  const stage = String(student.currentStage || student.stage || '').toLowerCase().trim();
+  const status = String(student.rawStatus || student.status || '')
+    .toLowerCase()
+    .trim();
+  const stage = String(student.currentStage || student.stage || '')
+    .toLowerCase()
+    .trim();
 
   // If student is in assessment, enrolled, or not yet in session, they cannot be in session
   if (
@@ -404,9 +424,15 @@ export function isStudentEligibleForSession(student: any): boolean {
     return true;
   }
 
-  const status = String(student.rawStatus || student.status || '').toLowerCase().trim();
-  const stage = String(student.currentStage || student.stage || '').toLowerCase().trim();
-  const assessStatus = String(student.assessmentStatus || '').toLowerCase().trim();
+  const status = String(student.rawStatus || student.status || '')
+    .toLowerCase()
+    .trim();
+  const stage = String(student.currentStage || student.stage || '')
+    .toLowerCase()
+    .trim();
+  const assessStatus = String(student.assessmentStatus || '')
+    .toLowerCase()
+    .trim();
 
   // Strictly excluded if in assessment or enrolled or not started
   if (

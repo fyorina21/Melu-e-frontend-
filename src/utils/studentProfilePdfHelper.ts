@@ -1,4 +1,5 @@
 import type { StudentProfileData } from '../screens/coordinator/StudentProfileScreen';
+import { escapeHtml } from './sensitiveDataSanitizer';
 
 const SOCIAL_SKILLS_PROMPTS = [
   '1. Initiates verbal greeting or wave to familiar teachers upon arrival',
@@ -15,12 +16,9 @@ const SOCIAL_SKILLS_PROMPTS = [
 
 /**
  * Generates and triggers a print/save-as-PDF dialog for the student's clinical intake profile.
+ * Sanitizes all dynamic values to prevent XSS and eliminates document.write in favor of Blob URLs.
  */
-export function exportStudentProfileToPdf(profile: StudentProfileData): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
+export function generateStudentProfileHtml(profile: StudentProfileData): string {
   const custom = { ...(profile.customFields || {}), ...(profile.formValues || {}) };
 
   const questionsHtml = SOCIAL_SKILLS_PROMPTS.map((prompt, idx) => {
@@ -28,18 +26,23 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
     const score = custom[key] || 'Not Assessed';
     return `
       <tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #E2E8F0; font-size: 13px; color: #334155;">${prompt}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #E2E8F0; text-align: center; font-size: 13px; font-weight: 600; color: #0284C7;">${score}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #E2E8F0; font-size: 13px; color: #334155;">${escapeHtml(prompt)}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #E2E8F0; text-align: center; font-size: 13px; font-weight: 600; color: #0284C7;">${escapeHtml(score)}</td>
       </tr>
     `;
   }).join('');
+
+  const fullNameSafe = escapeHtml(profile.fullName || 'Student');
+  const studentIdSafe = escapeHtml(profile.studentId || profile.student_id || profile.id);
+  const statusSafe = escapeHtml(profile.status || 'Active');
+  const isDraft = statusSafe.toLowerCase().includes('draft') || Boolean(profile.isDraft);
 
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="utf-8" />
-        <title>${profile.fullName} — Student Clinical Intake Profile</title>
+        <title>${fullNameSafe} — Student Clinical Intake Profile</title>
         <style>
           @media print {
             @page { margin: 12mm 15mm; size: portrait; }
@@ -152,8 +155,8 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
           }
           .footer {
             margin-top: 32px;
-            border-top: 1px solid #E2E8F0;
             padding-top: 12px;
+            border-top: 1px solid #E2E8F0;
             display: flex;
             justify-content: space-between;
             font-size: 11px;
@@ -164,43 +167,49 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
       <body>
         <div class="header">
           <div class="title-area">
-            <h1>${profile.fullName || 'Student Intake Profile'}</h1>
-            <p>Melu'e Foundation — Clinical & Educational Comprehensive Profile</p>
+            <h1>${fullNameSafe}</h1>
+            <p>Special Education & ABA Clinical Assessment Intake Profile</p>
           </div>
           <div class="badge-area">
-            <span class="status-badge ${profile.isDraft ? 'draft' : ''}">${profile.isDraft ? 'Draft Record' : profile.status || 'Active'}</span>
-            <div class="meta-info">Student ID: <strong>${profile.id}</strong></div>
-            <div class="meta-info">Printed: ${new Date().toLocaleDateString()}</div>
+            <span class="status-badge ${isDraft ? 'draft' : ''}">
+              ${isDraft ? 'Draft Status' : 'Active Student'}
+            </span>
+            <div class="meta-info">System ID: ${studentIdSafe}</div>
+            <div class="meta-info">Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
           </div>
         </div>
 
-        <!-- 1. Student Demographics -->
+        <!-- 1. General Child Information -->
         <div class="section">
-          <div class="section-title">1. Student Information</div>
+          <div class="section-title">1. General Information & Demographics</div>
           <div class="grid">
             <div>
               <div class="field-label">Full Name</div>
-              <div class="field-value">${profile.fullName || '—'}</div>
+              <div class="field-value">${fullNameSafe}</div>
             </div>
             <div>
-              <div class="field-label">Date of Birth & Age</div>
-              <div class="field-value">${profile.dateOfBirth || '—'} (${profile.age ?? '0'} yrs)</div>
+              <div class="field-label">Student ID</div>
+              <div class="field-value">${studentIdSafe}</div>
             </div>
             <div>
-              <div class="field-label">Gender</div>
-              <div class="field-value">${profile.gender || 'Not Provided'}</div>
+              <div class="field-label">Date of Birth</div>
+              <div class="field-value">${escapeHtml(profile.dateOfBirth || 'Not Provided')}</div>
             </div>
             <div>
-              <div class="field-label">Recommended Placement Program</div>
-              <div class="field-value">${profile.programType || 'Not Provided'}</div>
+              <div class="field-label">Age / Gender</div>
+              <div class="field-value">${escapeHtml(profile.age || 0)} yrs • ${escapeHtml(profile.gender || 'Not Specified')}</div>
             </div>
             <div>
-              <div class="field-label">Therapy Group Track</div>
-              <div class="field-value">${profile.therapyGroup || 'Not Provided'}</div>
+              <div class="field-label">Program Type</div>
+              <div class="field-value">${escapeHtml(profile.programType || 'Regular Morning')}</div>
+            </div>
+            <div>
+              <div class="field-label">Therapy Group</div>
+              <div class="field-value">${escapeHtml(profile.therapyGroup || 'Basic')}</div>
             </div>
             <div>
               <div class="field-label">Assigned Therapist</div>
-              <div class="field-value">${profile.therapist || 'Unassigned'}</div>
+              <div class="field-value">${escapeHtml(profile.therapist || 'Unassigned')}</div>
             </div>
           </div>
         </div>
@@ -211,27 +220,27 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
           <div class="grid">
             <div>
               <div class="field-label">Primary Guardian Name</div>
-              <div class="field-value">${profile.guardianName || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.guardianName || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Relationship to Child</div>
-              <div class="field-value">${profile.guardianRelationship || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.guardianRelationship || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Contact Phone</div>
-              <div class="field-value">${profile.guardianPhone || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.guardianPhone || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Email Address</div>
-              <div class="field-value">${profile.guardianEmail || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.guardianEmail || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Emergency Secondary Contact</div>
-              <div class="field-value">${profile.emergencyContact || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.emergencyContact || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Household Structure</div>
-              <div class="field-value">${profile.householdStructure || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.householdStructure || 'Not Provided')}</div>
             </div>
           </div>
         </div>
@@ -242,23 +251,23 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
           <div class="grid">
             <div>
               <div class="field-label">Primary Diagnosis</div>
-              <div class="field-value">${profile.diagnosis || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.diagnosis || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Date of Diagnosis</div>
-              <div class="field-value">${profile.diagnosisDate || 'Not Provided'}</div>
+              <div class="field-value">${escapeHtml(profile.diagnosisDate || 'Not Provided')}</div>
             </div>
             <div class="full-width">
               <div class="field-label">Developmental History</div>
-              <div class="field-value ${!profile.developmentalHistory ? 'empty' : ''}">${profile.developmentalHistory || 'Not Provided'}</div>
+              <div class="field-value ${!profile.developmentalHistory ? 'empty' : ''}">${escapeHtml(profile.developmentalHistory || 'Not Provided')}</div>
             </div>
             <div class="full-width">
               <div class="field-label">Medical Notes & Dietary Restrictions</div>
-              <div class="field-value ${!profile.medicalNotes ? 'empty' : ''}">${profile.medicalNotes || 'Not Provided'}</div>
+              <div class="field-value ${!profile.medicalNotes ? 'empty' : ''}">${escapeHtml(profile.medicalNotes || 'Not Provided')}</div>
             </div>
             <div>
               <div class="field-label">Transportation Required</div>
-              <div class="field-value">${profile.transportation || 'No'}</div>
+              <div class="field-value">${escapeHtml(profile.transportation || 'No')}</div>
             </div>
           </div>
         </div>
@@ -269,19 +278,19 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
           <div class="grid">
             <div>
               <div class="field-label">Visual Reinforcers</div>
-              <div class="field-value ${!profile.reinforcerVisual ? 'empty' : ''}">${profile.reinforcerVisual || 'Not Specified'}</div>
+              <div class="field-value ${!profile.reinforcerVisual ? 'empty' : ''}">${escapeHtml(profile.reinforcerVisual || 'Not Specified')}</div>
             </div>
             <div>
               <div class="field-label">Auditory Reinforcers</div>
-              <div class="field-value ${!profile.reinforcerAuditory ? 'empty' : ''}">${profile.reinforcerAuditory || 'Not Specified'}</div>
+              <div class="field-value ${!profile.reinforcerAuditory ? 'empty' : ''}">${escapeHtml(profile.reinforcerAuditory || 'Not Specified')}</div>
             </div>
             <div>
               <div class="field-label">Tactile Preferences</div>
-              <div class="field-value ${!profile.reinforcerTactile ? 'empty' : ''}">${profile.reinforcerTactile || 'Not Specified'}</div>
+              <div class="field-value ${!profile.reinforcerTactile ? 'empty' : ''}">${escapeHtml(profile.reinforcerTactile || 'Not Specified')}</div>
             </div>
             <div>
               <div class="field-label">Kinetic & Movement Preferences</div>
-              <div class="field-value ${!profile.reinforcerKinetic ? 'empty' : ''}">${profile.reinforcerKinetic || 'Not Specified'}</div>
+              <div class="field-value ${!profile.reinforcerKinetic ? 'empty' : ''}">${escapeHtml(profile.reinforcerKinetic || 'Not Specified')}</div>
             </div>
           </div>
         </div>
@@ -310,24 +319,44 @@ export function exportStudentProfileToPdf(profile: StudentProfileData): boolean 
     </html>
   `;
 
+  return htmlContent;
+}
+
+export function exportStudentProfileToPdf(profile: StudentProfileData): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const htmlContent = generateStudentProfileHtml(profile);
+
   try {
-    const printWindow = window.open('', '_blank', 'width=900,height=1000');
-    if (printWindow) {
-      printWindow.document.open();
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 350);
-      return true;
-    } else {
-      // If popup blocker intervened, print current window as fallback
+    if (
+      typeof Blob !== 'undefined' &&
+      typeof URL !== 'undefined' &&
+      typeof URL.createObjectURL === 'function'
+    ) {
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const blobUrl = URL.createObjectURL(blob);
+      const printWindow = window.open(blobUrl, '_blank', 'width=900,height=1000');
+      if (printWindow) {
+        if (typeof printWindow.focus === 'function') printWindow.focus();
+        setTimeout(() => {
+          try {
+            if (typeof printWindow.print === 'function') printWindow.print();
+          } catch {}
+          URL.revokeObjectURL(blobUrl);
+        }, 500);
+        return true;
+      }
+    }
+  } catch {}
+
+  try {
+    if (typeof window.print === 'function') {
       window.print();
       return true;
     }
-  } catch {
-    window.print();
-    return true;
-  }
+  } catch {}
+
+  return false;
 }

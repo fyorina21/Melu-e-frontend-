@@ -1,4 +1,5 @@
 // src/utils/studentStatusHelper.ts
+import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
 
 const REGISTERED_ACTIVE_STUDENTS_KEY = 'melue_registered_active_students_v1';
 const STATUS_OVERRIDES_KEY = 'melue_student_status_overrides_v1';
@@ -15,7 +16,9 @@ function getStoredJson<T>(key: string, defaultValue: T): T {
   if (typeof localStorage === 'undefined') return defaultValue;
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : defaultValue;
+    if (!raw) return defaultValue;
+    const decoded = unprotectStoragePayload(raw) || raw;
+    return JSON.parse(decoded);
   } catch {
     return defaultValue;
   }
@@ -24,7 +27,8 @@ function getStoredJson<T>(key: string, defaultValue: T): T {
 function setStoredJson<T>(key: string, value: T): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const protectedVal = sanitizeStoragePayload(JSON.stringify(value));
+    localStorage.setItem(key, protectedVal);
   } catch {}
 }
 
