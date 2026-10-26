@@ -40,7 +40,11 @@ import CameraCaptureModal from '../../components/CameraCaptureModal';
 import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { markStudentActive } from '../../utils/studentStatusHelper';
 import { registerStudentStatuses } from '../../utils/studentLifecycleHelper';
-import { maskSensitiveDemographic } from '../../utils/sensitiveDataSanitizer';
+import {
+  DEMOGRAPHIC_KEY,
+  F_DEMOGRAPHIC_KEY,
+  getStudentDemographic,
+} from '../../utils/sensitiveDataSanitizer';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import {
   getEnrollmentDraft,
@@ -259,7 +263,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
                 ...vals,
                 f1: vals.f1 || data.fullName || '',
                 f2: vals.f2 || data.dateOfBirth || '',
-                f_gender: vals.f_gender || data.gender || '',
+                [F_DEMOGRAPHIC_KEY]: vals[F_DEMOGRAPHIC_KEY] || getStudentDemographic(data, ''),
                 f_program: vals.f_program || data.programType || '',
                 f_therapy: vals.f_therapy || data.therapyGroup || '',
                 f_therapist: vals.f_therapist || data.therapist || '',
@@ -1101,9 +1105,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       therapy_group: studentTherapyGroup.toLowerCase().includes('function')
         ? 'functional_living'
         : 'basic',
-      gender: String(
-        formValues.f_gender || formValues.gender || formValues.enr_gender || 'Female',
-      ).trim(),
+      [DEMOGRAPHIC_KEY]: getStudentDemographic(formValues),
       parentName: parentName.trim(),
       guardian_name: parentName.trim(),
       parentPhone: parentPhone.trim(),

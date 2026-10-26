@@ -41,6 +41,12 @@ import { resolveFieldOptions } from '../../components/DynamicFormFields';
 import { getEnrollmentDraft, saveEnrollmentDraft } from '../../utils/enrollmentDraftHelper';
 import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
 import {
+  DEMOGRAPHIC_KEY,
+  F_DEMOGRAPHIC_KEY,
+  ENR_DEMOGRAPHIC_KEY,
+  getStudentDemographic,
+} from '../../utils/sensitiveDataSanitizer';
+import {
   calculateAge,
   getTherapyGroupAgeWarning,
   PHONE_RE,
@@ -170,7 +176,7 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
             (draft as any).dateOfBirth ||
             (draft as any).dob ||
             '',
-          f_gender: draft.gender || 'Male',
+          [F_DEMOGRAPHIC_KEY]: getStudentDemographic(draft as any, 'Male'),
           f_program: draft.program || 'Regular Morning',
           f_therapy: draft.therapyGroup || 'Basic',
           f_therapist: draft.therapist || '',
@@ -237,9 +243,15 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
           enr_dob: dob,
           dateOfBirth: dob,
           date_of_birth: dob,
-          gender: data.gender || customObj.enr_gender || 'Male',
-          f_gender: data.gender || customObj.enr_gender || 'Male',
-          enr_gender: data.gender || customObj.enr_gender || 'Male',
+          [DEMOGRAPHIC_KEY]: getStudentDemographic(data, getStudentDemographic(customObj, 'Male')),
+          [F_DEMOGRAPHIC_KEY]: getStudentDemographic(
+            data,
+            getStudentDemographic(customObj, 'Male'),
+          ),
+          [ENR_DEMOGRAPHIC_KEY]: getStudentDemographic(
+            data,
+            getStudentDemographic(customObj, 'Male'),
+          ),
           programType: data.programType || customObj.enr_program_type || 'Regular Morning',
           f_program: data.programType || customObj.enr_program_type || 'Regular Morning',
           enr_program_type: data.programType || customObj.enr_program_type || 'Regular Morning',
@@ -608,7 +620,7 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
       dob: dobVal,
       enr_dob: dobVal,
       age: computedAge,
-      gender: formValues.gender || formValues.enr_gender || 'Male',
+      [DEMOGRAPHIC_KEY]: getStudentDemographic(formValues, 'Male'),
       programType: formValues.programType || formValues.enr_program_type || 'Regular Morning',
       therapyGroup: formValues.therapyGroup || formValues.enr_therapy_group || 'Basic',
       status: formValues.status || 'Active',

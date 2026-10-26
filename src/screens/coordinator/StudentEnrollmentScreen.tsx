@@ -28,6 +28,7 @@ import {
   deleteEnrollmentDraft,
   onEnrollmentDraftsChanged,
 } from '../../utils/enrollmentDraftHelper';
+import { getStudentDemographic } from '../../utils/sensitiveDataSanitizer';
 import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
 
@@ -119,7 +120,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         id: d.id,
         name: d.fullName || d.name || 'Untitled Draft',
         age: d.age || 0,
-        gender: d.gender || '',
+        gender: getStudentDemographic(d as any, ''),
         program: d.program || 'Regular Morning',
         therapyGroup: d.therapyGroup || 'Basic',
         therapist: d.therapist || 'Unassigned',
@@ -165,7 +166,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         id: d.id,
         name: d.fullName || d.name || 'Untitled Draft',
         age: d.age || 0,
-        gender: d.gender || '',
+        gender: getStudentDemographic(d as any, ''),
         program: d.program || 'Regular Morning',
         therapyGroup: d.therapyGroup || 'Basic',
         therapist: d.therapist || 'Unassigned',

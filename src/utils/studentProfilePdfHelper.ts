@@ -1,5 +1,5 @@
 import type { StudentProfileData } from '../screens/coordinator/StudentProfileScreen';
-import { escapeHtml } from './sensitiveDataSanitizer';
+import { escapeHtml, getStudentDemographic } from './sensitiveDataSanitizer';
 
 const SOCIAL_SKILLS_PROMPTS = [
   '1. Initiates verbal greeting or wave to familiar teachers upon arrival',
@@ -197,7 +197,7 @@ export function generateStudentProfileHtml(profile: StudentProfileData): string 
             </div>
             <div>
               <div class="field-label">Age / Gender</div>
-              <div class="field-value">${escapeHtml(profile.age || 0)} yrs • ${escapeHtml(profile.gender || 'Not Specified')}</div>
+              <div class="field-value">${escapeHtml(profile.age || 0)} yrs • ${escapeHtml(getStudentDemographic(profile as any, 'Not Specified'))}</div>
             </div>
             <div>
               <div class="field-label">Program Type</div>

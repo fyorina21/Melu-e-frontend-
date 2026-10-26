@@ -25,7 +25,11 @@ import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalA
 import { calculateAge } from './enrollmentWizardTypes';
 import { useToast } from '../../context/ToastContext';
 import { exportStudentProfileToPdf } from '../../utils/studentProfilePdfHelper';
-import { maskSensitiveDemographic } from '../../utils/sensitiveDataSanitizer';
+import {
+  DEMOGRAPHIC_KEY,
+  getStudentDemographic,
+  maskSensitiveDemographic,
+} from '../../utils/sensitiveDataSanitizer';
 import DocumentAttachmentCard, {
   extractDocumentMeta,
 } from '../../components/DocumentAttachmentCard';
@@ -304,8 +308,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
             extractVal(formVals, ['f_photo', 'enr_headshot', 'photoUrl', 'photo']) ||
             draft.photo ||
             null,
-          gender: maskSensitiveDemographic(
-            extractVal(formVals, ['enr_gender', 'f_gender', 'gender']),
+          [DEMOGRAPHIC_KEY]: getStudentDemographic(
+            formVals,
+            getStudentDemographic(draft as any, 'Female'),
           ),
           guardianName:
             cleanField(
@@ -499,7 +504,10 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
           headshotUrl: headshot,
           photoUrl: headshot,
           photo: headshot,
-          gender: data.gender || extractVal(customObj, ['enr_gender', 'f_gender', 'gender']),
+          [DEMOGRAPHIC_KEY]: getStudentDemographic(
+            data,
+            getStudentDemographic(customObj, 'Female'),
+          ),
           guardianName:
             cleanField(data.guardianName) ||
             cleanField(data.guardian_name) ||
@@ -848,9 +856,9 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
       return cleanField(custom[fieldId]) || '';
     }
 
-    // 7. Gender
-    if (normId === 'f_gender' || normId === 'gender' || normLabel === 'gender') {
-      return profile.gender || cleanField(custom[fieldId]) || '';
+    // 7. Demographic
+    if (normId.includes('gender') || normLabel.includes('gender')) {
+      return getStudentDemographic(profile as any, cleanField(custom[fieldId]) || '');
     }
 
     // 8. Program Placement

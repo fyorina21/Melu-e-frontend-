@@ -263,20 +263,33 @@ export default function MediaViewerModal({
   const sizeText = typeof fileSize === 'number' ? formatFileSize(fileSize) : fileSize || '';
 
   const handleDownload = () => {
-    if (!resolvedUrl || !isSafeMediaRedirect(resolvedUrl)) return;
-    const lowerUrl = resolvedUrl.toLowerCase().trim();
-    if (
-      !lowerUrl.startsWith('http://') &&
-      !lowerUrl.startsWith('https://') &&
-      !lowerUrl.startsWith('blob:') &&
-      !lowerUrl.startsWith('data:')
-    ) {
-      return;
-    }
+    if (!resolvedUrl) return;
     try {
+      const origin =
+        Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin
+          ? window.location.origin
+          : 'http://localhost';
+      const parsed = new URL(resolvedUrl, origin);
+      const host = parsed.hostname.toLowerCase();
+      const isAllowedHost =
+        parsed.origin === origin ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === 's3.amazonaws.com' ||
+        host.endsWith('.amazonaws.com') ||
+        host.endsWith('.cloudfront.net');
+      if (!isAllowedHost) return;
+      if (
+        parsed.protocol !== 'http:' &&
+        parsed.protocol !== 'https:' &&
+        parsed.protocol !== 'blob:' &&
+        parsed.protocol !== 'data:'
+      ) {
+        return;
+      }
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const link = document.createElement('a');
-        link.href = encodeURI(resolvedUrl);
+        link.href = parsed.href;
         link.rel = 'noopener noreferrer';
         link.download =
           fileName ||
@@ -290,31 +303,42 @@ export default function MediaViewerModal({
         link.click();
         document.body.removeChild(link);
       } else {
-        Linking.openURL(resolvedUrl);
+        Linking.openURL(parsed.href);
       }
-    } catch {
-      if (resolvedUrl) {
-        Linking.openURL(resolvedUrl);
-      }
-    }
+    } catch {}
   };
 
   const handleOpenNewTab = () => {
-    if (!resolvedUrl || !isSafeMediaRedirect(resolvedUrl)) return;
-    const lowerUrl = resolvedUrl.toLowerCase().trim();
-    if (
-      !lowerUrl.startsWith('http://') &&
-      !lowerUrl.startsWith('https://') &&
-      !lowerUrl.startsWith('blob:') &&
-      !lowerUrl.startsWith('data:')
-    ) {
-      return;
-    }
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(encodeURI(resolvedUrl), '_blank', 'noopener,noreferrer');
-    } else {
-      Linking.openURL(resolvedUrl);
-    }
+    if (!resolvedUrl) return;
+    try {
+      const origin =
+        Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin
+          ? window.location.origin
+          : 'http://localhost';
+      const parsed = new URL(resolvedUrl, origin);
+      const host = parsed.hostname.toLowerCase();
+      const isAllowedHost =
+        parsed.origin === origin ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === 's3.amazonaws.com' ||
+        host.endsWith('.amazonaws.com') ||
+        host.endsWith('.cloudfront.net');
+      if (!isAllowedHost) return;
+      if (
+        parsed.protocol !== 'http:' &&
+        parsed.protocol !== 'https:' &&
+        parsed.protocol !== 'blob:' &&
+        parsed.protocol !== 'data:'
+      ) {
+        return;
+      }
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open(parsed.href, '_blank', 'noopener,noreferrer');
+      } else {
+        Linking.openURL(parsed.href);
+      }
+    } catch {}
   };
 
   return (

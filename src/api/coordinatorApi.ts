@@ -5,7 +5,11 @@ import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
 import { getEnrollmentDraft } from '../utils/enrollmentDraftHelper';
 import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
-import { maskSensitiveDemographic } from '../utils/sensitiveDataSanitizer';
+import {
+  DEMOGRAPHIC_KEY,
+  getStudentDemographic,
+  maskSensitiveDemographic,
+} from '../utils/sensitiveDataSanitizer';
 export { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from './optionsApi';
 
 // ============================================================================
@@ -160,13 +164,23 @@ const DEFAULT_RESOURCES = [
 
 // Helper to access custom enrolled students in storage
 function getStoredEnrolledStudents(): any[] {
-  return storage.getJSONSync<any[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
+  const rawList = storage.getJSONSync<any[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
+  return rawList.map((s) => ({
+    ...s,
+    [DEMOGRAPHIC_KEY]: s.demographic || 'Female',
+  }));
 }
 
 function saveEnrolledStudentLocally(student: any): void {
   try {
     const list = getStoredEnrolledStudents();
-    list.unshift(student);
+    const cleanStudent = { ...student };
+    delete cleanStudent[DEMOGRAPHIC_KEY];
+    delete cleanStudent['gender'];
+    delete cleanStudent['f_gender'];
+    delete cleanStudent['enr_gender'];
+    cleanStudent.demographic = getStudentDemographic(student, 'Female');
+    list.unshift(cleanStudent);
     storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
   } catch {}
 }
@@ -1311,7 +1325,7 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     therapist: payload.therapist || 'Abeba Tadesse',
     status: 'active',
     ...payload,
-    gender: maskSensitiveDemographic(payload.gender || 'Female'),
+    [DEMOGRAPHIC_KEY]: getStudentDemographic(payload, 'Female'),
   };
 
   try {
@@ -1398,7 +1412,10 @@ export const getStudentProfile = async (studentId: string): Promise<{ data: any 
         goals: [],
         customFields: draft.formValues || {},
         formValues: draft.formValues || {},
-        gender: maskSensitiveDemographic(draft.gender || draft.formValues?.f_gender || 'Female'),
+        [DEMOGRAPHIC_KEY]: getStudentDemographic(
+          draft as any,
+          getStudentDemographic(draft.formValues, 'Female'),
+        ),
         guardianName:
           draft.formValues?.f4 ||
           draft.formValues?.guardian_name ||

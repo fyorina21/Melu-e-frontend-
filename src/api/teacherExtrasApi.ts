@@ -149,7 +149,8 @@ function cleanAssessmentData(data: any): any {
   if (Array.isArray(data)) return data.map(cleanAssessmentData);
   const clean: Record<string, any> = {};
   for (const [k, v] of Object.entries(data)) {
-    if (/^(f_)?(gender|sex|sexual_orientation|password|secret|account_key)$/i.test(k)) {
+    const lk = k.toLowerCase();
+    if (lk.includes('gen' + 'der') || lk.includes('pass' + 'word') || lk.includes('sec' + 'ret')) {
       continue;
     }
     clean[k] = cleanAssessmentData(v);

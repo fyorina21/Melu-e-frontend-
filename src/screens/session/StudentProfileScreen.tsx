@@ -10,6 +10,7 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill, { type StatusType } from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { saveStudentPhoto } from '../../utils/studentPhotoHelper';
+import { getStudentDemographic } from '../../utils/sensitiveDataSanitizer';
 import { useAuth } from '../../context/AuthContext';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { getTeacherStudentProfile, getSkillsAssessment } from '../../api/teacherExtrasApi';
@@ -75,7 +76,7 @@ function toProfile(row: any): TeacherStudentProfile {
     name: fullName,
     initial: (fullName || 'S').charAt(0).toUpperCase(),
     age: row.age || 0,
-    gender: row.gender || '',
+    gender: getStudentDemographic(row, ''),
     program: row.programType || row.program || '',
     diagnosis: row.diagnosis || '',
     parentName: row.guardianName || row.parentName || '',

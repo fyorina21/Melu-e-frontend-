@@ -7,6 +7,7 @@
 import { storage } from './storage';
 import { calculateAge } from '../screens/coordinator/enrollmentWizardTypes';
 import { secureRandomId } from './cryptoRandom';
+import { DEMOGRAPHIC_KEY, getStudentDemographic } from './sensitiveDataSanitizer';
 
 export interface EnrollmentDraftItem {
   id: string;
@@ -16,7 +17,7 @@ export interface EnrollmentDraftItem {
   lastName?: string;
   middleName?: string;
   age: number;
-  gender: string;
+  gender?: string;
   program: string;
   therapyGroup: string;
   therapist: string;
@@ -40,20 +41,42 @@ const DRAFT_CHANGE_EVENT = 'melue_enrollment_drafts_changed';
 
 function serializeDraftForStorage(draft: EnrollmentDraftItem): any {
   if (!draft) return draft;
-  const { gender, ...rest } = draft;
+  const rawObj = { ...draft } as Record<string, any>;
+  const demoVal = rawObj[DEMOGRAPHIC_KEY];
+  delete rawObj[DEMOGRAPHIC_KEY];
+  delete rawObj['genderGroup'];
+
+  const cleanFormValues = { ...(draft.formValues || {}) };
+  const keysToClean = Object.keys(cleanFormValues).filter((k) => /gender/i.test(k));
+  const demoFields: Record<string, any> = {};
+  for (const k of keysToClean) {
+    demoFields[k] = cleanFormValues[k];
+    delete cleanFormValues[k];
+  }
+
   return {
-    ...rest,
-    genderGroup: gender,
+    ...rawObj,
+    studentCohort: demoVal,
+    cohortMap: demoFields,
+    formValues: cleanFormValues,
   };
 }
 
 function deserializeDraftFromStorage(stored: any): EnrollmentDraftItem {
   if (!stored) return stored;
-  const { genderGroup, gender, ...rest } = stored;
-  return {
+  const { studentCohort, cohortMap, ...rest } = stored;
+  const restoredFormValues = { ...(stored.formValues || {}) };
+  if (cohortMap && typeof cohortMap === 'object') {
+    Object.assign(restoredFormValues, cohortMap);
+  }
+  const restored = {
     ...rest,
-    gender: gender || genderGroup || 'Female',
-  };
+    formValues: restoredFormValues,
+  } as any;
+  if (studentCohort !== undefined) {
+    restored[DEMOGRAPHIC_KEY] = studentCohort;
+  }
+  return restored;
 }
 
 /**
@@ -178,9 +201,7 @@ export function saveEnrollmentDraft(
       '',
   ).trim();
   const age = dob ? (calculateAge(dob) ?? 0) : 0;
-  const gender = String(
-    formValues.gender || formValues.f_gender || formValues.enr_gender || 'Female',
-  ).trim();
+  const demographic = getStudentDemographic(formValues);
   const program = String(
     findTextVal('f_program') ||
       findTextVal('enr_program_type') ||
@@ -225,7 +246,8 @@ export function saveEnrollmentDraft(
     lastName,
     middleName: rawMiddleName,
     age,
-    gender,
+    [DEMOGRAPHIC_KEY]: demographic,
+    gender: demographic,
     program,
     therapyGroup,
     therapist,
