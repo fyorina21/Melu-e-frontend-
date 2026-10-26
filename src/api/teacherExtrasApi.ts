@@ -144,11 +144,25 @@ function getStoredAssessment(type: string, studentId: string): any {
   return assessmentMemoryStore[`${type}_${studentId}`] || null;
 }
 
+function cleanAssessmentData(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(cleanAssessmentData);
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (/^(f_)?(gender|sex|sexual_orientation|password|secret|account_key)$/i.test(k)) {
+      continue;
+    }
+    clean[k] = cleanAssessmentData(v);
+  }
+  return clean;
+}
+
 function setStoredAssessment(type: string, studentId: string, data: any): void {
   assessmentMemoryStore[`${type}_${studentId}`] = data;
   if (typeof localStorage !== 'undefined') {
     try {
-      const protectedVal = sanitizeStoragePayload(JSON.stringify(data));
+      const sanitized = cleanAssessmentData(data);
+      const protectedVal = sanitizeStoragePayload(JSON.stringify(sanitized));
       localStorage.setItem(`melue_${type}_assessment_${studentId}`, protectedVal);
     } catch {}
   }

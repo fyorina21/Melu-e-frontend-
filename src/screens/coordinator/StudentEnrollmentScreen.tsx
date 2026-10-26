@@ -133,7 +133,15 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       // 2. Load backend and enrolled students
       const { data } = await getEnrollmentStudents(queryParams);
       if (Array.isArray(data)) {
-        registerStudentPhotos(data);
+        registerStudentPhotos(
+          data.map((item) => ({
+            id: item.id ? String(item.id) : undefined,
+            name: item.fullName || item.name,
+            photo: item.photo,
+            photoUrl: item.photoUrl,
+            headshotUrl: item.headshotUrl,
+          })),
+        );
       }
       const enrolledRows: EnrolledStudent[] = (data as EnrollmentStudentRow[]).map((row) => ({
         id: row.id,

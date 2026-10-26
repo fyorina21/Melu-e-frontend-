@@ -344,7 +344,15 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
               if (!isMounted) return;
               setExistingStudents(data);
               if (Array.isArray(data)) {
-                registerStudentPhotos(data);
+                registerStudentPhotos(
+                  data.map((item: any) => ({
+                    id: item.id ? String(item.id) : undefined,
+                    name: item.fullName || item.name,
+                    photo: item.photo,
+                    photoUrl: item.photoUrl,
+                    headshotUrl: item.headshotUrl,
+                  })),
+                );
               }
             })
             .catch(() => {
@@ -1093,9 +1101,9 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       therapy_group: studentTherapyGroup.toLowerCase().includes('function')
         ? 'functional_living'
         : 'basic',
-      gender: maskSensitiveDemographic(
-        getFieldVal('f_gender') || getFieldVal(/gender/i) || 'Female',
-      ),
+      gender: String(
+        formValues.f_gender || formValues.gender || formValues.enr_gender || 'Female',
+      ).trim(),
       parentName: parentName.trim(),
       guardian_name: parentName.trim(),
       parentPhone: parentPhone.trim(),

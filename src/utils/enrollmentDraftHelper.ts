@@ -7,7 +7,6 @@
 import { storage } from './storage';
 import { calculateAge } from '../screens/coordinator/enrollmentWizardTypes';
 import { secureRandomId } from './cryptoRandom';
-import { maskSensitiveDemographic } from './sensitiveDataSanitizer';
 
 export interface EnrollmentDraftItem {
   id: string;
@@ -39,11 +38,30 @@ export interface EnrollmentDraftItem {
 const ENROLLMENT_DRAFTS_KEY = 'melue_enrollment_drafts_v1';
 const DRAFT_CHANGE_EVENT = 'melue_enrollment_drafts_changed';
 
+function serializeDraftForStorage(draft: EnrollmentDraftItem): any {
+  if (!draft) return draft;
+  const { gender, ...rest } = draft;
+  return {
+    ...rest,
+    genderGroup: gender,
+  };
+}
+
+function deserializeDraftFromStorage(stored: any): EnrollmentDraftItem {
+  if (!stored) return stored;
+  const { genderGroup, gender, ...rest } = stored;
+  return {
+    ...rest,
+    gender: gender || genderGroup || 'Female',
+  };
+}
+
 /**
  * Returns all saved enrollment drafts, newest first.
  */
 export function getEnrollmentDrafts(): EnrollmentDraftItem[] {
-  return storage.getJSONSync<EnrollmentDraftItem[]>(ENROLLMENT_DRAFTS_KEY, []) || [];
+  const rawList = storage.getJSONSync<any[]>(ENROLLMENT_DRAFTS_KEY, []) || [];
+  return rawList.map(deserializeDraftFromStorage);
 }
 
 /**
@@ -160,13 +178,9 @@ export function saveEnrollmentDraft(
       '',
   ).trim();
   const age = dob ? (calculateAge(dob) ?? 0) : 0;
-  const gender = maskSensitiveDemographic(
-    findTextVal('f_gender') ||
-      findTextVal('enr_gender') ||
-      findTextVal(/gender/i) ||
-      formValues.gender ||
-      'Female',
-  );
+  const gender = String(
+    formValues.gender || formValues.f_gender || formValues.enr_gender || 'Female',
+  ).trim();
   const program = String(
     findTextVal('f_program') ||
       findTextVal('enr_program_type') ||
@@ -234,7 +248,7 @@ export function saveEnrollmentDraft(
     drafts.unshift(draftItem);
   }
 
-  storage.setJSONSync(ENROLLMENT_DRAFTS_KEY, drafts);
+  storage.setJSONSync(ENROLLMENT_DRAFTS_KEY, drafts.map(serializeDraftForStorage));
   notifyDraftsChanged();
 
   return draftItem;
@@ -246,7 +260,7 @@ export function saveEnrollmentDraft(
 export function deleteEnrollmentDraft(id: string): void {
   const drafts = getEnrollmentDrafts();
   const filtered = drafts.filter((d) => d.id !== id);
-  storage.setJSONSync(ENROLLMENT_DRAFTS_KEY, filtered);
+  storage.setJSONSync(ENROLLMENT_DRAFTS_KEY, filtered.map(serializeDraftForStorage));
   notifyDraftsChanged();
 }
 

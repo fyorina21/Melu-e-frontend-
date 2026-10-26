@@ -36,6 +36,74 @@ export function formatFileSize(bytes?: number | string | null): string {
 }
 
 /**
+ * Validates that a media URL target belongs to a trusted storage host or safe scheme.
+ * Serves as an explicit hostname barrier for CodeQL client-side redirection checks.
+ */
+export function isSafeMediaRedirect(urlStr: string): boolean {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  const trimmed = urlStr.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:') ||
+    lower.includes('\n') ||
+    lower.includes('\r')
+  ) {
+    return false;
+  }
+
+  if (lower.startsWith('blob:') || lower.startsWith('data:')) {
+    return true;
+  }
+
+  if (lower.startsWith('file:')) {
+    return Platform.OS !== 'web';
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+
+    // Local development origins
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+
+    // S3 and cloud storage origins
+    if (
+      host === 's3.amazonaws.com' ||
+      host.endsWith('.amazonaws.com') ||
+      host.endsWith('.cloudfront.net')
+    ) {
+      return true;
+    }
+
+    // Backend API origin
+    let apiHost = '';
+    try {
+      apiHost = new URL(env.apiUrl).hostname.toLowerCase();
+    } catch {}
+    if (apiHost && (host === apiHost || host.endsWith('.' + apiHost))) {
+      return true;
+    }
+
+    // Frontend application origin
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
+      const appHost = window.location.hostname.toLowerCase();
+      if (appHost && (host === appHost || host.endsWith('.' + appHost))) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolves a media URL to an absolute URL accessible by the browser/app.
  * Prepends backend API URL if given a relative Rails storage path.
  */
@@ -56,24 +124,11 @@ export function resolveMediaUrl(url?: string | null): string {
     return '';
   }
 
-  // Allow trusted web and secure protocols
   if (lower.startsWith('https://') || lower.startsWith('http://')) {
-    try {
-      const parsed = new URL(trimmed);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        return trimmed;
-      }
-      return '';
-    } catch {
-      return '';
-    }
+    return isSafeMediaRedirect(trimmed) ? trimmed : '';
   }
 
-  if (lower.startsWith('blob:')) {
-    return trimmed;
-  }
-
-  if (lower.startsWith('data:')) {
+  if (lower.startsWith('blob:') || lower.startsWith('data:')) {
     return trimmed;
   }
 
@@ -208,11 +263,21 @@ export default function MediaViewerModal({
   const sizeText = typeof fileSize === 'number' ? formatFileSize(fileSize) : fileSize || '';
 
   const handleDownload = () => {
-    if (!resolvedUrl) return;
+    if (!resolvedUrl || !isSafeMediaRedirect(resolvedUrl)) return;
+    const lowerUrl = resolvedUrl.toLowerCase().trim();
+    if (
+      !lowerUrl.startsWith('http://') &&
+      !lowerUrl.startsWith('https://') &&
+      !lowerUrl.startsWith('blob:') &&
+      !lowerUrl.startsWith('data:')
+    ) {
+      return;
+    }
     try {
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const link = document.createElement('a');
-        link.href = resolvedUrl;
+        link.href = encodeURI(resolvedUrl);
+        link.rel = 'noopener noreferrer';
         link.download =
           fileName ||
           (resolvedType === 'video'
@@ -235,9 +300,18 @@ export default function MediaViewerModal({
   };
 
   const handleOpenNewTab = () => {
-    if (!resolvedUrl) return;
+    if (!resolvedUrl || !isSafeMediaRedirect(resolvedUrl)) return;
+    const lowerUrl = resolvedUrl.toLowerCase().trim();
+    if (
+      !lowerUrl.startsWith('http://') &&
+      !lowerUrl.startsWith('https://') &&
+      !lowerUrl.startsWith('blob:') &&
+      !lowerUrl.startsWith('data:')
+    ) {
+      return;
+    }
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+      window.open(encodeURI(resolvedUrl), '_blank', 'noopener,noreferrer');
     } else {
       Linking.openURL(resolvedUrl);
     }
