@@ -221,9 +221,6 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
       <View style={[styles.headerWrapper, isTablet && styles.headerWrapperTablet]}>
         <AbllsMapHeader
           onBack={() => navigation?.goBack?.()}
-          onSave={() => handleSaveAll(false)}
-          onSubmit={() => handleSaveAll(true)}
-          saving={saving}
           onExport={handleExport}
           studentName={studentName}
           studentId={studentId}
