@@ -47,7 +47,7 @@ export function AssessmentAnalyticsVisuals({
   const isTablet = width >= 768 && width < 1024;
 
   const [activeGraphTab, setActiveGraphTab] = useState<
-    'all' | 'skills' | 'behavior' | 'preference' | 'sensory'
+    'all' | 'skills' | 'mas' | 'fast' | 'behavior' | 'preference' | 'sensory'
   >('all');
   const [selectedAbcBehavior, setSelectedAbcBehavior] = useState<string | null>(null);
   const [abllsViewMode, setAbllsViewMode] = useState<'bars' | 'towers'>('bars');
@@ -166,46 +166,117 @@ export function AssessmentAnalyticsVisuals({
     ];
   }, [skills.domains]);
 
-  // ================= 2. BEHAVIOR (MAS / FAST & ABC LOGS) DATA =================
-  const behavioralFunctions = useMemo(() => {
-    // 4 Core Behavioral Functions on Y-Axis
-    const functions = [
-      { key: 'sensory', label: 'Sensory / Automatic', masMean: 1.25, fastPct: 25 },
-      { key: 'escape', label: 'Escape / Task Avoidance', masMean: 4.75, fastPct: 88 },
-      { key: 'attention', label: 'Attention Seeking', masMean: 3.0, fastPct: 38 },
-      { key: 'tangible', label: 'Tangible Access', masMean: 2.25, fastPct: 25 },
+  // ================= 2A. MOTIVATION ASSESSMENT SCALE (MAS) DATA =================
+  const masGraphData = useMemo(() => {
+    const defaultMas = [
+      { key: 'escape', label: 'Demand / Escape', mean: 4.75, total: 19, rank: 1, isDominant: true },
+      {
+        key: 'attention',
+        label: 'Attention Seeking',
+        mean: 3.0,
+        total: 12,
+        rank: 2,
+        isDominant: false,
+      },
+      {
+        key: 'tangible',
+        label: 'Tangible Access',
+        mean: 2.25,
+        total: 9,
+        rank: 3,
+        isDominant: false,
+      },
+      {
+        key: 'sensory',
+        label: 'Sensory / Automatic',
+        mean: 1.25,
+        total: 5,
+        rank: 4,
+        isDominant: false,
+      },
     ];
 
     if (masRows && masRows.length > 0) {
-      functions.forEach((f) => {
-        const foundMas = masRows.find(
-          (m) =>
-            m.func.toLowerCase().includes(f.key) ||
-            (f.key === 'escape' && m.func.toLowerCase().includes('demand')) ||
-            (f.key === 'sensory' && m.func.toLowerCase().includes('automatic')),
-        );
-        if (foundMas) {
-          f.masMean = foundMas.mean;
-        }
-      });
+      return masRows
+        .map((m, idx) => {
+          const meanVal = typeof m.mean === 'number' ? m.mean : parseFloat(String(m.mean)) || 0;
+          const totalVal =
+            typeof m.total === 'number'
+              ? m.total
+              : parseInt(String(m.total), 10) || Math.round(meanVal * 4);
+          const rankVal = m.rank != null ? Number(m.rank) : idx + 1;
+          return {
+            key: m.func.toLowerCase().replace(/[^a-z]/g, ''),
+            label: m.func,
+            mean: meanVal,
+            total: totalVal,
+            rank: rankVal,
+            pct: Math.min(100, Math.max(0, Math.round((meanVal / 6) * 100))),
+            isDominant: rankVal === 1 || meanVal >= 4.0,
+          };
+        })
+        .sort((a, b) => a.rank - b.rank);
     }
+
+    return defaultMas.map((m) => ({
+      ...m,
+      pct: Math.round((m.mean / 6) * 100),
+    }));
+  }, [masRows]);
+
+  const dominantMasFunction = useMemo(() => {
+    return masGraphData.find((m) => m.isDominant) || masGraphData[0];
+  }, [masGraphData]);
+
+  // ================= 2B. FUNCTIONAL ASSESSMENT SCREENING TOOL (FAST) DATA =================
+  const fastGraphData = useMemo(() => {
+    const defaultFast = [
+      {
+        key: 'escape',
+        variable: 'Social Escape (Demands)',
+        yes: '7 / 8',
+        pct: 88,
+        isDominant: true,
+      },
+      {
+        key: 'attention',
+        variable: 'Social Attention Seeking',
+        yes: '3 / 8',
+        pct: 38,
+        isDominant: false,
+      },
+      {
+        key: 'tangible',
+        variable: 'Social Tangibles (Items)',
+        yes: '2 / 8',
+        pct: 25,
+        isDominant: false,
+      },
+      { key: 'sensory', variable: 'Sensory Stimulation', yes: '2 / 8', pct: 25, isDominant: false },
+      { key: 'pain', variable: 'Pain Attenuation', yes: '0 / 8', pct: 0, isDominant: false },
+    ];
 
     if (fastRows && fastRows.length > 0) {
-      functions.forEach((f) => {
-        const foundFast = fastRows.find(
-          (r) =>
-            r.variable.toLowerCase().includes(f.key) ||
-            (f.key === 'escape' && r.variable.toLowerCase().includes('escape')) ||
-            (f.key === 'sensory' && r.variable.toLowerCase().includes('sensory')),
-        );
-        if (foundFast) {
-          f.fastPct = parseInt(foundFast.pct, 10) || f.fastPct;
-        }
-      });
+      return fastRows
+        .map((f) => {
+          const pctVal = parseInt(String(f.pct).replace('%', ''), 10) || 0;
+          return {
+            key: f.variable.toLowerCase().replace(/[^a-z]/g, ''),
+            variable: f.variable,
+            yes: f.yes || '—',
+            pct: pctVal,
+            isDominant: Boolean(f.dominant) || pctVal >= 75,
+          };
+        })
+        .sort((a, b) => b.pct - a.pct);
     }
 
-    return functions;
-  }, [masRows, fastRows]);
+    return defaultFast;
+  }, [fastRows]);
+
+  const dominantFastVariable = useMemo(() => {
+    return fastGraphData.find((f) => f.isDominant) || fastGraphData[0];
+  }, [fastGraphData]);
 
   // ABC Incident Log Distribution (Behaviors, Antecedents, Consequences)
   const abcData = useMemo(() => {
@@ -506,9 +577,11 @@ export function AssessmentAnalyticsVisuals({
           contentContainerStyle={styles.tabsRow}
         >
           {[
-            { id: 'all', label: 'All 4 Graphs' },
+            { id: 'all', label: 'All Visuals' },
             { id: 'skills', label: '1. Skills Matrix' },
-            { id: 'behavior', label: '2. Behavior (MAS/FAST & ABC)' },
+            { id: 'mas', label: '2A. MAS Function Scale' },
+            { id: 'fast', label: '2B. FAST Variables' },
+            { id: 'behavior', label: '2. Behavior FBA (All)' },
             { id: 'preference', label: '3. Preferences (Choice)' },
             { id: 'sensory', label: '4. Sensory Profile' },
           ].map((tab) => (
@@ -683,7 +756,208 @@ export function AssessmentAnalyticsVisuals({
           </View>
         )}
 
-        {/* ================= GRAPH 2: BEHAVIOR ASSESSMENTS (MAS / FAST & ABC DONUT) ================= */}
+        {/* ================= GRAPH 2A: MOTIVATION ASSESSMENT SCALE (MAS) FUNCTION GRAPH ================= */}
+        {(activeGraphTab === 'all' ||
+          activeGraphTab === 'behavior' ||
+          activeGraphTab === 'mas') && (
+          <View style={[styles.graphCard, activeGraphTab === 'mas' && styles.graphCardExpanded]}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <View
+                  style={[styles.badgePill, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
+                >
+                  <Text style={[styles.badgePillText, { color: '#059669' }]}>Indirect • MAS</Text>
+                </View>
+                <Text style={styles.graphCardTitle}>
+                  Motivation Assessment Scale (MAS) — Function Profile
+                </Text>
+              </View>
+              <View style={[styles.tierTag, { backgroundColor: '#ECFDF5' }]}>
+                <Text style={[styles.tierTagText, { color: '#059669' }]}>0.0 - 6.0 Mean</Text>
+              </View>
+            </View>
+
+            <Text style={styles.graphDesc}>
+              Quantified mean rating (0.0 to 6.0 scale) and relative ranking across 4 behavioral
+              functions to delineate the primary motivational maintaining reinforcer.
+            </Text>
+
+            {/* MAS Horizontal Bars */}
+            <View style={styles.horizontalBarBox}>
+              <View style={styles.horizontalBarList}>
+                {masGraphData.map((item) => (
+                  <View key={item.key} style={styles.horizontalFunctionRow}>
+                    <View style={styles.functionLabelRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View style={[styles.rankPill, item.isDominant && styles.rankPillDominant]}>
+                          <Text
+                            style={[
+                              styles.rankPillText,
+                              item.isDominant && styles.rankPillTextDominant,
+                            ]}
+                          >
+                            #{item.rank}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.functionLabel,
+                            item.isDominant && { color: '#059669', fontWeight: '800' },
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                      {item.isDominant && (
+                        <View style={styles.dominantTagGreen}>
+                          <Text style={styles.dominantTagGreenText}>Primary Hypothesis</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.barLineRow}>
+                      <View style={styles.barLineTrack}>
+                        <View
+                          style={[
+                            styles.barLineFill,
+                            {
+                              width: `${item.pct}%`,
+                              backgroundColor: item.isDominant ? '#059669' : '#10B981',
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.barValueMeta}>
+                        <Text style={styles.barValPrimary}>{item.mean.toFixed(2)}/6</Text>
+                        <Text style={styles.barValSecondary}>({item.total} pts)</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {/* MAS Scale Reference Markers */}
+              <View style={styles.scaleAxisRow}>
+                <Text style={styles.scaleAxisText}>0.0 (Never)</Text>
+                <Text style={styles.scaleAxisText}>1.5</Text>
+                <Text style={styles.scaleAxisText}>3.0 (Half Time)</Text>
+                <Text style={styles.scaleAxisText}>4.5</Text>
+                <Text style={styles.scaleAxisText}>6.0 (Always)</Text>
+              </View>
+            </View>
+
+            {/* MAS Clinical Takeaway */}
+            <View style={styles.clinicalTakeawayBox}>
+              <Feather name="info" size={13} color="#059669" />
+              <Text style={styles.clinicalTakeawayText}>
+                Primary Hypothesized Function:{' '}
+                <Text style={{ fontWeight: '800', color: '#065F46' }}>
+                  {dominantMasFunction.label}
+                </Text>{' '}
+                (Mean: {dominantMasFunction.mean.toFixed(2)}/6.0). Functional communication training
+                should replace this specific contingency.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* ================= GRAPH 2B: FUNCTIONAL ASSESSMENT SCREENING TOOL (FAST) VARIABLES GRAPH ================= */}
+        {(activeGraphTab === 'all' ||
+          activeGraphTab === 'behavior' ||
+          activeGraphTab === 'fast') && (
+          <View style={[styles.graphCard, activeGraphTab === 'fast' && styles.graphCardExpanded]}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <View
+                  style={[styles.badgePill, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
+                >
+                  <Text style={[styles.badgePillText, { color: '#2563EB' }]}>Indirect • FAST</Text>
+                </View>
+                <Text style={styles.graphCardTitle}>
+                  Functional Assessment Screening Tool (FAST) — Maintaining Variables
+                </Text>
+              </View>
+              <View style={[styles.tierTag, { backgroundColor: '#EFF6FF' }]}>
+                <Text style={[styles.tierTagText, { color: '#2563EB' }]}>0% - 100% Yes</Text>
+              </View>
+            </View>
+
+            <Text style={styles.graphDesc}>
+              Affirmative informant endorsement percentages identifying potential social and
+              automatic environmental maintaining contingencies.
+            </Text>
+
+            {/* FAST Horizontal Bars */}
+            <View style={styles.horizontalBarBox}>
+              <View style={styles.horizontalBarList}>
+                {fastGraphData.map((item) => (
+                  <View key={item.key} style={styles.horizontalFunctionRow}>
+                    <View style={styles.functionLabelRow}>
+                      <Text
+                        style={[
+                          styles.functionLabel,
+                          item.isDominant && { color: '#2563EB', fontWeight: '800' },
+                        ]}
+                      >
+                        {item.variable}
+                      </Text>
+                      {item.isDominant && (
+                        <View style={styles.dominantTagBlue}>
+                          <Text style={styles.dominantTagBlueText}>Dominant Contingency</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.barLineRow}>
+                      <View style={styles.barLineTrack}>
+                        <View
+                          style={[
+                            styles.barLineFill,
+                            {
+                              width: `${item.pct}%`,
+                              backgroundColor: item.isDominant ? '#2563EB' : '#60A5FA',
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.barValueMeta}>
+                        <Text style={styles.barValPrimary}>{item.pct}%</Text>
+                        <Text style={styles.barValSecondary}>({item.yes})</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {/* FAST Scale Reference Markers */}
+              <View style={styles.scaleAxisRow}>
+                <Text style={styles.scaleAxisText}>0%</Text>
+                <Text style={styles.scaleAxisText}>25%</Text>
+                <Text style={styles.scaleAxisText}>50%</Text>
+                <Text style={styles.scaleAxisText}>75% (Threshold)</Text>
+                <Text style={styles.scaleAxisText}>100%</Text>
+              </View>
+            </View>
+
+            {/* FAST Clinical Takeaway */}
+            <View
+              style={[
+                styles.clinicalTakeawayBox,
+                { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+              ]}
+            >
+              <Feather name="check-circle" size={13} color="#2563EB" />
+              <Text style={[styles.clinicalTakeawayText, { color: '#1E40AF' }]}>
+                Dominant Maintaining Contingency:{' '}
+                <Text style={{ fontWeight: '800' }}>{dominantFastVariable.variable}</Text> (
+                {dominantFastVariable.pct}% affirmative). Suggests proactive environmental
+                modification to reduce motivating operations.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* ================= GRAPH 2C: ABC LOG MULTI-TIER DONUT & DRILL-DOWN ================= */}
         {(activeGraphTab === 'all' || activeGraphTab === 'behavior') && (
           <View
             style={[styles.graphCard, activeGraphTab === 'behavior' && styles.graphCardExpanded]}
@@ -693,187 +967,119 @@ export function AssessmentAnalyticsVisuals({
                 <View
                   style={[styles.badgePill, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}
                 >
-                  <Text style={[styles.badgePillText, { color: '#B45309' }]}>Behavior FBA</Text>
+                  <Text style={[styles.badgePillText, { color: '#B45309' }]}>
+                    Direct • ABC Logs
+                  </Text>
                 </View>
                 <Text style={styles.graphCardTitle}>
-                  Clustered Function Bars & ABC Donut Drill-Down
+                  ABC Incident Log Multi-Tier Donut & Environmental Drill-Down
                 </Text>
+              </View>
+              <View style={styles.drillToggle}>
+                <TouchableOpacity
+                  style={[
+                    styles.drillBtn,
+                    abcDrilldownMode === 'antecedents' && styles.drillBtnActive,
+                  ]}
+                  onPress={() => setAbcDrilldownMode('antecedents')}
+                >
+                  <Text
+                    style={[
+                      styles.drillBtnText,
+                      abcDrilldownMode === 'antecedents' && styles.drillBtnTextActive,
+                    ]}
+                  >
+                    Antecedent
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.drillBtn,
+                    abcDrilldownMode === 'consequences' && styles.drillBtnActive,
+                  ]}
+                  onPress={() => setAbcDrilldownMode('consequences')}
+                >
+                  <Text
+                    style={[
+                      styles.drillBtnText,
+                      abcDrilldownMode === 'consequences' && styles.drillBtnTextActive,
+                    ]}
+                  >
+                    Consequence
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
             <Text style={styles.graphDesc}>
-              Clustered indirect screening (MAS vs FAST) and interactive multi-tier ABC log
-              environmental distribution.
+              Direct observational recording distribution across problem behaviors, antecedent
+              triggers, and maintaining consequences. Tap slices to inspect environmental factors.
             </Text>
 
-            <View style={[styles.twoColInner, isMobile && { flexDirection: 'column' }]}>
-              {/* Part A: Clustered Horizontal Bar Graph (MAS vs FAST across 4 core functions) */}
-              <View style={[styles.clusteredBarBox, isMobile && { width: '100%' }]}>
-                <Text style={styles.subGraphHeading}>MAS vs FAST Function Ranking</Text>
-                <View style={styles.clusteredBarList}>
-                  {behavioralFunctions.map((func) => {
-                    const masPct = Math.round((func.masMean / 6) * 100);
-                    const isDominant = func.masMean >= 4.0 || func.fastPct >= 75;
-
-                    return (
-                      <View key={func.key} style={styles.clusteredFunctionRow}>
-                        <View style={styles.functionLabelRow}>
-                          <Text
-                            style={[
-                              styles.functionLabel,
-                              isDominant && { color: '#DC2626', fontWeight: '800' },
-                            ]}
-                          >
-                            {func.label}
-                          </Text>
-                          {isDominant && (
-                            <View style={styles.dominantTag}>
-                              <Text style={styles.dominantTagText}>Primary Hypothesis</Text>
-                            </View>
-                          )}
-                        </View>
-
-                        {/* MAS Bar */}
-                        <View style={styles.barLineRow}>
-                          <Text style={styles.barLegendCode}>MAS</Text>
-                          <View style={styles.barLineTrack}>
-                            <View
-                              style={[
-                                styles.barLineFill,
-                                { width: `${masPct}%`, backgroundColor: '#059669' },
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.barValText}>{func.masMean.toFixed(1)}/6</Text>
-                        </View>
-
-                        {/* FAST Bar */}
-                        <View style={styles.barLineRow}>
-                          <Text style={styles.barLegendCode}>FAST</Text>
-                          <View style={styles.barLineTrack}>
-                            <View
-                              style={[
-                                styles.barLineFill,
-                                { width: `${func.fastPct}%`, backgroundColor: '#2563EB' },
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.barValText}>{func.fastPct}%</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
+            <View style={styles.donutWithLegendRow}>
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <Svg width={150} height={150}>
+                  {/* Outer Ring: Behaviors */}
+                  {renderDonutSlices(
+                    abcData.behaviorList,
+                    150,
+                    46,
+                    68,
+                    (name) => setSelectedAbcBehavior(name),
+                    activeBehavior?.name,
+                  )}
+                  {/* Inner Ring: Conditional Antecedents or Consequences */}
+                  {activeBehavior &&
+                    renderDonutSlices(
+                      (abcDrilldownMode === 'antecedents'
+                        ? activeBehavior.antecedents
+                        : activeBehavior.consequences
+                      ).map((item, i) => ({
+                        name: item.name,
+                        pct: item.pct,
+                        color: ['#3B82F6', '#10B981', '#F59E0B', '#6366F1'][i % 4],
+                      })),
+                      150,
+                      26,
+                      42,
+                    )}
+                </Svg>
+                <View style={styles.donutCenterLabel}>
+                  <Text style={styles.donutCenterCount}>{abcData.totalIncidents}</Text>
+                  <Text style={styles.donutCenterSub}>Logs</Text>
                 </View>
               </View>
 
-              {/* Part B: Stacked Donut Chart for ABC Logs with Interactive Drill-Down */}
-              <View style={[styles.donutBox, isMobile && { width: '100%' }]}>
-                <View style={styles.donutHeader}>
-                  <Text style={styles.subGraphHeading}>ABC Log Multi-Tier Donut</Text>
-                  <View style={styles.drillToggle}>
-                    <TouchableOpacity
-                      style={[
-                        styles.drillBtn,
-                        abcDrilldownMode === 'antecedents' && styles.drillBtnActive,
-                      ]}
-                      onPress={() => setAbcDrilldownMode('antecedents')}
-                    >
-                      <Text
+              {/* Drill-down environmental inspection */}
+              <View style={styles.drillDownDetails}>
+                <Text style={styles.drillTitle} numberOfLines={1}>
+                  {activeBehavior?.name || 'All Topographies'}
+                </Text>
+                <Text style={styles.drillSub}>
+                  {activeBehavior?.count || 0} incidents ({activeBehavior?.pct || 0}%) · Tap slice
+                  to filter
+                </Text>
+
+                <View style={styles.envFactorList}>
+                  {(abcDrilldownMode === 'antecedents'
+                    ? activeBehavior?.antecedents || []
+                    : activeBehavior?.consequences || []
+                  ).map((factor, i) => (
+                    <View key={i} style={styles.envFactorRow}>
+                      <View
                         style={[
-                          styles.drillBtnText,
-                          abcDrilldownMode === 'antecedents' && styles.drillBtnTextActive,
+                          styles.envFactorDot,
+                          {
+                            backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#6366F1'][i % 4],
+                          },
                         ]}
-                      >
-                        Antecedent
+                      />
+                      <Text style={styles.envFactorName} numberOfLines={1}>
+                        {factor.name}
                       </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.drillBtn,
-                        abcDrilldownMode === 'consequences' && styles.drillBtnActive,
-                      ]}
-                      onPress={() => setAbcDrilldownMode('consequences')}
-                    >
-                      <Text
-                        style={[
-                          styles.drillBtnText,
-                          abcDrilldownMode === 'consequences' && styles.drillBtnTextActive,
-                        ]}
-                      >
-                        Consequence
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <View style={styles.donutWithLegendRow}>
-                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                    <Svg width={150} height={150}>
-                      {/* Outer Ring: Behaviors */}
-                      {renderDonutSlices(
-                        abcData.behaviorList,
-                        150,
-                        46,
-                        68,
-                        (name) => setSelectedAbcBehavior(name),
-                        activeBehavior?.name,
-                      )}
-                      {/* Inner Ring: Conditional Antecedents or Consequences */}
-                      {activeBehavior &&
-                        renderDonutSlices(
-                          (abcDrilldownMode === 'antecedents'
-                            ? activeBehavior.antecedents
-                            : activeBehavior.consequences
-                          ).map((item, i) => ({
-                            name: item.name,
-                            pct: item.pct,
-                            color: ['#3B82F6', '#10B981', '#F59E0B', '#6366F1'][i % 4],
-                          })),
-                          150,
-                          26,
-                          42,
-                        )}
-                    </Svg>
-                    <View style={styles.donutCenterLabel}>
-                      <Text style={styles.donutCenterCount}>{abcData.totalIncidents}</Text>
-                      <Text style={styles.donutCenterSub}>Logs</Text>
+                      <Text style={styles.envFactorPct}>{factor.pct}%</Text>
                     </View>
-                  </View>
-
-                  {/* Drill-down environmental inspection */}
-                  <View style={styles.drillDownDetails}>
-                    <Text style={styles.drillTitle} numberOfLines={1}>
-                      {activeBehavior?.name || 'All Topographies'}
-                    </Text>
-                    <Text style={styles.drillSub}>
-                      {activeBehavior?.count || 0} incidents ({activeBehavior?.pct || 0}%) · Tap
-                      slice to filter
-                    </Text>
-
-                    <View style={styles.envFactorList}>
-                      {(abcDrilldownMode === 'antecedents'
-                        ? activeBehavior?.antecedents || []
-                        : activeBehavior?.consequences || []
-                      ).map((factor, i) => (
-                        <View key={i} style={styles.envFactorRow}>
-                          <View
-                            style={[
-                              styles.envFactorDot,
-                              {
-                                backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#6366F1'][
-                                  i % 4
-                                ],
-                              },
-                            ]}
-                          />
-                          <Text style={styles.envFactorName} numberOfLines={1}>
-                            {factor.name}
-                          </Text>
-                          <Text style={styles.envFactorPct}>{factor.pct}%</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
+                  ))}
                 </View>
               </View>
             </View>
@@ -1400,18 +1606,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // 2-Column Inner
   twoColInner: {
     flexDirection: 'row',
     gap: 14,
-  },
-  clusteredBarBox: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: radius.md - 2,
-    padding: 10,
   },
   subGraphHeading: {
     fontSize: 11,
@@ -1421,11 +1618,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-  clusteredBarList: {
-    gap: 8,
+
+  // Separate MAS and FAST Horizontal Bar Components
+  horizontalBarBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.md - 2,
+    padding: 12,
   },
-  clusteredFunctionRow: {
-    gap: 3,
+  horizontalBarList: {
+    gap: 10,
+  },
+  horizontalFunctionRow: {
+    gap: 4,
   },
   functionLabelRow: {
     flexDirection: 'row',
@@ -1437,27 +1643,49 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1E293B',
   },
-  dominantTag: {
-    backgroundColor: '#FEE2E2',
+  rankPill: {
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 3,
   },
-  dominantTagText: {
+  rankPillDominant: {
+    backgroundColor: '#DCFCE7',
+  },
+  rankPillText: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#DC2626',
+    color: '#64748B',
+  },
+  rankPillTextDominant: {
+    color: '#059669',
+  },
+  dominantTagGreen: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  dominantTagGreenText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  dominantTagBlue: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  dominantTagBlueText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#2563EB',
   },
   barLineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  barLegendCode: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#64748B',
-    width: 28,
+    gap: 8,
   },
   barLineTrack: {
     flex: 1,
@@ -1470,12 +1698,51 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
-  barValText: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: '#334155',
-    width: 38,
-    textAlign: 'right',
+  barValueMeta: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    width: 82,
+    justifyContent: 'flex-end',
+  },
+  barValPrimary: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  barValSecondary: {
+    fontSize: 8.5,
+    color: '#64748B',
+  },
+  scaleAxisRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    marginTop: 10,
+    paddingTop: 4,
+  },
+  scaleAxisText: {
+    fontSize: 8.5,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  clinicalTakeawayBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 10,
+  },
+  clinicalTakeawayText: {
+    fontSize: 10,
+    color: '#065F46',
+    flex: 1,
+    lineHeight: 14,
   },
 
   // Donut Chart

@@ -513,35 +513,108 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
     </div>
   `;
 
-  // Graph 2: Behavior Assessments (MAS / FAST Clustered Bars & ABC Multi-Tier Donut)
-  const pdfFunctions = [
-    { label: 'Sensory / Automatic', mas: 1.25, fast: 25, dominant: false },
-    { label: 'Escape / Task Demand', mas: 4.75, fast: 88, dominant: true },
-    { label: 'Attention Seeking', mas: 3.0, fast: 38, dominant: false },
-    { label: 'Tangible Access', mas: 2.25, fast: 25, dominant: false },
+  // Graph 2A: Motivation Assessment Scale (MAS) Summary Graph
+  const masList = [
+    { label: 'Demand / Escape', mean: 4.75, total: 19, rank: 1, isDominant: true },
+    { label: 'Attention Seeking', mean: 3.0, total: 12, rank: 2, isDominant: false },
+    { label: 'Tangible Access', mean: 2.25, total: 9, rank: 3, isDominant: false },
+    { label: 'Sensory / Automatic', mean: 1.25, total: 5, rank: 4, isDominant: false },
   ];
   if (masRows.length > 0) {
-    pdfFunctions.forEach((pf) => {
-      const match = masRows.find((m) =>
-        m.category.toLowerCase().includes(pf.label.toLowerCase().slice(0, 4)),
+    masRows.forEach((m, idx) => {
+      const meanNum = typeof m.mean === 'number' ? m.mean : parseFloat(String(m.mean)) || 0;
+      const totalNum =
+        typeof m.total === 'number'
+          ? m.total
+          : parseInt(String(m.total), 10) || Math.round(meanNum * 4);
+      const rankNum = parseInt(String(m.rank).replace(/\D/g, ''), 10) || idx + 1;
+      const match = masList.find((ml) =>
+        ml.label.toLowerCase().includes((m.category || '').toLowerCase().slice(0, 4)),
       );
-      if (match && typeof match.mean === 'string' && !isNaN(parseFloat(match.mean))) {
-        pf.mas = parseFloat(match.mean);
-      } else if (match && typeof match.mean === 'number') {
-        pf.mas = match.mean;
+      if (match) {
+        match.mean = meanNum;
+        match.total = totalNum;
+        match.rank = rankNum;
+        match.isDominant = rankNum === 1 || meanNum >= 4.0;
       }
     });
   }
+
+  const masSummaryGraphHtml = `
+    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="font-weight: 800; font-size: 8px; text-transform: uppercase; color: #0F172A;">Motivation Assessment Scale (MAS) Function Graph</span>
+        <span style="font-size: 7px; color: #059669; font-weight: 700; background: #ECFDF5; padding: 1px 4px; border-radius: 3px;">0.0 - 6.0 Mean</span>
+      </div>
+      ${masList
+        .map((m) => {
+          const pct = Math.min(100, Math.round((m.mean / 6) * 100));
+          return `
+          <div style="margin-bottom: 2.5px;">
+            <div style="display: flex; justify-content: space-between; font-size: 7px; font-weight: 700; color: #334155; margin-bottom: 1px;">
+              <span>${escapeHtml(m.label)}</span>
+              <span style="color: ${m.isDominant ? '#DC2626' : '#64748B'}; font-size: 6.5px;">${m.isDominant ? '★ Primary Function' : `Rank #${m.rank}`}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <div style="flex: 1; height: 5px; background: #E2E8F0; border-radius: 2px; overflow: hidden;">
+                <div style="width: ${pct}%; height: 100%; background: ${m.isDominant ? '#059669' : '#10B981'};"></div>
+              </div>
+              <span style="font-size: 7px; width: 32px; text-align: right; font-weight: 700; color: #1E293B;">${m.mean.toFixed(1)} / 6</span>
+            </div>
+          </div>
+        `;
+        })
+        .join('')}
+    </div>
+  `;
+
+  // Graph 2B: Functional Assessment Screening Tool (FAST) Summary Graph
+  const fastList = [
+    { label: 'Social Escape (Demands)', pct: 88, yes: '7 / 8', isDominant: true },
+    { label: 'Social Attention Seeking', pct: 38, yes: '3 / 8', isDominant: false },
+    { label: 'Social Tangibles (Items)', pct: 25, yes: '2 / 8', isDominant: false },
+    { label: 'Sensory Stimulation', pct: 25, yes: '2 / 8', isDominant: false },
+  ];
   if (fastRows.length > 0) {
-    pdfFunctions.forEach((pf) => {
-      const match = fastRows.find((f) =>
-        f.variable.toLowerCase().includes(pf.label.toLowerCase().slice(0, 4)),
+    fastRows.forEach((f) => {
+      const pctNum = parseInt(String(f.pct).replace('%', ''), 10) || 0;
+      const match = fastList.find((fl) =>
+        fl.label.toLowerCase().includes((f.variable || '').toLowerCase().slice(0, 4)),
       );
-      if (match && match.pct) {
-        pf.fast = parseInt(match.pct, 10) || pf.fast;
+      if (match) {
+        match.pct = pctNum;
+        match.yes = f.yesCount || match.yes;
+        match.isDominant = Boolean(f.isDominant) || pctNum >= 75;
       }
     });
   }
+
+  const fastSummaryGraphHtml = `
+    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="font-weight: 800; font-size: 8px; text-transform: uppercase; color: #0F172A;">Functional Assessment Screening Tool (FAST) Graph</span>
+        <span style="font-size: 7px; color: #2563EB; font-weight: 700; background: #EFF6FF; padding: 1px 4px; border-radius: 3px;">0% - 100% Yes</span>
+      </div>
+      ${fastList
+        .map(
+          (f) => `
+        <div style="margin-bottom: 2.5px;">
+          <div style="display: flex; justify-content: space-between; font-size: 7px; font-weight: 700; color: #334155; margin-bottom: 1px;">
+            <span>${escapeHtml(f.label)}</span>
+            <span style="color: ${f.isDominant ? '#DC2626' : '#64748B'}; font-size: 6.5px;">${f.isDominant ? '★ Dominant' : `${f.pct}%`}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="flex: 1; height: 5px; background: #E2E8F0; border-radius: 2px; overflow: hidden;">
+              <div style="width: ${f.pct}%; height: 100%; background: ${f.isDominant ? '#2563EB' : '#60A5FA'};"></div>
+            </div>
+            <span style="font-size: 7px; width: 32px; text-align: right; font-weight: 700; color: #1E293B;">${f.pct}%</span>
+          </div>
+        </div>
+      `,
+        )
+        .join('')}
+    </div>
+  `;
 
   const behaviorCounts: Record<string, number> = {};
   const antecedentCounts: Record<string, number> = {};
@@ -578,50 +651,16 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       ? Object.entries(consequenceCounts).sort((a, b) => b[1] - a[1])[0]
       : ['Task Escape', 4];
 
+  // Graph 2: Behavior Assessments (Separate MAS Function Graph, Separate FAST Variables Graph, and ABC Donut)
   const behaviorGraphsHtml = `
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-      <!-- Clustered Horizontal Bars -->
-      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <span style="font-weight: 800; font-size: 8.5px; text-transform: uppercase; color: #0F172A;">MAS vs FAST Clustered Function Ranking</span>
-          <div style="display: flex; gap: 6px; font-size: 7px;">
-            <span><span style="display: inline-block; width: 5px; height: 5px; background: #059669; border-radius: 1px;"></span> MAS (0-6)</span>
-            <span><span style="display: inline-block; width: 5px; height: 5px; background: #2563EB; border-radius: 1px;"></span> FAST (%)</span>
-          </div>
-        </div>
-        ${pdfFunctions
-          .map((pf) => {
-            const masPct = Math.round((pf.mas / 6) * 100);
-            return `
-            <div style="margin-bottom: 3px;">
-              <div style="display: flex; justify-content: space-between; font-size: 7.5px; font-weight: 700; color: #334155; margin-bottom: 1px;">
-                <span>${escapeHtml(pf.label)}</span>
-                <span style="color: ${pf.dominant ? '#DC2626' : '#64748B'};">${pf.dominant ? 'Dominant Hypothesis' : ''}</span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 1px;">
-                <span style="font-size: 7px; width: 22px; color: #64748B;">MAS</span>
-                <div style="flex: 1; height: 5px; background: #E2E8F0; border-radius: 2px; overflow: hidden;">
-                  <div style="width: ${masPct}%; height: 100%; background: #059669;"></div>
-                </div>
-                <span style="font-size: 7px; width: 26px; text-align: right; font-weight: 700;">${pf.mas.toFixed(1)}/6</span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="font-size: 7px; width: 22px; color: #64748B;">FAST</span>
-                <div style="flex: 1; height: 5px; background: #E2E8F0; border-radius: 2px; overflow: hidden;">
-                  <div style="width: ${pf.fast}%; height: 100%; background: #2563EB;"></div>
-                </div>
-                <span style="font-size: 7px; width: 26px; text-align: right; font-weight: 700;">${pf.fast}%</span>
-              </div>
-            </div>
-          `;
-          })
-          .join('')}
-      </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px;">
+      ${masSummaryGraphHtml}
+      ${fastSummaryGraphHtml}
 
       <!-- ABC Multi-Tier Donut -->
       <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; display: flex; gap: 8px; align-items: center;">
         <div>
-          <svg width="84" height="84" viewBox="0 0 84 84">
+          <svg width="76" height="76" viewBox="0 0 84 84">
             <circle cx="42" cy="42" r="32" fill="none" stroke="#E2E8F0" stroke-width="12" />
             <circle cx="42" cy="42" r="32" fill="none" stroke="#EF4444" stroke-width="12" stroke-dasharray="115 201" stroke-dashoffset="0" />
             <circle cx="42" cy="42" r="32" fill="none" stroke="#8B5CF6" stroke-width="12" stroke-dasharray="58 201" stroke-dashoffset="-115" />
@@ -632,19 +671,19 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
           </svg>
         </div>
         <div style="flex: 1; font-size: 7.5px;">
-          <div style="font-weight: 800; font-size: 8px; text-transform: uppercase; color: #0F172A; margin-bottom: 3px;">ABC Log Environmental Donut</div>
+          <div style="font-weight: 800; font-size: 8px; text-transform: uppercase; color: #0F172A; margin-bottom: 2px;">ABC Log Environmental Donut</div>
           ${bList
             .slice(0, 3)
             .map(
               (b, i) => `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5px;">
               <span><span style="display: inline-block; width: 5px; height: 5px; background: ${['#EF4444', '#8B5CF6', '#F59E0B'][i]}; border-radius: 1px;"></span> ${escapeHtml(b.name)}</span>
               <strong>${b.pct}%</strong>
             </div>
           `,
             )
             .join('')}
-          <div style="border-top: 1px solid #E2E8F0; margin-top: 3px; padding-top: 2px; color: #64748B;">
+          <div style="border-top: 1px solid #E2E8F0; margin-top: 2px; padding-top: 2px; color: #64748B; font-size: 6.8px;">
             <div>Primary Antecedent: <strong>${escapeHtml(antTop[0])}</strong></div>
             <div>Primary Consequence: <strong>${escapeHtml(conTop[0])}</strong></div>
           </div>

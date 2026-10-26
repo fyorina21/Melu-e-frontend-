@@ -114,8 +114,9 @@ describe('summaryReportTypes and helpers', () => {
       expect(html).toContain('ABLLS-R Grid-Based Progress Matrix');
       expect(html).toContain('Visual Performance');
 
-      // Graph 2: Behavior MAS/FAST Clustered Bars & ABC Donut
-      expect(html).toContain('MAS vs FAST Clustered Function Ranking');
+      // Graph 2: Separate MAS and FAST Summary Graphs & ABC Donut
+      expect(html).toContain('Motivation Assessment Scale (MAS) Function Graph');
+      expect(html).toContain('Functional Assessment Screening Tool (FAST) Graph');
       expect(html).toContain('ABC Log Environmental Donut');
 
       // Graph 3: Preference Ranked Bar Graph
