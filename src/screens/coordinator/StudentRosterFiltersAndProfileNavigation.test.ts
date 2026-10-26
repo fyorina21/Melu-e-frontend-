@@ -1,7 +1,12 @@
 // src/screens/coordinator/StudentRosterFiltersAndProfileNavigation.test.ts
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from '../../api/optionsApi';
+import {
+  getProgramOptions,
+  getTherapyGroupOptions,
+  getStatusOptions,
+  getTherapyStatusOptions,
+} from '../../api/optionsApi';
 import {
   saveEnrollmentDraft,
   getEnrollmentDraft,
@@ -10,6 +15,7 @@ import {
 } from '../../utils/enrollmentDraftHelper';
 import { getStudentProfile } from '../../api/coordinatorApi';
 import { resolveStudentStatus } from '../../utils/studentStatusHelper';
+import { resolveStudentTherapyStatus } from '../../utils/studentLifecycleHelper';
 import {
   exportStudentProfileToPdf,
   generateStudentProfileHtml,
@@ -54,6 +60,53 @@ describe('Student Roster Filters and Profile Navigation Workflows', () => {
       expect(res.data.length).toBeGreaterThan(0);
       expect(res.data).toContain('Active');
       expect(res.data).toContain('Draft');
+    });
+
+    it('fetches therapy status options from API endpoint with authentic clinical statuses', async () => {
+      const res = await getTherapyStatusOptions();
+      expect(res).toBeDefined();
+      expect(res.data).toBeDefined();
+      expect(Array.isArray(res.data)).toBe(true);
+      expect(res.data).toContain('In Assessment');
+      expect(res.data).toContain('Assessment Complete');
+      expect(res.data).toContain('Ready for IUP');
+      expect(res.data).toContain('IUP Ready');
+      expect(res.data).toContain('In Session');
+      expect(res.data).toContain('Not Started');
+    });
+
+    it('resolves real backend statuses correctly to clinical therapy statuses', () => {
+      expect(resolveStudentTherapyStatus({ status: 'in_assessment' })).toBe('In Assessment');
+      expect(resolveStudentTherapyStatus({ rawStatus: 'in_assessment' })).toBe('In Assessment');
+      expect(resolveStudentTherapyStatus({ status: 'ready_for_iup' })).toBe('Ready for IUP');
+      expect(resolveStudentTherapyStatus({ status: 'assessment_complete' })).toBe(
+        'Assessment Complete',
+      );
+      expect(resolveStudentTherapyStatus({ status: 'active_therapy' })).toBe('In Session');
+      expect(resolveStudentTherapyStatus({ status: 'registered' })).toBe('Not Started');
+      expect(resolveStudentTherapyStatus({ status: 'draft' })).toBe('Draft');
+    });
+
+    it('filters student roster by Therapy Status dynamically', () => {
+      const roster = [
+        { id: '1', name: 'Child 1', therapyStatus: 'In Assessment' },
+        { id: '2', name: 'Child 2', therapyStatus: 'Ready for IUP' },
+        { id: '3', name: 'Child 3', therapyStatus: 'In Session' },
+        { id: '4', name: 'Child 4', therapyStatus: 'Not Started' },
+        { id: '5', name: 'Child 5', therapyStatus: 'In Assessment' },
+      ];
+
+      const inAssessment = roster.filter((s) => s.therapyStatus.toLowerCase() === 'in assessment');
+      expect(inAssessment.length).toBe(2);
+      expect(inAssessment.map((s) => s.id)).toEqual(['1', '5']);
+
+      const readyForIup = roster.filter((s) => s.therapyStatus.toLowerCase() === 'ready for iup');
+      expect(readyForIup.length).toBe(1);
+      expect(readyForIup[0].id).toBe('2');
+
+      const inSession = roster.filter((s) => s.therapyStatus.toLowerCase() === 'in session');
+      expect(inSession.length).toBe(1);
+      expect(inSession[0].id).toBe('3');
     });
 
     it('filters student roster by Program, Therapy Group, and Status dynamically', () => {

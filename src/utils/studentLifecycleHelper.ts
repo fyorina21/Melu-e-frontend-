@@ -76,16 +76,16 @@ export function isStoredAssessmentCompleted(studentId: string | number): boolean
     if (localStorage.getItem(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${sid}`) === 'true') {
       return true;
     }
-    const skillsRaw = localStorage.getItem(`melue_skills_assessment_${sid}`);
-    if (skillsRaw) {
-      const skills = JSON.parse(skillsRaw);
-      if (skills.status === 'completed' || skills.progress === 100) return true;
-    }
-    const legacySkills = localStorage.getItem(`skills_assessment_${sid}`);
-    if (legacySkills) {
-      const parsed = JSON.parse(legacySkills);
-      if (parsed.status === 'completed' || parsed.progress === 100) return true;
-    }
+    const sk = getStudentSkillsProgress(sid);
+    const bh = getStudentBehaviorProgress(sid);
+    const pr = getStudentPreferenceProgress(sid);
+    const se = getStudentSensoryProgress(sid);
+    const all4Done =
+      (sk.status === 'Completed' || sk.progress >= 100) &&
+      (bh.status === 'Completed' || bh.progress >= 100) &&
+      (pr.status === 'Completed' || pr.progress >= 100) &&
+      (se.status === 'Completed' || se.progress >= 100);
+    if (all4Done) return true;
   } catch {}
   return false;
 }
@@ -121,7 +121,14 @@ export function getStudentSkillsProgress(
   fallbackStatus: string = 'Not Started',
 ): { progress: number; status: string } {
   if (typeof localStorage === 'undefined' || !studentId) {
-    return { progress: fallbackProgress, status: fallbackStatus };
+    const isCompleted =
+      fallbackStatus.toLowerCase() === 'completed' ||
+      fallbackStatus.toLowerCase() === 'submitted' ||
+      fallbackProgress >= 100;
+    return {
+      progress: isCompleted ? 100 : fallbackProgress,
+      status: isCompleted ? 'Completed' : fallbackStatus,
+    };
   }
   try {
     const sid = String(studentId);
@@ -141,7 +148,11 @@ export function getStudentSkillsProgress(
 
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.status === 'completed' || parsed.progress === 100) {
+      if (
+        parsed.status === 'completed' ||
+        parsed.status === 'submitted' ||
+        parsed.progress === 100
+      ) {
         return { progress: 100, status: 'Completed' };
       }
       if (parsed.progress !== undefined && parsed.progress !== null) {
@@ -161,7 +172,14 @@ export function getStudentSkillsProgress(
       }
     }
   } catch {}
-  return { progress: fallbackProgress, status: fallbackStatus };
+  const isCompleted =
+    fallbackStatus.toLowerCase() === 'completed' ||
+    fallbackStatus.toLowerCase() === 'submitted' ||
+    fallbackProgress >= 100;
+  return {
+    progress: isCompleted ? 100 : fallbackProgress,
+    status: isCompleted ? 'Completed' : fallbackStatus,
+  };
 }
 
 /**
@@ -173,7 +191,14 @@ export function getStudentBehaviorProgress(
   fallbackStatus: string = 'Not Started',
 ): { progress: number; status: string } {
   if (typeof localStorage === 'undefined' || !studentId) {
-    return { progress: fallbackProgress, status: fallbackStatus };
+    const isCompleted =
+      fallbackStatus.toLowerCase() === 'completed' ||
+      fallbackStatus.toLowerCase() === 'submitted' ||
+      fallbackProgress >= 100;
+    return {
+      progress: isCompleted ? 100 : fallbackProgress,
+      status: isCompleted ? 'Completed' : fallbackStatus,
+    };
   }
   try {
     const sid = String(studentId);
@@ -185,13 +210,28 @@ export function getStudentBehaviorProgress(
 
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.status === 'submitted' || parsed.progress === 100) {
+      if (
+        parsed.status === 'submitted' ||
+        parsed.status === 'completed' ||
+        parsed.progress === 100
+      ) {
         return { progress: 100, status: 'Completed' };
       }
       if (parsed.progress !== undefined && parsed.progress !== null) {
         const prog = Math.min(100, Math.max(0, Number(parsed.progress)));
         const stat = prog >= 100 ? 'Completed' : prog > 0 ? 'In Progress' : 'Not Started';
         return { progress: prog, status: stat };
+      }
+      // Check multi-target completeness (all MASS and FAST answered)
+      if (Array.isArray(parsed.target_behaviors) && parsed.target_behaviors.length > 0) {
+        const allTargetsComplete = parsed.target_behaviors.every((b: any) => {
+          const mCount = Object.keys(b.mass_responses || b.massAnswers || {}).length;
+          const fCount = Object.keys(b.fast_responses || b.fastAnswers || {}).length;
+          return mCount >= 16 && fCount >= 27;
+        });
+        if (allTargetsComplete) {
+          return { progress: 100, status: 'Completed' };
+        }
       }
       const massCount =
         parsed.massAnswers && typeof parsed.massAnswers === 'object'
@@ -214,7 +254,186 @@ export function getStudentBehaviorProgress(
       }
     }
   } catch {}
-  return { progress: fallbackProgress, status: fallbackStatus };
+  const isCompleted =
+    fallbackStatus.toLowerCase() === 'completed' ||
+    fallbackStatus.toLowerCase() === 'submitted' ||
+    fallbackProgress >= 100;
+  return {
+    progress: isCompleted ? 100 : fallbackProgress,
+    status: isCompleted ? 'Completed' : fallbackStatus,
+  };
+}
+
+/**
+ * Retrieves the current preference assessment progress and status for a student.
+ */
+export function getStudentPreferenceProgress(
+  studentId: string | number,
+  fallbackProgress: number = 0,
+  fallbackStatus: string = 'Not Started',
+): { progress: number; status: string } {
+  if (typeof localStorage === 'undefined' || !studentId) {
+    const isCompleted =
+      fallbackStatus.toLowerCase() === 'completed' ||
+      fallbackStatus.toLowerCase() === 'submitted' ||
+      fallbackProgress >= 100;
+    return {
+      progress: isCompleted ? 100 : fallbackProgress,
+      status: isCompleted ? 'Completed' : fallbackStatus,
+    };
+  }
+  try {
+    const sid = String(studentId);
+    const aliasSid = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : sid;
+    const raw =
+      localStorage.getItem(`melue_preference_assessment_${sid}`) ||
+      localStorage.getItem(`melue_preference_assessment_${aliasSid}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed.status === 'completed' ||
+        parsed.status === 'submitted' ||
+        parsed.progress === 100
+      ) {
+        return { progress: 100, status: 'Completed' };
+      }
+      if (parsed.progress !== undefined && parsed.progress !== null) {
+        const prog = Math.min(100, Math.max(0, Number(parsed.progress)));
+        return {
+          progress: prog,
+          status: prog >= 100 ? 'Completed' : prog > 0 ? 'In Progress' : 'Not Started',
+        };
+      }
+      const items = Array.isArray(parsed.items) ? parsed.items : [];
+      const totalInventory = items.length > 0 ? items.length : 24;
+      const assessedCount = items.filter(
+        (it: any) =>
+          it.approached === 'Approached' ||
+          it.approached === 'Did Not Approach' ||
+          (it.durationSeconds && it.durationSeconds > 0) ||
+          (it.frequency && it.frequency > 0),
+      ).length;
+
+      const calculatedProg = Math.min(100, Math.round((assessedCount / totalInventory) * 100));
+      return {
+        progress: calculatedProg,
+        status:
+          calculatedProg >= 100 ? 'Completed' : calculatedProg > 0 ? 'In Progress' : 'Not Started',
+      };
+    }
+  } catch {}
+  const isCompleted =
+    fallbackStatus.toLowerCase() === 'completed' ||
+    fallbackStatus.toLowerCase() === 'submitted' ||
+    fallbackProgress >= 100;
+  return {
+    progress: isCompleted ? 100 : fallbackProgress,
+    status: isCompleted ? 'Completed' : fallbackStatus,
+  };
+}
+
+/**
+ * Retrieves the current sensory time engagement assessment progress and status for a student.
+ */
+export function getStudentSensoryProgress(
+  studentId: string | number,
+  fallbackProgress: number = 0,
+  fallbackStatus: string = 'Not Started',
+): { progress: number; status: string } {
+  if (typeof localStorage === 'undefined' || !studentId) {
+    const isCompleted =
+      fallbackStatus.toLowerCase() === 'completed' ||
+      fallbackStatus.toLowerCase() === 'submitted' ||
+      fallbackProgress >= 100;
+    return {
+      progress: isCompleted ? 100 : fallbackProgress,
+      status: isCompleted ? 'Completed' : fallbackStatus,
+    };
+  }
+  try {
+    const sid = String(studentId);
+    const aliasSid = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : sid;
+    const raw =
+      localStorage.getItem(`melue_sensory_assessment_${sid}`) ||
+      localStorage.getItem(`melue_sensory_assessment_${aliasSid}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed.status === 'completed' ||
+        parsed.status === 'submitted' ||
+        parsed.progress === 100
+      ) {
+        return { progress: 100, status: 'Completed' };
+      }
+      if (parsed.progress !== undefined && parsed.progress !== null) {
+        const prog = Math.min(100, Math.max(0, Number(parsed.progress)));
+        return {
+          progress: prog,
+          status: prog >= 100 ? 'Completed' : prog > 0 ? 'In Progress' : 'Not Started',
+        };
+      }
+      if (Array.isArray(parsed.activities) && parsed.activities.length > 0) {
+        const scoredCount = parsed.activities.filter(
+          (a: any) =>
+            (a.engagementLevel && a.engagementLevel !== '-- Select --') ||
+            (a.responseReaction && a.responseReaction !== '-- Select --'),
+        ).length;
+        const calculatedProg = Math.min(
+          100,
+          Math.round((scoredCount / parsed.activities.length) * 100),
+        );
+        return {
+          progress: calculatedProg,
+          status:
+            calculatedProg >= 100
+              ? 'Completed'
+              : calculatedProg > 0
+                ? 'In Progress'
+                : 'Not Started',
+        };
+      }
+    }
+  } catch {}
+  const isCompleted =
+    fallbackStatus.toLowerCase() === 'completed' ||
+    fallbackStatus.toLowerCase() === 'submitted' ||
+    fallbackProgress >= 100;
+  return {
+    progress: isCompleted ? 100 : fallbackProgress,
+    status: isCompleted ? 'Completed' : fallbackStatus,
+  };
+}
+
+/**
+ * Updates a student's status across local storage registry
+ */
+export function updateStudentStatus(studentId: string | number, newStatus: string): void {
+  if (typeof localStorage === 'undefined' || !studentId) return;
+  try {
+    const sid = String(studentId);
+    const raw = localStorage.getItem(STUDENT_STATUS_REGISTRY_KEY);
+    const decoded = unprotectStoragePayload(raw) || raw;
+    const registry = decoded ? JSON.parse(decoded) : {};
+    registry[sid] = {
+      ...(registry[sid] || {}),
+      status: newStatus,
+      rawStatus: newStatus,
+    };
+    const protectedVal = sanitizeStoragePayload(JSON.stringify(registry));
+    localStorage.setItem(STUDENT_STATUS_REGISTRY_KEY, protectedVal);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('melue_student_status_changed', {
+          detail: { studentId: sid, status: newStatus },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('melue_assessment_updated', {
+          detail: { studentId: sid, status: newStatus },
+        }),
+      );
+    }
+  } catch {}
 }
 
 /**
@@ -453,4 +672,129 @@ export function isStudentEligibleForSession(student: any): boolean {
 
   // Must be 100% completed
   return isStudentAssessment100PercentCompleted(student);
+}
+
+/**
+ * Resolves the real clinical therapy status for a student (e.g. on Student Roster / Register).
+ * Distinguishes between In Assessment, Assessment Complete, Ready for IUP, IUP Ready, In Session, Not Started, Draft.
+ */
+export function resolveStudentTherapyStatus(student: any): string {
+  if (!student) return 'Not Started';
+  if (student.isDraft || String(student.id || '').startsWith('draft-')) {
+    return 'Draft';
+  }
+
+  const sid = String(student.id || student.studentId || student.student_id || '');
+
+  // 1. Check if student has a finalized/active IUP or active session goals
+  let hasActiveIup = false;
+  if (sid) {
+    try {
+      const draft = getStoredIupDraft(sid);
+      if (
+        draft &&
+        ((Array.isArray(draft.goals) && draft.goals.length > 0) ||
+          draft.status === 'finalized' ||
+          draft.status === 'active' ||
+          (draft.slots && typeof draft.slots === 'object'))
+      ) {
+        hasActiveIup = true;
+      }
+    } catch {}
+  }
+
+  const raw = String(
+    student.therapyStatus ||
+      student.therapy_status ||
+      student.rawStatus ||
+      student.raw_status ||
+      student.currentStage ||
+      student.stage ||
+      student.assessmentStatus ||
+      student.status ||
+      '',
+  )
+    .toLowerCase()
+    .trim();
+
+  // 2. Active therapy / In session checks
+  if (
+    raw === 'in_session' ||
+    raw === 'in session' ||
+    raw === 'in-session' ||
+    raw === 'active_therapy' ||
+    raw === 'active therapy' ||
+    raw === 'session_assigned' ||
+    raw === 'session assigned' ||
+    Boolean(student.sessionAssigned)
+  ) {
+    return 'In Session';
+  }
+
+  if (raw === 'active' && hasActiveIup) {
+    return 'In Session';
+  }
+
+  // 3. IUP Ready vs Ready for IUP
+  if (hasActiveIup || raw === 'iup_ready' || raw === 'iup ready' || raw === 'iup_active') {
+    return 'IUP Ready';
+  }
+
+  if (raw === 'ready_for_iup' || raw === 'ready for iup' || raw === 'ready-for-iup') {
+    return 'Ready for IUP';
+  }
+
+  if (
+    raw === 'assessment_complete' ||
+    raw === 'assessment complete' ||
+    raw === 'assessment completed' ||
+    raw === 'assessment-complete' ||
+    raw === 'assessment_completed'
+  ) {
+    return 'Assessment Complete';
+  }
+
+  // Check client storage if assessment was marked complete
+  if (sid && isStoredAssessmentCompleted(sid)) {
+    return 'Ready for IUP';
+  }
+
+  // 4. In assessment checks
+  if (
+    raw === 'in_assessment' ||
+    raw === 'in assessment' ||
+    raw === 'in-assessment' ||
+    raw === 'assessment' ||
+    raw === 'in-progress' ||
+    raw === 'in progress'
+  ) {
+    return 'In Assessment';
+  }
+
+  // 5. Exit statuses
+  if (raw === 'withdrawn') return 'Withdrawn';
+  if (raw === 'discharged') return 'Discharged';
+  if (raw === 'archived') return 'Archived';
+  if (raw === 'inactive') return 'Inactive';
+
+  // 6. Registration / draft / not started
+  if (
+    raw === 'registered' ||
+    raw === 'enrolled' ||
+    raw === 'not_started' ||
+    raw === 'not started' ||
+    raw === 'pending_review' ||
+    raw === 'new'
+  ) {
+    return 'Not Started';
+  }
+
+  if (raw === 'draft') return 'Draft';
+
+  // If status is 'active' with no specific sub-stage, default to In Session for active roster
+  if (raw === 'active') {
+    return 'In Session';
+  }
+
+  return 'Not Started';
 }
