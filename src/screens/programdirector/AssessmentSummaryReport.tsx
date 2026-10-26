@@ -14,12 +14,12 @@ import {
   SafeAreaView,
   ScrollView,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
-import { colors, spacing, radius } from '../../theme/colors';
-import { typography } from '../../theme/typography';
+import { colors, radius } from '../../theme/colors';
 import {
   getAssessmentsForReview,
   getAssessmentReport,
@@ -40,6 +40,10 @@ function formatMMSS(totalSec?: number): string {
 }
 
 export default function AssessmentSummaryReport({ route, navigation }: any) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 720;
+  const isTablet = width >= 720 && width < 1080;
+
   const urlSid =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('studentId')
@@ -571,9 +575,15 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
       <AppNavbar activeTab="Assessment Review & Approval" />
 
       {/* Top Action & Navigation Bar */}
-      <View style={styles.topToolbar}>
+      <View
+        style={[
+          styles.topToolbar,
+          isTablet && styles.topToolbarTablet,
+          isMobile && styles.topToolbarMobile,
+        ]}
+      >
         {/* Left: Back Return & Student Selector Dropdown */}
-        <View style={styles.topLeftGroup}>
+        <View style={[styles.topLeftGroup, isMobile && styles.topLeftGroupMobile]}>
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => {
@@ -586,13 +596,13 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
             activeOpacity={0.7}
           >
             <Feather name="arrow-left" size={16} color={colors.primaryBlue} />
-            <Text style={styles.backBtnText}>Review Queue</Text>
+            <Text style={styles.backBtnText}>{isMobile ? 'Back' : 'Review Queue'}</Text>
           </TouchableOpacity>
 
           {/* Student Selection Dropdown Trigger */}
-          <View style={styles.dropdownContainer}>
+          <View style={[styles.dropdownContainer, isMobile && { flex: 1 }]}>
             <TouchableOpacity
-              style={styles.studentDropdownBtn}
+              style={[styles.studentDropdownBtn, isMobile && { minWidth: 0, width: '100%' }]}
               onPress={() => setDropdownOpen((v) => !v)}
               activeOpacity={0.8}
             >
@@ -614,7 +624,12 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
 
             {/* Dropdown Menu Modal / Overlay */}
             {dropdownOpen && (
-              <View style={styles.dropdownMenu}>
+              <View
+                style={[
+                  styles.dropdownMenu,
+                  isMobile && { width: Math.min(width - 32, 360), left: 0 },
+                ]}
+              >
                 <View style={styles.dropdownSearchWrap}>
                   <Feather name="search" size={14} color="#64748B" />
                   <TextInput
@@ -696,73 +711,107 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Center: View Switcher */}
-        <View style={styles.viewModeSwitcher}>
-          <TouchableOpacity
-            style={[styles.viewModeBtn, viewMode === 'dynamic' && styles.viewModeBtnActive]}
-            onPress={() => setViewMode('dynamic')}
-          >
-            <Feather
-              name="layers"
-              size={13}
-              color={viewMode === 'dynamic' ? '#FFFFFF' : '#1E293B'}
-            />
-            <Text
-              style={[styles.viewModeText, viewMode === 'dynamic' && styles.viewModeTextActive]}
+        {/* Center/Right Toolbar Row: View Switcher & Action Buttons */}
+        <View
+          style={[
+            styles.toolbarControlsRow,
+            (isMobile || isTablet) && styles.toolbarControlsRowStacked,
+          ]}
+        >
+          {/* View Switcher */}
+          <View style={[styles.viewModeSwitcher, isMobile && { width: '100%' }]}>
+            <TouchableOpacity
+              style={[
+                styles.viewModeBtn,
+                isMobile && { flex: 1, justifyContent: 'center' },
+                viewMode === 'dynamic' && styles.viewModeBtnActive,
+              ]}
+              onPress={() => setViewMode('dynamic')}
             >
-              Dynamic Report
-            </Text>
-          </TouchableOpacity>
+              <Feather
+                name="layers"
+                size={13}
+                color={viewMode === 'dynamic' ? '#FFFFFF' : '#1E293B'}
+              />
+              <Text
+                style={[styles.viewModeText, viewMode === 'dynamic' && styles.viewModeTextActive]}
+              >
+                Dynamic Report
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.viewModeBtn, viewMode === 'document' && styles.viewModeBtnActive]}
-            onPress={() => setViewMode('document')}
-          >
-            <Feather
-              name="file-text"
-              size={13}
-              color={viewMode === 'document' ? '#FFFFFF' : '#1E293B'}
-            />
-            <Text
-              style={[styles.viewModeText, viewMode === 'document' && styles.viewModeTextActive]}
+            <TouchableOpacity
+              style={[
+                styles.viewModeBtn,
+                isMobile && { flex: 1, justifyContent: 'center' },
+                viewMode === 'document' && styles.viewModeBtnActive,
+              ]}
+              onPress={() => setViewMode('document')}
             >
-              Document (PDF View)
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <Feather
+                name="file-text"
+                size={13}
+                color={viewMode === 'document' ? '#FFFFFF' : '#1E293B'}
+              />
+              <Text
+                style={[styles.viewModeText, viewMode === 'document' && styles.viewModeTextActive]}
+              >
+                Document (PDF)
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Right: Actions */}
-        <View style={styles.actionsRight}>
-          <TouchableOpacity style={styles.exportBtn} onPress={handlePrint} activeOpacity={0.75}>
-            <Feather name="printer" size={14} color="#1E293B" />
-            <Text style={styles.exportBtnText}>Print / Export PDF</Text>
-          </TouchableOpacity>
+          {/* Right Action Buttons */}
+          <View style={[styles.actionsRight, isMobile && styles.actionsRightMobile]}>
+            <TouchableOpacity
+              style={[
+                styles.exportBtn,
+                isMobile && { flex: 1, paddingHorizontal: 6, justifyContent: 'center' },
+              ]}
+              onPress={handlePrint}
+              activeOpacity={0.75}
+            >
+              <Feather name="printer" size={14} color="#1E293B" />
+              <Text style={styles.exportBtnText}>{isMobile ? 'Print' : 'Print / PDF'}</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={styles.exportBtn} onPress={handleDownload} activeOpacity={0.75}>
-            <Feather name="download" size={14} color="#1E293B" />
-            <Text style={styles.exportBtnText}>Download</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.exportBtn,
+                isMobile && { flex: 1, paddingHorizontal: 6, justifyContent: 'center' },
+              ]}
+              onPress={handleDownload}
+              activeOpacity={0.75}
+            >
+              <Feather name="download" size={14} color="#1E293B" />
+              <Text style={styles.exportBtnText}>{isMobile ? 'Save' : 'Download'}</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.signOffBtn, isReviewed && styles.signOffBtnDisabled]}
-            onPress={() => {
-              if (isReviewed) {
-                Alert.alert(
-                  'Already Signed Off',
-                  'This clinical assessment has already been reviewed and approved.',
-                );
-              } else {
-                setShowApproveModal(true);
-              }
-            }}
-            disabled={isReviewed}
-            activeOpacity={0.8}
-          >
-            <Feather name={isReviewed ? 'check' : 'check-circle'} size={14} color="#FFFFFF" />
-            <Text style={styles.signOffBtnText}>
-              {isReviewed ? 'Approved (Ready for IUP)' : 'Approve & Sign-Off'}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.signOffBtn,
+                isReviewed && styles.signOffBtnDisabled,
+                isMobile && { width: '100%', justifyContent: 'center' },
+              ]}
+              onPress={() => {
+                if (isReviewed) {
+                  Alert.alert(
+                    'Already Signed Off',
+                    'This clinical assessment has already been reviewed and approved.',
+                  );
+                } else {
+                  setShowApproveModal(true);
+                }
+              }}
+              disabled={isReviewed}
+              activeOpacity={0.8}
+            >
+              <Feather name={isReviewed ? 'check' : 'check-circle'} size={14} color="#FFFFFF" />
+              <Text style={styles.signOffBtnText}>
+                {isReviewed ? 'Approved (Ready for IUP)' : 'Approve & Sign-Off'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -800,10 +849,18 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
         </View>
       ) : (
         /* Dynamic Assessment UI */
-        <ScrollView style={styles.dynamicContainer} contentContainerStyle={styles.dynamicContent}>
+        <ScrollView
+          style={styles.dynamicContainer}
+          contentContainerStyle={[styles.dynamicContent, isMobile && { padding: 12, gap: 12 }]}
+        >
           {/* 1. Student Intake Demographic Card */}
           <View style={styles.studentCard}>
-            <View style={styles.studentCardHeader}>
+            <View
+              style={[
+                styles.studentCardHeader,
+                isMobile && { flexDirection: 'column', alignItems: 'flex-start' },
+              ]}
+            >
               <View style={styles.avatarPill}>
                 <Text style={styles.avatarText}>
                   {studentName
@@ -814,7 +871,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     .slice(0, 2)}
                 </Text>
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
                 <View style={styles.nameRow}>
                   <Text style={styles.studentHeaderName}>{studentName}</Text>
                   <View style={styles.badgeId}>
@@ -851,25 +908,25 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
             </View>
 
             <View style={styles.demoGrid}>
-              <View style={styles.demoItem}>
+              <View style={[styles.demoItem, isMobile && { minWidth: '45%' }]}>
                 <Text style={styles.demoLabel}>DATE OF BIRTH (AGE)</Text>
                 <Text style={styles.demoValue}>
                   {dob} ({age} yrs)
                 </Text>
               </View>
-              <View style={styles.demoItem}>
+              <View style={[styles.demoItem, isMobile && { minWidth: '45%' }]}>
                 <Text style={styles.demoLabel}>ENROLLED PROGRAM</Text>
                 <Text style={styles.demoValue}>{programType}</Text>
               </View>
-              <View style={styles.demoItem}>
+              <View style={[styles.demoItem, isMobile && { minWidth: '45%' }]}>
                 <Text style={styles.demoLabel}>ASSIGNED COHORT</Text>
                 <Text style={styles.demoValue}>{therapyGroup}</Text>
               </View>
-              <View style={styles.demoItem}>
+              <View style={[styles.demoItem, isMobile && { minWidth: '45%' }]}>
                 <Text style={styles.demoLabel}>LEAD CLINICIAN / ASSESSOR</Text>
                 <Text style={styles.demoValue}>{leadClinician}</Text>
               </View>
-              <View style={styles.demoItem}>
+              <View style={[styles.demoItem, isMobile && { minWidth: '100%' }]}>
                 <Text style={styles.demoLabel}>ASSESSMENT WINDOW</Text>
                 <Text style={styles.demoValue}>{assessmentWindow}</Text>
               </View>
@@ -877,7 +934,11 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           </View>
 
           {/* Sub-Assessment Section Navigation Tabs */}
-          <View style={styles.subTabsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.subTabsScrollContent}
+          >
             {[
               { id: 'all', label: 'All 4 Assessments' },
               { id: 'ablls', label: '1. ABLLS-R Skills' },
@@ -895,7 +956,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
 
           {/* ================= SECTION 1: ABLLS-R SKILLS ================= */}
           {(activeSubTab === 'all' || activeSubTab === 'ablls') && (
@@ -917,21 +978,27 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
 
               {/* KPI Metrics Bar */}
               <View style={styles.kpiRow}>
-                <View style={styles.kpiCard}>
+                <View style={[styles.kpiCard, isMobile && { minWidth: '47%' }]}>
                   <Text style={styles.kpiLabel}>EVALUATED DOMAINS</Text>
                   <Text style={styles.kpiValue}>{totalEvaluatedDomains} Domains</Text>
                 </View>
-                <View style={styles.kpiCard}>
+                <View style={[styles.kpiCard, isMobile && { minWidth: '47%' }]}>
                   <Text style={styles.kpiLabel}>TOTAL SCORED ITEMS</Text>
                   <Text style={styles.kpiValue}>{totalScoredItems} Items</Text>
                 </View>
-                <View style={styles.kpiCard}>
+                <View style={[styles.kpiCard, isMobile && { minWidth: '47%' }]}>
                   <Text style={styles.kpiLabel}>POINTS EARNED / MAX</Text>
                   <Text style={styles.kpiValue}>
                     {totalPointsEarned} / {totalPossiblePoints} pts
                   </Text>
                 </View>
-                <View style={[styles.kpiCard, { borderLeftColor: colors.primaryBlue }]}>
+                <View
+                  style={[
+                    styles.kpiCard,
+                    { borderLeftColor: colors.primaryBlue },
+                    isMobile && { minWidth: '47%' },
+                  ]}
+                >
                   <Text style={styles.kpiLabel}>OVERALL MASTERY RATE</Text>
                   <Text style={[styles.kpiValue, { color: colors.primaryBlue }]}>
                     {overallMastery}% Mastery
@@ -951,92 +1018,109 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 </View>
               </View>
 
-              {/* Evaluated Domains Breakdown Table */}
+              {/* Evaluated Domains Breakdown Table - Horizontally scrollable on mobile */}
               <Text style={styles.tableTitle}>Evaluated Domains Breakdown Table</Text>
-              <View style={styles.tableContainer}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.th, { width: 60 }]}>Code</Text>
-                  <Text style={[styles.th, { flex: 1 }]}>Domain Area Description</Text>
-                  <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>Scored Items</Text>
-                  <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>
-                    Points Earned
-                  </Text>
-                  <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>Ceiling Pts</Text>
-                  <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Mastery %</Text>
-                  <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>Performance</Text>
-                </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View style={[styles.tableContainer, { minWidth: 680 }]}>
+                  <View style={styles.tableHeaderRow}>
+                    <Text style={[styles.th, { width: 60 }]}>Code</Text>
+                    <Text style={[styles.th, { flex: 1 }]}>Domain Area Description</Text>
+                    <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>
+                      Scored Items
+                    </Text>
+                    <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>
+                      Points Earned
+                    </Text>
+                    <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>
+                      Ceiling Pts
+                    </Text>
+                    <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Mastery %</Text>
+                    <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
+                      Performance
+                    </Text>
+                  </View>
 
-                {domains.map((d: any, idx: number) => {
-                  const pct = Math.round(d.percentage ?? d.score ?? 0);
-                  const isMastered = pct >= 70;
-                  const isEmerging = pct >= 40 && pct < 70;
-                  return (
-                    <View
-                      key={d.code || idx}
-                      style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                    >
-                      <Text style={[styles.td, { width: 60, fontWeight: '800' }]}>{d.code}</Text>
-                      <Text style={[styles.td, { flex: 1, fontWeight: '600' }]}>{d.name}</Text>
-                      <Text style={[styles.td, { width: 100, textAlign: 'center' }]}>
-                        {d.scored_items || d.total_items || 0} / {d.total_items || 0}
-                      </Text>
-                      <Text
-                        style={[styles.td, { width: 100, textAlign: 'center', fontWeight: '700' }]}
+                  {domains.map((d: any, idx: number) => {
+                    const pct = Math.round(d.percentage ?? d.score ?? 0);
+                    const isMastered = pct >= 70;
+                    const isEmerging = pct >= 40 && pct < 70;
+                    return (
+                      <View
+                        key={d.code || idx}
+                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
                       >
-                        {d.total_points ?? 0}
-                      </Text>
-                      <Text
-                        style={[styles.td, { width: 100, textAlign: 'center', color: '#64748B' }]}
-                      >
-                        {d.max_possible_points ?? 0}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.td,
-                          {
-                            width: 90,
-                            textAlign: 'center',
-                            fontWeight: '800',
-                            color: isMastered ? '#059669' : isEmerging ? '#2563EB' : '#DC2626',
-                          },
-                        ]}
-                      >
-                        {pct}%
-                      </Text>
-                      <View style={{ width: 110, alignItems: 'center' }}>
-                        <View
+                        <Text style={[styles.td, { width: 60, fontWeight: '800' }]}>{d.code}</Text>
+                        <Text style={[styles.td, { flex: 1, fontWeight: '600' }]}>{d.name}</Text>
+                        <Text style={[styles.td, { width: 100, textAlign: 'center' }]}>
+                          {d.scored_items || d.total_items || 0} / {d.total_items || 0}
+                        </Text>
+                        <Text
                           style={[
-                            styles.badge,
-                            isMastered
-                              ? styles.badgeMastered
-                              : isEmerging
-                                ? styles.badgeEmerging
-                                : styles.badgeDeficit,
+                            styles.td,
+                            { width: 100, textAlign: 'center', fontWeight: '700' },
                           ]}
                         >
-                          <Text
+                          {d.total_points ?? 0}
+                        </Text>
+                        <Text
+                          style={[styles.td, { width: 100, textAlign: 'center', color: '#64748B' }]}
+                        >
+                          {d.max_possible_points ?? 0}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.td,
+                            {
+                              width: 90,
+                              textAlign: 'center',
+                              fontWeight: '800',
+                              color: isMastered ? '#059669' : isEmerging ? '#2563EB' : '#DC2626',
+                            },
+                          ]}
+                        >
+                          {pct}%
+                        </Text>
+                        <View style={{ width: 110, alignItems: 'center' }}>
+                          <View
                             style={[
-                              styles.badgeText,
+                              styles.badge,
                               isMastered
-                                ? styles.badgeTextMastered
+                                ? styles.badgeMastered
                                 : isEmerging
-                                  ? styles.badgeTextEmerging
-                                  : styles.badgeTextDeficit,
+                                  ? styles.badgeEmerging
+                                  : styles.badgeDeficit,
                             ]}
                           >
-                            {isMastered ? 'Mastered' : isEmerging ? 'Emerging' : 'Deficit Gap'}
-                          </Text>
+                            <Text
+                              style={[
+                                styles.badgeText,
+                                isMastered
+                                  ? styles.badgeTextMastered
+                                  : isEmerging
+                                    ? styles.badgeTextEmerging
+                                    : styles.badgeTextDeficit,
+                              ]}
+                            >
+                              {isMastered ? 'Mastered' : isEmerging ? 'Emerging' : 'Deficit Gap'}
+                            </Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  );
-                })}
-              </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
 
               {/* Emerging Skills & Critical Gaps Side-by-Side Cards */}
-              <View style={styles.twoColGrid}>
+              <View style={[styles.twoColGrid, isMobile && { flexDirection: 'column' }]}>
                 {/* Emerging Skills (Score 1) */}
-                <View style={[styles.subCard, { borderTopColor: '#2563EB' }]}>
+                <View
+                  style={[
+                    styles.subCard,
+                    { borderTopColor: '#2563EB' },
+                    isMobile && { minWidth: '100%' },
+                  ]}
+                >
                   <View style={styles.subCardHeader}>
                     <Feather name="star" size={15} color="#2563EB" />
                     <Text style={[styles.subCardTitle, { color: '#2563EB' }]}>
@@ -1069,7 +1153,13 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 </View>
 
                 {/* Critical Baseline Gaps (Score 0) */}
-                <View style={[styles.subCard, { borderTopColor: '#DC2626' }]}>
+                <View
+                  style={[
+                    styles.subCard,
+                    { borderTopColor: '#DC2626' },
+                    isMobile && { minWidth: '100%' },
+                  ]}
+                >
                   <View style={styles.subCardHeader}>
                     <Feather name="alert-circle" size={15} color="#DC2626" />
                     <Text style={[styles.subCardTitle, { color: '#DC2626' }]}>
@@ -1106,96 +1196,98 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               {needAnalysis.length > 0 ? (
                 <View style={{ marginTop: 14 }}>
                   <Text style={styles.tableTitle}>Domain Need Analysis & Prioritization</Text>
-                  <View style={styles.tableContainer}>
-                    <View style={styles.tableHeaderRow}>
-                      <Text style={[styles.th, { width: 60 }]}>Code</Text>
-                      <Text style={[styles.th, { flex: 1 }]}>Domain Name</Text>
-                      <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
-                        Score 0 (Deficits)
-                      </Text>
-                      <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
-                        Score 1 (Emerging)
-                      </Text>
-                      <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
-                        Total Need Count
-                      </Text>
-                      <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
-                        Priority Level
-                      </Text>
-                    </View>
-                    {needAnalysis.map((na: any, idx: number) => (
-                      <View
-                        key={idx}
-                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                      >
-                        <Text style={[styles.td, { width: 60, fontWeight: '800' }]}>
-                          {na.domain_code}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                    <View style={[styles.tableContainer, { minWidth: 620 }]}>
+                      <View style={styles.tableHeaderRow}>
+                        <Text style={[styles.th, { width: 60 }]}>Code</Text>
+                        <Text style={[styles.th, { flex: 1 }]}>Domain Name</Text>
+                        <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
+                          Score 0 (Deficits)
                         </Text>
-                        <Text style={[styles.td, { flex: 1, fontWeight: '600' }]}>
-                          {na.domain_name}
+                        <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
+                          Score 1 (Emerging)
                         </Text>
-                        <Text
-                          style={[
-                            styles.td,
-                            {
-                              width: 110,
-                              textAlign: 'center',
-                              color: '#DC2626',
-                              fontWeight: '700',
-                            },
-                          ]}
+                        <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
+                          Total Need Count
+                        </Text>
+                        <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>
+                          Priority Level
+                        </Text>
+                      </View>
+                      {needAnalysis.map((na: any, idx: number) => (
+                        <View
+                          key={idx}
+                          style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
                         >
-                          {na.score_0_count ?? 0}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.td,
-                            {
-                              width: 110,
-                              textAlign: 'center',
-                              color: '#2563EB',
-                              fontWeight: '700',
-                            },
-                          ]}
-                        >
-                          {na.score_1_count ?? 0}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.td,
-                            { width: 110, textAlign: 'center', fontWeight: '800' },
-                          ]}
-                        >
-                          {na.need_count ?? 0}
-                        </Text>
-                        <View style={{ width: 110, alignItems: 'center' }}>
-                          <View
+                          <Text style={[styles.td, { width: 60, fontWeight: '800' }]}>
+                            {na.domain_code}
+                          </Text>
+                          <Text style={[styles.td, { flex: 1, fontWeight: '600' }]}>
+                            {na.domain_name}
+                          </Text>
+                          <Text
                             style={[
-                              styles.badge,
-                              idx === 0
-                                ? styles.badgeDeficit
-                                : idx < 3
-                                  ? styles.badgeAmber
-                                  : styles.badgeNeutral,
+                              styles.td,
+                              {
+                                width: 110,
+                                textAlign: 'center',
+                                color: '#DC2626',
+                                fontWeight: '700',
+                              },
                             ]}
                           >
-                            <Text
+                            {na.score_0_count ?? 0}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.td,
+                              {
+                                width: 110,
+                                textAlign: 'center',
+                                color: '#2563EB',
+                                fontWeight: '700',
+                              },
+                            ]}
+                          >
+                            {na.score_1_count ?? 0}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.td,
+                              { width: 110, textAlign: 'center', fontWeight: '800' },
+                            ]}
+                          >
+                            {na.need_count ?? 0}
+                          </Text>
+                          <View style={{ width: 110, alignItems: 'center' }}>
+                            <View
                               style={[
-                                styles.badgeText,
+                                styles.badge,
                                 idx === 0
-                                  ? styles.badgeTextDeficit
+                                  ? styles.badgeDeficit
                                   : idx < 3
-                                    ? styles.badgeTextAmber
-                                    : styles.badgeTextNeutral,
+                                    ? styles.badgeAmber
+                                    : styles.badgeNeutral,
                               ]}
                             >
-                              Priority {idx + 1}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  idx === 0
+                                    ? styles.badgeTextDeficit
+                                    : idx < 3
+                                      ? styles.badgeTextAmber
+                                      : styles.badgeTextNeutral,
+                                ]}
+                              >
+                                Priority {idx + 1}
+                              </Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    ))}
-                  </View>
+                      ))}
+                    </View>
+                  </ScrollView>
                 </View>
               ) : null}
             </View>
@@ -1223,181 +1315,207 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               <Text style={styles.tableTitle}>
                 Target Problem Behaviors & Hypothesized Functions
               </Text>
-              <View style={styles.tableContainer}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.th, { width: 150 }]}>Behavior Name</Text>
-                  <Text style={[styles.th, { flex: 1 }]}>Operational Definition</Text>
-                  <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Freq / Sess</Text>
-                  <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Intensity</Text>
-                  <Text style={[styles.th, { width: 150 }]}>Hypothesized Function</Text>
-                </View>
-                {targetBehaviors.map((tb: any, idx: number) => (
-                  <View
-                    key={idx}
-                    style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                  >
-                    <Text style={[styles.td, { width: 150, fontWeight: '800' }]}>
-                      {tb.behavior_name}
-                    </Text>
-                    <Text style={[styles.td, { flex: 1, color: '#334155' }]}>{tb.definition}</Text>
-                    <Text
-                      style={[styles.td, { width: 90, textAlign: 'center', fontWeight: '800' }]}
+              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View style={[styles.tableContainer, { minWidth: 620 }]}>
+                  <View style={styles.tableHeaderRow}>
+                    <Text style={[styles.th, { width: 150 }]}>Behavior Name</Text>
+                    <Text style={[styles.th, { flex: 1 }]}>Operational Definition</Text>
+                    <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Freq / Sess</Text>
+                    <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Intensity</Text>
+                    <Text style={[styles.th, { width: 150 }]}>Hypothesized Function</Text>
+                  </View>
+                  {targetBehaviors.map((tb: any, idx: number) => (
+                    <View
+                      key={idx}
+                      style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
                     >
-                      {tb.frequency}x
-                    </Text>
-                    <View style={{ width: 90, alignItems: 'center' }}>
-                      <View
-                        style={[
-                          styles.badge,
-                          (tb.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
-                        ]}
+                      <Text style={[styles.td, { width: 150, fontWeight: '800' }]}>
+                        {tb.behavior_name}
+                      </Text>
+                      <Text style={[styles.td, { flex: 1, color: '#334155' }]}>
+                        {tb.definition}
+                      </Text>
+                      <Text
+                        style={[styles.td, { width: 90, textAlign: 'center', fontWeight: '800' }]}
                       >
-                        <Text
+                        {tb.frequency}x
+                      </Text>
+                      <View style={{ width: 90, alignItems: 'center' }}>
+                        <View
                           style={[
-                            styles.badgeText,
-                            (tb.intensity ?? 0) >= 3
-                              ? styles.badgeTextDeficit
-                              : styles.badgeTextAmber,
+                            styles.badge,
+                            (tb.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
                           ]}
                         >
-                          Level {tb.intensity ?? 2}
-                        </Text>
+                          <Text
+                            style={[
+                              styles.badgeText,
+                              (tb.intensity ?? 0) >= 3
+                                ? styles.badgeTextDeficit
+                                : styles.badgeTextAmber,
+                            ]}
+                          >
+                            Level {tb.intensity ?? 2}
+                          </Text>
+                        </View>
                       </View>
+                      <Text
+                        style={[
+                          styles.td,
+                          { width: 150, fontWeight: '700', color: colors.primaryBlue },
+                        ]}
+                      >
+                        {tb.hypothesized_function || tb.dominant_function || 'Escape'}
+                      </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.td,
-                        { width: 150, fontWeight: '700', color: colors.primaryBlue },
-                      ]}
-                    >
-                      {tb.hypothesized_function || tb.dominant_function || 'Escape'}
-                    </Text>
-                  </View>
-                ))}
-              </View>
+                  ))}
+                </View>
+              </ScrollView>
 
               {/* MAS & FAST Side-by-Side Tables */}
-              <View style={[styles.twoColGrid, { marginTop: 14 }]}>
+              <View
+                style={[
+                  styles.twoColGrid,
+                  { marginTop: 14 },
+                  isMobile && { flexDirection: 'column' },
+                ]}
+              >
                 {/* MAS Table */}
-                <View style={styles.subCard}>
+                <View style={[styles.subCard, isMobile && { minWidth: '100%' }]}>
                   <Text style={styles.subCardTitle}>Motivational Assessment Scale (MAS)</Text>
                   <Text style={styles.subCardDesc}>
                     4-Function Likert ratings across environmental contexts.
                   </Text>
-                  <View style={styles.tableContainer}>
-                    <View style={styles.tableHeaderRow}>
-                      <Text style={[styles.th, { flex: 1 }]}>Function</Text>
-                      <Text style={[styles.th, { width: 60, textAlign: 'center' }]}>Total</Text>
-                      <Text style={[styles.th, { width: 60, textAlign: 'center' }]}>Mean</Text>
-                      <Text style={[styles.th, { width: 70, textAlign: 'center' }]}>Rank</Text>
-                    </View>
-                    {[
-                      { func: 'Demand / Escape', total: 19, mean: 4.75, rank: 1 },
-                      { func: 'Attention Seeking', total: 12, mean: 3.0, rank: 2 },
-                      { func: 'Tangible Access', total: 9, mean: 2.25, rank: 3 },
-                      { func: 'Sensory / Automatic', total: 5, mean: 1.25, rank: 4 },
-                    ].map((row, idx) => (
-                      <View key={idx} style={styles.tableDataRow}>
-                        <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>{row.func}</Text>
-                        <Text
-                          style={[styles.td, { width: 60, textAlign: 'center', fontWeight: '700' }]}
-                        >
-                          {row.total}
-                        </Text>
-                        <Text style={[styles.td, { width: 60, textAlign: 'center' }]}>
-                          {row.mean.toFixed(2)}
-                        </Text>
-                        <View style={{ width: 70, alignItems: 'center' }}>
-                          <View
+                  <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                    <View style={[styles.tableContainer, { minWidth: 280 }]}>
+                      <View style={styles.tableHeaderRow}>
+                        <Text style={[styles.th, { flex: 1 }]}>Function</Text>
+                        <Text style={[styles.th, { width: 60, textAlign: 'center' }]}>Total</Text>
+                        <Text style={[styles.th, { width: 60, textAlign: 'center' }]}>Mean</Text>
+                        <Text style={[styles.th, { width: 70, textAlign: 'center' }]}>Rank</Text>
+                      </View>
+                      {[
+                        { func: 'Demand / Escape', total: 19, mean: 4.75, rank: 1 },
+                        { func: 'Attention Seeking', total: 12, mean: 3.0, rank: 2 },
+                        { func: 'Tangible Access', total: 9, mean: 2.25, rank: 3 },
+                        { func: 'Sensory / Automatic', total: 5, mean: 1.25, rank: 4 },
+                      ].map((row, idx) => (
+                        <View key={idx} style={styles.tableDataRow}>
+                          <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
+                            {row.func}
+                          </Text>
+                          <Text
                             style={[
-                              styles.badge,
-                              row.rank === 1
-                                ? styles.badgeDeficit
-                                : row.rank === 2
-                                  ? styles.badgeAmber
-                                  : styles.badgeNeutral,
+                              styles.td,
+                              { width: 60, textAlign: 'center', fontWeight: '700' },
                             ]}
                           >
-                            <Text
+                            {row.total}
+                          </Text>
+                          <Text style={[styles.td, { width: 60, textAlign: 'center' }]}>
+                            {row.mean.toFixed(2)}
+                          </Text>
+                          <View style={{ width: 70, alignItems: 'center' }}>
+                            <View
                               style={[
-                                styles.badgeText,
+                                styles.badge,
                                 row.rank === 1
-                                  ? styles.badgeTextDeficit
+                                  ? styles.badgeDeficit
                                   : row.rank === 2
-                                    ? styles.badgeTextAmber
-                                    : styles.badgeTextNeutral,
+                                    ? styles.badgeAmber
+                                    : styles.badgeNeutral,
                               ]}
                             >
-                              Rank {row.rank}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  row.rank === 1
+                                    ? styles.badgeTextDeficit
+                                    : row.rank === 2
+                                      ? styles.badgeTextAmber
+                                      : styles.badgeTextNeutral,
+                                ]}
+                              >
+                                Rank {row.rank}
+                              </Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    ))}
-                  </View>
+                      ))}
+                    </View>
+                  </ScrollView>
                 </View>
 
                 {/* FAST Table */}
-                <View style={styles.subCard}>
+                <View style={[styles.subCard, isMobile && { minWidth: '100%' }]}>
                   <Text style={styles.subCardTitle}>Functional Analysis Screening Tool (FAST)</Text>
                   <Text style={styles.subCardDesc}>
                     Maintaining environmental reinforcement variables.
                   </Text>
-                  <View style={styles.tableContainer}>
-                    <View style={styles.tableHeaderRow}>
-                      <Text style={[styles.th, { flex: 1 }]}>Variable</Text>
-                      <Text style={[styles.th, { width: 65, textAlign: 'center' }]}>Yes / Max</Text>
-                      <Text style={[styles.th, { width: 55, textAlign: 'center' }]}>%</Text>
-                      <Text style={[styles.th, { width: 80, textAlign: 'center' }]}>Influence</Text>
-                    </View>
-                    {[
-                      {
-                        variable: 'Social Escape (Demands)',
-                        yes: '7 / 8',
-                        pct: '88%',
-                        dominant: true,
-                      },
-                      { variable: 'Social Attention', yes: '3 / 8', pct: '38%', dominant: false },
-                      { variable: 'Social Tangibles', yes: '2 / 8', pct: '25%', dominant: false },
-                      {
-                        variable: 'Sensory Stimulation',
-                        yes: '2 / 6',
-                        pct: '33%',
-                        dominant: false,
-                      },
-                    ].map((row, idx) => (
-                      <View key={idx} style={styles.tableDataRow}>
-                        <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
-                          {row.variable}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                    <View style={[styles.tableContainer, { minWidth: 300 }]}>
+                      <View style={styles.tableHeaderRow}>
+                        <Text style={[styles.th, { flex: 1 }]}>Variable</Text>
+                        <Text style={[styles.th, { width: 65, textAlign: 'center' }]}>
+                          Yes / Max
                         </Text>
-                        <Text
-                          style={[styles.td, { width: 65, textAlign: 'center', fontWeight: '700' }]}
-                        >
-                          {row.yes}
+                        <Text style={[styles.th, { width: 55, textAlign: 'center' }]}>%</Text>
+                        <Text style={[styles.th, { width: 80, textAlign: 'center' }]}>
+                          Influence
                         </Text>
-                        <Text style={[styles.td, { width: 55, textAlign: 'center' }]}>
-                          {row.pct}
-                        </Text>
-                        <View style={{ width: 80, alignItems: 'center' }}>
-                          <View
+                      </View>
+                      {[
+                        {
+                          variable: 'Social Escape (Demands)',
+                          yes: '7 / 8',
+                          pct: '88%',
+                          dominant: true,
+                        },
+                        { variable: 'Social Attention', yes: '3 / 8', pct: '38%', dominant: false },
+                        { variable: 'Social Tangibles', yes: '2 / 8', pct: '25%', dominant: false },
+                        {
+                          variable: 'Sensory Stimulation',
+                          yes: '2 / 6',
+                          pct: '33%',
+                          dominant: false,
+                        },
+                      ].map((row, idx) => (
+                        <View key={idx} style={styles.tableDataRow}>
+                          <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
+                            {row.variable}
+                          </Text>
+                          <Text
                             style={[
-                              styles.badge,
-                              row.dominant ? styles.badgeDeficit : styles.badgeNeutral,
+                              styles.td,
+                              { width: 65, textAlign: 'center', fontWeight: '700' },
                             ]}
                           >
-                            <Text
+                            {row.yes}
+                          </Text>
+                          <Text style={[styles.td, { width: 55, textAlign: 'center' }]}>
+                            {row.pct}
+                          </Text>
+                          <View style={{ width: 80, alignItems: 'center' }}>
+                            <View
                               style={[
-                                styles.badgeText,
-                                row.dominant ? styles.badgeTextDeficit : styles.badgeTextNeutral,
+                                styles.badge,
+                                row.dominant ? styles.badgeDeficit : styles.badgeNeutral,
                               ]}
                             >
-                              {row.dominant ? 'PRIMARY' : 'Secondary'}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  row.dominant ? styles.badgeTextDeficit : styles.badgeTextNeutral,
+                                ]}
+                              >
+                                {row.dominant ? 'PRIMARY' : 'Secondary'}
+                              </Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    ))}
-                  </View>
+                      ))}
+                    </View>
+                  </ScrollView>
                 </View>
               </View>
 
@@ -1405,51 +1523,57 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               <Text style={[styles.tableTitle, { marginTop: 14 }]}>
                 Condensed Baseline ABC Episode Log (Direct Teacher Observations)
               </Text>
-              <View style={styles.tableContainer}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.th, { width: 100 }]}>Date / Time</Text>
-                  <Text style={[styles.th, { width: 200 }]}>Antecedent Trigger</Text>
-                  <Text style={[styles.th, { width: 160 }]}>Behavior Topography</Text>
-                  <Text style={[styles.th, { flex: 1 }]}>Consequence / Clinical Response</Text>
-                  <Text style={[styles.th, { width: 85, textAlign: 'center' }]}>Severity</Text>
-                </View>
-                {abcLogs.map((log: any, idx: number) => (
-                  <View
-                    key={idx}
-                    style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                  >
-                    <Text style={[styles.td, { width: 100, fontWeight: '700' }]}>
-                      {log.date || '2026-03-24'}
-                      {'\n'}
-                      <Text style={{ fontSize: 10, color: '#64748B' }}>{log.time || '10:00'}</Text>
-                    </Text>
-                    <Text style={[styles.td, { width: 200 }]}>{log.antecedent}</Text>
-                    <Text style={[styles.td, { width: 160, fontWeight: '700', color: '#1A2233' }]}>
-                      {log.behavior_name}
-                    </Text>
-                    <Text style={[styles.td, { flex: 1 }]}>{log.consequence}</Text>
-                    <View style={{ width: 85, alignItems: 'center' }}>
-                      <View
-                        style={[
-                          styles.badge,
-                          (log.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
-                        ]}
+              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View style={[styles.tableContainer, { minWidth: 640 }]}>
+                  <View style={styles.tableHeaderRow}>
+                    <Text style={[styles.th, { width: 100 }]}>Date / Time</Text>
+                    <Text style={[styles.th, { width: 200 }]}>Antecedent Trigger</Text>
+                    <Text style={[styles.th, { width: 160 }]}>Behavior Topography</Text>
+                    <Text style={[styles.th, { flex: 1 }]}>Consequence / Clinical Response</Text>
+                    <Text style={[styles.th, { width: 85, textAlign: 'center' }]}>Severity</Text>
+                  </View>
+                  {abcLogs.map((log: any, idx: number) => (
+                    <View
+                      key={idx}
+                      style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
+                    >
+                      <Text style={[styles.td, { width: 100, fontWeight: '700' }]}>
+                        {log.date || '2026-03-24'}
+                        {'\n'}
+                        <Text style={{ fontSize: 10, color: '#64748B' }}>
+                          {log.time || '10:00'}
+                        </Text>
+                      </Text>
+                      <Text style={[styles.td, { width: 200 }]}>{log.antecedent}</Text>
+                      <Text
+                        style={[styles.td, { width: 160, fontWeight: '700', color: '#1A2233' }]}
                       >
-                        <Text
+                        {log.behavior_name}
+                      </Text>
+                      <Text style={[styles.td, { flex: 1 }]}>{log.consequence}</Text>
+                      <View style={{ width: 85, alignItems: 'center' }}>
+                        <View
                           style={[
-                            styles.badgeText,
-                            (log.intensity ?? 0) >= 3
-                              ? styles.badgeTextDeficit
-                              : styles.badgeTextAmber,
+                            styles.badge,
+                            (log.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
                           ]}
                         >
-                          Level {log.intensity ?? 2}
-                        </Text>
+                          <Text
+                            style={[
+                              styles.badgeText,
+                              (log.intensity ?? 0) >= 3
+                                ? styles.badgeTextDeficit
+                                : styles.badgeTextAmber,
+                            ]}
+                          >
+                            Level {log.intensity ?? 2}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))}
-              </View>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
           )}
 
@@ -1472,9 +1596,15 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               </View>
 
               {/* 3-Tier Hierarchy Cards */}
-              <View style={styles.twoColGrid}>
+              <View style={[styles.twoColGrid, isMobile && { flexDirection: 'column' }]}>
                 {/* Tier 1: Highest Preferred */}
-                <View style={[styles.subCard, { borderTopColor: '#059669' }]}>
+                <View
+                  style={[
+                    styles.subCard,
+                    { borderTopColor: '#059669' },
+                    isMobile && { minWidth: '100%' },
+                  ]}
+                >
                   <View style={styles.subCardHeader}>
                     <Feather name="check-circle" size={15} color="#059669" />
                     <Text style={[styles.subCardTitle, { color: '#059669' }]}>
@@ -1503,7 +1633,13 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 </View>
 
                 {/* Tier 2 & 3: Moderate & Low */}
-                <View style={[styles.subCard, { borderTopColor: '#F6C445' }]}>
+                <View
+                  style={[
+                    styles.subCard,
+                    { borderTopColor: '#F6C445' },
+                    isMobile && { minWidth: '100%' },
+                  ]}
+                >
                   <View style={styles.subCardHeader}>
                     <Feather name="filter" size={15} color="#B45309" />
                     <Text style={[styles.subCardTitle, { color: '#B45309' }]}>
@@ -1579,67 +1715,73 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               </View>
 
               {/* 12 Sensory Activities Table */}
-              <View style={styles.tableContainer}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.th, { width: 75 }]}>Code</Text>
-                  <Text style={[styles.th, { width: 170 }]}>Activity Name</Text>
-                  <Text style={[styles.th, { width: 140, textAlign: 'center' }]}>
-                    Engagement Level
-                  </Text>
-                  <Text style={[styles.th, { width: 120, textAlign: 'center' }]}>
-                    Affective Reaction
-                  </Text>
-                  <Text style={[styles.th, { flex: 1 }]}>Teacher's Clinical Remark</Text>
-                </View>
-                {sensoryActivities.map((act: any, idx: number) => {
-                  const isEnjoyed = act.response_reaction === 'Enjoyed';
-                  const isNeutral = act.response_reaction === 'Neutral';
-                  return (
-                    <View
-                      key={act.code}
-                      style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                    >
-                      <Text style={[styles.td, { width: 75, fontWeight: '800' }]}>{act.code}</Text>
-                      <Text style={[styles.td, { width: 170, fontWeight: '700' }]}>{act.name}</Text>
-                      <View style={{ width: 140, alignItems: 'center' }}>
-                        <View style={[styles.badge, styles.badgeNeutral]}>
-                          <Text style={[styles.badgeText, styles.badgeTextNeutral]}>
-                            {act.engagement_level || 'Independent'}
-                          </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View style={[styles.tableContainer, { minWidth: 640 }]}>
+                  <View style={styles.tableHeaderRow}>
+                    <Text style={[styles.th, { width: 75 }]}>Code</Text>
+                    <Text style={[styles.th, { width: 170 }]}>Activity Name</Text>
+                    <Text style={[styles.th, { width: 140, textAlign: 'center' }]}>
+                      Engagement Level
+                    </Text>
+                    <Text style={[styles.th, { width: 120, textAlign: 'center' }]}>
+                      Affective Reaction
+                    </Text>
+                    <Text style={[styles.th, { flex: 1 }]}>Teacher's Clinical Remark</Text>
+                  </View>
+                  {sensoryActivities.map((act: any, idx: number) => {
+                    const isEnjoyed = act.response_reaction === 'Enjoyed';
+                    const isNeutral = act.response_reaction === 'Neutral';
+                    return (
+                      <View
+                        key={act.code}
+                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
+                      >
+                        <Text style={[styles.td, { width: 75, fontWeight: '800' }]}>
+                          {act.code}
+                        </Text>
+                        <Text style={[styles.td, { width: 170, fontWeight: '700' }]}>
+                          {act.name}
+                        </Text>
+                        <View style={{ width: 140, alignItems: 'center' }}>
+                          <View style={[styles.badge, styles.badgeNeutral]}>
+                            <Text style={[styles.badgeText, styles.badgeTextNeutral]}>
+                              {act.engagement_level || 'Independent'}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
-                      <View style={{ width: 120, alignItems: 'center' }}>
-                        <View
-                          style={[
-                            styles.badge,
-                            isEnjoyed
-                              ? styles.badgeMastered
-                              : isNeutral
-                                ? styles.badgeEmerging
-                                : styles.badgeDeficit,
-                          ]}
-                        >
-                          <Text
+                        <View style={{ width: 120, alignItems: 'center' }}>
+                          <View
                             style={[
-                              styles.badgeText,
+                              styles.badge,
                               isEnjoyed
-                                ? styles.badgeTextMastered
+                                ? styles.badgeMastered
                                 : isNeutral
-                                  ? styles.badgeTextEmerging
-                                  : styles.badgeTextDeficit,
+                                  ? styles.badgeEmerging
+                                  : styles.badgeDeficit,
                             ]}
                           >
-                            {act.response_reaction || 'Enjoyed'}
-                          </Text>
+                            <Text
+                              style={[
+                                styles.badgeText,
+                                isEnjoyed
+                                  ? styles.badgeTextMastered
+                                  : isNeutral
+                                    ? styles.badgeTextEmerging
+                                    : styles.badgeTextDeficit,
+                              ]}
+                            >
+                              {act.response_reaction || 'Enjoyed'}
+                            </Text>
+                          </View>
                         </View>
+                        <Text style={[styles.td, { flex: 1, color: '#475569' }]}>
+                          {act.remark || 'Observed active participation with positive regulation.'}
+                        </Text>
                       </View>
-                      <Text style={[styles.td, { flex: 1, color: '#475569' }]}>
-                        {act.remark || 'Observed active participation with positive regulation.'}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
             </View>
           )}
 
@@ -1660,9 +1802,9 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               </div>
             </View>
 
-            <View style={styles.twoColGrid}>
+            <View style={[styles.twoColGrid, isMobile && { flexDirection: 'column' }]}>
               {/* Lead Assessor Card */}
-              <View style={styles.attestCard}>
+              <View style={[styles.attestCard, isMobile && { minWidth: '100%' }]}>
                 <Text style={styles.attestHeader}>Lead Clinical Assessor / Teacher</Text>
                 <Text style={styles.attestName}>{leadClinician}</Text>
                 <Text style={styles.attestMeta}>Assessor Designation: Lead ABA Clinician</Text>
@@ -1682,6 +1824,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 style={[
                   styles.attestCard,
                   { borderLeftColor: isReviewed ? '#059669' : '#B45309', borderLeftWidth: 3 },
+                  isMobile && { minWidth: '100%' },
                 ]}
               >
                 <View
@@ -1830,11 +1973,42 @@ const styles = StyleSheet.create({
     zIndex: 100,
     gap: 12,
   },
+  topToolbarTablet: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingVertical: 12,
+  },
+  topToolbarMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   topLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     zIndex: 100,
+  },
+  topLeftGroupMobile: {
+    width: '100%',
+    gap: 8,
+  },
+  toolbarControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  toolbarControlsRowStacked: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 8,
   },
   backBtn: {
     flexDirection: 'row',
@@ -2008,6 +2182,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  actionsRightMobile: {
+    width: '100%',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
   },
   exportBtn: {
     flexDirection: 'row',
@@ -2222,10 +2402,10 @@ const styles = StyleSheet.create({
   },
 
   // Sub-Assessment Navigation Tabs
-  subTabsRow: {
+  subTabsScrollContent: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    paddingVertical: 2,
   },
   subTabBtn: {
     paddingVertical: 7,

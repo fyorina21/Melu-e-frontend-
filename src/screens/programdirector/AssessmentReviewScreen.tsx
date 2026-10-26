@@ -14,6 +14,7 @@ import {
   Modal,
   Alert,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -51,6 +52,7 @@ interface AssessmentListItem {
   therapyGroup: string;
   therapist: string;
   status: string;
+  progress: number;
   abllsPct: number;
   behaviorStatus: string;
   sessionStatus: string;
@@ -347,6 +349,16 @@ function normalizeAssessmentItem(item: any): AssessmentListItem {
       .toUpperCase()
       .padEnd(4, '0')}-26`;
 
+  const overallProg = Number(
+    item.assessment_progress ??
+      item.assessmentProgress ??
+      item.overall_progress ??
+      item.overallProgress ??
+      item.completion_percentage ??
+      item.abllsPct ??
+      0,
+  );
+
   return {
     studentId: sId,
     studentNumber: formattedId,
@@ -356,7 +368,8 @@ function normalizeAssessmentItem(item: any): AssessmentListItem {
     therapyGroup: String(item.therapyGroup ?? item.therapy_group ?? ''),
     therapist: String(item.therapist ?? item.therapist_name ?? 'Unassigned'),
     status: normalizeStatus(item.status),
-    abllsPct: Number(item.abllsPct ?? item.assessment_progress ?? item.completion_percentage ?? 0),
+    progress: overallProg,
+    abllsPct: Number(item.abllsPct ?? overallProg),
     behaviorStatus: String(item.behaviorStatus ?? item.behavior_assessment ?? 'notStarted'),
     sessionStatus: String(item.sessionStatus ?? ''),
     dateCompleted: item.dateCompleted ?? item.completed_at ?? item.completed_on ?? null,
@@ -433,6 +446,10 @@ function normalizeAssessmentReport(res: any): AssessmentReport {
 export default function AssessmentReviewScreen({
   navigation,
 }: NativeStackScreenProps<ProgramDirectorStackParamList, 'AssessmentReview'>) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 680;
+  const isTablet = width >= 680 && width < 1024;
+
   const [list, setList] = useState<AssessmentListItem[] | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -632,17 +649,17 @@ export default function AssessmentReviewScreen({
         })}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}>
         {filtered.map((s) => (
-          <View key={s.studentId} style={styles.row}>
-            <View style={{ flex: 1 }}>
+          <View key={s.studentId} style={[styles.row, isMobile && styles.rowMobile]}>
+            <View style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 8,
                   flexWrap: 'wrap',
-                  marginBottom: 2,
+                  marginBottom: 4,
                 }}
               >
                 <Text style={typography.bodyBold}>{s.studentName}</Text>
@@ -656,17 +673,22 @@ export default function AssessmentReviewScreen({
                 {s.dateCompleted ? ` · Completed: ${s.dateCompleted}` : ''}
               </Text>
             </View>
-            <View style={styles.rowRight}>
-              <View style={styles.progressCol}>
-                <Text style={styles.progressLabel}>ABLLS {s.abllsPct}%</Text>
+            <View style={[styles.rowRight, isMobile && styles.rowRightMobile]}>
+              <View style={[styles.progressCol, isMobile && styles.progressColMobile]}>
+                <Text style={styles.progressLabel}>Progress {s.progress}%</Text>
                 <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${Math.min(100, s.abllsPct)}%` }]} />
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.min(100, Math.max(0, s.progress))}%` },
+                    ]}
+                  />
                 </View>
               </View>
               <StatusPill status={STATUS_KEY[s.status] || 'notStarted'} label={s.status} />
               <View style={styles.rowActions}>
                 <TouchableOpacity
-                  style={styles.actionBtn}
+                  style={[styles.actionBtn, isMobile && styles.actionBtnMobile]}
                   onPress={() => handleViewReport(s.studentId)}
                 >
                   <Text style={styles.actionBtnText}>View Report</Text>
@@ -741,6 +763,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '500', color: colors.mutedText },
   chipTextActive: { color: colors.navyText, fontWeight: '700' },
   content: { padding: spacing.lg, gap: spacing.md },
+  contentMobile: { padding: spacing.md, gap: spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -751,7 +774,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  rowMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 12,
+    padding: spacing.md,
+  },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  rowRightMobile: {
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   idBadge: {
     backgroundColor: '#F1F5F9',
     borderWidth: 1,
@@ -767,6 +805,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
   },
   progressCol: { width: 80, alignItems: 'center' },
+  progressColMobile: { width: 95, alignItems: 'flex-start' },
   progressLabel: { fontSize: 11, fontWeight: '600', color: colors.navyText },
   progressBar: {
     width: 80,
@@ -783,6 +822,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  actionBtnMobile: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
   },
   actionBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
   overlay: {
