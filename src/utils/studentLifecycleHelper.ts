@@ -465,10 +465,7 @@ export function getStudentBehaviorProgress(
     const aliases = getStudentIdAliases(sid);
 
     for (const alias of aliases) {
-      if (
-        storage.getSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`) === 'true' ||
-        storage.getSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`) === 'true'
-      ) {
+      if (storage.getSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`) === 'true') {
         return { progress: 100, status: 'Completed' };
       }
     }
@@ -533,7 +530,7 @@ export function getStudentPreferenceProgress(
     const aliases = getStudentIdAliases(sid);
 
     for (const alias of aliases) {
-      if (storage.getSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`) === 'true') {
+      if (storage.getSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`) === 'true') {
         return { progress: 100, status: 'Completed' };
       }
     }
@@ -592,7 +589,7 @@ export function getStudentSensoryProgress(
     const aliases = getStudentIdAliases(sid);
 
     for (const alias of aliases) {
-      if (storage.getSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`) === 'true') {
+      if (storage.getSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`) === 'true') {
         return { progress: 100, status: 'Completed' };
       }
     }

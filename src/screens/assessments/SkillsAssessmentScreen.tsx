@@ -25,10 +25,7 @@ import {
   getTeacherStudentProfile,
 } from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
-import {
-  markStudentAssessmentCompleted,
-  normalizeStudentId,
-} from '../../utils/studentLifecycleHelper';
+import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
 import storage from '../../utils/storage';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import {
@@ -274,9 +271,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       const status = allAnswered ? 'completed' : totalAnswered > 0 ? 'in_progress' : 'not_started';
       const progress =
         totalItems > 0 ? Math.min(100, Math.round((totalAnswered / totalItems) * 100)) : 0;
-      if (allAnswered) {
-        markStudentAssessmentCompleted(studentId);
-      }
+      // Only save skills assessment progress, do not mark entire student assessment completed
       saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
       const aliasSid =
         studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;

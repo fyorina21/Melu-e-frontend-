@@ -851,4 +851,129 @@ describe('Assessment Dashboard Progress Sync', () => {
     storage.setJSONSync('melue_enrolled_students_cache', []);
     storage.setJSONSync('melue_therapist_assigned_students_v1', {});
   });
+  it('does NOT make Behavior, Preference, or Sensory 100% completed when Skills Assessment is 100%', async () => {
+    const studentId = 'stu-isolated-progress-test';
+
+    // 1. Complete Skills Assessment to 100%
+    saveStorageAssessment(studentId, {
+      progress: 100,
+      status: 'completed',
+    });
+
+    // 2. Behavior Assessment has only 40% draft
+    await saveBehaviorAssessment(studentId, {
+      status: 'draft',
+      progress: 40,
+    });
+
+    // 3. Preference Assessment is not started (0%)
+    // 4. Sensory Assessment is not started (0%)
+
+    // Verify each assessment has its own progress
+    const skills = getStudentSkillsProgress(studentId);
+    const behavior = getStudentBehaviorProgress(studentId);
+    const preference = getStudentPreferenceProgress(studentId);
+    const sensory = getStudentSensoryProgress(studentId);
+
+    expect(skills.progress).toBe(100);
+    expect(skills.status).toBe('Completed');
+
+    expect(behavior.progress).toBe(40);
+    expect(behavior.status).toBe('In Progress');
+
+    expect(preference.progress).toBe(0);
+    expect(preference.status).toBe('Not Started');
+
+    expect(sensory.progress).toBe(0);
+    expect(sensory.status).toBe('Not Started');
+
+    // 5. Submit button must NOT be available because all 4 are not 100% complete
+    const isAllCompleted = checkStudentAllAssessmentsCompleted(
+      studentId,
+      undefined,
+      undefined,
+      skills,
+      behavior,
+      preference,
+      sensory,
+      { requireAllFour: true },
+    );
+    expect(isAllCompleted).toBe(false);
+  });
+
+  it('enables submit button only when ALL assessment types (Skills, Behavior, Preference, Sensory) reach 100%', async () => {
+    const studentId = 'stu-all-four-100-test';
+
+    // Skills 100%
+    saveStorageAssessment(studentId, { progress: 100, status: 'completed' });
+    // Behavior 100%
+    await saveBehaviorAssessment(studentId, { progress: 100, status: 'submitted' });
+
+    // Preference is still draft 50%
+    await savePreferenceAssessment(studentId, { status: 'draft', progress: 50 });
+    // Sensory is still draft 60%
+    await saveSensoryAssessment(studentId, { status: 'draft', progress: 60 });
+
+    const skills = getStudentSkillsProgress(studentId);
+    const behavior = getStudentBehaviorProgress(studentId);
+    let preference = getStudentPreferenceProgress(studentId);
+    let sensory = getStudentSensoryProgress(studentId);
+
+    expect(
+      checkStudentAllAssessmentsCompleted(
+        studentId,
+        undefined,
+        undefined,
+        skills,
+        behavior,
+        preference,
+        sensory,
+        { requireAllFour: true },
+      ),
+    ).toBe(false);
+
+    // Now complete Preference to 100%
+    await savePreferenceAssessment(studentId, { status: 'submitted', progress: 100 });
+    preference = getStudentPreferenceProgress(studentId);
+    expect(preference.progress).toBe(100);
+
+    // Sensory still incomplete
+    expect(
+      checkStudentAllAssessmentsCompleted(
+        studentId,
+        undefined,
+        undefined,
+        skills,
+        behavior,
+        preference,
+        sensory,
+        { requireAllFour: true },
+      ),
+    ).toBe(false);
+
+    // Now complete Sensory to 100%
+    await saveSensoryAssessment(studentId, { status: 'submitted', progress: 100 });
+    sensory = getStudentSensoryProgress(studentId);
+    expect(sensory.progress).toBe(100);
+
+    // Now ALL FOUR are 100% complete -> Submit button is available!
+    const canSubmit = checkStudentAllAssessmentsCompleted(
+      studentId,
+      undefined,
+      undefined,
+      skills,
+      behavior,
+      preference,
+      sensory,
+      { requireAllFour: true },
+    );
+    expect(canSubmit).toBe(true);
+
+    // Submit assessment
+    const submitResult = await saveStudentAssessmentSubmission(studentId, {
+      studentName: 'Full Student',
+    });
+    expect(submitResult).toBe(true);
+    expect(isStudentAssessmentSubmitted(studentId)).toBe(true);
+  });
 });

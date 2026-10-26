@@ -216,7 +216,8 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   }, [load]);
 
   const isTeacher = session?.role === 'teacher';
-  const currentTherapistName = session?.userName || (session as any)?.user?.name || (session as any)?.name;
+  const currentTherapistName =
+    session?.userName || (session as any)?.user?.name || (session as any)?.name;
 
   // Memoize filteredStudents using useMemo: for teacher role, show ONLY students assigned to this therapist
   const filteredStudents = useMemo(() => {
@@ -254,16 +255,31 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     isSubmittingRef.current.add(sid);
 
     // Guard: Only allow submitting when all assessments (Skills, Behavior, Preference, Sensory) are genuinely 100% complete
-    const isCompleted = checkStudentAllAssessmentsCompleted(
-      sid,
-      student.ablls,
-      student.behavior,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      { requireAllFour: true },
-    );
+    const skillsData = getStudentSkillsProgress(sid);
+    const behaviorData = getStudentBehaviorProgress(sid);
+    const prefData = getStudentPreferenceProgress(sid);
+    const sensoryData = getStudentSensoryProgress(sid);
+
+    const skillsProg = Number(skillsData?.progress ?? 0);
+    const behaviorProg = Number(behaviorData?.progress ?? 0);
+    const prefProg = Number(prefData?.progress ?? 0);
+    const sensoryProg = Number(sensoryData?.progress ?? 0);
+
+    const isCompleted =
+      skillsProg >= 100 &&
+      behaviorProg >= 100 &&
+      prefProg >= 100 &&
+      sensoryProg >= 100 &&
+      checkStudentAllAssessmentsCompleted(
+        sid,
+        student.ablls,
+        student.behavior,
+        skillsData,
+        behaviorData,
+        prefData,
+        sensoryData,
+        { requireAllFour: true },
+      );
     if (!isCompleted) {
       isSubmittingRef.current.delete(sid);
       return;
@@ -321,20 +337,6 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       );
       const preferenceData = getStudentPreferenceProgress(sid);
       const sensoryData = getStudentSensoryProgress(sid);
-      const isComp = checkStudentAllAssessmentsCompleted(
-        sid,
-        s.ablls,
-        s.behavior,
-        skillsData,
-        behaviorData,
-        preferenceData,
-        sensoryData,
-        { requireAllFour: true },
-      );
-      if (isComp || isSub) {
-        completedCount++;
-        return;
-      }
 
       const skProg = Math.min(
         100,
@@ -364,6 +366,26 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
           isNaN(Number(sensoryData.progress)) ? 0 : Math.round(Number(sensoryData.progress)),
         ),
       );
+
+      const isComp =
+        skProg >= 100 &&
+        bhProg >= 100 &&
+        prProg >= 100 &&
+        snProg >= 100 &&
+        checkStudentAllAssessmentsCompleted(
+          sid,
+          s.ablls,
+          s.behavior,
+          skillsData,
+          behaviorData,
+          preferenceData,
+          sensoryData,
+          { requireAllFour: true },
+        );
+      if (isComp || isSub) {
+        completedCount++;
+        return;
+      }
 
       if (
         skProg === 0 &&
@@ -524,16 +546,20 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
               // Neither an overall score of 100% nor a single assessment reaching 100% can override an incomplete assessment.
               const isAllCompleted =
                 isSubmitted ||
-                checkStudentAllAssessmentsCompleted(
-                  sid,
-                  s.ablls,
-                  s.behavior,
-                  skillsData,
-                  behaviorData,
-                  preferenceData,
-                  sensoryData,
-                  { requireAllFour: true },
-                );
+                (skillsProg >= 100 &&
+                  behaviorProg >= 100 &&
+                  prefProg >= 100 &&
+                  sensoryProg >= 100 &&
+                  checkStudentAllAssessmentsCompleted(
+                    sid,
+                    s.ablls,
+                    s.behavior,
+                    skillsData,
+                    behaviorData,
+                    preferenceData,
+                    sensoryData,
+                    { requireAllFour: true },
+                  ));
 
               // Accurately calculate overall score from actual assessment progress across all 4 assessments
               const displayScore = isAllCompleted
