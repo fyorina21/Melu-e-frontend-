@@ -22,7 +22,7 @@ export default function RootLayout() {
       }
     };
     if (typeof window.addEventListener === 'function') {
-      window.addEventListener('unload', noopUnload);
+      window.addEventListener('pagehide', noopUnload);
       window.addEventListener('pageshow', handlePageShow);
     }
 
@@ -80,7 +80,7 @@ export default function RootLayout() {
 
     return () => {
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
-        window.removeEventListener('unload', noopUnload);
+        window.removeEventListener('pagehide', noopUnload);
         window.removeEventListener('pageshow', handlePageShow);
       }
       console.warn = originalWarn;

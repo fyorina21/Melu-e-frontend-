@@ -191,6 +191,7 @@ export default function RootNavigator() {
     }
 
     const nav = navRef.current;
+    if (!nav?.isReady?.()) return;
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const sid =

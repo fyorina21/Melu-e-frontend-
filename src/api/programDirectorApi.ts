@@ -3131,12 +3131,15 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   }
 
   let summaryRes: any = null;
-  try {
-    summaryRes = await client.get(`/program_director/assessments/${targetId}`);
-  } catch {
+  const isLocalOnly = !targetId || targetId.includes(' ') || targetId.startsWith('enroll-') || targetId.startsWith('std-local-');
+  if (!isLocalOnly) {
     try {
-      summaryRes = await client.get(`/students/${targetId}/charts/assessment_summary`);
-    } catch {}
+      summaryRes = await client.get(`/program_director/assessments/${encodeURIComponent(targetId)}`);
+    } catch {
+      try {
+        summaryRes = await client.get(`/students/${encodeURIComponent(targetId)}/charts/assessment_summary`);
+      } catch {}
+    }
   }
 
   const resData = summaryRes?.data || {};

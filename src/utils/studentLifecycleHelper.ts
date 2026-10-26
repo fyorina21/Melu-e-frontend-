@@ -3,8 +3,12 @@
 // 1. Mutual exclusivity: No student can be in assessment and in session page at one time.
 // 2. Session display rule: A student can be displayed on session page if and only if assessment is 100% completed.
 
-import { getStoredIupDraft } from '../api/programDirectorApi';
 import storage from './storage';
+
+function getStoredIupDraft(id: string): any {
+  const all = storage.getJSONSync<Record<string, any>>('melue_iup_drafts_cache', {}) || {};
+  return all[id] || null;
+}
 
 export interface StudentLifecycleRecord {
   id: string | number;
