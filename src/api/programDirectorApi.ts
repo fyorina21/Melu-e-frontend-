@@ -8,7 +8,7 @@ import {
   getDeletedGoalIds,
 } from '../stores/goalBankStore';
 import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
-import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
+import { filterOutDeletedStudents, isStudentDeleted } from '../utils/deletedStudentHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 import {
   getRegisteredStudentStatus,
@@ -21,6 +21,7 @@ import {
   isStudentAssessmentSubmitted,
   getStudentIdAliases,
   normalizeStudentId,
+  getSubmittedStudents,
 } from '../utils/studentLifecycleHelper';
 
 import {
@@ -1037,6 +1038,22 @@ export const getAssessmentsForReview = async (
     }
   }
 
+  // Include students with submitted assessments
+  const submittedList = getSubmittedStudents();
+  for (const sub of submittedList) {
+    const subId = String(sub.id || sub.studentId || '').trim();
+    const subName = String(sub.fullName || sub.name || '').toLowerCase().trim();
+    if (
+      !rawStudents.some(
+        (s) =>
+          (subId && String(s.id || s.studentId || '') === subId) ||
+          (subName && String(s.fullName || s.name || '').toLowerCase().trim() === subName),
+      )
+    ) {
+      rawStudents.push(sub);
+    }
+  }
+
   let rawPipeline: any[] = [];
   if (pipelineRes.status === 'fulfilled' && pipelineRes.value?.data) {
     const data = pipelineRes.value.data;
@@ -1071,6 +1088,16 @@ export const getAssessmentsForReview = async (
     if (th && th !== 'Unassigned') {
       const sid = String(es.id || es.studentId || '').toLowerCase().trim();
       const sname = String(es.fullName || es.name || '').toLowerCase().trim();
+      if (sid) studentTherapistMap.set(sid, th);
+      if (sname) studentTherapistMap.set(sname, th);
+    }
+  }
+
+  for (const sub of submittedList) {
+    const th = String(sub.therapist || '').trim();
+    if (th && th !== 'Unassigned') {
+      const sid = String(sub.id || sub.studentId || '').toLowerCase().trim();
+      const sname = String(sub.fullName || sub.name || '').toLowerCase().trim();
       if (sid) studentTherapistMap.set(sid, th);
       if (sname) studentTherapistMap.set(sname, th);
     }
@@ -1317,6 +1344,15 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
     );
   }
 
+  const submissionData = getStudentAssessmentSubmission(studentId);
+  if (submissionData) {
+    studentName = submissionData.studentName || submissionData.fullName || studentName;
+    studentAge = Number(submissionData.age) || studentAge;
+    studentProgram = submissionData.program || studentProgram;
+    studentTherapist = submissionData.therapist || studentTherapist;
+    studentTherapyGroup = submissionData.therapyGroup || studentTherapyGroup;
+  }
+
   // Load real ABLLS skills assessment from storage
   const storageData = loadStorageAssessment(studentId);
   const scores = storageData?.scores || {};
@@ -1406,7 +1442,6 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
 
   // Real submission status and date
   const isSubmitted = isStudentAssessmentSubmitted(studentId);
-  const submissionData = getStudentAssessmentSubmission(studentId);
   const dateCompleted = isSubmitted ? submissionData?.submittedAt?.slice(0, 10) || null : null;
 
   // Real IUP goals from IUP draft
@@ -1424,7 +1459,18 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
   const isReviewed = Boolean(reviewedMap[studentId]?.reviewed);
   const reviewNotes = reviewedMap[studentId]?.notes || '';
 
+  const derivedStatus = isReviewed
+    ? 'Reviewed'
+    : isSubmitted
+      ? 'Complete'
+      : skillsStatus === 'completed'
+        ? 'Complete'
+        : skillsStatus === 'in_progress'
+          ? 'In Progress'
+          : 'Not Started';
+
   const reportPayload = {
+    status: derivedStatus,
     student: {
       id: studentId,
       name: studentName,
@@ -1434,17 +1480,10 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
       program: studentProgram,
       therapy_group: studentTherapyGroup,
       therapist: studentTherapist,
+      status: derivedStatus,
     },
     assessment: {
-      status: isReviewed
-        ? 'Reviewed'
-        : isSubmitted
-          ? 'Complete'
-          : skillsStatus === 'completed'
-            ? 'Complete'
-            : skillsStatus === 'in_progress'
-              ? 'In Progress'
-              : 'Not Started',
+      status: derivedStatus,
       completed_on: dateCompleted,
     },
     skills: {
@@ -2764,9 +2803,75 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
         program: s.program || 'Comprehensive ABA',
         status: s.status || 'Active',
         photoUrl: s.photoUrl || s.photo_url || s.photo || '',
+        therapyGroup: s.therapyGroup || s.therapy_group || s.station || '',
+        dateOfBirth: s.dateOfBirth || s.dob || '',
+        parentGuardian: s.parentGuardian || s.parent_guardian || '',
       }));
     }
   } catch {}
+
+  // Include locally enrolled real students from storage
+  const storedEnrolled =
+    storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+  for (const es of storedEnrolled) {
+    const esId = String(es.id || es.studentId || '').trim();
+    const esName = String(es.fullName || es.name || '').trim();
+    const existing = studentsList.find(
+      (s) => (esId && s.id === esId) || (esName && s.name.toLowerCase() === esName.toLowerCase()),
+    );
+    if (!existing) {
+      studentsList.push({
+        id: esId,
+        name: esName || 'Student',
+        age: Number(es.age) || 6,
+        program: String(es.program || es.programType || 'Comprehensive ABA'),
+        status: 'Active',
+        photoUrl: String(es.photoUrl || es.headshotUrl || es.photo || ''),
+        therapyGroup: String(es.therapyGroup || es.station || ''),
+        dateOfBirth: String(es.dateOfBirth || es.dob || ''),
+        parentGuardian: String(es.parentGuardian || es.parent_guardian || ''),
+      });
+    } else {
+      if (es.photoUrl && !existing.photoUrl) existing.photoUrl = String(es.photoUrl);
+      if (es.age && !existing.age) existing.age = Number(es.age);
+      if (es.therapyGroup && !existing.therapyGroup) existing.therapyGroup = String(es.therapyGroup);
+      if (es.dateOfBirth && !existing.dateOfBirth) existing.dateOfBirth = String(es.dateOfBirth);
+      if (es.parentGuardian && !existing.parentGuardian) existing.parentGuardian = String(es.parentGuardian);
+    }
+  }
+
+  // Include submitted students
+  const submittedList = getSubmittedStudents();
+  for (const sub of submittedList) {
+    const subId = String(sub.id || sub.studentId || '').trim();
+    const subName = String(sub.fullName || sub.name || '').trim();
+    const existing = studentsList.find(
+      (s) => (subId && s.id === subId) || (subName && s.name.toLowerCase() === subName.toLowerCase()),
+    );
+    if (!existing) {
+      studentsList.push({
+        id: subId,
+        name: subName || 'Student',
+        age: Number(sub.age) || 6,
+        program: String(sub.program || 'Comprehensive ABA'),
+        status: 'submitted',
+        photoUrl: String(sub.photoUrl || ''),
+        therapyGroup: String(sub.therapyGroup || ''),
+        dateOfBirth: String(sub.dateOfBirth || ''),
+        parentGuardian: String(sub.parentGuardian || ''),
+      });
+    } else {
+      if (sub.photoUrl && !existing.photoUrl) existing.photoUrl = String(sub.photoUrl);
+      if (sub.age && !existing.age) existing.age = Number(sub.age);
+      if (sub.program && !existing.program) existing.program = String(sub.program);
+      if (sub.therapyGroup && !existing.therapyGroup) existing.therapyGroup = String(sub.therapyGroup);
+      if (sub.dateOfBirth && !existing.dateOfBirth) existing.dateOfBirth = String(sub.dateOfBirth);
+      if (sub.parentGuardian && !existing.parentGuardian) existing.parentGuardian = String(sub.parentGuardian);
+    }
+  }
+
+  // Filter out any deleted students
+  studentsList = filterOutDeletedStudents(studentsList);
 
   if (studentsList.length === 0) {
     studentsList = DEFAULT_PD_STUDENTS.map((s) => ({
@@ -2779,8 +2884,16 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     }));
   }
 
+  const lastAssessmentStudentId =
+    storage.getSync('last_assessment_student_id') ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null);
+
   const targetId =
-    (studentId && studentId.trim()) || (studentsList.length > 0 ? studentsList[0].id : '');
+    (studentId && studentId.trim()) ||
+    (lastAssessmentStudentId && !isStudentDeleted(lastAssessmentStudentId)
+      ? lastAssessmentStudentId.trim()
+      : '') ||
+    (studentsList.length > 0 ? studentsList[0].id : '');
   if (!targetId) {
     return {
       data: {
@@ -2815,7 +2928,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     name: registeredInfo?.name || submissionInfo?.studentName || 'Student',
     age: 6,
     program: 'Comprehensive ABA',
-    status: 'Active',
+    status: isStudentAssessmentSubmitted(targetId) ? 'submitted' : 'Active',
     photoUrl: '',
   };
 
@@ -2840,16 +2953,20 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   const sensoryData = resData.sensory || {};
 
   // Alias lookup for client-stored data
-  const alias = targetId === 'stu-1' ? 'student-a' : targetId === 'student-a' ? 'stu-1' : null;
+  const aliases = getStudentIdAliases(targetId);
 
-  const readStorage = (key: string): any => {
-    if (typeof localStorage === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
+  const readStorage = (prefix: string): any => {
+    for (const a of aliases) {
+      const val = storage.getJSONSync<any>(`${prefix}${a}`);
+      if (val) return val;
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(`${prefix}${a}`);
+          if (raw) return JSON.parse(raw);
+        } catch {}
+      }
     }
+    return null;
   };
 
   // 1. ABLLS-R Skills
@@ -2866,10 +2983,9 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     });
   }
   const clientSkills =
-    readStorage(`melue_skills_assessment_${targetId}`) ||
-    (alias ? readStorage(`melue_skills_assessment_${alias}`) : null) ||
-    readStorage(`skills_assessment_${targetId}`) ||
-    (alias ? readStorage(`skills_assessment_${alias}`) : null);
+    readStorage('melue_skills_assessment_') ||
+    readStorage('skills_assessment_') ||
+    loadStorageAssessment(targetId);
 
   if (clientSkills) {
     if (clientSkills.scores && typeof clientSkills.scores === 'object') {
@@ -2907,9 +3023,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   }
 
   // 2. Behavior Assessment
-  const clientBehavior =
-    readStorage(`melue_behavior_assessment_${targetId}`) ||
-    (alias ? readStorage(`melue_behavior_assessment_${alias}`) : null);
+  const clientBehavior = readStorage('melue_behavior_assessment_');
 
   const massAnswers: Record<string, any> = {
     ...(behaviorData.mass?.scores || behaviorData.massAnswers || {}),
@@ -2952,9 +3066,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   }
 
   // 3. Preference Assessment
-  const clientPreference =
-    readStorage(`melue_preference_assessment_${targetId}`) ||
-    (alias ? readStorage(`melue_preference_assessment_${alias}`) : null);
+  const clientPreference = readStorage('melue_preference_assessment_');
 
   let rawObservations =
     Array.isArray(clientPreference?.allObservations) && clientPreference.allObservations.length > 0
@@ -3040,9 +3152,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   });
 
   // 4. Sensory Assessment
-  const clientSensory =
-    readStorage(`melue_sensory_assessment_${targetId}`) ||
-    (alias ? readStorage(`melue_sensory_assessment_${alias}`) : null);
+  const clientSensory = readStorage('melue_sensory_assessment_');
 
   const sensoryActivities =
     Array.isArray(clientSensory?.activities) && clientSensory.activities.length > 0
@@ -3052,9 +3162,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
         : [];
 
   // 5. Social Skills Assessment
-  const clientSocial =
-    readStorage(`melue_social_skills_assessment_${targetId}`) ||
-    (alias ? readStorage(`melue_social_skills_assessment_${alias}`) : null);
+  const clientSocial = readStorage('melue_social_skills_assessment_');
 
   const socialSkillsData = resData.social_skills || resData.socialSkills || {};
   const socialScores = clientSocial?.scores || socialSkillsData.scores || {};
@@ -3132,17 +3240,34 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     students: studentsList,
     selectedStudentId: targetId,
     studentInfo: {
-      fullName: studentData.name || selectedStudentObj.name,
-      dateOfBirth: studentData.date_of_birth || studentData.dob || '2020-04-12',
-      age: studentData.age || selectedStudentObj.age || 6,
+      fullName: studentData.name || selectedStudentObj.name || submissionInfo?.studentName || 'Student',
+      dateOfBirth:
+        studentData.date_of_birth ||
+        studentData.dob ||
+        selectedStudentObj.dateOfBirth ||
+        submissionInfo?.dateOfBirth ||
+        '2020-04-12',
+      age: studentData.age || selectedStudentObj.age || submissionInfo?.age || 6,
       parentGuardian:
         studentData.parent_name ||
         studentData.guardian_name ||
         studentData.parent_guardian ||
+        selectedStudentObj.parentGuardian ||
+        submissionInfo?.parentGuardian ||
         `Parent of ${selectedStudentObj.name || 'Student'}`,
-      station: studentData.therapy_group || studentData.station || 'Station 1 · Early Learners',
+      station:
+        studentData.therapy_group ||
+        studentData.station ||
+        selectedStudentObj.therapyGroup ||
+        submissionInfo?.therapyGroup ||
+        'Station 1 · Early Learners',
       photoUrl:
-        selectedStudentObj.photoUrl || studentData.photo_url || studentData.headshotUrl || '',
+        selectedStudentObj.photoUrl ||
+        studentData.photo_url ||
+        studentData.headshotUrl ||
+        submissionInfo?.photoUrl ||
+        '',
+      status: isStudentAssessmentSubmitted(targetId) ? 'submitted' : selectedStudentObj.status || 'Active',
     },
     abllsScores,
     behavior: {

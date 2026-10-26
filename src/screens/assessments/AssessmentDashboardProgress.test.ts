@@ -976,4 +976,115 @@ describe('Assessment Dashboard Progress Sync', () => {
     expect(submitResult).toBe(true);
     expect(isStudentAssessmentSubmitted(studentId)).toBe(true);
   });
+
+  it('submitting an assessment on AssessmentDashboard immediately displays real data on AssessmentReview and AssessmentSummaryReport', async () => {
+    const studentId = 'stu-e2e-review-report';
+    const studentName = 'Kidus Assessment E2E';
+    const therapistName = 'Bethlehem Lead Therapist';
+
+    // 1. Setup real assessments
+    saveStorageAssessment(studentId, {
+      progress: 100,
+      status: 'completed',
+      scores: { A1: 2, A2: 4, B1: 3 },
+    });
+    await saveBehaviorAssessment(studentId, {
+      progress: 100,
+      status: 'submitted',
+      records: [{ id: 'inc-1', antecedent: 'Transition to math', behavior: 'Protest' }],
+      massAnswers: { M1: 2, M2: 3 },
+      fastAnswers: { F1: 1, F2: 4 },
+    });
+    await savePreferenceAssessment(studentId, {
+      progress: 100,
+      status: 'submitted',
+      itemsByTab: {
+        'Sensory Time': [{ id: 'item-1', name: 'Weighted blanket', durationSeconds: 300, frequency: 3 }],
+        'Circle Time': [{ id: 'item-2', name: 'Visual timer', durationSeconds: 180, frequency: 2 }],
+        'Play Time': [{ id: 'item-3', name: 'Kinetic sand', durationSeconds: 240, frequency: 2 }],
+      },
+    });
+    await saveSensoryAssessment(studentId, {
+      progress: 100,
+      status: 'submitted',
+      activities: ['Weighted blanket during circle time', 'Deep pressure compressions'],
+    });
+
+    // 2. Submit assessment with rich metadata
+    const submitted = await saveStudentAssessmentSubmission(studentId, {
+      studentName,
+      fullName: studentName,
+      therapist: therapistName,
+      age: 7,
+      program: 'Comprehensive ABA',
+      therapyGroup: 'Station 1 · Early Learners',
+      dateOfBirth: '2019-05-15',
+      parentGuardian: 'Abebe Mengistu',
+    });
+    expect(submitted).toBe(true);
+    expect(isStudentAssessmentSubmitted(studentId)).toBe(true);
+
+    // 3. Verify it displays on Program Director's AssessmentReview page with real data
+    const { getAssessmentsForReview, getAssessmentReport, getAssessmentSummaryDashboard } = await import(
+      '../../api/programDirectorApi'
+    );
+    const { default: client } = await import('../../api/sessionApi');
+    const spy = vi.spyOn(client, 'get').mockResolvedValue({ data: [] } as any);
+
+    try {
+      const reviewListRes = await getAssessmentsForReview();
+      const reviewItem = reviewListRes.data.find(
+        (item: any) => item.studentId === studentId || item.studentName === studentName,
+      );
+      expect(reviewItem).toBeDefined();
+      expect(reviewItem.status).toBe('Complete');
+      expect(reviewItem.abllsPct).toBe(100);
+      expect(reviewItem.therapist).toBe(therapistName);
+      expect(reviewItem.dateCompleted).toBe(new Date().toISOString().slice(0, 10));
+
+      // View report modal data
+      const reportRes = await getAssessmentReport(studentId);
+      expect(reportRes.data.student.name).toBe(studentName);
+      expect(reportRes.data.student.therapist).toBe(therapistName);
+      expect(reportRes.data.status).toBe('Complete');
+      expect(reportRes.data.skills.domains.find((d: any) => d.code === 'A')?.scoredCount).toBe(2);
+      expect(reportRes.data.behavior.summary).toContain('1 ABC incident');
+
+      // 4. Verify it displays on AssessmentSummaryReport page with real data
+      const summaryReportRes = await getAssessmentSummaryDashboard(studentId);
+      const summaryData = summaryReportRes.data;
+
+      expect(summaryData.selectedStudentId).toBe(studentId);
+      expect(summaryData.studentInfo.fullName).toBe(studentName);
+      expect(summaryData.studentInfo.age).toBe(7);
+      expect(summaryData.studentInfo.parentGuardian).toBe('Abebe Mengistu');
+      expect(summaryData.studentInfo.station).toBe('Station 1 · Early Learners');
+      expect(summaryData.studentInfo.status).toBe('submitted');
+
+      // Real ABLLS scores
+      expect(summaryData.abllsScores['A1']).toBe(2);
+      expect(summaryData.abllsScores['A2']).toBe(4);
+      expect(summaryData.abllsScores['B1']).toBe(3);
+
+      // Real Behavior scores & incident data
+      expect(summaryData.behavior.massAnswers['M1']).toBe(2);
+      expect(summaryData.behavior.fastAnswers['F1']).toBe(1);
+      expect(summaryData.behavior.abc.totalIncidents).toBe(1);
+      expect(summaryData.behavior.abc.topAntecedents[0].antecedent).toBe('Transition to math');
+
+      // Real Preference observations
+      expect(summaryData.preference.items.length).toBeGreaterThanOrEqual(3);
+      expect(summaryData.preference.items.some((it: any) => it.item === 'Weighted blanket')).toBe(true);
+
+      // Real Sensory activities
+      expect(summaryData.sensory.activities).toContain('Weighted blanket during circle time');
+
+      // 5. Verify default dashboard selection also resolves to submitted student via last_assessment_student_id
+      const defaultDashboardRes = await getAssessmentSummaryDashboard();
+      expect(defaultDashboardRes.data.selectedStudentId).toBe(studentId);
+      expect(defaultDashboardRes.data.studentInfo.fullName).toBe(studentName);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

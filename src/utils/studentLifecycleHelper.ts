@@ -26,6 +26,7 @@ const ASSESSMENT_COMPLETED_STORAGE_KEY = 'melue_assessment_completed_';
 const ASSESSMENT_SUBMITTED_STORAGE_KEY = 'melue_assessment_submitted_';
 const ASSESSMENT_SUBMISSION_DATA_KEY = 'melue_assessment_submission_';
 const STUDENT_STATUS_REGISTRY_KEY = 'melue_student_status_registry';
+export const SUBMITTED_STUDENTS_LIST_KEY = 'melue_submitted_students_list_v1';
 
 /**
  * Normalizes a student ID into a trimmed, canonical string for consistent comparison.
@@ -172,6 +173,37 @@ export async function saveStudentAssessmentSubmission(
       await storage.setJSON(`${ASSESSMENT_SUBMISSION_DATA_KEY}${alias}`, submissionData);
     }
 
+    // Maintain master list of submitted students for instant multi-screen visibility
+    const sName = String(extra.studentName || extra.name || extra.fullName || 'Student').trim();
+    const existingSubmitted = storage.getJSONSync<any[]>(SUBMITTED_STUDENTS_LIST_KEY, []) || [];
+    const filteredSubmitted = existingSubmitted.filter((s: any) => {
+      const existingId = String(s.id || s.studentId || '').trim();
+      const existingName = String(s.name || s.fullName || '').trim().toLowerCase();
+      return (
+        existingId !== sid &&
+        !aliases.includes(existingId) &&
+        (!sName || existingName !== sName.toLowerCase())
+      );
+    });
+    filteredSubmitted.unshift({
+      id: sid,
+      studentId: sid,
+      name: sName,
+      fullName: sName,
+      therapist: extra.therapist || 'Unassigned',
+      status: 'Complete',
+      dateCompleted: submissionData.submittedAt.slice(0, 10),
+      submittedAt: submissionData.submittedAt,
+      age: extra.age || 6,
+      program: extra.program || 'Comprehensive ABA',
+      therapyGroup: extra.therapyGroup || '',
+      photoUrl: extra.photoUrl || '',
+      dateOfBirth: extra.dateOfBirth,
+      parentGuardian: extra.parentGuardian,
+    });
+    storage.setJSONSync(SUBMITTED_STUDENTS_LIST_KEY, filteredSubmitted);
+    await storage.setJSON(SUBMITTED_STUDENTS_LIST_KEY, filteredSubmitted);
+
     storage.setSync('last_assessment_student_id', sid);
     await storage.setItem('last_assessment_student_id', sid);
 
@@ -181,6 +213,11 @@ export async function saveStudentAssessmentSubmission(
           detail: { studentId: sid, status: 'submitted' },
         }),
       );
+      window.dispatchEvent(
+        new CustomEvent('melue_assessment_submitted', {
+          detail: { studentId: sid, status: 'submitted', submission: submissionData },
+        }),
+      );
     }
 
     return true;
@@ -188,6 +225,21 @@ export async function saveStudentAssessmentSubmission(
     console.error('Error saving student assessment submission:', err);
     return false;
   }
+}
+
+/**
+ * Retrieves the master list of all submitted students across the session
+ */
+export function getSubmittedStudents(): any[] {
+  try {
+    const list = storage.getJSONSync<any[]>(SUBMITTED_STUDENTS_LIST_KEY, []);
+    if (Array.isArray(list) && list.length > 0) return list;
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(SUBMITTED_STUDENTS_LIST_KEY);
+      if (raw) return JSON.parse(raw);
+    }
+  } catch {}
+  return [];
 }
 
 /**
@@ -386,12 +438,19 @@ export function markStudentAssessmentCompleted(studentId: string | number): void
 export function clearStudentAssessmentCompleted(studentId: string | number): void {
   if (!studentId) return;
   try {
+    const sid = String(studentId).trim();
     const aliases = getStudentIdAliases(studentId);
     for (const alias of aliases) {
       storage.removeSync(`${ASSESSMENT_COMPLETED_STORAGE_KEY}${alias}`);
       storage.removeSync(`${ASSESSMENT_SUBMITTED_STORAGE_KEY}${alias}`);
       storage.removeSync(`${ASSESSMENT_SUBMISSION_DATA_KEY}${alias}`);
     }
+    const existingSubmitted = storage.getJSONSync<any[]>(SUBMITTED_STUDENTS_LIST_KEY, []) || [];
+    const filteredSubmitted = existingSubmitted.filter((s: any) => {
+      const existingId = String(s.id || s.studentId || '').trim();
+      return existingId !== sid && !aliases.includes(existingId);
+    });
+    storage.setJSONSync(SUBMITTED_STUDENTS_LIST_KEY, filteredSubmitted);
   } catch {}
 }
 

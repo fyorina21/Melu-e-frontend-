@@ -287,8 +287,15 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
     try {
       const success = await saveStudentAssessmentSubmission(sid, {
-        studentName: student.name,
-        therapist: currentTherapistName || student.therapist,
+        studentName: student.name || student.fullName || 'Student',
+        fullName: student.fullName || student.name || 'Student',
+        therapist: currentTherapistName || student.therapist || student.assignedTherapist || 'Unassigned',
+        age: Number(student.age) || 6,
+        program: student.program || student.programType || 'Comprehensive ABA',
+        therapyGroup: student.therapyGroup || student.therapy_group || student.station || '',
+        photoUrl: student.photoUrl || student.headshotUrl || student.photo || '',
+        dateOfBirth: student.dateOfBirth || student.dob || '',
+        parentGuardian: student.parentGuardian || student.parent_guardian || '',
       });
 
       if (!success) {

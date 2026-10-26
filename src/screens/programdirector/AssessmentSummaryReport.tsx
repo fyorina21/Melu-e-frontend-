@@ -22,7 +22,9 @@ import {
   isStudentAssessmentSubmitted,
   getStudentAssessmentSubmission,
   isStoredAssessmentCompleted,
+  getStudentIdAliases,
 } from '../../utils/studentLifecycleHelper';
+import { storage } from '../../utils/storage';
 import type { ProgramDirectorStackParamList } from '../../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radius } from '../../theme/colors';
@@ -93,9 +95,13 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
       const handleRefresh = () => setReloadCount((c) => c + 1);
       window.addEventListener('focus', handleRefresh);
       window.addEventListener('storage', handleRefresh);
+      window.addEventListener('melue_assessment_updated', handleRefresh);
+      window.addEventListener('melue_assessment_submitted', handleRefresh);
       return () => {
         window.removeEventListener('focus', handleRefresh);
         window.removeEventListener('storage', handleRefresh);
+        window.removeEventListener('melue_assessment_updated', handleRefresh);
+        window.removeEventListener('melue_assessment_submitted', handleRefresh);
       };
     }
   }, []);
@@ -509,24 +515,18 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 let sc = abllsScores || {};
                 if (
                   Object.keys(sc).length === 0 &&
-                  typeof localStorage !== 'undefined' &&
                   selectedStudent
                 ) {
                   try {
-                    const alias =
-                      selectedStudent === 'stu-1'
-                        ? 'student-a'
-                        : selectedStudent === 'student-a'
-                          ? 'stu-1'
-                          : null;
-                    const raw =
-                      localStorage.getItem(`melue_skills_assessment_${selectedStudent}`) ||
-                      (alias ? localStorage.getItem(`melue_skills_assessment_${alias}`) : null) ||
-                      localStorage.getItem(`skills_assessment_${selectedStudent}`) ||
-                      (alias ? localStorage.getItem(`skills_assessment_${alias}`) : null);
-                    if (raw) {
-                      const parsed = JSON.parse(raw);
-                      if (parsed?.scores) sc = parsed.scores;
+                    const aliases = getStudentIdAliases(selectedStudent);
+                    for (const a of aliases) {
+                      const parsed =
+                        storage.getJSONSync<any>(`melue_skills_assessment_${a}`) ||
+                        storage.getJSONSync<any>(`skills_assessment_${a}`);
+                      if (parsed?.scores && Object.keys(parsed.scores).length > 0) {
+                        sc = parsed.scores;
+                        break;
+                      }
                     }
                   } catch {}
                 }
@@ -542,22 +542,16 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           if (
             (!activeBehavior?.massAnswers ||
               Object.keys(activeBehavior.massAnswers).length === 0) &&
-            typeof localStorage !== 'undefined' &&
             selectedStudent
           ) {
             try {
-              const alias =
-                selectedStudent === 'stu-1'
-                  ? 'student-a'
-                  : selectedStudent === 'student-a'
-                    ? 'stu-1'
-                    : null;
-              const raw =
-                localStorage.getItem(`melue_behavior_assessment_${selectedStudent}`) ||
-                (alias ? localStorage.getItem(`melue_behavior_assessment_${alias}`) : null);
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (parsed) {
+              const aliases = getStudentIdAliases(selectedStudent);
+              let parsed: any = null;
+              for (const a of aliases) {
+                parsed = storage.getJSONSync<any>(`melue_behavior_assessment_${a}`);
+                if (parsed) break;
+              }
+              if (parsed) {
                   const rawRecs = Array.isArray(parsed.records)
                     ? parsed.records
                     : Array.isArray(parsed.incidents)
@@ -591,7 +585,6 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     },
                   };
                 }
-              }
             } catch {}
           }
 
@@ -730,19 +723,15 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
             </View>
             {(() => {
               let allItems = preference?.items || [];
-              if (allItems.length === 0 && typeof localStorage !== 'undefined' && selectedStudent) {
+              if (allItems.length === 0 && selectedStudent) {
                 try {
-                  const alias =
-                    selectedStudent === 'stu-1'
-                      ? 'student-a'
-                      : selectedStudent === 'student-a'
-                        ? 'stu-1'
-                        : null;
-                  const raw =
-                    localStorage.getItem(`melue_preference_assessment_${selectedStudent}`) ||
-                    (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
-                  if (raw) {
-                    const parsed = JSON.parse(raw);
+                  const aliases = getStudentIdAliases(selectedStudent);
+                  let parsed: any = null;
+                  for (const a of aliases) {
+                    parsed = storage.getJSONSync<any>(`melue_preference_assessment_${a}`);
+                    if (parsed) break;
+                  }
+                  if (parsed) {
                     if (
                       Array.isArray(parsed?.allObservations) &&
                       parsed.allObservations.length > 0
@@ -842,20 +831,16 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
         {/* Sensory */}
         {(() => {
           let activities = sensory?.activities || [];
-          if (activities.length === 0 && typeof localStorage !== 'undefined' && selectedStudent) {
+          if (activities.length === 0 && selectedStudent) {
             try {
-              const alias =
-                selectedStudent === 'stu-1'
-                  ? 'student-a'
-                  : selectedStudent === 'student-a'
-                    ? 'stu-1'
-                    : null;
-              const raw =
-                localStorage.getItem(`melue_sensory_assessment_${selectedStudent}`) ||
-                (alias ? localStorage.getItem(`melue_sensory_assessment_${alias}`) : null);
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed?.activities)) activities = parsed.activities;
+              const aliases = getStudentIdAliases(selectedStudent);
+              let parsed: any = null;
+              for (const a of aliases) {
+                parsed = storage.getJSONSync<any>(`melue_sensory_assessment_${a}`);
+                if (parsed) break;
+              }
+              if (parsed && Array.isArray(parsed?.activities)) {
+                activities = parsed.activities;
               }
             } catch {}
           }
@@ -900,25 +885,18 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
           let percent = socialSkills?.percent ?? 0;
           if (
             Object.keys(scores).length === 0 &&
-            typeof localStorage !== 'undefined' &&
             selectedStudent
           ) {
             try {
-              const alias =
-                selectedStudent === 'stu-1'
-                  ? 'student-a'
-                  : selectedStudent === 'student-a'
-                    ? 'stu-1'
-                    : null;
-              const raw =
-                localStorage.getItem(`melue_social_skills_assessment_${selectedStudent}`) ||
-                (alias ? localStorage.getItem(`melue_social_skills_assessment_${alias}`) : null);
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (parsed?.scores) {
-                  scores = parsed.scores;
-                  percent = parsed.percent ?? 0;
-                }
+              const aliases = getStudentIdAliases(selectedStudent);
+              let parsed: any = null;
+              for (const a of aliases) {
+                parsed = storage.getJSONSync<any>(`melue_social_skills_assessment_${a}`);
+                if (parsed) break;
+              }
+              if (parsed?.scores) {
+                scores = parsed.scores;
+                percent = parsed.percent ?? 0;
               }
             } catch {}
           }

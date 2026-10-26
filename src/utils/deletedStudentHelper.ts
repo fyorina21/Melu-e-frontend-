@@ -354,6 +354,16 @@ export function recordDeletedStudent(student: {
       } catch {}
     });
 
+    try {
+      const submittedList = storage.getJSONSync<any[]>('melue_submitted_students_list_v1', []) || [];
+      const updatedList = submittedList.filter((s: any) => {
+        const sid = String(s.id || s.studentId || '').trim().toLowerCase();
+        const sname = String(s.name || s.fullName || '').trim().toLowerCase();
+        return !currentKeys.has(sid) && (!sname || !currentKeys.has(sname));
+      });
+      storage.setJSONSync('melue_submitted_students_list_v1', updatedList);
+    } catch {}
+
     // 11. Clear last_assessment_student_id if it matched this deleted student
     try {
       const lastSid = storage.getSync('last_assessment_student_id');
