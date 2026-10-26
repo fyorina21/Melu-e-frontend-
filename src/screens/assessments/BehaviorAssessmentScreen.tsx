@@ -18,6 +18,7 @@ import ScreenLoader from '../../components/ScreenLoader';
 import AccessibleModal from '../../components/AccessibleModal';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import {
   getBehaviorAssessment,
@@ -400,50 +401,88 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
   };
 
   const handleRemoveTargetBehavior = (indexToRemove: number) => {
+    const behaviorToRemove = targetBehaviors[indexToRemove];
+    if (!behaviorToRemove) return;
+
     if (targetBehaviors.length <= 1) {
-      Alert.alert('Cannot Remove', 'At least one target behavior is required.');
+      confirmAction({
+        title: 'Reset Target Behavior',
+        message: `Are you sure you want to remove "${behaviorToRemove.behaviorName}"? This will reset the target behavior and clear its questionnaire responses.`,
+        confirmLabel: 'Reset',
+        destructive: true,
+        onConfirm: async () => {
+          const blankBehavior: BehaviorTargetAssessmentData = {
+            id: `target-${Date.now()}`,
+            behaviorName: 'Target Behavior 1',
+            definition: '',
+            massAnswers: {},
+            fastAnswers: {},
+            abcNotes: '',
+            status: 'draft',
+          };
+          const updated = [blankBehavior];
+          setTargetBehaviors(updated);
+          setSelectedBehaviorIndex(0);
+
+          try {
+            await saveBehaviorAssessment(studentId, {
+              tab,
+              target_behaviors: updated.map((b) => ({
+                behavior_name: b.behaviorName,
+                definition: b.definition,
+                mass_responses: b.massAnswers || {},
+                fast_responses: b.fastAnswers || {},
+                abc_notes: b.abcNotes || '',
+                status: 'draft',
+              })),
+              massAnswers: {},
+              fastAnswers: {},
+              records,
+              status: 'draft',
+              is_submitting: false,
+            });
+            showToast('Target behavior reset', 'info');
+          } catch (err) {
+            console.warn('Failed to persist behavior reset', err);
+          }
+        },
+      });
       return;
     }
-    const behaviorToRemove = targetBehaviors[indexToRemove];
-    Alert.alert(
-      'Remove Target Behavior',
-      `Are you sure you want to remove "${behaviorToRemove.behaviorName}" and its questionnaire responses?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            const updated = targetBehaviors.filter((_, idx) => idx !== indexToRemove);
-            setTargetBehaviors(updated);
-            if (selectedBehaviorIndex >= updated.length) {
-              setSelectedBehaviorIndex(Math.max(0, updated.length - 1));
-            }
 
-            try {
-              await saveBehaviorAssessment(studentId, {
-                tab,
-                target_behaviors: updated.map((b) => ({
-                  behavior_name: b.behaviorName,
-                  definition: b.definition,
-                  mass_responses: b.massAnswers || {},
-                  fast_responses: b.fastAnswers || {},
-                  abc_notes: b.abcNotes || '',
-                  status: 'draft',
-                })),
-                massAnswers: updated[0]?.massAnswers || {},
-                fastAnswers: updated[0]?.fastAnswers || {},
-                records,
-                status: 'draft',
-                is_submitting: false,
-              });
-            } catch (err) {
-              console.warn('Failed to persist behavior removal', err);
-            }
-          },
-        },
-      ],
-    );
+    confirmAction({
+      title: 'Remove Target Behavior',
+      message: `Are you sure you want to remove "${behaviorToRemove.behaviorName}" and its questionnaire responses?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+      onConfirm: async () => {
+        const updated = targetBehaviors.filter((_, idx) => idx !== indexToRemove);
+        setTargetBehaviors(updated);
+        setSelectedBehaviorIndex((prev) => Math.max(0, Math.min(prev, updated.length - 1)));
+
+        try {
+          await saveBehaviorAssessment(studentId, {
+            tab,
+            target_behaviors: updated.map((b) => ({
+              behavior_name: b.behaviorName,
+              definition: b.definition,
+              mass_responses: b.massAnswers || {},
+              fast_responses: b.fastAnswers || {},
+              abc_notes: b.abcNotes || '',
+              status: 'draft',
+            })),
+            massAnswers: updated[0]?.massAnswers || {},
+            fastAnswers: updated[0]?.fastAnswers || {},
+            records,
+            status: 'draft',
+            is_submitting: false,
+          });
+          showToast(`Removed "${behaviorToRemove.behaviorName}"`, 'info');
+        } catch (err) {
+          console.warn('Failed to persist behavior removal', err);
+        }
+      },
+    });
   };
 
   // Calculations for active behavior
@@ -578,61 +617,52 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
   };
 
   // Requirement 4: Submit Assessment Handler with validation
+  // Requirement: Submit Assessment Handler (allowing partial responses since not all questions may apply)
   const handleSubmit = () => {
-    const incompleteBehaviors: string[] = [];
-
+    const totalPossible = targetBehaviors.length * (massItems.length + fastItems.length);
+    let totalAnswered = 0;
     targetBehaviors.forEach((b) => {
-      const { complete, missingMass, missingFast } = validateTargetBehaviorCompleteness(
-        b,
-        massItems.length,
-        fastItems.length,
-      );
-      if (!complete) {
-        incompleteBehaviors.push(
-          `• ${b.behaviorName}: ${missingMass} MASS and ${missingFast} FAST questions remaining`,
-        );
-      }
+      totalAnswered += massItems.filter((i) => {
+        const val = b.massAnswers?.[i.id] ?? b.massAnswers?.[String(i.questionNumber)];
+        return val !== undefined && val !== null && val !== '';
+      }).length;
+      totalAnswered += fastItems.filter((i) => {
+        const val = b.fastAnswers?.[i.id] ?? b.fastAnswers?.[String(i.questionNumber)];
+        return val !== undefined && val !== null && val !== '';
+      }).length;
     });
 
-    if (incompleteBehaviors.length > 0) {
-      Alert.alert(
-        'Incomplete Assessment',
-        `All questions must be answered for each target behavior before submitting for review:\n\n${incompleteBehaviors.join('\n')}`,
-      );
-      return;
-    }
+    const isPartial = totalAnswered < totalPossible;
+    const message = isPartial
+      ? `You have answered ${totalAnswered} questions across ${targetBehaviors.length} target behavior(s). Questions left blank will be recorded as not applicable. Would you like to submit the assessment for clinical review?`
+      : 'This will mark all target behavior questionnaires as completed and submit the assessment for Program Director review.';
 
-    Alert.alert(
-      'Submit Behavior Assessment?',
-      'This will mark all target behavior questionnaires as completed and submit the assessment for Program Director review.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Submit',
-          onPress: () => {
-            const payload = {
-              tab,
-              target_behaviors: targetBehaviors.map((b) => ({
-                behavior_name: b.behaviorName,
-                definition: b.definition,
-                mass_responses: b.massAnswers || {},
-                fast_responses: b.fastAnswers || {},
-                abc_notes: b.abcNotes || '',
-                status: 'completed',
-              })),
-              massAnswers: activeBehavior.massAnswers || {},
-              fastAnswers: activeBehavior.fastAnswers || {},
-              records,
-              status: 'completed',
-              is_submitting: true,
-              progress: 100,
-            };
+    confirmAction({
+      title: 'Submit Behavior Assessment?',
+      message,
+      confirmLabel: 'Submit Assessment',
+      onConfirm: async () => {
+        const payload = {
+          tab,
+          target_behaviors: targetBehaviors.map((b) => ({
+            behavior_name: b.behaviorName,
+            definition: b.definition,
+            mass_responses: b.massAnswers || {},
+            fast_responses: b.fastAnswers || {},
+            abc_notes: b.abcNotes || '',
+            status: 'completed',
+          })),
+          massAnswers: activeBehavior.massAnswers || {},
+          fastAnswers: activeBehavior.fastAnswers || {},
+          records,
+          status: 'completed',
+          is_submitting: true,
+          progress: 100,
+        };
 
-            persist(payload, 'Behavior assessment submitted for review (100%).', true);
-          },
-        },
-      ],
-    );
+        await persist(payload, 'Behavior assessment submitted for review (100%).', true);
+      },
+    });
   };
 
   if (loading) return <ScreenLoader />;
@@ -684,12 +714,16 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
               const isDone = answeredM === massItems.length && answeredF === fastItems.length;
 
               return (
-                <TouchableOpacity
+                <View
                   key={b.id || idx}
                   style={[styles.behaviorChip, isSelected && styles.behaviorChipActive]}
-                  onPress={() => setSelectedBehaviorIndex(idx)}
                 >
-                  <View style={styles.behaviorChipContent}>
+                  <TouchableOpacity
+                    style={styles.behaviorChipContent}
+                    onPress={() => setSelectedBehaviorIndex(idx)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${b.behaviorName}`}
+                  >
                     {isDone ? (
                       <Feather name="check-circle" size={12} color="#16A34A" />
                     ) : (
@@ -707,20 +741,25 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
                     <Text style={styles.chipProgressText}>
                       ({answeredM}/{massItems.length} M · {answeredF}/{fastItems.length} F)
                     </Text>
-                    {targetBehaviors.length > 1 && (
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          handleRemoveTargetBehavior(idx);
-                        }}
-                        style={styles.chipRemoveIcon}
-                        accessibilityLabel={`Remove ${b.behaviorName}`}
-                      >
-                        <Feather name="x" size={12} color={colors.mutedText} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e?.stopPropagation?.();
+                      handleRemoveTargetBehavior(idx);
+                    }}
+                    style={styles.chipRemoveBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${b.behaviorName}`}
+                  >
+                    <Feather
+                      name="x"
+                      size={13}
+                      color={isSelected ? colors.navyText : colors.mutedText}
+                    />
+                  </TouchableOpacity>
+                </View>
               );
             })}
 
@@ -1363,11 +1402,14 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   behaviorChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingLeft: spacing.sm,
+    paddingRight: 6,
+    paddingVertical: 3,
     backgroundColor: colors.bgApp,
   },
   behaviorChipActive: {
@@ -1378,7 +1420,13 @@ const styles = StyleSheet.create({
   behaviorChipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
   behaviorChipTextActive: { color: colors.navyText, fontWeight: '700' },
   chipProgressText: { fontSize: 10, color: colors.mutedText },
-  chipRemoveIcon: { marginLeft: 2, padding: 2 },
+  chipRemoveBtn: {
+    marginLeft: 4,
+    padding: 3,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   activeBehaviorBanner: {
     backgroundColor: '#F8FAFC',
     borderRadius: radius.md,

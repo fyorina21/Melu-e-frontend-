@@ -12,7 +12,11 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { useToast } from '../../context/ToastContext';
-import { getTeacherStudentProfile, saveSocialSkillsAssessment, getSocialSkillsAssessment } from '../../api/teacherExtrasApi';
+import {
+  getTeacherStudentProfile,
+  saveSocialSkillsAssessment,
+  getSocialSkillsAssessment,
+} from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
 import { useEffect } from 'react';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
@@ -41,7 +45,11 @@ interface Question {
 }
 
 const DEFAULT_QUESTIONS: Question[] = [
-  { id: 'q1', text: 'Initiates interactions with peers without prompting', section: 'Social Interaction' },
+  {
+    id: 'q1',
+    text: 'Initiates interactions with peers without prompting',
+    section: 'Social Interaction',
+  },
   { id: 'q2', text: 'Maintains eye contact during conversations', section: 'Communication' },
   { id: 'q3', text: 'Takes turns during play or group activities', section: 'Social Interaction' },
   { id: 'q4', text: 'Responds appropriately to greetings', section: 'Communication' },
@@ -73,7 +81,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
             text: String(f.label || f.text || 'Question'),
             section: f.section,
             options: Array.isArray(f.options) && f.options.length > 0 ? f.options : undefined,
-          }))
+          })),
         );
         return;
       }
@@ -98,7 +106,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
               text: String(f.label || f.text || 'Question'),
               section: f.section,
               options: Array.isArray(f.options) && f.options.length > 0 ? f.options : undefined,
-            }))
+            })),
           );
         } else {
           loadQuestions();
@@ -113,27 +121,35 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
 
   const answered = Object.keys(scores).length;
   useEffect(() => {
-    getTeacherStudentProfile(studentId).then(res => {
-      if (res?.data) setProfile(res.data);
-    }).catch(() => {});
-    getSocialSkillsAssessment(studentId).then(res => {
-      if (res?.data?.data) {
-        if (res.data.data.scores) setScores(res.data.data.scores);
-        if (res.data.data.customValues) setCustomValues(res.data.data.customValues);
-      }
-    }).catch(() => {});
+    getTeacherStudentProfile(studentId)
+      .then((res) => {
+        if (res?.data) setProfile(res.data);
+      })
+      .catch(() => {});
+    getSocialSkillsAssessment(studentId)
+      .then((res) => {
+        if (res?.data?.data) {
+          if (res.data.data.scores) setScores(res.data.data.scores);
+          if (res.data.data.customValues) setCustomValues(res.data.data.customValues);
+        }
+      })
+      .catch(() => {});
   }, [studentId]);
   const totalScore = Object.values(scores).reduce<number>((a, b) => a + b, 0);
   const maxScore = questions.reduce<number>((sum, q) => sum + ((q.options?.length || 4) - 1), 0);
   const percent = maxScore ? Math.round((totalScore / maxScore) * 100) : 0;
 
-  const setScore = (id: string, value: Score) =>
-    setScores((prev) => ({ ...prev, [id]: value }));
+  const setScore = (id: string, value: Score) => setScores((prev) => ({ ...prev, [id]: value }));
 
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent, status: 'draft' });
+      await saveSocialSkillsAssessment(studentId, {
+        scores,
+        customValues,
+        percent,
+        status: 'draft',
+      });
       showToast('Social Skills Questionnaire draft saved', 'success');
     } catch (err) {
       showToast('Failed to save questionnaire draft', 'error');
@@ -143,16 +159,14 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
   };
 
   const handleSave = async () => {
-    if (answered < questions.length) {
-      Alert.alert(
-        'Incomplete',
-        `Please answer all ${questions.length} questions (${answered} answered).`
-      );
-      return;
-    }
     setSaving(true);
     try {
-      await saveSocialSkillsAssessment(studentId, { scores, customValues, percent, status: 'submitted' });
+      await saveSocialSkillsAssessment(studentId, {
+        scores,
+        customValues,
+        percent,
+        status: 'submitted',
+      });
       showToast(`Social Skills Questionnaire submitted (${percent}%)`, 'success');
       navigation?.goBack?.();
     } catch (err) {
@@ -164,10 +178,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar
-        activeTab="Session"
-        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
-      />
+      <AppNavbar activeTab="Session" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
 
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
@@ -181,7 +192,9 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
               if (typeof window !== 'undefined') {
                 window.location.href = '/FormBuilder?form=Social+Skills+Questionnaire';
               } else if (navigation?.navigate) {
-                (navigation.navigate as any)('FormBuilder', { form: 'Social Skills Questionnaire' });
+                (navigation.navigate as any)('FormBuilder', {
+                  form: 'Social Skills Questionnaire',
+                });
               }
             }}
           >
@@ -190,9 +203,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
           </TouchableOpacity>
         </View>
         <Text style={typography.h1}>Social Skills Questionnaire</Text>
-        <Text style={typography.body}>
-          Student: {profile?.fullName || 'Student'}
-        </Text>
+        <Text style={typography.body}>Student: {profile?.fullName || 'Student'}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -230,18 +241,10 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
                   return (
                     <TouchableOpacity
                       key={sIdx}
-                      style={[
-                        styles.scoreBtn,
-                        selected && styles.scoreBtnActive,
-                      ]}
+                      style={[styles.scoreBtn, selected && styles.scoreBtnActive]}
                       onPress={() => setScore(q.id, sIdx)}
                     >
-                      <Text
-                        style={[
-                          styles.scoreBtnText,
-                          selected && styles.scoreBtnTextActive,
-                        ]}
-                      >
+                      <Text style={[styles.scoreBtnText, selected && styles.scoreBtnTextActive]}>
                         {displayLabel}
                       </Text>
                     </TouchableOpacity>
@@ -256,7 +259,11 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
           formName="Social Skills Questionnaire"
           values={customValues}
           onChange={(key, val) => setCustomValues((prev) => ({ ...prev, [key]: val }))}
-          excludeStandardLabels={['Student Name', ...questions.map((q) => q.text), ...questions.map((q) => q.id)]}
+          excludeStandardLabels={[
+            'Student Name',
+            ...questions.map((q) => q.text),
+            ...questions.map((q) => q.id),
+          ]}
         />
 
         <View style={styles.actionsRow}>
@@ -265,9 +272,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
             onPress={handleSaveDraft}
             disabled={saving}
           >
-            <Text style={styles.draftBtnText}>
-              {saving ? 'Saving…' : 'Save Draft'}
-            </Text>
+            <Text style={styles.draftBtnText}>{saving ? 'Saving…' : 'Save Draft'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -275,9 +280,7 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
             onPress={handleSave}
             disabled={saving}
           >
-            <Text style={styles.saveBtnText}>
-              {saving ? 'Saving…' : 'Submit Questionnaire'}
-            </Text>
+            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Submit Questionnaire'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -437,17 +437,6 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
   // Save / Submit Assessment Handler
   const handleSave = async (targetStatus: 'draft' | 'submitted') => {
-    if (targetStatus === 'submitted' && tiers.totalAssessed < items.length) {
-      Alert.alert(
-        'Incomplete Inventory Assessment',
-        `You have assessed ${tiers.totalAssessed} out of ${items.length} items. All items must have an approach status before submitting for clinical review. Would you like to save as Draft instead?`,
-        [
-          { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Save as Draft', onPress: () => performSave('draft') },
-        ],
-      );
-      return;
-    }
     await performSave(targetStatus);
   };
 
