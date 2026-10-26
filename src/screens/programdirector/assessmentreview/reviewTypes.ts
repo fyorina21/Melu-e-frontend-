@@ -6,7 +6,9 @@ export const STATUS_KEY: Record<string, StatusType> = {
   'Not Started': 'notStarted',
   'In Progress': 'inProgress',
   Complete: 'completed',
+  Completed: 'completed',
   Reviewed: 'approved',
+  Approved: 'approved',
 };
 
 export const STATUS_OPTIONS = [
@@ -106,15 +108,39 @@ export function normalizeStatus(rawStatus?: string): string {
 }
 
 export function normalizeAssessmentItem(item: any): AssessmentListItem {
+  if (!item || typeof item !== 'object') {
+    return {
+      studentId: '',
+      studentName: 'Unknown Student',
+      age: 0,
+      program: 'Regular',
+      therapyGroup: '',
+      therapist: 'Unassigned',
+      status: 'Not Started',
+      abllsPct: 0,
+      behaviorStatus: 'notStarted',
+      sessionStatus: '',
+      dateCompleted: null,
+    };
+  }
+
+  const parsedAge = Number(item.age ?? item.student_age ?? 0);
+  const age = !isNaN(parsedAge) && parsedAge >= 0 ? parsedAge : 0;
+
+  const rawPct = Number(
+    item.abllsPct ?? item.assessment_progress ?? item.completion_percentage ?? item.progress ?? 0,
+  );
+  const abllsPct = !isNaN(rawPct) ? Math.min(100, Math.max(0, Math.round(rawPct))) : 0;
+
   return {
     studentId: String(item.studentId ?? item.student_id ?? item.id ?? ''),
     studentName: String(item.studentName ?? item.student_name ?? item.name ?? 'Unknown Student'),
-    age: Number(item.age ?? 0),
+    age,
     program: String(item.program ?? item.program_type ?? 'Regular'),
     therapyGroup: String(item.therapyGroup ?? item.therapy_group ?? ''),
     therapist: String(item.therapist ?? item.therapist_name ?? 'Unassigned'),
     status: normalizeStatus(item.status),
-    abllsPct: Number(item.abllsPct ?? item.assessment_progress ?? item.completion_percentage ?? 0),
+    abllsPct,
     behaviorStatus: String(item.behaviorStatus ?? item.behavior_assessment ?? 'notStarted'),
     sessionStatus: String(item.sessionStatus ?? ''),
     dateCompleted: item.dateCompleted ?? item.completed_at ?? item.completed_on ?? null,
@@ -135,8 +161,8 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
           code: String(d.code || d.domain_code || ''),
           name: String(d.name || d.domain_name || ''),
           items: Array.isArray(d.items) ? d.items : [],
-          scoredCount: Number(d.scoredCount ?? d.completed_items ?? d.scored_count ?? 0),
-          total: Number(d.total ?? d.total_items ?? 0),
+          scoredCount: Math.max(0, Number(d.scoredCount ?? d.completed_items ?? d.scored_count ?? 0)),
+          total: Math.max(0, Number(d.total ?? d.total_items ?? 0)),
         }))
       : [];
 
@@ -150,10 +176,13 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
         ? res.top_preferences.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
         : [];
 
+  const parsedAge = Number(student.age ?? res?.age ?? 0);
+  const age = !isNaN(parsedAge) && parsedAge >= 0 ? parsedAge : 0;
+
   return {
     studentId: String(student.id ?? res?.studentId ?? ''),
     studentName: String(student.name ?? student.full_name ?? res?.studentName ?? 'Unknown Student'),
-    age: Number(student.age ?? res?.age ?? 0),
+    age,
     program: String(student.program_type ?? student.program ?? res?.program ?? 'Regular'),
     therapyGroup: String(student.therapy_group ?? res?.therapyGroup ?? ''),
     therapist: String(res?.therapist ?? student.therapist ?? 'Unassigned'),
@@ -170,7 +199,7 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
     dateCompleted: assessment.completed_on ?? res?.dateCompleted ?? null,
     iupStatus: String(res?.iupStatus ?? 'Draft'),
     reviewNotes: String(res?.reviewNotes ?? res?.review_notes ?? ''),
-    assignedGoals: res?.assignedGoals ?? [],
+    assignedGoals: Array.isArray(res?.assignedGoals) ? res.assignedGoals : [],
   };
 }
 
@@ -201,13 +230,21 @@ export function generateAssessmentReportText(
   }
 
   lines.push('', 'BEHAVIOR ASSESSMENT (MASS/FAST)', report.behaviorSummary || '');
-  lines.push('', 'TOP PREFERENCES', (report.preferences || []).length > 0 ? (report.preferences || []).join(', ') : 'None recorded');
+  lines.push(
+    '',
+    'TOP PREFERENCES',
+    (report.preferences || []).length > 0 ? (report.preferences || []).join(', ') : 'None recorded',
+  );
 
   if (report.notes && report.notes !== 'No notes recorded.') {
     lines.push('', 'TEACHER NOTES', report.notes);
   }
 
   lines.push('', 'IUP STATUS', report.iupStatus);
+
+  if (report.reviewNotes && report.reviewNotes !== 'No notes recorded.') {
+    lines.push('', 'DIRECTOR REVIEW NOTES', report.reviewNotes);
+  }
 
   if (report.dateCompleted) {
     lines.push('', `DATE COMPLETED: ${report.dateCompleted}`);
