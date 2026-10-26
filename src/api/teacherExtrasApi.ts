@@ -4,6 +4,7 @@ import {
   isStudentInSession,
   isStudentAssessment100PercentCompleted,
   isStoredAssessmentCompleted,
+  getRegisteredStudentStatus,
   registerStudentStatuses,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
@@ -84,74 +85,97 @@ export const getAssessmentDashboard = async () => {
             const assigned = String(loc.assignedTherapist || loc.therapist || '')
               .toLowerCase()
               .trim();
-            const matchesTeacher =
-              !clinicianName ||
-              assigned.includes('teacher 2') ||
-              assigned.includes('teacher two') ||
-              (clinicianName.includes('two') &&
-                (assigned.includes('two') || assigned.includes('2'))) ||
-              (clinicianName.includes('one') &&
-                (assigned.includes('one') || assigned.includes('1'))) ||
-              (clinicianName.includes('three') &&
-                (assigned.includes('three') || assigned.includes('3'))) ||
-              assigned === clinicianName;
+            const clinicianLower = (clinicianName || '').toLowerCase().trim();
 
-            if (matchesTeacher) {
-              const fullName =
-                loc.fullName ||
-                `${loc.firstName || ''} ${loc.lastName || ''}`.trim() ||
-                'New Student';
-              backendStudents.push({
-                id: locId,
-                fullName,
-                name: fullName,
-                initial: (fullName[0] || 'S').toUpperCase(),
-                age: typeof loc.age === 'number' ? loc.age : 6,
-                program: loc.program || loc.programType || 'Regular',
-                program_type: loc.program_type || 'regular',
-                therapist:
-                  loc.assignedTherapist || loc.therapist || clinician?.name || 'Assigned Clinician',
-                status: loc.status || 'in_assessment',
-                score: 0,
-                completed_modules: 0,
-                last_assessment_activity_at: new Date().toISOString(),
-                last_activity_display: 'Today',
-                days_since_last_activity: 0,
-                has_stale_draft: false,
-                stale_days: 0,
-                status_dot: 'gray',
-                modules: {
-                  skills: {
-                    status: 'Not Started',
-                    progress_percentage: 0,
-                    label: 'Skills (ABLLS-R)',
-                    subtitle: 'Basic Language & Learning Skills',
-                  },
-                  behavior: {
-                    status: 'Not Started',
-                    progress_percentage: 0,
-                    label: 'Behavior (MASS / FAST / ABC)',
-                    subtitle: 'Functional Behavior Tracking',
-                  },
-                  preference: {
-                    status: 'Not Started',
-                    progress_percentage: 0,
-                    label: 'Preference',
-                    subtitle: 'Reinforcer Hierarchy Assessment',
-                  },
-                  sensory: {
-                    status: 'Not Started',
-                    progress_percentage: 0,
-                    label: 'Sensory Time Engagement',
-                    subtitle: 'Sensory Modulation & Regulation',
-                  },
-                },
-                ablls: { status: 'Not Started', progress: 0 },
-                behavior: { status: 'Not Started', progress: 0 },
-                preference: { status: 'Not Started', progress: 0 },
-                sensory: { status: 'Not Started', progress: 0 },
-              });
+            const isTeacher1 = clinicianLower.includes('one') || clinicianLower.includes('1');
+            const isTeacher2 = clinicianLower.includes('two') || clinicianLower.includes('2');
+            const isTeacher3 = clinicianLower.includes('three') || clinicianLower.includes('3');
+
+            const isAssigned1 = assigned.includes('one') || assigned.includes('1');
+            const isAssigned2 = assigned.includes('two') || assigned.includes('2');
+            const isAssigned3 = assigned.includes('three') || assigned.includes('3');
+
+            let matchesTeacher = false;
+            if (isTeacher1) {
+              matchesTeacher = isAssigned1 || assigned === clinicianLower;
+            } else if (isTeacher2) {
+              matchesTeacher = isAssigned2 || assigned === clinicianLower;
+            } else if (isTeacher3) {
+              matchesTeacher = isAssigned3 || assigned === clinicianLower;
+            } else if (clinicianLower) {
+              matchesTeacher =
+                assigned.includes(clinicianLower) || clinicianLower.includes(assigned);
             }
+
+            if (!matchesTeacher) return;
+
+            // Check if assessment is already completed / submitted or student has transitioned
+            const registered = getRegisteredStudentStatus(locId);
+            const currentStatus = String(
+              registered?.status || registered?.rawStatus || loc.status || '',
+            ).toLowerCase();
+            const isComplete =
+              isStoredAssessmentCompleted(locId) ||
+              currentStatus === 'assessment_complete' ||
+              currentStatus === 'ready_for_iup' ||
+              currentStatus === 'active_therapy' ||
+              currentStatus === 'active';
+
+            if (isComplete) return;
+            const fullName =
+              loc.fullName ||
+              `${loc.firstName || ''} ${loc.lastName || ''}`.trim() ||
+              'New Student';
+            backendStudents.push({
+              id: locId,
+              fullName,
+              name: fullName,
+              initial: (fullName[0] || 'S').toUpperCase(),
+              age: typeof loc.age === 'number' ? loc.age : 6,
+              program: loc.program || loc.programType || 'Regular',
+              program_type: loc.program_type || 'regular',
+              therapist:
+                loc.assignedTherapist || loc.therapist || clinician?.name || 'Assigned Clinician',
+              status: loc.status || 'in_assessment',
+              score: 0,
+              completed_modules: 0,
+              last_assessment_activity_at: new Date().toISOString(),
+              last_activity_display: 'Today',
+              days_since_last_activity: 0,
+              has_stale_draft: false,
+              stale_days: 0,
+              status_dot: 'gray',
+              modules: {
+                skills: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Skills (ABLLS-R)',
+                  subtitle: 'Basic Language & Learning Skills',
+                },
+                behavior: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Behavior (MASS / FAST / ABC)',
+                  subtitle: 'Functional Behavior Tracking',
+                },
+                preference: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Preference',
+                  subtitle: 'Reinforcer Hierarchy Assessment',
+                },
+                sensory: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Sensory Time Engagement',
+                  subtitle: 'Sensory Modulation & Regulation',
+                },
+              },
+              ablls: { status: 'Not Started', progress: 0 },
+              behavior: { status: 'Not Started', progress: 0 },
+              preference: { status: 'Not Started', progress: 0 },
+              sensory: { status: 'Not Started', progress: 0 },
+            });
           });
         }
       }

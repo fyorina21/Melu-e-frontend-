@@ -10,6 +10,8 @@ import {
 import { filterOutDeletedStaff, isStaffDeleted } from '../utils/deletedStaffHelper';
 import { isUserDirectorOrAdmin, isUserProgramDirector } from './token';
 import { secureRandomInt } from '../utils/cryptoRandom';
+import { isStoredAssessmentCompleted } from '../utils/studentLifecycleHelper';
+import { unprotectStoragePayload } from '../utils/sensitiveDataSanitizer';
 
 // ============================================================================
 // Storage Keys
@@ -725,13 +727,97 @@ export const getAssessmentsForReview = async (
   const reviewedMap = getStoredReviewedMap();
 
   if (rawList.length > 0) {
-    const merged = rawList.map((item: any) => {
-      const sId = String(item.studentId || item.student_id || item.id);
-      if (reviewedMap[sId]?.reviewed) {
-        return { ...item, status: 'Reviewed', reviewNotes: reviewedMap[sId].notes };
+    const studentMap = new Map<string, any>();
+
+    for (const item of rawList) {
+      const sId = String(item.studentId || item.student_id || item.id || '');
+      if (!sId) continue;
+
+      const isRev = Boolean(reviewedMap[sId]?.reviewed);
+      const isCompLocally = isStoredAssessmentCompleted(sId);
+      const rawStatus = String(item.status || '')
+        .toLowerCase()
+        .trim();
+      const isComplete =
+        isRev ||
+        isCompLocally ||
+        rawStatus === 'complete' ||
+        rawStatus === 'completed' ||
+        rawStatus === 'reviewed';
+      const effectiveStatus = isRev
+        ? 'Reviewed'
+        : isComplete
+          ? 'Complete'
+          : rawStatus === 'in_progress' || rawStatus === 'inprogress'
+            ? 'In Progress'
+            : item.status || 'Not Started';
+
+      const enriched = {
+        ...item,
+        status: effectiveStatus,
+        abllsPct: isComplete && (!item.abllsPct || item.abllsPct === 0) ? 100 : item.abllsPct,
+        dateCompleted:
+          item.dateCompleted ||
+          item.completed_at ||
+          (isComplete ? new Date().toISOString().split('T')[0] : null),
+        reviewNotes: reviewedMap[sId]?.notes || item.reviewNotes || '',
+      };
+
+      const existing = studentMap.get(sId);
+      if (!existing) {
+        studentMap.set(sId, enriched);
+      } else {
+        const priority = (s: string) =>
+          s === 'Reviewed' ? 4 : s === 'Complete' ? 3 : s === 'In Progress' ? 2 : 1;
+        if (priority(enriched.status) > priority(existing.status)) {
+          studentMap.set(sId, enriched);
+        }
       }
-      return item;
-    });
+    }
+
+    // Merge any locally enrolled students that aren't in backend yet
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const rawCache = localStorage.getItem('melue_enrolled_students_cache');
+        if (rawCache) {
+          const decoded = unprotectStoragePayload(rawCache) || rawCache;
+          const localEnrolled: any[] = JSON.parse(decoded);
+          if (Array.isArray(localEnrolled)) {
+            localEnrolled.forEach((loc) => {
+              if (!loc || !loc.id) return;
+              const locId = String(loc.id);
+              if (studentMap.has(locId)) return;
+              const isRev = Boolean(reviewedMap[locId]?.reviewed);
+              const isComp =
+                isRev || isStoredAssessmentCompleted(locId) || loc.status === 'assessment_complete';
+              const fullName =
+                loc.fullName ||
+                `${loc.firstName || ''} ${loc.lastName || ''}`.trim() ||
+                'New Student';
+              studentMap.set(locId, {
+                id: locId,
+                studentId: locId,
+                student_id: locId,
+                studentName: fullName,
+                student_name: fullName,
+                age: typeof loc.age === 'number' ? loc.age : 6,
+                program: loc.program || loc.programType || 'Regular',
+                therapyGroup: loc.therapyGroup || 'Station 1 · Early Learners',
+                therapist: loc.assignedTherapist || loc.therapist || 'Assigned Clinician',
+                status: isRev ? 'Reviewed' : isComp ? 'Complete' : 'In Progress',
+                abllsPct: isRev ? 100 : isComp ? 100 : 0,
+                behaviorStatus: isComp ? 'completed' : 'notStarted',
+                sessionStatus: isComp ? 'assigned' : 'pending',
+                dateCompleted: isComp ? new Date().toISOString().split('T')[0] : null,
+                reviewNotes: reviewedMap[locId]?.notes || '',
+              });
+            });
+          }
+        }
+      }
+    } catch {}
+
+    const merged = Array.from(studentMap.values());
     return { data: merged, assessments: merged };
   }
 
