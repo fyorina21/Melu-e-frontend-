@@ -634,8 +634,8 @@ export default function BehaviorAssessmentScreen({ navigation, route }: Props) {
 
     const isPartial = totalAnswered < totalPossible;
     const message = isPartial
-      ? `You have answered ${totalAnswered} questions across ${targetBehaviors.length} target behavior(s). Questions left blank will be recorded as not applicable. Would you like to submit the assessment for clinical review?`
-      : 'This will mark all target behavior questionnaires as completed and submit the assessment for Program Director review.';
+      ? `You have answered ${totalAnswered} questions across ${targetBehaviors.length} target behavior(s). Questions left blank will be recorded as not applicable.\n\nAre you sure you want to submit? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.`
+      : 'Are you sure you want to submit the Behavior Assessment? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.';
 
     confirmAction({
       title: 'Submit Behavior Assessment?',

@@ -22,6 +22,7 @@ import {
 } from '../../api/teacherExtrasApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import type { SessionStackParamList } from '../../types';
 
 export interface TrialRecord {
@@ -437,6 +438,18 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
   // Save / Submit Assessment Handler
   const handleSave = async (targetStatus: 'draft' | 'submitted') => {
+    if (targetStatus === 'submitted') {
+      confirmAction({
+        title: 'Submit Preference Assessment?',
+        message:
+          'Are you sure you want to submit the Preference Assessment? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.',
+        confirmLabel: 'Submit Assessment',
+        onConfirm: async () => {
+          await performSave('submitted');
+        },
+      });
+      return;
+    }
     await performSave(targetStatus);
   };
 

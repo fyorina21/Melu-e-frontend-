@@ -14,6 +14,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { useTeacherAssessments } from './useTeacherAssessments';
 import { AssessmentKpiStrip } from './components/AssessmentKpiStrip';
@@ -29,6 +31,7 @@ type Props = NativeStackScreenProps<SessionStackParamList, 'AssessmentDashboard'
 export default function AssessmentDashboardScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
   const isTabletOrDesktop = width >= 640;
+  const { showToast } = useToast();
 
   const { data, loading, error, refetch, submittingStudentId, submitStudentAssessments } =
     useTeacherAssessments();
@@ -57,27 +60,22 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
   };
 
   const handleSubmitForReview = (student: StudentAssessmentItem) => {
-    Alert.alert(
-      'Submit Assessments for Review?',
-      `Are you sure you want to submit all 4 completed assessments for ${student.fullName} to the Program Director?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Submit for Review',
-          onPress: async () => {
-            const success = await submitStudentAssessments(student);
-            if (success) {
-              Alert.alert(
-                'Submitted for Review',
-                `${student.fullName}'s assessments have been submitted to the Program Director Review queue (SCR-PD-002).`,
-              );
-            } else {
-              Alert.alert('Error', 'Failed to submit assessments for review. Please try again.');
-            }
-          },
-        },
-      ],
-    );
+    confirmAction({
+      title: 'Submit Final Assessment for Clinical Review',
+      message: `Are you sure you want to finalize and submit all 4 completed assessments for ${student.fullName}? The entire assessment file is complete now and will be transferred to the Program Director for clinical review (SCR-PD-002).`,
+      confirmLabel: 'Submit for Review',
+      onConfirm: async () => {
+        const success = await submitStudentAssessments(student);
+        if (success) {
+          showToast(
+            `${student.fullName}'s assessment file is complete now and has been submitted for Program Director review.`,
+            'success',
+          );
+        } else {
+          showToast('Failed to submit assessments for review. Please try again.', 'error');
+        }
+      },
+    });
   };
 
   return (

@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import {
   getTeacherStudentProfile,
   saveSocialSkillsAssessment,
@@ -158,22 +159,34 @@ export default function SocialSkillsAssessmentScreen({ route, navigation }: Prop
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await saveSocialSkillsAssessment(studentId, {
-        scores,
-        customValues,
-        percent,
-        status: 'submitted',
-      });
-      showToast(`Social Skills Questionnaire submitted (${percent}%)`, 'success');
-      navigation?.goBack?.();
-    } catch (err) {
-      showToast('Failed to save questionnaire', 'error');
-    } finally {
-      setSaving(false);
-    }
+  const handleSave = () => {
+    confirmAction({
+      title: 'Submit Social Skills Assessment?',
+      message:
+        'Are you sure you want to submit the Social Skills Assessment? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.',
+      confirmLabel: 'Submit Questionnaire',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await saveSocialSkillsAssessment(studentId, {
+            scores,
+            customValues,
+            percent,
+            status: 'submitted',
+          });
+          showToast(`Social Skills Questionnaire submitted (${percent}%)`, 'success');
+          if (navigation?.navigate) {
+            navigation.navigate('AssessmentDashboard' as never);
+          } else {
+            navigation?.goBack?.();
+          }
+        } catch (err) {
+          showToast('Failed to save questionnaire', 'error');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   return (

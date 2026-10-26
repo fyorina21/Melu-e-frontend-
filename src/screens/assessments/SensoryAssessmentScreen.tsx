@@ -17,6 +17,7 @@ import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import {
   saveSensoryAssessment,
   getTeacherStudentProfile,
@@ -177,7 +178,7 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
   const countReaction = (reaction: ResponseReaction) =>
     activities.filter((a) => a.responseReaction === reaction).length;
 
-  const handleSave = async (status: 'draft' | 'submitted') => {
+  const performSaveSensory = async (status: 'draft' | 'submitted') => {
     try {
       const isSubmitting = status === 'submitted';
       const progress = isSubmitting ? 100 : progressPercent;
@@ -200,6 +201,22 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
     } catch {
       showToast('Failed to save sensory assessment.', 'error');
     }
+  };
+
+  const handleSave = async (status: 'draft' | 'submitted') => {
+    if (status === 'submitted') {
+      confirmAction({
+        title: 'Submit Sensory Assessment?',
+        message:
+          'Are you sure you want to submit the Sensory Profile Assessment? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.',
+        confirmLabel: 'Submit Assessment',
+        onConfirm: async () => {
+          await performSaveSensory('submitted');
+        },
+      });
+      return;
+    }
+    await performSaveSensory(status);
   };
 
   return (

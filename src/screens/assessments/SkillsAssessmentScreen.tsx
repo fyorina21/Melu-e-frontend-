@@ -17,6 +17,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import {
   getSkillsAssessment,
@@ -304,39 +305,46 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleSubmitAssessment = async () => {
-    try {
-      setSaving(true);
-      const status = 'submitted';
-      const progress = 100;
-      saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
-      const aliasSid =
-        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
-      if (aliasSid) {
-        saveStorageAssessment(aliasSid, { scores, notes, customFields, progress, status });
-      }
-      const formattedResponses = Object.entries(scores).map(([k, v]) => ({
-        skill_item_id: k,
-        score: String(v),
-        note: notes[k] || undefined,
-      }));
-      const targetId = assessmentId || studentId;
-      await bulkSaveAbllsResponses(targetId, {
-        responses: formattedResponses,
-        scores,
-        notes,
-      });
-      await saveSkillsAssessment(studentId, { scores, notes, customFields, status, progress });
-      if (aliasSid) {
-        await saveSkillsAssessment(aliasSid, { scores, notes, customFields, status, progress });
-      }
-      showToast(`${studentName} ABLLS Skills Assessment submitted successfully!`, 'success');
-      navigation?.navigate?.('AssessmentDashboard' as never);
-    } catch (err) {
-      showToast('Failed to submit skills assessment', 'error');
-    } finally {
-      setSaving(false);
-    }
+  const handleSubmitAssessment = () => {
+    confirmAction({
+      title: 'Submit ABLLS Skills Assessment?',
+      message: `Are you sure you want to submit the ABLLS Skills Assessment for ${studentName}? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.`,
+      confirmLabel: 'Submit Assessment',
+      onConfirm: async () => {
+        try {
+          setSaving(true);
+          const status = 'submitted';
+          const progress = 100;
+          saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
+          const aliasSid =
+            studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          if (aliasSid) {
+            saveStorageAssessment(aliasSid, { scores, notes, customFields, progress, status });
+          }
+          const formattedResponses = Object.entries(scores).map(([k, v]) => ({
+            skill_item_id: k,
+            score: String(v),
+            note: notes[k] || undefined,
+          }));
+          const targetId = assessmentId || studentId;
+          await bulkSaveAbllsResponses(targetId, {
+            responses: formattedResponses,
+            scores,
+            notes,
+          });
+          await saveSkillsAssessment(studentId, { scores, notes, customFields, status, progress });
+          if (aliasSid) {
+            await saveSkillsAssessment(aliasSid, { scores, notes, customFields, status, progress });
+          }
+          showToast(`${studentName} ABLLS Skills Assessment submitted successfully!`, 'success');
+          navigation?.navigate?.('AssessmentDashboard' as never);
+        } catch (err) {
+          showToast('Failed to submit skills assessment', 'error');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const openNeedMap = async () => {
