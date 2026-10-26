@@ -31,6 +31,7 @@ import {
   type ClinicalReportPayload,
 } from '../../utils/clinicalAssessmentPdfGenerator';
 import { openPrintWindow, downloadTextFile, isWeb } from '../../utils/webExport';
+import { AssessmentAnalyticsVisuals } from './summaryreport/components';
 
 function formatMMSS(totalSec?: number): string {
   const s = Math.max(0, Number(totalSec) || 0);
@@ -767,6 +768,21 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
               </TouchableOpacity>
             ))}
           </ScrollView>
+
+          {/* Extended Clinical Visual Analytics & Graphs (All 4 Assessments) */}
+          <AssessmentAnalyticsVisuals
+            skills={skills}
+            behavior={behavior}
+            preferences={preferences}
+            sensory={sensory}
+            masRows={masRows}
+            fastRows={fastRows}
+            highestPrefs={highestPrefs}
+            moderatePrefs={moderatePrefs}
+            lowPrefs={lowPrefs}
+            sensoryActivities={sensoryActivities}
+            onNavigateToSection={(sec) => setActiveSubTab(sec)}
+          />
 
           {/* ================= SECTION 1: ABLLS-R SKILLS ================= */}
           {(activeSubTab === 'all' || activeSubTab === 'ablls') && (

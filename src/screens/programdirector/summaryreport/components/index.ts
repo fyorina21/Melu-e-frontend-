@@ -8,3 +8,4 @@ export { BehaviorSummaryCard } from './BehaviorSummaryCard';
 export { PreferenceSummaryCard } from './PreferenceSummaryCard';
 export { SensorySummaryCard } from './SensorySummaryCard';
 export { SocialSkillsSummaryCard } from './SocialSkillsSummaryCard';
+export { AssessmentAnalyticsVisuals } from './AssessmentAnalyticsVisuals';
