@@ -3,14 +3,21 @@ import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
-import { getEnrollmentDraft } from '../utils/enrollmentDraftHelper';
+import { getEnrollmentDraft, saveEnrollmentDraft } from '../utils/enrollmentDraftHelper';
+import { registerStudentStatuses } from '../utils/studentLifecycleHelper';
+import { saveStudentPhoto } from '../utils/studentPhotoHelper';
 import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
 import {
   DEMOGRAPHIC_KEY,
   getStudentDemographic,
   maskSensitiveDemographic,
 } from '../utils/sensitiveDataSanitizer';
-export { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from './optionsApi';
+export {
+  getProgramOptions,
+  getTherapyGroupOptions,
+  getStatusOptions,
+  getTherapyStatusOptions,
+} from './optionsApi';
 
 // ============================================================================
 // Storage Keys
@@ -163,7 +170,7 @@ const DEFAULT_RESOURCES = [
 ];
 
 // Helper to access custom enrolled students in storage
-function getStoredEnrolledStudents(): any[] {
+export function getStoredEnrolledStudents(): any[] {
   const rawList = storage.getJSONSync<any[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
   return rawList.map((s) => ({
     ...s,
@@ -171,18 +178,101 @@ function getStoredEnrolledStudents(): any[] {
   }));
 }
 
-function saveEnrolledStudentLocally(student: any): void {
+export function saveOrUpdateEnrolledStudentLocally(studentId: string, studentData: any): any {
   try {
     const list = getStoredEnrolledStudents();
-    const cleanStudent = { ...student };
+    const cleanStudent = { ...studentData };
     delete cleanStudent[DEMOGRAPHIC_KEY];
     delete cleanStudent['gender'];
     delete cleanStudent['f_gender'];
     delete cleanStudent['enr_gender'];
-    cleanStudent.demographic = getStudentDemographic(student, 'Female');
-    list.unshift(cleanStudent);
+    cleanStudent.demographic = getStudentDemographic(studentData, 'Female');
+
+    const normId = (studentId || '').toLowerCase().trim();
+    const normSid = String(cleanStudent.studentId || cleanStudent.student_id || '')
+      .toLowerCase()
+      .trim();
+    const normName = String(cleanStudent.fullName || cleanStudent.name || '')
+      .toLowerCase()
+      .trim();
+
+    const idx = list.findIndex((s) => {
+      const sId = String(s.id || '')
+        .toLowerCase()
+        .trim();
+      const sSid = String(s.studentId || s.student_id || '')
+        .toLowerCase()
+        .trim();
+      const sName = String(s.fullName || s.name || '')
+        .toLowerCase()
+        .trim();
+      return (
+        (normId && (sId === normId || sSid === normId)) ||
+        (normSid && (sId === normSid || sSid === normSid)) ||
+        (normName && sName === normName)
+      );
+    });
+
+    let merged: any;
+    if (idx >= 0) {
+      merged = {
+        ...list[idx],
+        ...cleanStudent,
+        id: list[idx].id || studentId || cleanStudent.id,
+        studentId:
+          list[idx].studentId ||
+          list[idx].student_id ||
+          cleanStudent.studentId ||
+          cleanStudent.student_id ||
+          studentId,
+        student_id:
+          list[idx].student_id ||
+          list[idx].studentId ||
+          cleanStudent.student_id ||
+          cleanStudent.studentId ||
+          studentId,
+        customFields: {
+          ...(list[idx].customFields || list[idx].custom_fields || {}),
+          ...(cleanStudent.customFields ||
+            cleanStudent.custom_fields ||
+            cleanStudent.formValues ||
+            {}),
+        },
+        custom_fields: {
+          ...(list[idx].custom_fields || list[idx].customFields || {}),
+          ...(cleanStudent.custom_fields ||
+            cleanStudent.customFields ||
+            cleanStudent.formValues ||
+            {}),
+        },
+      };
+      list[idx] = merged;
+    } else {
+      merged = {
+        id: studentId || cleanStudent.id || `stu-${Date.now()}`,
+        studentId: cleanStudent.studentId || cleanStudent.student_id || studentId,
+        student_id: cleanStudent.student_id || cleanStudent.studentId || studentId,
+        ...cleanStudent,
+      };
+      list.unshift(merged);
+    }
+
     storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
-  } catch {}
+
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('melue_enrolled_students_changed', { detail: merged }));
+      window.dispatchEvent(new CustomEvent('melue_student_profile_updated', { detail: merged }));
+    }
+
+    return merged;
+  } catch {
+    return studentData;
+  }
+}
+
+export function saveEnrolledStudentLocally(student: any): void {
+  const sid = student?.id || student?.studentId || student?.student_id || '';
+  saveOrUpdateEnrolledStudentLocally(sid, student);
 }
 
 function getStoredSummaryStatusMap(): Record<string, 'approved' | 'revision-required' | 'pending'> {
@@ -1301,6 +1391,11 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
       therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
       therapist: String(s.therapist || 'Abeba Tadesse'),
       status: s.status === 'inactive' ? 'inactive' : 'active',
+      rawStatus: s.rawStatus || s.raw_status || s.status,
+      raw_status: s.raw_status || s.rawStatus || s.status,
+      therapyStatus: s.therapyStatus || s.therapy_status || s.rawStatus || s.raw_status || s.status,
+      therapy_status:
+        s.therapy_status || s.therapyStatus || s.raw_status || s.rawStatus || s.status,
       headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
     };
   });
@@ -1322,8 +1417,9 @@ export const createStudentEnrollment = async (payload: Payload): Promise<{ data:
     age: Number(payload.age || 6),
     programType: payload.program || payload.programType || 'Comprehensive ABA',
     therapyGroup: payload.therapyGroup || 'Station 1 · Early Learners',
-    therapist: payload.therapist || 'Abeba Tadesse',
-    status: 'active',
+    therapist: payload.therapist || payload.assignedTherapist || 'Teacher Two',
+    status: payload.status || 'in_assessment',
+    enrollment_status: payload.enrollment_status || 'in_assessment',
     ...payload,
     [DEMOGRAPHIC_KEY]: getStudentDemographic(payload, 'Female'),
   };
@@ -1486,40 +1582,160 @@ export const getStudentProfile = async (studentId: string): Promise<{ data: any 
       storedMatch.student_id ||
       (String(storedMatch.id).startsWith('MEL-') ? storedMatch.id : '') ||
       studentId;
+    const full = storedMatch.fullName || storedMatch.name || 'Student Profile';
+    const first =
+      storedMatch.firstName ||
+      storedMatch.first_name ||
+      storedMatch.childFirstName ||
+      storedMatch.enr_first_name ||
+      full.split(' ')[0] ||
+      'Student';
+    const last =
+      storedMatch.lastName ||
+      storedMatch.last_name ||
+      storedMatch.childLastName ||
+      storedMatch.enr_last_name ||
+      full.split(' ').slice(1).join(' ') ||
+      '';
+    const middle =
+      storedMatch.middleName ||
+      storedMatch.middle_name ||
+      storedMatch.childMiddleName ||
+      storedMatch.enr_middle_name ||
+      '';
+    const dob =
+      storedMatch.dateOfBirth ||
+      storedMatch.date_of_birth ||
+      storedMatch.dob ||
+      storedMatch.enr_dob ||
+      '2020-01-01';
+    const customFieldsObj = {
+      ...(storedMatch.customFields || {}),
+      ...(storedMatch.custom_fields || {}),
+      ...(storedMatch.formValues || {}),
+    };
+
     return {
       data: {
+        ...storedMatch,
         id: storedMatch.id || studentId,
         studentId: sid,
         student_id: sid,
-        fullName: storedMatch.fullName || storedMatch.name || 'Student Profile',
-        firstName: (storedMatch.fullName || storedMatch.name || 'Student').split(' ')[0],
-        lastName: (storedMatch.fullName || storedMatch.name || '').split(' ').slice(1).join(' '),
-        dateOfBirth: storedMatch.dateOfBirth || storedMatch.date_of_birth || '2020-01-01',
+        fullName: full,
+        name: full,
+        firstName: first,
+        first_name: first,
+        lastName: last,
+        last_name: last,
+        middleName: middle,
+        middle_name: middle,
+        dateOfBirth: dob,
+        date_of_birth: dob,
+        dob: dob,
         age: storedMatch.age || 6,
-        programType: storedMatch.programType || storedMatch.program || 'Regular Morning',
-        therapyGroup: storedMatch.therapyGroup || 'Basic',
-        status: storedMatch.status || 'active',
-        headshotUrl: storedMatch.headshotUrl || storedMatch.photoUrl || null,
-        photoUrl: storedMatch.photoUrl || storedMatch.headshotUrl || null,
-        photo: storedMatch.photo || storedMatch.photoUrl || null,
-        currentFocusStudentGoalId: 'g-1',
-        goals: Array.isArray(storedMatch.goals)
-          ? storedMatch.goals
-          : [
-              {
-                id: 'g-1',
-                name: 'Receptive Identification of Common Objects',
-                status: 'In Progress',
-                progressPercent: 85,
-              },
-              {
-                id: 'g-2',
-                name: 'Independent Manding with Vocal Approximation',
-                status: 'In Progress',
-                progressPercent: 70,
-              },
-            ],
-        customFields: storedMatch.customFields || storedMatch.custom_fields || {},
+        programType:
+          storedMatch.programType ||
+          storedMatch.program ||
+          storedMatch.enr_program_type ||
+          'Regular Morning',
+        program: storedMatch.program || storedMatch.programType || 'Regular Morning',
+        therapyGroup: storedMatch.therapyGroup || storedMatch.enr_therapy_group || 'Basic',
+        status: storedMatch.status || storedMatch.enrollment_status || 'active',
+        enrollment_status: storedMatch.enrollment_status || storedMatch.status || 'active',
+        therapist:
+          storedMatch.therapist ||
+          storedMatch.assignedTherapist ||
+          storedMatch.f_therapist ||
+          'Unassigned',
+        assignedTherapist: storedMatch.assignedTherapist || storedMatch.therapist || 'Unassigned',
+        guardianName:
+          storedMatch.guardianName ||
+          storedMatch.guardian_name ||
+          storedMatch.parentName ||
+          storedMatch.enr_guardian_name ||
+          '',
+        guardian_name:
+          storedMatch.guardian_name || storedMatch.guardianName || storedMatch.parentName || '',
+        guardianPhone:
+          storedMatch.guardianPhone ||
+          storedMatch.guardian_phone ||
+          storedMatch.parentPhone ||
+          storedMatch.enr_guardian_phone ||
+          '',
+        guardian_phone:
+          storedMatch.guardian_phone || storedMatch.guardianPhone || storedMatch.parentPhone || '',
+        guardianEmail:
+          storedMatch.guardianEmail ||
+          storedMatch.guardian_email ||
+          storedMatch.parentEmail ||
+          storedMatch.enr_guardian_email ||
+          '',
+        guardian_email:
+          storedMatch.guardian_email || storedMatch.guardianEmail || storedMatch.parentEmail || '',
+        guardianRelationship:
+          storedMatch.guardianRelationship ||
+          storedMatch.guardian_relationship ||
+          storedMatch.enr_guardian_relationship ||
+          'Mother',
+        emergencyContact:
+          storedMatch.emergencyContact ||
+          storedMatch.emergency_contact ||
+          storedMatch.enr_emergency_contact ||
+          '',
+        emergency_contact: storedMatch.emergency_contact || storedMatch.emergencyContact || '',
+        householdStructure: storedMatch.householdStructure || storedMatch.enr_household || '',
+        diagnosis: storedMatch.diagnosis || storedMatch.enr_diagnosis || 'Autism Spectrum Disorder',
+        diagnosisDate:
+          storedMatch.diagnosisDate ||
+          storedMatch.diagnosis_date ||
+          storedMatch.enr_diagnosis_date ||
+          '',
+        medicalNotes:
+          storedMatch.medicalNotes ||
+          storedMatch.medical_notes ||
+          storedMatch.enr_medical_restrictions ||
+          '',
+        developmentalHistory:
+          storedMatch.developmentalHistory ||
+          storedMatch.dev_history ||
+          storedMatch.enr_dev_history ||
+          '',
+        transportation:
+          storedMatch.transportation ||
+          storedMatch.transportation_required ||
+          storedMatch.f8 ||
+          'No',
+        reinforcerVisual: storedMatch.reinforcerVisual || storedMatch.enr_reinforcer_visual || '',
+        reinforcerAuditory:
+          storedMatch.reinforcerAuditory || storedMatch.enr_reinforcer_auditory || '',
+        reinforcerTactile:
+          storedMatch.reinforcerTactile || storedMatch.enr_reinforcer_tactile || '',
+        reinforcerKinetic:
+          storedMatch.reinforcerKinetic || storedMatch.enr_reinforcer_kinetic || '',
+        headshotUrl: storedMatch.headshotUrl || storedMatch.photoUrl || storedMatch.photo || null,
+        photoUrl: storedMatch.photoUrl || storedMatch.headshotUrl || storedMatch.photo || null,
+        photo: storedMatch.photo || storedMatch.photoUrl || storedMatch.headshotUrl || null,
+        currentFocusStudentGoalId: storedMatch.currentFocusStudentGoalId || 'g-1',
+        goals:
+          Array.isArray(storedMatch.goals) && storedMatch.goals.length > 0
+            ? storedMatch.goals
+            : [
+                {
+                  id: 'g-1',
+                  name: 'Receptive Identification of Common Objects',
+                  status: 'In Progress',
+                  progressPercent: 85,
+                },
+                {
+                  id: 'g-2',
+                  name: 'Independent Manding with Vocal Approximation',
+                  status: 'In Progress',
+                  progressPercent: 70,
+                },
+              ],
+        customFields: customFieldsObj,
+        custom_fields: customFieldsObj,
+        formValues: customFieldsObj,
       },
     };
   }
@@ -1585,12 +1801,100 @@ export const updateStudentProfile = async (
   studentId: string,
   payload: Payload,
 ): Promise<{ data: any }> => {
+  let backendResult: any = null;
   try {
     const res = await client.patch(`/coordinator/students/${studentId}/profile`, payload);
-    if (res?.data) return res;
+    if (res?.data) {
+      backendResult = res.data;
+    }
   } catch {}
 
-  return { data: { id: studentId, ...payload } };
+  // Always update local cache & drafts so changes persist reliably even if backend is 404 or offline
+  const updatedLocal = saveOrUpdateEnrolledStudentLocally(studentId, {
+    ...(backendResult?.student || backendResult?.data || {}),
+    ...payload,
+  });
+
+  // Also update draft if one exists
+  try {
+    const draft = getEnrollmentDraft(studentId);
+    if (draft) {
+      const mergedFormValues: Record<string, any> = {
+        ...(draft.formValues || {}),
+        ...payload,
+      };
+      if (payload.firstName) {
+        mergedFormValues.enr_first_name = payload.firstName;
+        mergedFormValues.firstName = payload.firstName;
+        mergedFormValues.first_name = payload.firstName;
+      }
+      if (payload.lastName) {
+        mergedFormValues.enr_last_name = payload.lastName;
+        mergedFormValues.lastName = payload.lastName;
+        mergedFormValues.last_name = payload.lastName;
+      }
+      if (payload.fullName) {
+        mergedFormValues.f1 = payload.fullName;
+        mergedFormValues.fullName = payload.fullName;
+        mergedFormValues.name = payload.fullName;
+      }
+      if (payload.therapist) {
+        mergedFormValues.f_therapist = payload.therapist;
+        mergedFormValues.therapist = payload.therapist;
+        mergedFormValues.assignedTherapist = payload.therapist;
+      }
+      saveEnrollmentDraft(
+        mergedFormValues,
+        draft.step || 0,
+        studentId,
+        draft.currentStep || (draft as any).stepName,
+      );
+    }
+  } catch {}
+
+  // Update student status registry
+  try {
+    const statusVal = String(payload.status || payload.enrollment_status || '');
+    const nameVal = String(
+      payload.fullName || payload.name || `${payload.firstName || ''} ${payload.lastName || ''}`,
+    ).trim();
+    if (statusVal) {
+      registerStudentStatuses([
+        {
+          id: studentId,
+          name: nameVal || 'Student',
+          fullName: nameVal || 'Student',
+          status: statusVal,
+          rawStatus: statusVal,
+        },
+      ]);
+    }
+  } catch {}
+
+  // Sync photo helper
+  try {
+    const photo = payload.headshot || payload.photo || payload.photoUrl || payload.photoBase64;
+    const nameVal = String(
+      payload.fullName || payload.name || `${payload.firstName || ''} ${payload.lastName || ''}`,
+    ).trim();
+    if (photo && typeof photo === 'string') {
+      saveStudentPhoto({
+        id: studentId,
+        name: nameVal,
+        fullName: nameVal,
+        photo,
+      });
+    }
+  } catch {}
+
+  return {
+    data: {
+      id: studentId,
+      ...(backendResult?.student || backendResult?.data || {}),
+      ...updatedLocal,
+      ...payload,
+    },
+  };
 };
 
 // ============================================================================

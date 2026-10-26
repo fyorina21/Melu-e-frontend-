@@ -17,7 +17,12 @@ import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { getEnrollmentStudents } from '../../api/coordinatorApi';
-import { getProgramOptions, getTherapyGroupOptions, getStatusOptions } from '../../api/optionsApi';
+import {
+  getProgramOptions,
+  getTherapyGroupOptions,
+  getStatusOptions,
+  getTherapyStatusOptions,
+} from '../../api/optionsApi';
 import {
   resolveStudentStatus,
   toggleStudentStatus,
@@ -28,6 +33,7 @@ import {
   deleteEnrollmentDraft,
   onEnrollmentDraftsChanged,
 } from '../../utils/enrollmentDraftHelper';
+import { resolveStudentTherapyStatus } from '../../utils/studentLifecycleHelper';
 import { getStudentDemographic } from '../../utils/sensitiveDataSanitizer';
 import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
@@ -42,6 +48,7 @@ export interface EnrolledStudent {
   therapist: string;
   diagnosis: string;
   status: 'Active' | 'Inactive' | 'Draft';
+  therapyStatus: string;
   studentId: string;
   photoUrl?: string | null;
   isDraft?: boolean;
@@ -57,6 +64,10 @@ interface EnrollmentStudentRow {
   therapyGroup: string;
   therapist?: string;
   status: string;
+  rawStatus?: string;
+  raw_status?: string;
+  therapyStatus?: string;
+  therapy_status?: string;
   headshotUrl?: string | null;
   photoUrl?: string | null;
   photo?: string | null;
@@ -64,17 +75,51 @@ interface EnrollmentStudentRow {
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollment'>;
 
+function getTherapyStatusStyle(status?: string): { bg: string; border: string; text: string } {
+  switch (status?.toLowerCase()) {
+    case 'in session':
+    case 'active therapy':
+      return { bg: '#E8F5E9', border: '#81C784', text: '#2E7D32' };
+    case 'in assessment':
+      return { bg: '#E1F5FE', border: '#4FC3F7', text: '#0277BD' };
+    case 'assessment complete':
+    case 'ready for iup':
+      return { bg: '#FFF8E1', border: '#FFD54F', text: '#F57F17' };
+    case 'iup ready':
+      return { bg: '#EDE7F6', border: '#B39DDB', text: '#512DA8' };
+    case 'draft':
+      return { bg: '#FEF3C7', border: '#F59E0B', text: '#B45309' };
+    case 'discharged':
+    case 'withdrawn':
+    case 'archived':
+    case 'inactive':
+      return { bg: '#F5F5F5', border: '#BDBDBD', text: '#616161' };
+    case 'not started':
+    default:
+      return { bg: '#F3E5F5', border: '#CE93D8', text: '#7B1FA2' };
+  }
+}
+
 export default function StudentEnrollmentScreen({ navigation }: Props) {
   const [students, setStudents] = useState<EnrolledStudent[]>([]);
   const [search, setSearch] = useState('');
   const [programFilter, setProgramFilter] = useState('All');
   const [therapyGroupFilter, setTherapyGroupFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [therapyStatusFilter, setTherapyStatusFilter] = useState('All');
   const [programOptions, setProgramOptions] = useState<string[]>([]);
   const [therapyGroupOptions, setTherapyGroupOptions] = useState<string[]>([]);
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
+  const [therapyStatusOptions, setTherapyStatusOptions] = useState<string[]>([
+    'In Assessment',
+    'Assessment Complete',
+    'Ready for IUP',
+    'IUP Ready',
+    'In Session',
+    'Not Started',
+  ]);
 
-  // Fetch dynamic Program, Therapy Group, and Status lists from backend API on component mount
+  // Fetch dynamic Program, Therapy Group, Status, and Therapy Status lists from backend API on component mount
   useEffect(() => {
     let isMounted = true;
     getProgramOptions()
@@ -101,6 +146,14 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       })
       .catch(() => {});
 
+    getTherapyStatusOptions()
+      .then(({ data }) => {
+        if (isMounted && Array.isArray(data)) {
+          setTherapyStatusOptions(data);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       isMounted = false;
     };
@@ -113,6 +166,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       if (programFilter !== 'All') queryParams.program = programFilter;
       if (therapyGroupFilter !== 'All') queryParams.therapy_group = therapyGroupFilter;
       if (statusFilter !== 'All') queryParams.status = statusFilter;
+      if (therapyStatusFilter !== 'All') queryParams.therapy_status = therapyStatusFilter;
 
       // 1. Load active enrollment drafts
       const drafts = getEnrollmentDrafts();
@@ -126,6 +180,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         therapist: d.therapist || 'Unassigned',
         diagnosis: d.diagnosis || 'Draft Enrollment',
         status: 'Draft',
+        therapyStatus: 'Draft',
         studentId: d.id,
         photoUrl: d.photoUrl || null,
         isDraft: true,
@@ -154,6 +209,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         therapist: row.therapist || row.therapyGroup,
         diagnosis: '',
         status: resolveStudentStatus(row.id, row.fullName, row.status),
+        therapyStatus: resolveStudentTherapyStatus(row),
         studentId: row.studentId || row.student_id || row.id,
         photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
         isDraft: false,
@@ -172,26 +228,35 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         therapist: d.therapist || 'Unassigned',
         diagnosis: d.diagnosis || 'Draft Enrollment',
         status: 'Draft',
+        therapyStatus: 'Draft',
         studentId: d.id,
         photoUrl: d.photoUrl || null,
         isDraft: true,
       }));
       setStudents(draftStudents);
     }
-  }, [search, programFilter, therapyGroupFilter, statusFilter]);
+  }, [search, programFilter, therapyGroupFilter, statusFilter, therapyStatusFilter]);
 
   useEffect(() => {
     load();
-  }, [load]);
-
-  useEffect(() => {
+    const unsubFocus = navigation?.addListener?.('focus', load);
     const unsubStatus = onStudentStatusChanged(load);
     const unsubDrafts = onEnrollmentDraftsChanged(load);
+    const handleUpdate = () => load();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_student_profile_updated', handleUpdate);
+      window.addEventListener('melue_enrolled_students_changed', handleUpdate);
+    }
     return () => {
+      unsubFocus?.();
       unsubStatus();
       unsubDrafts();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('melue_student_profile_updated', handleUpdate);
+        window.removeEventListener('melue_enrolled_students_changed', handleUpdate);
+      }
     };
-  }, [load]);
+  }, [load, navigation]);
 
   const filtered = students.filter(
     (s) =>
@@ -202,6 +267,14 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         s.therapyGroup?.toLowerCase().includes(therapyGroupFilter.toLowerCase()) ||
         therapyGroupFilter.toLowerCase().includes(s.therapyGroup?.toLowerCase())) &&
       (statusFilter === 'All' || s.status?.toLowerCase() === statusFilter.toLowerCase()) &&
+      (therapyStatusFilter === 'All' ||
+        s.therapyStatus?.toLowerCase() === therapyStatusFilter.toLowerCase() ||
+        (therapyStatusFilter.toLowerCase() === 'in session' &&
+          (s.therapyStatus?.toLowerCase() === 'active therapy' ||
+            s.therapyStatus?.toLowerCase() === 'active')) ||
+        (therapyStatusFilter.toLowerCase() === 'ready for iup' &&
+          (s.therapyStatus?.toLowerCase() === 'ready for iup' ||
+            s.therapyStatus?.toLowerCase() === 'assessment complete'))) &&
       (!search ||
         s.name.toLowerCase().includes(search.toLowerCase()) ||
         s.studentId.toLowerCase().includes(search.toLowerCase())),
@@ -276,6 +349,12 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           onChangeText={setSearch}
         />
         <FilterChips
+          label="Therapy Status"
+          options={therapyStatusOptions}
+          value={therapyStatusFilter}
+          onChange={setTherapyStatusFilter}
+        />
+        <FilterChips
           label="Program"
           options={programOptions}
           value={programFilter}
@@ -321,40 +400,62 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
                   : `${s.studentId} · Age ${s.age} · ${s.gender}`}
               </Text>
               <Text style={typography.caption}>
-                {s.program} · {s.therapyGroup} · {s.status}
+                {s.program} · {s.therapyGroup}
               </Text>
             </View>
-            {s.isDraft ? (
-              <View style={styles.draftActionGroup}>
+            <View style={styles.statusPillsRow}>
+              {Boolean(s.therapyStatus) && (
+                <View
+                  style={[
+                    styles.therapyBadge,
+                    {
+                      backgroundColor: getTherapyStatusStyle(s.therapyStatus).bg,
+                      borderColor: getTherapyStatusStyle(s.therapyStatus).border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.therapyBadgeText,
+                      { color: getTherapyStatusStyle(s.therapyStatus).text },
+                    ]}
+                  >
+                    {s.therapyStatus}
+                  </Text>
+                </View>
+              )}
+              {s.isDraft ? (
+                <View style={styles.draftActionGroup}>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e?.stopPropagation?.();
+                      deleteEnrollmentDraft(s.id);
+                      load();
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Discard Draft"
+                    style={styles.trashBtn}
+                  >
+                    <Feather name="trash-2" size={16} color={colors.mutedText} />
+                  </TouchableOpacity>
+                  <StatusPill status="draft" label="Draft" />
+                </View>
+              ) : (
                 <TouchableOpacity
                   onPress={(e) => {
                     e?.stopPropagation?.();
-                    deleteEnrollmentDraft(s.id);
-                    load();
+                    toggleStudentStatus(s.id, s.name, s.status);
                   }}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Discard Draft"
-                  style={styles.trashBtn}
+                  activeOpacity={0.7}
                 >
-                  <Feather name="trash-2" size={16} color={colors.mutedText} />
+                  <StatusPill
+                    status={s.status === 'Active' ? 'approved' : 'revision'}
+                    label={s.status}
+                  />
                 </TouchableOpacity>
-                <StatusPill status="draft" label="Draft" />
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={(e) => {
-                  e?.stopPropagation?.();
-                  toggleStudentStatus(s.id, s.name, s.status);
-                }}
-                activeOpacity={0.7}
-              >
-                <StatusPill
-                  status={s.status === 'Active' ? 'approved' : 'revision'}
-                  label={s.status}
-                />
-              </TouchableOpacity>
-            )}
+              )}
+            </View>
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         ))}
@@ -490,5 +591,22 @@ const styles = StyleSheet.create({
   trashBtn: {
     padding: spacing.xs,
     borderRadius: radius.sm,
+  },
+  statusPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  therapyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  therapyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

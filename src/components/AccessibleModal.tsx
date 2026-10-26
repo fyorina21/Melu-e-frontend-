@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { Modal, ModalProps, View, StyleSheet, Platform, AccessibilityRole } from 'react-native';
+import {
+  Modal,
+  type ModalProps,
+  View,
+  StyleSheet,
+  Platform,
+  type AccessibilityRole,
+} from 'react-native';
 
 export interface AccessibleModalProps extends ModalProps {
   children?: React.ReactNode;
@@ -36,6 +43,11 @@ export function AccessibleModal({
     if (Platform.OS !== 'web' || !visible || typeof window === 'undefined') return;
 
     const previousElement = document.activeElement as HTMLElement | null;
+    try {
+      previousElement?.blur?.();
+    } catch {
+      // ignore
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

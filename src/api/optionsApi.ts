@@ -86,3 +86,28 @@ export const getStatusOptions = async (): Promise<{ data: string[] }> => {
     data: ['Active', 'Inactive', 'Draft', 'Archived'],
   };
 };
+
+export const getTherapyStatusOptions = async (): Promise<{ data: string[] }> => {
+  try {
+    const res = await client.get<any>('/options/therapy_statuses');
+    const raw = Array.isArray(res?.data)
+      ? res.data
+      : res?.data?.data || res?.data?.therapy_statuses;
+    if (Array.isArray(raw) && raw.length > 0) {
+      const list = raw.map((item: any) =>
+        typeof item === 'string' ? item : item?.name || item?.label || item?.value || String(item),
+      );
+      return { data: Array.from(new Set(list)) };
+    }
+  } catch {}
+  return {
+    data: [
+      'In Assessment',
+      'Assessment Complete',
+      'Ready for IUP',
+      'IUP Ready',
+      'In Session',
+      'Not Started',
+    ],
+  };
+};

@@ -81,13 +81,23 @@ export default function ExportPreviewModal({
               <Text style={styles.headerTitle}>{title}</Text>
               <Text style={styles.headerSubtitle}>{filename}</Text>
             </View>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.closeBtn}
-              accessibilityLabel="Close export preview"
-            >
-              <Feather name="x" size={20} color={colors.navyText} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.backToAssessmentsBtn}
+                accessibilityLabel="Back to Assessments"
+              >
+                <Feather name="arrow-left" size={14} color={colors.navyText} />
+                <Text style={styles.backToAssessmentsText}>← Back to Assessments</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeBtn}
+                accessibilityLabel="Close export preview"
+              >
+                <Feather name="x" size={20} color={colors.navyText} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* View Mode Segmented Controls */}
@@ -368,4 +378,20 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   shareBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 13 },
+  backToAssessmentsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  backToAssessmentsText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
 });

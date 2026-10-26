@@ -4,11 +4,50 @@ import {
   isStudentInSession,
   isStudentAssessment100PercentCompleted,
   isStoredAssessmentCompleted,
+  getRegisteredStudentStatus,
   registerStudentStatuses,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
+  getStudentPreferenceProgress,
+  getStudentSensoryProgress,
+  markStudentAssessmentCompleted,
+  updateStudentStatus,
 } from '../utils/studentLifecycleHelper';
 import { sanitizeStoragePayload, unprotectStoragePayload } from '../utils/sensitiveDataSanitizer';
+import { getStoredAbcLists } from '../stores/abcListsStore';
+
+export interface BehaviorIncidentOptionItem {
+  name: string;
+  definition?: string;
+  default_category?: string;
+}
+
+export interface BehaviorIncidentOptionsResponse {
+  behaviors: BehaviorIncidentOptionItem[];
+  antecedents: string[];
+  consequences: string[];
+  locations: string[];
+}
+
+export const getBehaviorIncidentOptions = async (): Promise<BehaviorIncidentOptionsResponse> => {
+  try {
+    const res = await client.get('/behavior_incidents/options');
+    if (res?.data && Array.isArray(res.data.behaviors)) {
+      return res.data;
+    }
+  } catch {}
+  const local = getStoredAbcLists();
+  return {
+    behaviors: local.behaviors.map((b) => ({
+      name: b.name,
+      definition: b.definition || b.name,
+      default_category: b.category,
+    })),
+    antecedents: local.antecedents.map((a) => a.name),
+    consequences: local.consequences.map((c) => c.name),
+    locations: local.locations.map((l) => l.name),
+  };
+};
 
 // SCR-TEA-001: Teacher Dashboard
 export const getTeacherDashboard = () => client.get('/teacher/dashboard');
@@ -16,60 +55,134 @@ export const getTeacherDashboard = () => client.get('/teacher/dashboard');
 // Assessment Dashboard (SCR-010 per Figma's screen ID)
 export const getAssessmentDashboard = async () => {
   let backendStudents: any[] = [];
-  let periodLabel = 'Q4 6-Week Baseline';
+  let periodLabel = '6-Week Baseline Assessment';
+  let clinician: { id?: string; name?: string; email?: string } | undefined;
 
   try {
     const res = await client.get('/teacher/assessments/dashboard');
     if (res.data) {
       if (Array.isArray(res.data.students)) backendStudents = [...res.data.students];
       if (res.data.periodLabel) periodLabel = res.data.periodLabel;
+      if (res.data.clinician) clinician = res.data.clinician;
     }
   } catch {}
 
-  // Enrich with students from /options/students who are currently in assessment
+  // Include newly enrolled students from local storage cache if assigned to this teacher
   try {
-    const { data: optionsStudents } = await client.get<any[]>('/options/students');
-    if (Array.isArray(optionsStudents) && optionsStudents.length > 0) {
-      registerStudentStatuses(optionsStudents);
+    if (typeof localStorage !== 'undefined') {
+      const rawCache = localStorage.getItem('melue_enrolled_students_cache');
+      if (rawCache) {
+        const decoded = unprotectStoragePayload(rawCache) || rawCache;
+        const localEnrolled: any[] = JSON.parse(decoded);
+        if (Array.isArray(localEnrolled)) {
+          const clinicianName = (clinician?.name || '').toLowerCase().trim();
+          localEnrolled.forEach((loc) => {
+            if (!loc || !loc.id) return;
+            const locId = String(loc.id);
+            const alreadyInBackend = backendStudents.some((b) => String(b.id) === locId);
+            if (alreadyInBackend) return;
 
-      const existingIds = new Set(backendStudents.map((b) => String(b.id)));
+            const assigned = String(loc.assignedTherapist || loc.therapist || '')
+              .toLowerCase()
+              .trim();
+            const clinicianLower = (clinicianName || '').toLowerCase().trim();
 
-      optionsStudents.forEach((s) => {
-        const sid = String(s.id);
-        const inSession = isStudentInSession(s);
-        const completed = isStudentAssessment100PercentCompleted(s);
-        const statusStr = String(s.status || '').toLowerCase();
-        const isInAssessmentStatus =
-          statusStr.includes('assessment') ||
-          String(s.assessmentStatus || '')
-            .toLowerCase()
-            .includes('progress') ||
-          (!inSession && !completed && s.status !== 'Ready for iup');
+            const isTeacher1 = clinicianLower.includes('one') || clinicianLower.includes('1');
+            const isTeacher2 = clinicianLower.includes('two') || clinicianLower.includes('2');
+            const isTeacher3 = clinicianLower.includes('three') || clinicianLower.includes('3');
 
-        if (!inSession && !completed && !existingIds.has(sid) && isInAssessmentStatus) {
-          existingIds.add(sid);
-          const skillsInfo = getStudentSkillsProgress(sid, 0, 'Not Started');
-          const behaviorInfo = getStudentBehaviorProgress(sid, 0, 'Not Started');
+            const isAssigned1 = assigned.includes('one') || assigned.includes('1');
+            const isAssigned2 = assigned.includes('two') || assigned.includes('2');
+            const isAssigned3 = assigned.includes('three') || assigned.includes('3');
 
-          backendStudents.push({
-            id: sid,
-            name: s.name,
-            initial: (s.name[0] || 'S').toUpperCase(),
-            age: s.age || 6,
-            program: s.program || 'ABA Early Intervention',
-            therapist: 'Lead Teacher',
-            lastAssessment: 'In Progress',
-            score: Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2)),
-            ablls: { status: skillsInfo.status, progress: skillsInfo.progress },
-            behavior: { status: behaviorInfo.status, progress: behaviorInfo.progress },
-            phase: '6-week',
+            let matchesTeacher = false;
+            if (isTeacher1) {
+              matchesTeacher = isAssigned1 || assigned === clinicianLower;
+            } else if (isTeacher2) {
+              matchesTeacher = isAssigned2 || assigned === clinicianLower;
+            } else if (isTeacher3) {
+              matchesTeacher = isAssigned3 || assigned === clinicianLower;
+            } else if (clinicianLower) {
+              matchesTeacher =
+                assigned.includes(clinicianLower) || clinicianLower.includes(assigned);
+            }
+
+            if (!matchesTeacher) return;
+
+            // Check if assessment is already completed / submitted or student has transitioned
+            const registered = getRegisteredStudentStatus(locId);
+            const currentStatus = String(
+              registered?.status || registered?.rawStatus || loc.status || '',
+            ).toLowerCase();
+            const isComplete =
+              isStoredAssessmentCompleted(locId) ||
+              currentStatus === 'assessment_complete' ||
+              currentStatus === 'ready_for_iup' ||
+              currentStatus === 'active_therapy' ||
+              currentStatus === 'active';
+
+            if (isComplete) return;
+            const fullName =
+              loc.fullName ||
+              `${loc.firstName || ''} ${loc.lastName || ''}`.trim() ||
+              'New Student';
+            backendStudents.push({
+              id: locId,
+              fullName,
+              name: fullName,
+              initial: (fullName[0] || 'S').toUpperCase(),
+              age: typeof loc.age === 'number' ? loc.age : 6,
+              program: loc.program || loc.programType || 'Regular',
+              program_type: loc.program_type || 'regular',
+              therapist:
+                loc.assignedTherapist || loc.therapist || clinician?.name || 'Assigned Clinician',
+              status: loc.status || 'in_assessment',
+              score: 0,
+              completed_modules: 0,
+              last_assessment_activity_at: new Date().toISOString(),
+              last_activity_display: 'Today',
+              days_since_last_activity: 0,
+              has_stale_draft: false,
+              stale_days: 0,
+              status_dot: 'gray',
+              modules: {
+                skills: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Skills (ABLLS-R)',
+                  subtitle: 'Basic Language & Learning Skills',
+                },
+                behavior: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Behavior (MASS / FAST / ABC)',
+                  subtitle: 'Functional Behavior Tracking',
+                },
+                preference: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Preference',
+                  subtitle: 'Reinforcer Hierarchy Assessment',
+                },
+                sensory: {
+                  status: 'Not Started',
+                  progress_percentage: 0,
+                  label: 'Sensory Time Engagement',
+                  subtitle: 'Sensory Modulation & Regulation',
+                },
+              },
+              ablls: { status: 'Not Started', progress: 0 },
+              behavior: { status: 'Not Started', progress: 0 },
+              preference: { status: 'Not Started', progress: 0 },
+              sensory: { status: 'Not Started', progress: 0 },
+            });
           });
         }
-      });
+      }
     }
   } catch {}
 
-  // Update all students with their saved skill and behavior assessment progress
+  // Update authenticated teacher's scoped students with their saved assessment progress across all 4 assessments
   backendStudents.forEach((s) => {
     const sid = String(s.id);
     const skillsInfo = getStudentSkillsProgress(
@@ -82,37 +195,148 @@ export const getAssessmentDashboard = async () => {
       s.behavior?.progress ?? 0,
       s.behavior?.status ?? 'Not Started',
     );
+    const prefInfo = getStudentPreferenceProgress(
+      sid,
+      s.preference?.progress ?? 0,
+      s.preference?.status ?? 'Not Started',
+    );
+    const sensoryInfo = getStudentSensoryProgress(
+      sid,
+      s.sensory?.progress ?? 0,
+      s.sensory?.status ?? 'Not Started',
+    );
+
     s.ablls = { status: skillsInfo.status, progress: skillsInfo.progress };
     s.behavior = { status: behaviorInfo.status, progress: behaviorInfo.progress };
-    s.score = Math.min(100, Math.round((skillsInfo.progress + behaviorInfo.progress) / 2));
+    s.preference = { status: prefInfo.status, progress: prefInfo.progress };
+    s.sensory = { status: sensoryInfo.status, progress: sensoryInfo.progress };
+
+    const moduleStatuses = [
+      skillsInfo.status,
+      behaviorInfo.status,
+      prefInfo.status,
+      sensoryInfo.status,
+    ];
+    const completedCount = moduleStatuses.filter((st) => st === 'Completed').length;
+    const inProgCount = moduleStatuses.filter((st) => st === 'In Progress').length;
+
+    s.completed_modules = completedCount;
+    s.score = Math.min(
+      100,
+      Math.round(
+        (skillsInfo.progress + behaviorInfo.progress + prefInfo.progress + sensoryInfo.progress) /
+          4,
+      ),
+    );
+
+    s.modules = {
+      skills: {
+        status: skillsInfo.status,
+        progress_percentage: skillsInfo.progress,
+        label: 'Skills (ABLLS-R)',
+        subtitle: 'Basic Language & Learning Skills',
+      },
+      behavior: {
+        status: behaviorInfo.status,
+        progress_percentage: behaviorInfo.progress,
+        label: 'Behavior (MASS / FAST / ABC)',
+        subtitle: 'Functional Behavior Tracking',
+      },
+      preference: {
+        status: prefInfo.status,
+        progress_percentage: prefInfo.progress,
+        label: 'Preference',
+        subtitle: 'Reinforcer Hierarchy Assessment',
+      },
+      sensory: {
+        status: sensoryInfo.status,
+        progress_percentage: sensoryInfo.progress,
+        label: 'Sensory Time Engagement',
+        subtitle: 'Sensory Modulation & Regulation',
+      },
+    };
+
+    if (!s.status_dot) {
+      if (completedCount === 4) {
+        s.status_dot = 'green';
+      } else if (s.has_stale_draft || (inProgCount > 0 && (s.days_since_last_activity ?? 0) > 7)) {
+        s.status_dot = 'amber';
+      } else if (completedCount === 0 && inProgCount === 0) {
+        s.status_dot = 'gray';
+      } else {
+        s.status_dot = 'green';
+      }
+    }
   });
 
-  // Filter out any student in session or 100% completed
-  const activeStudents = backendStudents.filter(
-    (s) => !isStudentInSession(s) && !isStudentAssessment100PercentCompleted(s),
-  );
+  // Active students undergoing 6-week assessment.
+  // Keep students in assessment until submitted to Program Director review (assessment_complete / active_therapy)
+  const activeStudents = backendStudents.filter((s) => {
+    const st = String(s.status || '')
+      .toLowerCase()
+      .trim();
+    if (st === 'assessment_complete' || st === 'active_therapy') {
+      return false;
+    }
+    return true;
+  });
+
+  let totalCompletedSubmodules = 0;
+  let totalInProgressSubmodules = 0;
+  let totalPendingSubmodules = 0;
+
+  activeStudents.forEach((s) => {
+    const statuses = [
+      s.ablls?.status || 'Not Started',
+      s.behavior?.status || 'Not Started',
+      s.preference?.status || 'Not Started',
+      s.sensory?.status || 'Not Started',
+    ];
+    statuses.forEach((st) => {
+      if (st === 'Completed') totalCompletedSubmodules += 1;
+      else if (st === 'In Progress') totalInProgressSubmodules += 1;
+      else totalPendingSubmodules += 1;
+    });
+  });
 
   return {
     data: {
+      clinician,
       periodLabel,
       stats: {
+        totalStudents: activeStudents.length,
+        totalRequiredModules: activeStudents.length * 4,
+        completedModules: totalCompletedSubmodules,
+        inProgressModules: totalInProgressSubmodules,
+        pendingModules: totalPendingSubmodules,
         total: activeStudents.length,
-        completed: activeStudents.filter(
-          (s) => s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed',
-        ).length,
+        completed: activeStudents.filter((s) => s.completed_modules === 4).length,
         inProgress: activeStudents.filter(
-          (s) =>
-            (s.ablls?.status === 'In Progress' || s.behavior?.status === 'In Progress') &&
-            !(s.ablls?.status === 'Completed' && s.behavior?.status === 'Completed'),
+          (s) => (s.completed_modules ?? 0) < 4 && (s.score ?? 0) > 0,
         ).length,
         notStarted: activeStudents.filter(
-          (s) => s.ablls?.status === 'Not Started' && s.behavior?.status === 'Not Started',
+          (s) => (s.completed_modules ?? 0) === 0 && (s.score ?? 0) === 0,
         ).length,
       },
       students: activeStudents,
     },
     status: 200,
   };
+};
+
+// Master "Submit Assessments for Review" (FR-050, FR-057)
+export const submitAssessmentsForReview = async (studentId: string) => {
+  const sid = String(studentId);
+  try {
+    const res = await client.post(`/teacher/students/${sid}/submit_assessments`);
+    markStudentAssessmentCompleted(sid);
+    updateStudentStatus(sid, 'assessment_complete');
+    return res.data;
+  } catch (err) {
+    markStudentAssessmentCompleted(sid);
+    updateStudentStatus(sid, 'assessment_complete');
+    return { success: true, student_id: sid, status: 'assessment_complete' };
+  }
 };
 
 export const getAssessmentDetail = (studentId: string, assessmentType: string) =>
@@ -167,6 +391,15 @@ function setStoredAssessment(type: string, studentId: string, data: any): void {
       localStorage.setItem(`melue_${type}_assessment_${studentId}`, protectedVal);
     } catch {}
   }
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('melue_assessment_updated', {
+          detail: { type, studentId, data },
+        }),
+      );
+    } catch {}
+  }
 }
 
 // MR-22: Skills Assessment (ABLLS)
@@ -207,9 +440,14 @@ export const saveSkillsAssessment = async (studentId: string, payload: Record<st
     getStoredAssessment('skills', studentId) ||
     (alias ? getStoredAssessment('skills', alias) : null) ||
     {};
+  const isComplete =
+    String(payload.status || '').toLowerCase() === 'submitted' ||
+    String(payload.status || '').toLowerCase() === 'completed' ||
+    Number(payload.progress) >= 100;
   const updated = {
     ...current,
     ...payload,
+    ...(isComplete ? { progress: 100, status: payload.status || 'completed' } : {}),
     studentId,
     id: current.id || `skills-${studentId}`,
     updatedAt: new Date().toISOString(),
@@ -225,6 +463,9 @@ export const bulkSaveAbllsResponses = async (
   assessmentId: string,
   payload: { responses?: any[]; scores?: Record<string, unknown>; notes?: Record<string, unknown> },
 ) => {
+  if (!assessmentId) {
+    return { data: { success: true } };
+  }
   try {
     return await client.patch(`/ablls_assessments/${assessmentId}/responses/bulk`, payload);
   } catch {
@@ -233,12 +474,24 @@ export const bulkSaveAbllsResponses = async (
 };
 
 export const getBehaviorAssessment = async (studentId: string) => {
+  const sid = String(studentId);
+  const alias = sid === 'stu-1' ? 'student-a' : sid === 'student-a' ? 'stu-1' : null;
+  const stored =
+    getStoredAssessment('behavior', sid) || (alias ? getStoredAssessment('behavior', alias) : null);
   try {
-    return await client.get(`/teacher/students/${studentId}/assessments/behavior`);
-  } catch {
-    const stored = getStoredAssessment('behavior', studentId);
-    return { data: stored || { studentId, incidents: [] } };
-  }
+    const res = await client.get(`/teacher/students/${studentId}/assessments/behavior`);
+    if (res?.data?.data) {
+      const backendData = res.data.data;
+      if (stored && Array.isArray(stored.target_behaviors) && stored.target_behaviors.length > 0) {
+        if (!backendData.target_behaviors || backendData.target_behaviors.length === 0) {
+          backendData.target_behaviors = stored.target_behaviors;
+          backendData.targetBehaviors = stored.target_behaviors;
+        }
+      }
+      return { data: backendData };
+    }
+  } catch {}
+  return { data: stored || { studentId, target_behaviors: [], records: [] } };
 };
 
 export const saveBehaviorAssessment = async (
@@ -246,26 +499,47 @@ export const saveBehaviorAssessment = async (
   payload: Record<string, unknown>,
 ) => {
   const sid = String(studentId);
-  const massCount =
-    payload.massAnswers && typeof payload.massAnswers === 'object'
-      ? Object.keys(payload.massAnswers as object).filter((k) => (payload.massAnswers as any)[k])
-          .length
-      : 0;
-  const fastCount =
-    payload.fastAnswers && typeof payload.fastAnswers === 'object'
-      ? Object.keys(payload.fastAnswers as object).filter(
-          (k) => (payload.fastAnswers as any)[k] !== undefined,
-        ).length
-      : 0;
-  const answered = massCount + fastCount;
+  const rawTargets = (payload.target_behaviors || payload.targetBehaviors) as any[];
+
+  let answered = 0;
+  let totalPossible = 78;
+
+  if (Array.isArray(rawTargets) && rawTargets.length > 0) {
+    totalPossible = rawTargets.length * 78;
+    rawTargets.forEach((t) => {
+      const mAns = t.mass_responses || t.massAnswers || {};
+      const fAns = t.fast_responses || t.fastAnswers || {};
+      answered += Object.keys(mAns).filter((k) => mAns[k] !== undefined && mAns[k] !== '').length;
+      answered += Object.keys(fAns).filter((k) => fAns[k] !== undefined && fAns[k] !== '').length;
+    });
+  } else {
+    const massCount =
+      payload.massAnswers && typeof payload.massAnswers === 'object'
+        ? Object.keys(payload.massAnswers as object).filter(
+            (k) =>
+              (payload.massAnswers as any)[k] !== undefined &&
+              (payload.massAnswers as any)[k] !== '',
+          ).length
+        : 0;
+    const fastCount =
+      payload.fastAnswers && typeof payload.fastAnswers === 'object'
+        ? Object.keys(payload.fastAnswers as object).filter(
+            (k) =>
+              (payload.fastAnswers as any)[k] !== undefined &&
+              (payload.fastAnswers as any)[k] !== '',
+          ).length
+        : 0;
+    answered = massCount + fastCount;
+  }
+
   const computedProgress =
-    payload.status === 'submitted'
+    payload.status === 'submitted' || payload.status === 'completed'
       ? 100
       : payload.progress !== undefined
         ? Number(payload.progress)
-        : Math.min(100, Math.round((answered / 20) * 100));
+        : Math.min(100, Math.round((answered / Math.max(1, totalPossible)) * 100));
 
-  const enriched = {
+  let enriched: Record<string, any> = {
     ...payload,
     progress: computedProgress,
     status:
@@ -280,7 +554,17 @@ export const saveBehaviorAssessment = async (
     setStoredAssessment('behavior', alias, enriched);
   }
 
-  client.post(`/teacher/students/${studentId}/assessments/behavior`, enriched).catch(() => {});
+  try {
+    const res = await client.post(`/teacher/students/${studentId}/assessments/behavior`, enriched);
+    if (res?.data?.data) {
+      enriched = { ...enriched, ...res.data.data };
+      setStoredAssessment('behavior', sid, enriched);
+      if (alias) setStoredAssessment('behavior', alias, enriched);
+    }
+  } catch (err) {
+    console.warn('Failed to persist behavior assessment to backend API', err);
+  }
+
   return { data: enriched };
 };
 
@@ -312,9 +596,14 @@ export const savePreferenceAssessment = async (
     getStoredAssessment('preference', studentId) ||
     (alias ? getStoredAssessment('preference', alias) : null) ||
     {};
+  const isComplete =
+    String(payload.status || '').toLowerCase() === 'submitted' ||
+    String(payload.status || '').toLowerCase() === 'completed' ||
+    Number(payload.progress) >= 100;
   const updated = {
     ...current,
     ...payload,
+    ...(isComplete ? { progress: 100, status: payload.status || 'completed' } : {}),
     studentId,
     id: current.id || `pref-${studentId}`,
     updatedAt: new Date().toISOString(),
@@ -354,9 +643,14 @@ export const saveSensoryAssessment = async (
     getStoredAssessment('sensory', studentId) ||
     (alias ? getStoredAssessment('sensory', alias) : null) ||
     {};
+  const isComplete =
+    String(payload.status || '').toLowerCase() === 'submitted' ||
+    String(payload.status || '').toLowerCase() === 'completed' ||
+    Number(payload.progress) >= 100;
   const updated = {
     ...current,
     ...payload,
+    ...(isComplete ? { progress: 100, status: payload.status || 'completed' } : {}),
     studentId,
     id: current.id || `sensory-${studentId}`,
     updatedAt: new Date().toISOString(),

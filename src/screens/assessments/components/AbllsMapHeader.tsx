@@ -11,8 +11,9 @@ import type { ViewMode } from '../types';
 
 interface AbllsMapHeaderProps {
   onBack: () => void;
-  onSave: () => void;
-  saving: boolean;
+  onSave?: () => void;
+  onSubmit?: () => void;
+  saving?: boolean;
   onExport: () => void;
   studentName: string;
   studentId: string;
@@ -35,7 +36,8 @@ export const AbllsMapHeader: React.FC<AbllsMapHeaderProps> = React.memo(
   ({
     onBack,
     onSave,
-    saving,
+    onSubmit,
+    saving = false,
     onExport,
     studentName,
     studentId,
@@ -56,15 +58,28 @@ export const AbllsMapHeader: React.FC<AbllsMapHeaderProps> = React.memo(
             <Text style={styles.backBtnText}>Back to Skills Assessment</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <Button
-            label={saving ? 'Saving...' : 'Save Assessment'}
-            variant="primary"
-            size="sm"
-            loading={saving}
-            disabled={saving}
-            onPress={onSave}
-            style={{ marginRight: spacing.sm }}
-          />
+          {onSave ? (
+            <Button
+              label={saving ? 'Saving...' : 'Save Draft'}
+              variant="outline"
+              size="sm"
+              loading={saving}
+              disabled={saving}
+              onPress={onSave}
+              style={{ marginRight: spacing.sm }}
+            />
+          ) : null}
+          {onSubmit ? (
+            <Button
+              label={saving ? 'Submitting...' : 'Submit Assessment'}
+              variant="primary"
+              size="sm"
+              loading={saving}
+              disabled={saving}
+              onPress={onSubmit}
+              style={{ marginRight: spacing.sm }}
+            />
+          ) : null}
           <Button
             label="Print / Export Sheet"
             variant="outline"

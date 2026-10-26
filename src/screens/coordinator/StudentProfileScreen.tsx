@@ -635,7 +635,30 @@ export default function StudentProfileScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     load();
-  }, [load]);
+    const unsub = navigation?.addListener?.('focus', load);
+    const profileUpdatedHandler = (e: any) => {
+      const updatedId = e?.detail?.studentId || e?.detail?.id;
+      if (
+        !updatedId ||
+        updatedId === studentId ||
+        updatedId === profile?.id ||
+        updatedId === profile?.studentId
+      ) {
+        load();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_student_profile_updated', profileUpdatedHandler);
+      window.addEventListener('melue_enrolled_students_changed', load);
+    }
+    return () => {
+      unsub?.();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('melue_student_profile_updated', profileUpdatedHandler);
+        window.removeEventListener('melue_enrolled_students_changed', load);
+      }
+    };
+  }, [load, navigation, studentId, profile?.id, profile?.studentId]);
 
   const isDraft = useMemo(() => {
     if (!profile) return false;

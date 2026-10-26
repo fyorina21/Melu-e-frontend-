@@ -1,159 +1,82 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import ScreenLoader from '../../components/ScreenLoader';
-import ScreenError from '../../components/ScreenError';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import React, { useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+  useWindowDimensions,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
-import StudentAvatar from '../../components/StudentAvatar';
-import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { getAssessmentDashboard } from '../../api/teacherExtrasApi';
-import {
-  isStudentInSession,
-  isStudentAssessment100PercentCompleted,
-  markStudentAssessmentCompleted,
-  getStudentSkillsProgress,
-  getStudentBehaviorProgress,
-} from '../../utils/studentLifecycleHelper';
+import { useTeacherAssessments } from './useTeacherAssessments';
+import { AssessmentKpiStrip } from './components/AssessmentKpiStrip';
+import { StudentAssessmentCard } from './components/StudentAssessmentCard';
+import { AssessmentSkeleton } from './components/AssessmentSkeleton';
+import { AssessmentEmptyState } from './components/AssessmentEmptyState';
+import { AssessmentErrorState } from './components/AssessmentErrorState';
+import type { SubModuleKey, StudentAssessmentItem } from './assessmentDashboardTypes';
 import type { SessionStackParamList } from '../../types';
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'AssessmentDashboard'>;
 
-interface AssessmentStatusStyle {
-  bg: string;
-  text: string;
-  barColor: string;
-}
-
-const STATUS_STYLE: Record<string, AssessmentStatusStyle> = {
-  Completed: { bg: colors.statusApprovedBg, text: colors.statusApprovedText, barColor: '#22C55E' },
-  'In Progress': {
-    bg: colors.statusInProgressBg,
-    text: colors.statusInProgressText,
-    barColor: colors.statusInProgressText,
-  },
-  'Not Started': {
-    bg: colors.statusNotStartedBg,
-    text: colors.mutedText,
-    barColor: colors.mutedText,
-  },
-};
-
-function StatusPillLocal({ status }: { status: string }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE['Not Started'];
-  return (
-    <View style={[styles.statusPill, { backgroundColor: s.bg }]}>
-      <Text style={[styles.statusPillText, { color: s.text }]}>{status}</Text>
-    </View>
-  );
-}
-
-function AssessmentRow({
-  label,
-  status,
-  progress,
-}: {
-  label: string;
-  status: string;
-  progress: number;
-}) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE['Not Started'];
-  return (
-    <View style={styles.assessmentBlock}>
-      <View style={styles.assessmentHeaderRow}>
-        <Text style={typography.bodyBold}>{label}</Text>
-        <StatusPillLocal status={status} />
-      </View>
-      <View style={styles.progressRow}>
-        <Text style={typography.caption}>Progress</Text>
-        <Text style={typography.caption}>{progress}%</Text>
-      </View>
-      <View style={styles.progressTrack}>
-        <View
-          style={[styles.progressFill, { width: `${progress}%`, backgroundColor: s.barColor }]}
-        />
-      </View>
-    </View>
-  );
-}
-
-interface AssessmentData {
-  periodLabel: string;
-  stats: { total: number; completed: number; inProgress: number; notStarted: number };
-  students: {
-    id: string;
-    name: string;
-    initial: string;
-    age: number;
-    program: string;
-    therapist: string;
-    lastAssessment: string;
-    score: number;
-    ablls: { status: string; progress: number };
-    behavior: { status: string; progress: number };
-    phase?: string; // e.g., '6-week', 'active', 'maintenance'
-  }[];
-}
-
 export default function AssessmentDashboardScreen({ navigation }: Props) {
-  const { session, logout } = useAuth();
-  const [data, setData] = useState<AssessmentData | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const { width } = useWindowDimensions();
+  const isTabletOrDesktop = width >= 640;
+  const { showToast } = useToast();
 
-  const load = useCallback(async () => {
-    try {
-      const { data: res } = await getAssessmentDashboard();
-      setData(res);
-      setLoadError(false);
-    } catch (err) {
-      setLoadError(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data, loading, error, refetch, submittingStudentId, submitStudentAssessments } =
+    useTeacherAssessments();
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      refetch();
+    }, [refetch]),
   );
 
-  useEffect(() => {
-    const handleSync = () => {
-      load();
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', handleSync);
-      window.addEventListener('focus', handleSync);
-      window.addEventListener('melue_assessment_updated' as any, handleSync);
-      return () => {
-        window.removeEventListener('storage', handleSync);
-        window.removeEventListener('focus', handleSync);
-        window.removeEventListener('melue_assessment_updated' as any, handleSync);
-      };
+  const handleNavigateModule = (key: SubModuleKey, studentId: string, isCompleted: boolean) => {
+    switch (key) {
+      case 'skills':
+        navigation?.navigate?.('SkillsAssessment', { studentId });
+        break;
+      case 'behavior':
+        navigation?.navigate?.('BehaviorAssessment', { studentId });
+        break;
+      case 'preference':
+        navigation?.navigate?.('PreferenceAssessment', { studentId });
+        break;
+      case 'sensory':
+        navigation?.navigate?.('SensoryAssessment', { studentId });
+        break;
     }
-  }, [load]);
+  };
 
-  const isTeacher = session?.role === 'teacher';
-  const currentTherapistName = session?.userName || (session as any)?.user?.name;
-
-  // Filter students to strictly show only students who are in assessment and exclude active therapy/in-session students
-  const filteredStudents = (data?.students ?? []).filter((s: any) => {
-    // Mutual exclusivity: Students in active therapy / in session or completed must NOT appear on the assessment dashboard
-    if (isStudentInSession(s) || isStudentAssessment100PercentCompleted(s)) {
-      return false;
-    }
-    return true;
-  });
-
-  if (loadError) return <ScreenError onRetry={load} />;
-  if (!data) return <ScreenLoader />;
+  const handleSubmitForReview = (student: StudentAssessmentItem) => {
+    confirmAction({
+      title: 'Submit Final Assessment for Clinical Review',
+      message: `Are you sure you want to finalize and submit all 4 completed assessments for ${student.fullName}? The entire assessment file is complete now and will be transferred to the Program Director for clinical review (SCR-PD-002).`,
+      confirmLabel: 'Submit for Review',
+      onConfirm: async () => {
+        const success = await submitStudentAssessments(student);
+        if (success) {
+          showToast(
+            `${student.fullName}'s assessment file is complete now and has been submitted for Program Director review.`,
+            'success',
+          );
+        } else {
+          showToast('Failed to submit assessments for review. Please try again.', 'error');
+        }
+      },
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -162,351 +85,207 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
       />
 
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Feather name="clipboard" size={18} color={colors.navyText} />
-          <View>
-            <Text style={typography.h1}>6 Week Assessment Dashboard</Text>
-            {isTeacher && currentTherapistName && (
-              <Text style={[typography.caption, { color: colors.primaryBlue, fontWeight: '600' }]}>
-                Therapist: {currentTherapistName}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Section 1A: Top Header */}
+        <View style={styles.topHeader}>
+          <View style={styles.headerLeft}>
+            <View style={styles.documentIconBox}>
+              <Feather name="file-text" size={22} color="#0284C7" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mainTitle}>6-Week Assessment Dashboard</Text>
+              <Text style={styles.assignedClinicianSubtitle}>
+                Assigned Clinician:{' '}
+                <Text style={styles.clinicianHighlight}>
+                  {data?.clinicianName || 'Assigned Clinician'}
+                </Text>
               </Text>
-            )}
+            </View>
           </View>
-        </View>
-        <View style={styles.periodPill}>
-          <Feather name="clock" size={12} color={colors.primaryYellowDark} />
-          <Text style={styles.periodPillText}>Assessment Period: {data.periodLabel}</Text>
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Feather name="users" size={16} color={colors.mutedText} />
-            <Text style={styles.statValue}>{filteredStudents.length}</Text>
-            <Text style={typography.caption}>Assigned Students</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Feather name="check-circle" size={16} color="#22C55E" />
-            <Text style={styles.statValue}>
-              {
-                filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(
-                    s.id,
-                    Number(s.ablls?.progress || 0),
-                    s.ablls?.status || 'Not Started',
-                  );
-                  const bh = getStudentBehaviorProgress(
-                    s.id,
-                    Number(s.behavior?.progress || 0),
-                    s.behavior?.status || 'Not Started',
-                  );
-                  return sk.status === 'Completed' && bh.status === 'Completed';
-                }).length
-              }
+          {/* Assessment Cycle Tag */}
+          <View style={styles.cycleBadge}>
+            <Feather name="clock" size={13} color="#D97706" style={{ marginRight: 5 }} />
+            <Text style={styles.cycleBadgeText}>
+              Assessment Period: {data?.periodLabel || '6-Week Baseline Assessment'}
             </Text>
-            <Text style={typography.caption}>Completed</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Feather name="clock" size={16} color={colors.statusInProgressText} />
-            <Text style={styles.statValue}>
-              {
-                filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(
-                    s.id,
-                    Number(s.ablls?.progress || 0),
-                    s.ablls?.status || 'Not Started',
-                  );
-                  const bh = getStudentBehaviorProgress(
-                    s.id,
-                    Number(s.behavior?.progress || 0),
-                    s.behavior?.status || 'Not Started',
-                  );
-                  return (
-                    (sk.status === 'In Progress' || bh.status === 'In Progress') &&
-                    !(sk.status === 'Completed' && bh.status === 'Completed')
-                  );
-                }).length
-              }
-            </Text>
-            <Text style={typography.caption}>In Progress</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Feather name="alert-circle" size={16} color={colors.mutedText} />
-            <Text style={styles.statValue}>
-              {
-                filteredStudents.filter((s) => {
-                  const sk = getStudentSkillsProgress(
-                    s.id,
-                    Number(s.ablls?.progress || 0),
-                    s.ablls?.status || 'Not Started',
-                  );
-                  const bh = getStudentBehaviorProgress(
-                    s.id,
-                    Number(s.behavior?.progress || 0),
-                    s.behavior?.status || 'Not Started',
-                  );
-                  return sk.status === 'Not Started' && bh.status === 'Not Started';
-                }).length
-              }
-            </Text>
-            <Text style={typography.caption}>Not Started</Text>
           </View>
         </View>
 
-        <Text style={typography.h3}>Student Assessments</Text>
-        <View style={styles.studentsGrid}>
-          {filteredStudents.map((s) => {
-            const skillsData = getStudentSkillsProgress(
-              s.id,
-              Number(s.ablls?.progress || 0),
-              s.ablls?.status || 'Not Started',
-            );
-            const behaviorData = getStudentBehaviorProgress(
-              s.id,
-              Number(s.behavior?.progress || 0),
-              s.behavior?.status || 'Not Started',
-            );
+        {/* State 1: Initial Loading Skeleton */}
+        {loading && !data && <AssessmentSkeleton />}
 
-            const skillsProg = skillsData.progress;
-            const skillsStat = skillsData.status;
+        {/* State 2: Error Boundary */}
+        {!data && error && <AssessmentErrorState onRetry={refetch} />}
 
-            const behaviorProg = behaviorData.progress;
-            const behaviorStat = behaviorData.status;
+        {/* State 3: Active Data Content */}
+        {data && (
+          <>
+            {/* Section 1B: Dynamic KPI Metric Strip (4-Card Grid) */}
+            <AssessmentKpiStrip kpis={data.kpis} />
 
-            const isCompleted =
-              s.score === 100 ||
-              (skillsStat === 'Completed' && behaviorStat === 'Completed') ||
-              (skillsProg === 100 && behaviorProg === 100);
-
-            const displayScore = isCompleted
-              ? 100
-              : skillsProg === 0 && behaviorProg === 0
-                ? 0
-                : Math.min(
-                    Math.max(Number(s.score ?? Math.round((skillsProg + behaviorProg) / 2)), 0),
-                    100,
-                  );
-
-            return (
-              <View key={s.id} style={styles.studentCard}>
-                <View style={styles.studentHeaderRow}>
-                  <StudentAvatar
-                    name={s.name}
-                    studentId={s.id}
-                    photoUrl={(s as any).photoUrl || (s as any).headshotUrl || (s as any).photo}
-                    size={40}
-                    style={{ marginRight: 10 }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.bodyBold}>{s.name}</Text>
-                    <Text style={typography.caption}>
-                      Age {s.age} · {s.program}
-                    </Text>
-                    <Text style={typography.caption}>
-                      Therapist: {s.therapist} · Last assessment: {s.lastAssessment}
-                    </Text>
-                  </View>
-                  <View style={styles.scoreBadge}>
-                    <Text style={styles.scoreBadgeValue}>{displayScore}%</Text>
-                    <Text style={styles.scoreBadgeLabel}>Overall</Text>
-                  </View>
-                </View>
-
-                <AssessmentRow
-                  label="Skills Assessment"
-                  status={skillsStat}
-                  progress={skillsProg}
-                />
-                <AssessmentRow
-                  label="Behavior Assessment"
-                  status={behaviorStat}
-                  progress={behaviorProg}
-                />
-
-                {/* Prominent IUP Generation Button to Assign Goals (Only when assessment is completed) */}
-                {isCompleted && (
-                  <TouchableOpacity
-                    style={[
-                      styles.launchBtn,
-                      { backgroundColor: '#10B981', paddingVertical: 10, marginTop: 4 },
-                    ]}
-                    onPress={() => {
-                      markStudentAssessmentCompleted(s.id);
-                      (navigation as any)?.navigate?.('IupGeneration', { studentId: s.id });
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      <Feather name="check-circle" size={15} color="#FFFFFF" />
-                      <Text style={[styles.launchBtnTextLight, { fontSize: 12 }]}>
-                        100% Complete — Proceed to IUP Generation to Assign Goals →
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-
-                <View style={styles.studentBtnRow}>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#3B82F6' }]}
-                    onPress={() => navigation?.navigate?.('SkillsAssessment', { studentId: s.id })}
-                  >
-                    <Text style={styles.launchBtnTextLight}>Skills Assessment →</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#EF4444' }]}
-                    onPress={() =>
-                      navigation?.navigate?.('BehaviorAssessment', { studentId: s.id })
-                    }
-                  >
-                    <Text style={styles.launchBtnTextLight}>Behavior Assessment →</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.studentBtnRow}>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#22C55E' }]}
-                    onPress={() =>
-                      navigation?.navigate?.('PreferenceAssessment', { studentId: s.id })
-                    }
-                  >
-                    <Text style={styles.launchBtnTextLight}>Preference →</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#A855F7' }]}
-                    onPress={() => navigation?.navigate?.('SensoryAssessment', { studentId: s.id })}
-                  >
-                    <Text style={styles.launchBtnTextLight}>Sensory →</Text>
-                  </TouchableOpacity>
+            {/* Section 1C: Caseload Section Header */}
+            <View style={styles.caseloadHeaderRow}>
+              <View style={styles.caseloadTitleGroup}>
+                <Text style={typography.h3}>Student Assessments</Text>
+                <View style={styles.childrenBadge}>
+                  <Text style={styles.childrenBadgeText}>
+                    {data.students.length} Children Assigned
+                  </Text>
                 </View>
               </View>
-            );
-          })}
-        </View>
+              <Text style={styles.microCopy}>
+                Click any assessment card to enter or review clinician scoring
+              </Text>
+            </View>
 
-        <View style={styles.guidelinesBox}>
-          <Feather name="info" size={16} color={colors.primaryYellowDark} />
-          <Text style={styles.guidelinesText}>
-            All students must complete the Skills and Behavior assessments within the 6-week window.
-            Once assessments reach 100% completion, proceed to IUP Generation to assign targets from
-            the Goal Bank.
-          </Text>
-        </View>
+            {/* Empty Caseload Check */}
+            {data.students.length === 0 ? (
+              <AssessmentEmptyState />
+            ) : (
+              /* Section 2: Dynamic Student Assessment Cards (2-Column Grid) */
+              <View style={[styles.studentsGrid, isTabletOrDesktop && styles.studentsGridDesktop]}>
+                {data.students.map((student) => (
+                  <View
+                    key={student.id}
+                    style={[
+                      styles.studentGridItem,
+                      isTabletOrDesktop && styles.studentGridItemDesktop,
+                    ]}
+                  >
+                    <StudentAssessmentCard
+                      student={student}
+                      onNavigateModule={handleNavigateModule}
+                      onSubmitForReview={handleSubmitForReview}
+                      isSubmitting={submittingStudentId === student.id}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: {
+  safe: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  content: {
+    padding: spacing.md,
+    gap: spacing.lg,
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: spacing.xxl,
+  },
+
+  topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.lg,
-    backgroundColor: colors.bgCard,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  periodPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  periodPillText: { fontSize: 12, fontWeight: '700', color: colors.primaryYellowDark },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statCard: {
-    flexGrow: 1,
-    minWidth: '22%',
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.xs,
-  },
-  statValue: { fontSize: 24, fontWeight: '700', color: colors.navyText },
-  studentsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  studentCard: {
-    flexGrow: 1,
-    minWidth: '45%',
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: spacing.md,
   },
-  studentHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  studentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.promptG,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 260,
+  },
+  documentIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: '#E0F2FE',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  studentAvatarText: { color: colors.white, fontWeight: '700' },
-  scoreBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.bgApp,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
+  mainTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.navyText,
+    letterSpacing: -0.2,
   },
-  scoreBadgeValue: { fontSize: 14, fontWeight: '700', color: colors.navyText },
-  scoreBadgeLabel: {
-    fontSize: 9,
-    fontWeight: '700',
+  assignedClinicianSubtitle: {
+    fontSize: 13,
     color: colors.mutedText,
-    textTransform: 'uppercase',
+    marginTop: 2,
   },
-  assessmentBlock: { gap: spacing.xs },
-  assessmentHeaderRow: {
+  clinicianHighlight: {
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  cycleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  cycleBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+
+  caseloadHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
   },
-  statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
-  statusPillText: { fontSize: 10, fontWeight: '700' },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressTrack: {
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.bgApp,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%' },
-  studentBtnRow: { flexDirection: 'row', gap: spacing.sm },
-  launchBtn: {
-    flex: 1,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  launchBtnTextLight: { fontWeight: '700', color: colors.white, fontSize: 11 },
-  guidelinesBox: {
+  caseloadTitleGroup: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    backgroundColor: '#FEF3C7',
-    borderRadius: radius.md,
-    padding: spacing.lg,
+    alignItems: 'center',
+    gap: 8,
   },
-  guidelinesText: { flex: 1, fontSize: 13, color: '#92400E' },
+  childrenBadge: {
+    backgroundColor: '#E0F2FE',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  childrenBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  microCopy: {
+    fontSize: 12,
+    color: '#64748B',
+    fontStyle: 'italic',
+  },
+
+  studentsGrid: {
+    flexDirection: 'column',
+    gap: spacing.md,
+    width: '100%',
+  },
+  studentsGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  studentGridItem: {
+    width: '100%',
+  },
+  studentGridItemDesktop: {
+    width: '49%',
+    flexGrow: 1,
+  },
 });

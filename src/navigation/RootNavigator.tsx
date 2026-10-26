@@ -158,16 +158,10 @@ export default function RootNavigator() {
     setIsCollapsed((prev) => !prev);
   }, []);
 
-  // On web, restore the screen from the URL after login/session restore so a
-  // refresh keeps the user where they were instead of bouncing to the
-  // role's initial (dashboard) route.
-  React.useEffect(() => {
+  const restoreDeepLink = React.useCallback(() => {
     if (Platform.OS !== 'web' || !session || !navRef.current) return;
-    if (deepLinkRestored.current) {
-      syncUrlToScreen(navRef.current.getState() as NavigationState);
-      return;
-    }
-    deepLinkRestored.current = true;
+    const nav = navRef.current;
+    if (typeof nav.isReady === 'function' && !nav.isReady()) return;
 
     const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
     if (!target || target === 'Login' || target === 'ForgotPassword') {
@@ -190,7 +184,6 @@ export default function RootNavigator() {
       return;
     }
 
-    const nav = navRef.current;
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const sid =
@@ -201,16 +194,35 @@ export default function RootNavigator() {
     } catch {
       // Unknown route name — fall through and reset the URL below.
     }
-    if (nav.getCurrentRoute()?.name !== target) {
+    if (nav.getCurrentRoute?.()?.name !== target) {
       window.history.replaceState(null, '', '/');
     }
   }, [session]);
+
+  // On web, restore the screen from the URL after login/session restore so a
+  // refresh keeps the user where they were instead of bouncing to the
+  // role's initial (dashboard) route.
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || !session || !navRef.current) return;
+    const nav = navRef.current;
+    if (typeof nav.isReady === 'function' && nav.isReady()) {
+      if (deepLinkRestored.current) {
+        syncUrlToScreen(nav.getState() as NavigationState);
+      } else {
+        deepLinkRestored.current = true;
+        restoreDeepLink();
+      }
+    }
+  }, [session, restoreDeepLink]);
 
   React.useEffect(() => {
     if (Platform.OS !== 'web' || !session) return;
     const handlePopState = () => {
       const target = window.location.pathname.replace(/^\/+|\/+$/g, '');
       if (target && navRef.current) {
+        const nav = navRef.current;
+        if (typeof nav.isReady === 'function' && !nav.isReady()) return;
+
         // Module-gate the target screen on popstate
         const requiredModule = SCREEN_TO_MODULE[target];
         const isSystemAdminExempt = session?.role === 'system_admin' && requiredModule === 'admin';
@@ -234,7 +246,7 @@ export default function RootNavigator() {
               ? localStorage.getItem('last_assessment_student_id')
               : null) ||
             'student-a';
-          navRef.current.navigate(target, { studentId: sid });
+          nav.navigate(target, { studentId: sid });
         } catch {}
       }
     };
@@ -254,6 +266,10 @@ export default function RootNavigator() {
           setNavVersion((v) => v + 1);
         }}
         onReady={() => {
+          if (!deepLinkRestored.current) {
+            deepLinkRestored.current = true;
+            restoreDeepLink();
+          }
           if (Platform.OS === 'web' && navRef.current) {
             syncUrlToScreen(navRef.current.getState());
           }
