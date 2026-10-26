@@ -244,7 +244,18 @@ function normalizeStatus(rawStatus?: string): string {
     .toLowerCase()
     .replace(/[_\s-]+/g, ' ')
     .trim();
-  if (s === 'not started' || s === 'notstarted' || s === 'unassigned') return 'Not Started';
+  if (
+    s === 'not started' ||
+    s === 'notstarted' ||
+    s === 'unassigned' ||
+    s === 'enrolled' ||
+    s === 'registered' ||
+    s === 'draft' ||
+    s === 'new' ||
+    s === 'active'
+  ) {
+    return 'Not Started';
+  }
   if (s === 'in progress' || s === 'inprogress' || s === 'in assessment' || s === 'inassessment') {
     return 'In Progress';
   }
@@ -259,7 +270,7 @@ function normalizeStatus(rawStatus?: string): string {
     return 'Complete';
   }
   if (s === 'reviewed' || s === 'approved') return 'Reviewed';
-  return rawStatus;
+  return 'Not Started';
 }
 
 function normalizeAssessmentItem(item: any): AssessmentListItem {

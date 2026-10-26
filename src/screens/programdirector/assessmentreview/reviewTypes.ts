@@ -77,11 +77,33 @@ export function normalizeStatus(rawStatus?: string): string {
     .toLowerCase()
     .replace(/[_\s-]+/g, ' ')
     .trim();
-  if (s === 'not started' || s === 'notstarted') return 'Not Started';
-  if (s === 'in progress' || s === 'inprogress') return 'In Progress';
-  if (s === 'complete' || s === 'completed') return 'Complete';
+  if (
+    s === 'not started' ||
+    s === 'notstarted' ||
+    s === 'unassigned' ||
+    s === 'enrolled' ||
+    s === 'registered' ||
+    s === 'draft' ||
+    s === 'new' ||
+    s === 'active'
+  ) {
+    return 'Not Started';
+  }
+  if (s === 'in progress' || s === 'inprogress' || s === 'in assessment' || s === 'inassessment') {
+    return 'In Progress';
+  }
+  if (
+    s === 'complete' ||
+    s === 'completed' ||
+    s === 'assessment complete' ||
+    s === 'assessment completed' ||
+    s === 'ready for iup' ||
+    s === 'readyforiup'
+  ) {
+    return 'Complete';
+  }
   if (s === 'reviewed' || s === 'approved') return 'Reviewed';
-  return rawStatus;
+  return 'Not Started';
 }
 
 export function normalizeAssessmentItem(item: any): AssessmentListItem {

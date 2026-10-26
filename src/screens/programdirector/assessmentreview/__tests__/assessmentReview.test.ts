@@ -43,7 +43,12 @@ describe('Assessment Review types and helpers', () => {
     it('normalizes various status string formats', () => {
       expect(normalizeStatus('not_started')).toBe('Not Started');
       expect(normalizeStatus('notstarted')).toBe('Not Started');
+      expect(normalizeStatus('enrolled')).toBe('Not Started');
+      expect(normalizeStatus('registered')).toBe('Not Started');
+      expect(normalizeStatus('draft')).toBe('Not Started');
+      expect(normalizeStatus('active')).toBe('Not Started');
       expect(normalizeStatus('in_progress')).toBe('In Progress');
+      expect(normalizeStatus('in_assessment')).toBe('In Progress');
       expect(normalizeStatus('completed')).toBe('Complete');
       expect(normalizeStatus('approved')).toBe('Reviewed');
       expect(normalizeStatus('reviewed')).toBe('Reviewed');
@@ -344,6 +349,63 @@ describe('Assessment Review types and helpers', () => {
       const { data: reviewedOnly } = await getAssessmentsForReview({ status: 'reviewed' });
       expect(reviewedOnly.some((s: any) => s.studentId === studentReviewed)).toBe(true);
       expect(reviewedOnly.some((s: any) => s.studentId === studentComplete)).toBe(false);
+    });
+
+    it('ensures students with Not Started on the dashboard have the same Not Started status on AssessmentReview', async () => {
+      const newlyEnrolledId = 'new-enrolled-std-001';
+      const registeredStdId = 'registered-std-002';
+
+      // Seed student in cache as newly enrolled student (e.g. from StudentEnrollmentWizard)
+      storage.setJSONSync('melue_enrolled_students_cache', [
+        {
+          id: newlyEnrolledId,
+          studentId: newlyEnrolledId,
+          fullName: 'Kidus Tadesse',
+          name: 'Kidus Tadesse',
+          age: 6,
+          program: 'Regular',
+          therapist: 'Abeba Tadesse',
+          status: 'active',
+        },
+      ]);
+
+      // Mock backend options or students with a registered student
+      vi.spyOn(client, 'get').mockImplementation(async (url: string) => {
+        if (url === '/students') {
+          return {
+            data: {
+              data: [
+                {
+                  id: registeredStdId,
+                  full_name: 'Blen Assefa',
+                  name: 'Blen Assefa',
+                  age: 7,
+                  program_type: 'Regular',
+                  status: 'registered',
+                },
+              ],
+            },
+          } as any;
+        }
+        if (url === '/program_director/assessments') {
+          return { data: [] } as any;
+        }
+        return { data: [] } as any;
+      });
+
+      const { data: reviewList } = await getAssessmentsForReview();
+
+      // Check newly enrolled student
+      const kidus = reviewList.find((s: any) => s.studentId === newlyEnrolledId);
+      expect(kidus).toBeDefined();
+      expect(kidus.status).toBe('Not Started');
+      expect(kidus.abllsPct).toBe(0);
+
+      // Check registered student from /students
+      const blen = reviewList.find((s: any) => s.studentId === registeredStdId);
+      expect(blen).toBeDefined();
+      expect(blen.status).toBe('Not Started');
+      expect(blen.abllsPct).toBe(0);
     });
 
   });

@@ -644,8 +644,8 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         program: es.programType || es.program || 'Regular',
         therapyGroup: es.therapyGroup || es.therapy_group || es.station || 'Station 1',
         age: Number(es.age) || 6,
-        status: es.status || 'enrolled',
-        rawStatus: es.status || 'enrolled',
+        status: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
+        rawStatus: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
         currentStage: es.currentStage || 'enrolled',
       });
     }
@@ -750,9 +750,16 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         s === 'assessment_completed'
       )
         return 'ready_for_iup';
-      if (s === 'active_therapy' || s === 'in_session' || s === 'active') return 'active_therapy';
+      if (s === 'active_therapy' || s === 'in_session') return 'active_therapy';
       if (s === 'session_assigned') return 'session_assigned';
-      if (s === 'registered' || s === 'enrolled' || s === 'not_started' || s === 'draft')
+      if (
+        s === 'registered' ||
+        s === 'enrolled' ||
+        s === 'not_started' ||
+        s === 'draft' ||
+        s === 'active' ||
+        s === 'new'
+      )
         return 'enrolled';
       return s;
     };
@@ -1036,6 +1043,9 @@ function evaluateRealStudentAssessment(
     skillsProg >= 100 && behaviorProg >= 100 && prefProg >= 100 && sensoryProg >= 100;
 
   const rawStatus = String(rawRecord?.status || '').toLowerCase().trim();
+  const studentStatus = String(studentObj?.status || studentObj?.rawStatus || '').toLowerCase().trim();
+  const studentStage = String(studentObj?.currentStage || studentObj?.stage || '').toLowerCase().trim();
+
   const isCycleComplete =
     rawStatus === 'complete' || rawStatus === 'completed' || rawStatus === 'ready_for_iup';
 
@@ -1054,27 +1064,42 @@ function evaluateRealStudentAssessment(
         { requireAllFour: true },
       ));
 
-  const hasAnyProgress =
+  const hasRealProgress =
     skillsProg > 0 ||
     behaviorProg > 0 ||
     prefProg > 0 ||
     sensoryProg > 0 ||
-    Number(rawRecord?.assessment_progress ?? rawRecord?.abllsPct ?? 0) > 0 ||
-    rawStatus === 'in_progress' ||
-    rawStatus === 'in_assessment' ||
-    rawStatus === 'inprogress' ||
-    ['in_progress', 'draft', 'in progress', 'completed'].includes(
-      String(skillsData?.status || '').toLowerCase(),
-    ) ||
-    ['in_progress', 'draft', 'in progress', 'completed'].includes(
-      String(behaviorData?.status || '').toLowerCase(),
-    ) ||
-    ['in_progress', 'draft', 'in progress', 'completed'].includes(
-      String(prefData?.status || '').toLowerCase(),
-    ) ||
-    ['in_progress', 'draft', 'in progress', 'completed'].includes(
-      String(sensoryData?.status || '').toLowerCase(),
-    );
+    Number(rawRecord?.assessment_progress ?? 0) > 0;
+
+  const isEnrolledOrNotStarted =
+    studentStage === 'enrolled' ||
+    studentStatus === 'enrolled' ||
+    studentStatus === 'registered' ||
+    studentStatus === 'not_started' ||
+    studentStatus === 'not started' ||
+    studentStatus === 'draft' ||
+    studentStatus === 'active' ||
+    studentStatus === 'new' ||
+    studentObj?.assessmentStatus === 'not-started';
+
+  const hasAnyProgress =
+    hasRealProgress ||
+    (!isEnrolledOrNotStarted &&
+      (rawStatus === 'in_progress' ||
+        rawStatus === 'in_assessment' ||
+        rawStatus === 'inprogress' ||
+        ['in_progress', 'draft', 'in progress', 'completed'].includes(
+          String(skillsData?.status || '').toLowerCase(),
+        ) ||
+        ['in_progress', 'draft', 'in progress', 'completed'].includes(
+          String(behaviorData?.status || '').toLowerCase(),
+        ) ||
+        ['in_progress', 'draft', 'in progress', 'completed'].includes(
+          String(prefData?.status || '').toLowerCase(),
+        ) ||
+        ['in_progress', 'draft', 'in progress', 'completed'].includes(
+          String(sensoryData?.status || '').toLowerCase(),
+        )));
 
   let status = 'Not Started';
   if (isRev) {
@@ -1130,11 +1155,14 @@ export const getAssessmentsForReview = async (
   const config = Object.keys(cleanParams).length > 0 ? { params: cleanParams } : undefined;
 
   // 1. Fetch real assessments, real students, and real pipeline in parallel
-  const [assessmentsRes, studentsRes, pipelineRes] = await Promise.allSettled([
-    client.get('/program_director/assessments', config),
-    client.get('/coordinator/students'),
-    client.get('/program_director/assessment_pipeline'),
-  ]);
+  const [assessmentsRes, studentsRes, fullStudentsRes, optionsStudentsRes, pipelineRes] =
+    await Promise.allSettled([
+      client.get('/program_director/assessments', config),
+      client.get('/coordinator/students'),
+      client.get<any>('/students'),
+      client.get<any[]>('/options/students'),
+      client.get('/program_director/assessment_pipeline'),
+    ]);
 
   let rawAssessments: any[] = [];
   if (assessmentsRes.status === 'fulfilled' && assessmentsRes.value?.data) {
@@ -1149,24 +1177,36 @@ export const getAssessmentsForReview = async (
   }
 
   let rawStudents: any[] = [];
-  if (studentsRes.status === 'fulfilled' && studentsRes.value?.data) {
+  if (fullStudentsRes.status === 'fulfilled' && fullStudentsRes.value?.data) {
+    const sData = fullStudentsRes.value.data;
+    const list = Array.isArray(sData?.data) ? sData.data : Array.isArray(sData) ? sData : [];
+    if (list.length > 0) rawStudents = list;
+  }
+  if (
+    rawStudents.length === 0 &&
+    optionsStudentsRes.status === 'fulfilled' &&
+    Array.isArray(optionsStudentsRes.value?.data)
+  ) {
+    rawStudents = optionsStudentsRes.value.data;
+  }
+  if (
+    rawStudents.length === 0 &&
+    studentsRes.status === 'fulfilled' &&
+    studentsRes.value?.data
+  ) {
     const data = studentsRes.value.data;
-    rawStudents = Array.isArray(data)
+    const list = Array.isArray(data)
       ? data
       : Array.isArray(data?.students)
         ? data.students
         : Array.isArray(data?.data)
           ? data.data
           : [];
+    if (list.length > 0) rawStudents = list;
   }
 
   if (rawStudents.length === 0) {
-    try {
-      const optRes = await client.get('/options/students');
-      if (Array.isArray(optRes?.data) && optRes.data.length > 0) {
-        rawStudents = optRes.data;
-      }
-    } catch {}
+    rawStudents = DEFAULT_PD_STUDENTS.map((s) => ({ ...s }));
   }
 
   // Include locally enrolled real students from storage
@@ -1182,7 +1222,12 @@ export const getAssessmentsForReview = async (
           (esName && String(s.fullName || s.name || '').toLowerCase().trim() === esName),
       )
     ) {
-      rawStudents.push(es);
+      rawStudents.push({
+        ...es,
+        status: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
+        rawStatus: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
+        currentStage: es.currentStage || 'enrolled',
+      });
     }
   }
 
@@ -1288,10 +1333,20 @@ export const getAssessmentsForReview = async (
       const existingRank = statusRank[existing.status] || 0;
       const newRank = statusRank[item.status] || 0;
 
+      let finalStatus = item.status;
+      if (item.status === 'Not Started' && existing.status === 'In Progress') {
+        const hasExistingProgress = (existing.abllsPct || 0) > 0 || Boolean(existing.dateCompleted);
+        finalStatus = hasExistingProgress ? existing.status : 'Not Started';
+      } else if (newRank >= existingRank) {
+        finalStatus = item.status;
+      } else {
+        finalStatus = existing.status;
+      }
+
       const merged = {
         ...existing,
         ...item,
-        status: newRank >= existingRank ? item.status : existing.status,
+        status: finalStatus,
         abllsPct: Math.max(existing.abllsPct, item.abllsPct),
         therapist: item.therapist !== 'Unassigned' ? item.therapist : existing.therapist,
         dateCompleted: item.dateCompleted || existing.dateCompleted,
