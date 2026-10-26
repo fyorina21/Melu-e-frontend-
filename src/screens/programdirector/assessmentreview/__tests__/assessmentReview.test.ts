@@ -46,7 +46,7 @@ describe('Assessment Review types and helpers', () => {
       expect(normalizeStatus('enrolled')).toBe('Not Started');
       expect(normalizeStatus('registered')).toBe('Not Started');
       expect(normalizeStatus('draft')).toBe('Not Started');
-      expect(normalizeStatus('active')).toBe('Not Started');
+      expect(normalizeStatus('new')).toBe('Not Started');
       expect(normalizeStatus('in_progress')).toBe('In Progress');
       expect(normalizeStatus('in_assessment')).toBe('In Progress');
       expect(normalizeStatus('completed')).toBe('Complete');

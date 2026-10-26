@@ -19,6 +19,7 @@ import {
   getStudentSensoryProgress,
   checkStudentAllAssessmentsCompleted,
   isStudentAssessmentSubmitted,
+  isStoredAssessmentCompleted,
   getStudentIdAliases,
   normalizeStudentId,
   getSubmittedStudents,
@@ -1001,17 +1002,23 @@ function evaluateRealStudentAssessment(
       String(rawRecord?.status || '').toLowerCase() === 'approved',
   );
 
-  // 2. Submission check: has the teacher submitted it on AssessmentDashboard?
+  // 2. Submission check: has the teacher submitted it on AssessmentDashboard or is it stored completed?
   const isSubmitted =
     isStudentAssessmentSubmitted(sid) ||
     aliases.some((a) => isStudentAssessmentSubmitted(a)) ||
-    (studentObj && isStudentAssessmentSubmitted(String(studentObj.id)));
+    (studentObj && isStudentAssessmentSubmitted(String(studentObj.id))) ||
+    isStoredAssessmentCompleted(sid) ||
+    aliases.some((a) => isStoredAssessmentCompleted(a));
+
+  const rawAbllsPct = Number(
+    rawRecord?.abllsPct ??
+      rawRecord?.completion_percentage ??
+      rawRecord?.assessment_progress ??
+      0,
+  );
 
   // 3. Real progress from all 4 assessment types
-  const skillsData = getStudentSkillsProgress(
-    sid,
-    Number(rawRecord?.abllsPct ?? rawRecord?.completion_percentage ?? 0),
-  );
+  const skillsData = getStudentSkillsProgress(sid, rawAbllsPct);
   const behaviorData = getStudentBehaviorProgress(sid);
   const prefData = getStudentPreferenceProgress(sid);
   const sensoryData = getStudentSensoryProgress(sid);
@@ -1042,12 +1049,16 @@ function evaluateRealStudentAssessment(
   const isAllFour100 =
     skillsProg >= 100 && behaviorProg >= 100 && prefProg >= 100 && sensoryProg >= 100;
 
-  const rawStatus = String(rawRecord?.status || '').toLowerCase().trim();
-  const studentStatus = String(studentObj?.status || studentObj?.rawStatus || '').toLowerCase().trim();
-  const studentStage = String(studentObj?.currentStage || studentObj?.stage || '').toLowerCase().trim();
+  const rawStatus = String(rawRecord?.status || rawRecord?.stage || '').toLowerCase().trim();
 
   const isCycleComplete =
-    rawStatus === 'complete' || rawStatus === 'completed' || rawStatus === 'ready_for_iup';
+    rawStatus === 'complete' ||
+    rawStatus === 'completed' ||
+    rawStatus === 'ready_for_iup' ||
+    rawStatus === 'ready for iup' ||
+    rawStatus === 'assessment_complete' ||
+    rawStatus === 'assessment completed' ||
+    rawStatus === 'assessment complete';
 
   const isAllCompleted =
     isSubmitted ||
@@ -1069,53 +1080,41 @@ function evaluateRealStudentAssessment(
     behaviorProg > 0 ||
     prefProg > 0 ||
     sensoryProg > 0 ||
-    Number(rawRecord?.assessment_progress ?? 0) > 0;
+    rawAbllsPct > 0 ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(skillsData?.status || '').toLowerCase(),
+    ) ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(behaviorData?.status || '').toLowerCase(),
+    ) ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(prefData?.status || '').toLowerCase(),
+    ) ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(sensoryData?.status || '').toLowerCase(),
+    );
 
-  const isEnrolledOrNotStarted =
-    studentStage === 'enrolled' ||
-    studentStatus === 'enrolled' ||
-    studentStatus === 'registered' ||
-    studentStatus === 'not_started' ||
-    studentStatus === 'not started' ||
-    studentStatus === 'draft' ||
-    studentStatus === 'active' ||
-    studentStatus === 'new' ||
-    studentObj?.assessmentStatus === 'not-started';
-
-  const hasAnyProgress =
-    hasRealProgress ||
-    (!isEnrolledOrNotStarted &&
-      (rawStatus === 'in_progress' ||
-        rawStatus === 'in_assessment' ||
-        rawStatus === 'inprogress' ||
-        ['in_progress', 'draft', 'in progress', 'completed'].includes(
-          String(skillsData?.status || '').toLowerCase(),
-        ) ||
-        ['in_progress', 'draft', 'in progress', 'completed'].includes(
-          String(behaviorData?.status || '').toLowerCase(),
-        ) ||
-        ['in_progress', 'draft', 'in progress', 'completed'].includes(
-          String(prefData?.status || '').toLowerCase(),
-        ) ||
-        ['in_progress', 'draft', 'in progress', 'completed'].includes(
-          String(sensoryData?.status || '').toLowerCase(),
-        )));
+  const isRecordInProgress =
+    rawStatus === 'in_progress' ||
+    rawStatus === 'in progress' ||
+    rawStatus === 'inprogress' ||
+    rawStatus === 'in_assessment' ||
+    rawStatus === 'in assessment' ||
+    rawStatus === 'assessment';
 
   let status = 'Not Started';
   if (isRev) {
     status = 'Reviewed';
   } else if (isAllCompleted) {
     status = 'Complete';
-  } else if (hasAnyProgress) {
+  } else if (hasRealProgress || isRecordInProgress) {
     status = 'In Progress';
   }
 
-  const abllsPct = isSubmitted
-    ? 100
-    : Math.min(
-        100,
-        Math.max(Number(rawRecord?.abllsPct ?? rawRecord?.completion_percentage ?? 0), skillsProg),
-      );
+  const abllsPct =
+    isSubmitted || isCycleComplete || isAllFour100 || isRev
+      ? 100
+      : Math.min(100, Math.max(rawAbllsPct, skillsProg));
 
   const submission =
     getStudentAssessmentSubmission(sid) ||
@@ -1333,15 +1332,7 @@ export const getAssessmentsForReview = async (
       const existingRank = statusRank[existing.status] || 0;
       const newRank = statusRank[item.status] || 0;
 
-      let finalStatus = item.status;
-      if (item.status === 'Not Started' && existing.status === 'In Progress') {
-        const hasExistingProgress = (existing.abllsPct || 0) > 0 || Boolean(existing.dateCompleted);
-        finalStatus = hasExistingProgress ? existing.status : 'Not Started';
-      } else if (newRank >= existingRank) {
-        finalStatus = item.status;
-      } else {
-        finalStatus = existing.status;
-      }
+      const finalStatus = newRank >= existingRank ? item.status : existing.status;
 
       const merged = {
         ...existing,

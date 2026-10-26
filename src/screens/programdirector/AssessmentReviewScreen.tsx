@@ -251,8 +251,7 @@ function normalizeStatus(rawStatus?: string): string {
     s === 'enrolled' ||
     s === 'registered' ||
     s === 'draft' ||
-    s === 'new' ||
-    s === 'active'
+    s === 'new'
   ) {
     return 'Not Started';
   }
@@ -270,7 +269,7 @@ function normalizeStatus(rawStatus?: string): string {
     return 'Complete';
   }
   if (s === 'reviewed' || s === 'approved') return 'Reviewed';
-  return 'Not Started';
+  return rawStatus;
 }
 
 function normalizeAssessmentItem(item: any): AssessmentListItem {
