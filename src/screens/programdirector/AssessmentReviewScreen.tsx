@@ -199,7 +199,8 @@ function ReportModal({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Text style={{ fontSize: 13, color: '#334155', fontWeight: '500' }}>
               <Text style={{ fontWeight: '700', color: '#0F172A' }}>{report.studentName}</Text>
-              {` • Age ${report.age || 6} • Program: ${report.program}`}
+              {report.age ? ` • Age ${report.age}` : ''}
+              {report.program ? ` • Program: ${report.program}` : ''}
             </Text>
             <View
               style={{

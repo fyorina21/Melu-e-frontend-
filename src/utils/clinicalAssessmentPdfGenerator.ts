@@ -3,6 +3,7 @@
 // Institutional Clinical Theme: Melu'e Navy (#1A2233) & Melu'e Gold (#F6C445)
 
 export interface ClinicalReportPayload {
+  director_name?: string;
   student?: {
     id?: string;
     student_id?: string;
@@ -23,6 +24,7 @@ export interface ClinicalReportPayload {
     lead_clinician?: string;
     therapist?: string;
     assessment_window?: string;
+    completed_on?: string;
   };
   assessment?: {
     id?: string;
@@ -287,13 +289,9 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
 
   // Real Student ID: format MEL-****-YY
   const rawId =
-    student.student_number ||
-    student.studentNumber ||
-    student.student_id ||
-    student.id ||
-    'stu-0001';
-  let studentIdFormatted = rawId;
-  if (!/^MEL-.*-\d{2}$/i.test(studentIdFormatted)) {
+    student.student_number || student.studentNumber || student.student_id || student.id || '';
+  let studentIdFormatted = rawId || '—';
+  if (rawId && !/^MEL-.*-\d{2}$/i.test(studentIdFormatted)) {
     const cleanNum = String(rawId)
       .replace(/[^a-zA-Z0-9]/g, '')
       .slice(0, 4)
@@ -302,18 +300,15 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
     studentIdFormatted = `MEL-${cleanNum}-26`;
   }
 
-  const studentName = student.full_name || student.name || 'Assessment Student';
-  const age = student.age ?? 6;
-  const dob = student.date_of_birth || '2020-03-15';
-  const diagnosis = student.diagnosis || 'Autism Spectrum Disorder (Level 2)';
-  const program = student.program || student.program_type || 'Comprehensive ABA Therapy';
-  const therapyGroup = student.therapyGroup || student.therapy_group || 'Basic Group';
-  const leadClinician =
-    student.lead_clinician ||
-    student.therapist ||
-    data.lead_clinician ||
-    'Abeba Tadesse, Lead Clinician';
-  const assessmentWindow = student.assessment_window || 'March 01, 2026 – Present';
+  const studentName = student.full_name || student.name || '—';
+  const age = student.age != null ? `${student.age} yrs` : '—';
+  const dob = student.date_of_birth || '—';
+  const diagnosis = student.diagnosis || '—';
+  const program = student.program || student.program_type || '—';
+  const therapyGroup = student.therapyGroup || student.therapy_group || '—';
+  const leadClinician = student.lead_clinician || student.therapist || data.lead_clinician || '—';
+  const assessmentWindow =
+    student.assessment_window || assessment.completed_on || assessment.dateCompleted || '—';
   const rawStatus = (assessment.status || student.status || 'complete')
     .replace(/[_\s-]+/g, ' ')
     .toLowerCase();
@@ -330,295 +325,138 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
     day: 'numeric',
   });
 
-  // 1. ABLLS-R Skills Assessment Data
-  const rawDomains = skills.domains || [];
-  const domains =
-    rawDomains.length > 0
-      ? rawDomains
-      : [
-          {
-            code: 'A',
-            name: 'Cooperation & Reinforcer Effectiveness',
-            total_items: 15,
-            scored_items: 15,
-            total_points: 26,
-            max_possible_points: 30,
-            percentage: 87,
-          },
-          {
-            code: 'B',
-            name: 'Visual Performance',
-            total_items: 14,
-            scored_items: 14,
-            total_points: 22,
-            max_possible_points: 28,
-            percentage: 79,
-          },
-          {
-            code: 'C',
-            name: 'Receptive Language',
-            total_items: 20,
-            scored_items: 20,
-            total_points: 24,
-            max_possible_points: 40,
-            percentage: 60,
-          },
-          {
-            code: 'D',
-            name: 'Motor Imitation',
-            total_items: 12,
-            scored_items: 12,
-            total_points: 20,
-            max_possible_points: 24,
-            percentage: 83,
-          },
-          {
-            code: 'E',
-            name: 'Vocal Imitation',
-            total_items: 10,
-            scored_items: 10,
-            total_points: 8,
-            max_possible_points: 20,
-            percentage: 40,
-          },
-          {
-            code: 'F',
-            name: 'Requests (Mands)',
-            total_items: 15,
-            scored_items: 15,
-            total_points: 12,
-            max_possible_points: 30,
-            percentage: 40,
-          },
-          {
-            code: 'G',
-            name: 'Labeling (Tacts)',
-            total_items: 18,
-            scored_items: 18,
-            total_points: 16,
-            max_possible_points: 36,
-            percentage: 44,
-          },
-          {
-            code: 'H',
-            name: 'Intraverbals',
-            total_items: 14,
-            scored_items: 14,
-            total_points: 6,
-            max_possible_points: 28,
-            percentage: 21,
-          },
-          {
-            code: 'I',
-            name: 'Spontaneous Vocalizations',
-            total_items: 9,
-            scored_items: 9,
-            total_points: 10,
-            max_possible_points: 18,
-            percentage: 56,
-          },
-          {
-            code: 'L',
-            name: 'Social Interaction',
-            total_items: 16,
-            scored_items: 16,
-            total_points: 12,
-            max_possible_points: 32,
-            percentage: 38,
-          },
-        ];
-
-  const overallMastery = skills.overall_mastery_percentage || skills.overall_score || 58;
+  // 1. ABLLS-R Skills Assessment Data - strictly dynamic from real records
+  const domains = skills.domains || [];
   const totalEvaluatedDomains = skills.total_domains_evaluated || domains.length;
   const totalScoredItems = domains.reduce((acc, d) => acc + (d.scored_items || 0), 0);
   const totalPointsEarned = domains.reduce((acc, d) => acc + (d.total_points || 0), 0);
   const totalPossiblePoints = domains.reduce((acc, d) => acc + (d.max_possible_points || 0), 0);
+  const overallMastery =
+    skills.overall_mastery_percentage ??
+    skills.overall_score ??
+    (totalPossiblePoints > 0 ? Math.round((totalPointsEarned / totalPossiblePoints) * 100) : 0);
 
-  const emergingSkills = (skills.emerging_skills || []).slice(0, 8);
-  const criticalGaps = (skills.critical_gaps || []).slice(0, 8);
+  const emergingSkills = (skills.emerging_skills || []).slice(0, 10);
+  const criticalGaps = (skills.critical_gaps || []).slice(0, 10);
   const needAnalysis = skills.need_analysis || [];
 
-  // 2. Behavior Assessment Data
-  const targetBehaviors =
-    behavior.target_behaviors && behavior.target_behaviors.length > 0
-      ? behavior.target_behaviors
-      : [
-          {
-            id: 'tb-1',
-            behavior_name: 'Aggression & Task Avoidance',
-            definition:
-              'Physical or verbal acts directed toward staff, screaming, and pushing instructional materials away during sustained demands.',
-            frequency: 4,
-            intensity: 3,
-            dominant_function: 'Escape',
-            hypothesized_function: 'Demand Escape (Social Negative Reinforcement)',
-            mas_scores: {
-              sensory: { label: 'Sensory', mean: 1.25, total: 5, rank: 4 },
-              escape: { label: 'Escape', mean: 4.75, total: 19, rank: 1 },
-              attention: { label: 'Attention', mean: 3.0, total: 12, rank: 2 },
-              tangible: { label: 'Tangible', mean: 2.25, total: 9, rank: 3 },
-            },
-            fast_scores: {
-              social_attention: {
-                label: 'Social Attention',
-                yes_count: 3,
-                max_points: 8,
-                percentage: 37.5,
-                is_dominant: false,
-              },
-              social_tangible: {
-                label: 'Social Tangible',
-                yes_count: 2,
-                max_points: 8,
-                percentage: 25.0,
-                is_dominant: false,
-              },
-              social_escape: {
-                label: 'Social Escape (Demands)',
-                yes_count: 7,
-                max_points: 8,
-                percentage: 87.5,
-                is_dominant: true,
-              },
-              automatic_sensory: {
-                label: 'Sensory Stimulation',
-                yes_count: 2,
-                max_points: 6,
-                percentage: 33.3,
-                is_dominant: false,
-              },
-              automatic_pain: {
-                label: 'Pain Attenuation',
-                yes_count: 0,
-                max_points: 6,
-                percentage: 0.0,
-                is_dominant: false,
-              },
-            },
-          },
-        ];
+  // 2. Behavior Assessment Data - strictly dynamic from real records
+  const targetBehaviors = behavior.target_behaviors || [];
+  const abcLogs = (behavior.abc_incident_log || []).slice(0, 8);
 
-  const abcLogs =
-    behavior.abc_incident_log && behavior.abc_incident_log.length > 0
-      ? behavior.abc_incident_log.slice(0, 5)
-      : [
-          {
-            date: '2026-03-24',
-            time: '10:15',
-            antecedent: 'Transition from free play to tabletop matching drill',
-            behavior_name: 'Screaming & pushing blocks',
-            consequence:
-              'Instructor implemented 5-second count, re-presented demand with gestural prompt',
-            intensity: 3,
-            location: 'Table Station 2',
-          },
-          {
-            date: '2026-03-22',
-            time: '11:30',
-            antecedent: 'Direct question during circle time reading',
-            behavior_name: 'Head down on desk, verbal refusal',
-            consequence: 'Offered visual choice board, student selected answer non-verbally',
-            intensity: 2,
-            location: 'Circle Area',
-          },
-          {
-            date: '2026-03-20',
-            time: '14:10',
-            antecedent: 'Removal of sensory swing at session end',
-            behavior_name: 'Floor dropping, whining',
-            consequence: 'Transition timer provided with tangible fidget reinforcer',
-            intensity: 2,
-            location: 'Sensory Gym',
-          },
-        ];
+  // Parse MAS Scores dynamically
+  const masRows: Array<{
+    category: string;
+    total: string | number;
+    mean: string | number;
+    rank: string;
+  }> = [];
+  const firstTb = targetBehaviors[0];
+  const rawMas =
+    firstTb?.mas_scores || (behavior as any).mas_scores || (behavior as any).mass?.scores;
+  if (rawMas && typeof rawMas === 'object') {
+    const masKeys = [
+      { key: 'escape', label: 'Demand / Escape' },
+      { key: 'attention', label: 'Attention Seeking' },
+      { key: 'tangible', label: 'Tangible Access' },
+      { key: 'sensory', label: 'Sensory / Automatic' },
+    ];
+    masKeys.forEach(({ key, label }) => {
+      const entry = rawMas[key] || rawMas[label];
+      if (entry) {
+        masRows.push({
+          category: label,
+          total: entry.total ?? entry.score ?? '—',
+          mean: entry.mean != null ? Number(entry.mean).toFixed(2) : '—',
+          rank: entry.rank ? `Rank ${entry.rank}` : '—',
+        });
+      }
+    });
+  }
 
-  // 3. Preference Assessment Data
-  const highestPrefs =
-    preferences.tiers?.highest && preferences.tiers.highest.length > 0
-      ? preferences.tiers.highest
-      : [
-          {
-            rank: 1,
-            name: 'Sensory Swing (Linear)',
-            category: 'Proprioceptive / Vestibular',
-            duration_seconds: 240,
-            frequency_count: 5,
-            context: 'Sensory Time',
-          },
-          {
-            rank: 2,
-            name: 'Light-Up Musical Spinner',
-            category: 'Visual / Auditory',
-            duration_seconds: 180,
-            frequency_count: 4,
-            context: 'Tabletop',
-          },
-          {
-            rank: 3,
-            name: 'Shaving Foam & Kinetic Sand',
-            category: 'Tactile Exploration',
-            duration_seconds: 150,
-            frequency_count: 4,
-            context: 'Sensory Time',
-          },
-        ];
+  // Parse FAST Scores dynamically
+  const fastRows: Array<{
+    variable: string;
+    yesCount: string;
+    pct: string;
+    dominant: string;
+    isDominant: boolean;
+  }> = [];
+  const rawFast =
+    firstTb?.fast_scores || (behavior as any).fast_scores || (behavior as any).fast?.scores;
+  if (rawFast && typeof rawFast === 'object') {
+    const fastKeys = [
+      { key: 'social_escape', label: 'Social Escape (Demands)' },
+      { key: 'social_attention', label: 'Social Attention' },
+      { key: 'social_tangible', label: 'Social Tangibles' },
+      { key: 'automatic_sensory', label: 'Sensory Stimulation' },
+      { key: 'automatic_pain', label: 'Pain Attenuation' },
+    ];
+    fastKeys.forEach(({ key, label }) => {
+      const entry = rawFast[key] || rawFast[label];
+      if (entry) {
+        const yes = entry.yes_count ?? entry.yesCount ?? entry.score ?? 0;
+        const max = entry.max_points ?? entry.maxPoints ?? 8;
+        const pctVal =
+          entry.percentage != null
+            ? Math.round(entry.percentage)
+            : Math.round((yes / (max || 1)) * 100);
+        const isDom = Boolean(entry.is_dominant || entry.dominant);
+        fastRows.push({
+          variable: label,
+          yesCount: `${yes} / ${max}`,
+          pct: `${pctVal}%`,
+          dominant: isDom ? 'PRIMARY' : 'Secondary',
+          isDominant: isDom,
+        });
+      }
+    });
+  }
 
-  const moderatePrefs =
-    preferences.tiers?.moderate && preferences.tiers.moderate.length > 0
-      ? preferences.tiers.moderate
-      : [
-          {
-            rank: 4,
-            name: 'Wooden Shape Sorting Blocks',
-            category: 'Manipulative',
-            duration_seconds: 90,
-            frequency_count: 3,
-            context: 'Tabletop',
-          },
-          {
-            rank: 5,
-            name: 'Animal Sound Book',
-            category: 'Auditory',
-            duration_seconds: 75,
-            frequency_count: 2,
-            context: 'Circle Time',
-          },
-        ];
+  // 3. Preference Assessment Data - strictly dynamic from real records
+  const rawHighest = preferences.tiers?.highest || [];
+  const rawModerate = preferences.tiers?.moderate || [];
+  const rawLow = preferences.tiers?.low || [];
+  const topPrefs = preferences.top_preferences || (preferences as any).top_items || [];
 
-  const lowPrefs =
-    preferences.tiers?.low && preferences.tiers.low.length > 0
-      ? preferences.tiers.low
-      : [
-          {
-            rank: 6,
-            name: 'Crayons & Paper Drawing',
-            category: 'Fine Motor',
-            duration_seconds: 15,
-            frequency_count: 1,
-            context: 'Tabletop',
-          },
-          {
-            rank: 7,
-            name: 'Puzzles (>6 pieces)',
-            category: 'Cognitive',
-            duration_seconds: 0,
-            frequency_count: 0,
-            context: 'Tabletop',
-          },
-        ];
+  let highestPrefs = rawHighest;
+  let moderatePrefs = rawModerate;
+  let lowPrefs = rawLow;
 
-  // 4. Sensory Activities Data (All 12 Canonical Activities)
-  const sensoryActivities = CANONICAL_SENSORY_ACTIVITIES.map((canonical) => {
-    const found = (sensory.activities || []).find((a) => a.code === canonical.code);
-    return {
-      code: canonical.code,
-      name: canonical.name,
-      description: canonical.description,
-      engagement_level: found?.engagement_level || canonical.defaultEngagement,
-      response_reaction: found?.response_reaction || canonical.defaultReaction,
-      remark: found?.remark || 'Responsive with positive regulation and participation.',
-    };
-  });
+  if (
+    highestPrefs.length === 0 &&
+    moderatePrefs.length === 0 &&
+    lowPrefs.length === 0 &&
+    topPrefs.length > 0
+  ) {
+    highestPrefs = topPrefs.slice(0, 3).map((p: any) => ({
+      name: typeof p === 'string' ? p : p.name,
+      duration_seconds: p.duration_seconds || 180,
+      frequency_count: p.frequency_count || 4,
+      context: p.context || 'Session Reinforcer',
+    }));
+    moderatePrefs = topPrefs.slice(3, 5).map((p: any) => ({
+      name: typeof p === 'string' ? p : p.name,
+      duration_seconds: p.duration_seconds || 60,
+      frequency_count: p.frequency_count || 2,
+      context: p.context || 'Tabletop Activity',
+    }));
+    lowPrefs = topPrefs.slice(5).map((p: any) => ({
+      name: typeof p === 'string' ? p : p.name,
+      duration_seconds: p.duration_seconds || 0,
+      frequency_count: p.frequency_count || 0,
+      context: p.context || 'Neutral Item',
+    }));
+  }
+
+  // 4. Sensory Activities Data - strictly from recorded activities
+  const sensoryActivities = (sensory.activities || []).map((act) => ({
+    code: act.code || 'SEN',
+    name: act.name || 'Sensory Activity',
+    engagement_level: act.engagement_level || 'Evaluated',
+    response_reaction: act.response_reaction || 'Observed',
+    remark: act.remark || '—',
+  }));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -638,7 +476,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       padding: 0;
       background-color: #525659;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: #1A2233;
+      color: #1E293B;
       font-size: 11px;
       line-height: 1.45;
       -webkit-font-smoothing: antialiased;
@@ -655,7 +493,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       width: 210mm;
       min-height: 297mm;
       padding: 16mm 16mm 16mm 16mm;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       position: relative;
       display: flex;
       flex-direction: column;
@@ -685,7 +523,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
 
     /* Melu'e Foundation Header */
     .header-rule {
-      border-bottom: 2.5px solid #1A2233;
+      border-bottom: 2px solid #E2E8F0;
       padding-bottom: 8px;
       margin-bottom: 12px;
       display: flex;
@@ -701,41 +539,42 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       width: 38px;
       height: 38px;
       border-radius: 8px;
-      background: #1A2233;
-      color: #F6C445;
+      background: #EFF6FF;
+      color: #2563EB;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
       font-size: 19px;
       letter-spacing: -0.5px;
-      border: 1.5px solid #F6C445;
+      border: 1.5px solid #BFDBFE;
     }
     .inst-name-block h1 {
       margin: 0;
       font-size: 15px;
       font-weight: 800;
-      color: #1A2233;
+      color: #1E293B;
       letter-spacing: -0.2px;
       text-transform: uppercase;
     }
     .inst-name-block p {
       margin: 1px 0 0 0;
       font-size: 9.5px;
-      color: #4B5563;
+      color: #64748B;
       font-weight: 500;
     }
     .form-meta {
       text-align: right;
       font-size: 9px;
-      color: #1A2233;
+      color: #475569;
       line-height: 1.35;
     }
     .form-id-badge {
       display: inline-block;
-      background: #1A2233;
-      color: #F6C445;
-      font-weight: 800;
+      background: #EFF6FF;
+      color: #2563EB;
+      border: 1px solid #BFDBFE;
+      font-weight: 700;
       font-size: 9.5px;
       padding: 2px 7px;
       border-radius: 4px;
@@ -745,8 +584,12 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
 
     /* Document Ribbon */
     .doc-title-bar {
-      background: #F4F5F7;
-      border-left: 4px solid #F6C445;
+      background: #F8FAFC;
+      border-left: 4px solid #2563EB;
+      border-top: 1px solid #E2E8F0;
+      border-right: 1px solid #E2E8F0;
+      border-bottom: 1px solid #E2E8F0;
+      border-radius: 4px;
       padding: 6px 12px;
       display: flex;
       justify-content: space-between;
@@ -757,7 +600,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       margin: 0;
       font-size: 12px;
       font-weight: 800;
-      color: #1A2233;
+      color: #1E293B;
       letter-spacing: 0.3px;
       text-transform: uppercase;
     }
@@ -773,19 +616,19 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       border: 1px solid #86EFAC;
     }
     .status-tag-complete {
-      background: #FEF3C7;
-      color: #B45309;
-      border: 1px solid #FDE68A;
+      background: #EFF6FF;
+      color: #2563EB;
+      border: 1px solid #BFDBFE;
     }
 
     /* Section Styles */
     .section-title {
       font-size: 11px;
       font-weight: 800;
-      color: #1A2233;
+      color: #1E293B;
       text-transform: uppercase;
       letter-spacing: 0.4px;
-      border-bottom: 1.5px solid #E5E7EB;
+      border-bottom: 1.5px solid #E2E8F0;
       padding-bottom: 4px;
       margin: 12px 0 8px 0;
       display: flex;
@@ -797,7 +640,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       display: inline-block;
       width: 7px;
       height: 7px;
-      background: #F6C445;
+      background: #2563EB;
       border-radius: 2px;
     }
 
@@ -806,8 +649,8 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 6px;
-      background: #F4F5F7;
-      border: 1px solid #E5E7EB;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
       border-radius: 6px;
       padding: 10px 12px;
       margin-bottom: 12px;
@@ -819,14 +662,14 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
     .demo-label {
       font-size: 8.5px;
       font-weight: 700;
-      color: #6B7280;
+      color: #64748B;
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
     .demo-val {
       font-size: 10.5px;
       font-weight: 700;
-      color: #1A2233;
+      color: #1E293B;
       margin-top: 1px;
     }
 
@@ -855,7 +698,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
     .metric-val {
       font-size: 13px;
       font-weight: 800;
-      color: #1A2233;
+      color: #1E293B;
       margin-top: 2px;
     }
 
@@ -867,30 +710,32 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       margin-bottom: 10px;
     }
     table.clinical-table th {
-      background: #1A2233;
-      color: #FFFFFF;
+      background: #F8FAFC;
+      color: #1E293B;
       font-weight: 700;
       text-align: left;
-      padding: 5px 8px;
+      padding: 6px 8px;
       font-size: 9px;
       text-transform: uppercase;
       letter-spacing: 0.3px;
+      border-top: 1px solid #E2E8F0;
+      border-bottom: 2px solid #CBD5E1;
     }
     table.clinical-table td {
-      padding: 4.5px 8px;
-      border-bottom: 1px solid #E5E7EB;
-      color: #1A2233;
+      padding: 5px 8px;
+      border-bottom: 1px solid #E2E8F0;
+      color: #1E293B;
       vertical-align: middle;
     }
     table.clinical-table tr:nth-child(even) td {
-      background: #F8FAFC;
+      background: #FAFAFA;
     }
     table.clinical-table tr.total-row td {
-      background: #EFF6FF;
+      background: #F1F5F9;
       font-weight: 800;
       border-top: 2px solid #CBD5E1;
       border-bottom: 2px solid #CBD5E1;
-      color: #1A2233;
+      color: #1E293B;
     }
 
     /* Badges matching App Theme */
@@ -902,11 +747,34 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       font-weight: 700;
       text-align: center;
     }
-    .badge-mastered { background: #D1FAE5; color: #059669; }
-    .badge-emerging { background: #DBEAFE; color: #2563EB; }
-    .badge-deficit  { background: #FEE2E2; color: #DC2626; }
-    .badge-amber    { background: #FEF3C7; color: #B45309; }
-    .badge-neutral  { background: #F3F4F6; color: #4B5563; }
+    .badge-mastered { background: #D1FAE5; color: #059669; border: 1px solid #A7F3D0; }
+    .badge-emerging { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; }
+    .badge-deficit  { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
+    .badge-amber    { background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; }
+    .badge-neutral  { background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0; }
+
+    .skill-code-badge {
+      display: inline-block;
+      background: #EFF6FF;
+      color: #2563EB;
+      border: 1px solid #BFDBFE;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+      font-size: 8.5px;
+      margin-right: 4px;
+    }
+    .gap-code-badge {
+      display: inline-block;
+      background: #FEF2F2;
+      color: #DC2626;
+      border: 1px solid #FECACA;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+      font-size: 8.5px;
+      margin-right: 4px;
+    }
 
     /* Columns layout */
     .two-col-grid {
@@ -918,21 +786,21 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
 
     /* Page Footer */
     .page-footer {
-      border-top: 1.5px solid #E5E7EB;
+      border-top: 1.5px solid #E2E8F0;
       padding-top: 6px;
       margin-top: 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 8.5px;
-      color: #6B7280;
+      color: #64748B;
     }
     .page-footer-left {
       font-weight: 600;
     }
     .page-footer-right {
       font-weight: 700;
-      color: #1A2233;
+      color: #64748B;
     }
 
     /* Signature Section */
@@ -945,7 +813,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       gap: 16px;
     }
     .signature-card {
-      border: 1px solid #E5E7EB;
+      border: 1px solid #E2E8F0;
       background: #F8FAFC;
       border-radius: 6px;
       padding: 10px 12px;
@@ -954,24 +822,24 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
       margin: 0 0 6px 0;
       font-size: 10px;
       font-weight: 800;
-      color: #1A2233;
+      color: #1E293B;
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
     .signature-line {
       height: 28px;
-      border-bottom: 1.5px solid #94A3B8;
+      border-bottom: 1.5px solid #CBD5E1;
       margin-bottom: 6px;
       display: flex;
       align-items: flex-end;
       font-family: 'Brush Script MT', cursive, sans-serif;
       font-size: 16px;
-      color: #1A2233;
+      color: #1E293B;
       padding-bottom: 2px;
     }
     .signature-meta {
       font-size: 8.5px;
-      color: #4B5563;
+      color: #64748B;
       display: flex;
       justify-content: space-between;
       line-height: 1.35;
@@ -1018,7 +886,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
           </div>
           <div class="demo-cell">
             <span class="demo-label">Date of Birth (Age)</span>
-            <span class="demo-val">${escapeHtml(dob)} (${age} yrs)</span>
+            <span class="demo-val">${escapeHtml(dob)} (${escapeHtml(age)})</span>
           </div>
           <div class="demo-cell">
             <span class="demo-label">Primary Diagnosis</span>
@@ -1077,31 +945,38 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
             </tr>
           </thead>
           <tbody>
-            ${domains
-              .map((d) => {
-                const pct = Math.round(d.percentage ?? d.score ?? 0);
-                let badgeClass = 'badge-deficit';
-                let badgeLabel = 'Deficit Gap';
-                if (pct >= 70) {
-                  badgeClass = 'badge-mastered';
-                  badgeLabel = 'Mastered';
-                } else if (pct >= 40) {
-                  badgeClass = 'badge-emerging';
-                  badgeLabel = 'Emerging';
-                }
-                return `
-                <tr>
-                  <td style="font-weight: 700; color: #1A2233;">${escapeHtml(d.code)}</td>
-                  <td style="font-weight: 600;">${escapeHtml(d.name)}</td>
-                  <td style="text-align: center;">${d.scored_items || d.total_items || 0} / ${d.total_items || 0}</td>
-                  <td style="text-align: center; font-weight: 700;">${d.total_points ?? 0}</td>
-                  <td style="text-align: center; color: #6B7280;">${d.max_possible_points ?? 0}</td>
-                  <td style="text-align: center; font-weight: 700; color: ${pct >= 70 ? '#059669' : pct >= 40 ? '#2563EB' : '#DC2626'};">${pct}%</td>
-                  <td style="text-align: center;"><span class="badge ${badgeClass}">${badgeLabel}</span></td>
-                </tr>
-              `;
-              })
-              .join('')}
+            ${
+              domains.length > 0
+                ? domains
+                    .map((d) => {
+                      const pct = Math.round(d.percentage ?? d.score ?? 0);
+                      let badgeClass = 'badge-deficit';
+                      let badgeLabel = 'Deficit Gap';
+                      if (pct >= 70) {
+                        badgeClass = 'badge-mastered';
+                        badgeLabel = 'Mastered';
+                      } else if (pct >= 40) {
+                        badgeClass = 'badge-emerging';
+                        badgeLabel = 'Emerging';
+                      }
+                      return `
+                      <tr>
+                        <td style="font-weight: 700; color: #2563EB;">${escapeHtml(d.code)}</td>
+                        <td style="font-weight: 600;">${escapeHtml(d.name)}</td>
+                        <td style="text-align: center;">${d.scored_items || d.total_items || 0} / ${d.total_items || 0}</td>
+                        <td style="text-align: center; font-weight: 700;">${d.total_points ?? 0}</td>
+                        <td style="text-align: center; color: #64748B;">${d.max_possible_points ?? 0}</td>
+                        <td style="text-align: center; font-weight: 700; color: ${pct >= 70 ? '#059669' : pct >= 40 ? '#2563EB' : '#DC2626'};">${pct}%</td>
+                        <td style="text-align: center;"><span class="badge ${badgeClass}">${badgeLabel}</span></td>
+                      </tr>
+                    `;
+                    })
+                    .join('')
+                : `<tr><td colspan="7" style="text-align: center; color: #64748B; padding: 16px;">No evaluated ABLLS-R domain data recorded yet.</td></tr>`
+            }
+            ${
+              domains.length > 0
+                ? `
             <tr class="total-row">
               <td colspan="2" style="text-align: right; text-transform: uppercase;">ABLLS-R Comprehensive Total:</td>
               <td style="text-align: center;">${totalScoredItems} Items</td>
@@ -1110,6 +985,9 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
               <td style="text-align: center; color: #2563EB;">${overallMastery}%</td>
               <td style="text-align: center;"><span class="badge badge-emerging">Overall Score</span></td>
             </tr>
+            `
+                : ''
+            }
           </tbody>
         </table>
       </div>
@@ -1148,11 +1026,11 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
         <!-- Priority Needs & Emerging Skills Split -->
         <div class="two-col-grid" style="margin-top: 4px;">
           <!-- Emerging Skills -->
-          <div style="background: #F8FAFC; border: 1px solid #E5E7EB; border-top: 3px solid #2563EB; border-radius: 6px; padding: 10px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-top: 3px solid #2563EB; border-radius: 6px; padding: 10px;">
             <div style="font-weight: 800; font-size: 10.5px; color: #2563EB; margin-bottom: 6px; text-transform: uppercase;">
               ★ Emerging Foundation Skills (Score 1)
             </div>
-            <div style="font-size: 8.5px; color: #6B7280; margin-bottom: 8px;">
+            <div style="font-size: 8.5px; color: #64748B; margin-bottom: 8px;">
               Skills initiated with partial prompt independence as recorded during assessment trials.
             </div>
             ${
@@ -1160,28 +1038,24 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
                 ? emergingSkills
                     .map(
                       (s) => `
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;">
-                  <strong style="color: #1A2233;">[${escapeHtml(s.domain_code || 'Skill')}-${escapeHtml(s.identifier || '')}]</strong>
-                  <span style="color: #1A2233;">${escapeHtml(s.description || 'Developing foundational competency')}</span>
-                  ${s.note ? `<div style="font-size: 8px; color: #4B5563; margin-top: 2px;"><em>Teacher Note: ${escapeHtml(s.note)}</em></div>` : ''}
+                <div style="border-bottom: 1px solid #E2E8F0; padding: 4px 0;">
+                  <span class="skill-code-badge">${escapeHtml(s.domain_code || 'Skill')}-${escapeHtml(s.identifier || '')}</span>
+                  <span style="color: #1E293B;">${escapeHtml(s.description || 'Developing foundational competency')}</span>
+                  ${s.note ? `<div style="font-size: 8px; color: #475569; margin-top: 2px;"><em>Teacher Note: ${escapeHtml(s.note)}</em></div>` : ''}
                 </div>
               `,
                     )
                     .join('')
-                : `
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;"><strong style="color: #1A2233;">[B-3]</strong> Match non-identical objects to pictures</div>
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;"><strong style="color: #1A2233;">[C-2]</strong> Touch common items upon verbal prompt</div>
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;"><strong style="color: #1A2233;">[D-4]</strong> Imitate gross motor actions in 2-step sequences</div>
-              `
+                : `<div style="color: #64748B; font-size: 9px; padding: 8px 0;">No emerging foundation skills recorded.</div>`
             }
           </div>
 
           <!-- Critical Gaps -->
-          <div style="background: #F8FAFC; border: 1px solid #E5E7EB; border-top: 3px solid #DC2626; border-radius: 6px; padding: 10px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-top: 3px solid #DC2626; border-radius: 6px; padding: 10px;">
             <div style="font-weight: 800; font-size: 10.5px; color: #DC2626; margin-bottom: 6px; text-transform: uppercase;">
               ⚠ Critical Baseline Gaps (Score 0)
             </div>
-            <div style="font-size: 8.5px; color: #6B7280; margin-bottom: 8px;">
+            <div style="font-size: 8.5px; color: #64748B; margin-bottom: 8px;">
               Prerequisite developmental deficits requiring structured baseline direct instruction.
             </div>
             ${
@@ -1189,19 +1063,15 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
                 ? criticalGaps
                     .map(
                       (g) => `
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;">
-                  <strong style="color: #DC2626;">[${escapeHtml(g.domain_code || 'Gap')}-${escapeHtml(g.identifier || '')}]</strong>
-                  <span style="color: #1A2233;">${escapeHtml(g.description || 'Unmastered foundation milestone')}</span>
-                  ${g.note ? `<div style="font-size: 8px; color: #4B5563; margin-top: 2px;"><em>Teacher Note: ${escapeHtml(g.note)}</em></div>` : ''}
+                <div style="border-bottom: 1px solid #E2E8F0; padding: 4px 0;">
+                  <span class="gap-code-badge">${escapeHtml(g.domain_code || 'Gap')}-${escapeHtml(g.identifier || '')}</span>
+                  <span style="color: #1E293B;">${escapeHtml(g.description || 'Unmastered foundation milestone')}</span>
+                  ${g.note ? `<div style="font-size: 8px; color: #475569; margin-top: 2px;"><em>Teacher Note: ${escapeHtml(g.note)}</em></div>` : ''}
                 </div>
               `,
                     )
                     .join('')
-                : `
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;"><strong style="color: #DC2626;">[E-1]</strong> Imitate simple vowel sound combinations</div>
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;"><strong style="color: #DC2626;">[F-3]</strong> Spontaneous manding with speech or AAC</div>
-                <div style="border-bottom: 1px solid #E5E7EB; padding: 4px 0;"><strong style="color: #DC2626;">[H-2]</strong> Fill-in words from familiar songs and activities</div>
-              `
+                : `<div style="color: #64748B; font-size: 9px; padding: 8px 0;">No critical baseline gaps identified.</div>`
             }
           </div>
         </div>
@@ -1220,29 +1090,24 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
             </tr>
           </thead>
           <tbody>
-            ${(needAnalysis.length > 0
-              ? needAnalysis
-              : domains.slice(0, 5).map((d, i) => ({
-                  domain_code: d.code,
-                  domain_name: d.name,
-                  score_0_count: 5 - i,
-                  score_1_count: 3,
-                  need_count: 5 - i + 3,
-                }))
-            )
-              .map(
-                (na, idx) => `
-              <tr>
-                <td style="font-weight: 700;">${escapeHtml(na.domain_code)}</td>
-                <td style="font-weight: 600;">${escapeHtml(na.domain_name)}</td>
-                <td style="text-align: center; color: #DC2626; font-weight: 700;">${na.score_0_count ?? 0}</td>
-                <td style="text-align: center; color: #2563EB; font-weight: 700;">${na.score_1_count ?? 0}</td>
-                <td style="text-align: center; font-weight: 800;">${na.need_count ?? 0}</td>
-                <td style="text-align: center;"><span class="badge ${idx === 0 ? 'badge-deficit' : idx < 3 ? 'badge-amber' : 'badge-neutral'}">Priority ${idx + 1}</span></td>
-              </tr>
-            `,
-              )
-              .join('')}
+            ${
+              needAnalysis.length > 0
+                ? needAnalysis
+                    .map(
+                      (na, idx) => `
+                  <tr>
+                    <td style="font-weight: 700; color: #2563EB;">${escapeHtml(na.domain_code)}</td>
+                    <td style="font-weight: 600;">${escapeHtml(na.domain_name)}</td>
+                    <td style="text-align: center; color: #DC2626; font-weight: 700;">${na.score_0_count ?? 0}</td>
+                    <td style="text-align: center; color: #2563EB; font-weight: 700;">${na.score_1_count ?? 0}</td>
+                    <td style="text-align: center; font-weight: 800;">${na.need_count ?? 0}</td>
+                    <td style="text-align: center;"><span class="badge ${idx === 0 ? 'badge-deficit' : idx < 3 ? 'badge-amber' : 'badge-neutral'}">Priority ${idx + 1}</span></td>
+                  </tr>
+                `,
+                    )
+                    .join('')
+                : `<tr><td colspan="6" style="text-align: center; color: #64748B; padding: 12px;">No domain need analysis records available.</td></tr>`
+            }
           </tbody>
         </table>
       </div>
@@ -1291,19 +1156,23 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
             </tr>
           </thead>
           <tbody>
-            ${targetBehaviors
-              .map(
-                (tb) => `
-              <tr>
-                <td style="font-weight: 700; color: #1A2233;">${escapeHtml(tb.behavior_name)}</td>
-                <td>${escapeHtml(tb.definition)}</td>
-                <td style="text-align: center; font-weight: 700;">${tb.frequency}x</td>
-                <td style="text-align: center;"><span class="badge ${(tb.intensity ?? 0) >= 3 ? 'badge-deficit' : 'badge-amber'}">Lvl ${tb.intensity ?? 2}</span></td>
-                <td style="font-weight: 700; color: #2563EB;">${escapeHtml(tb.hypothesized_function || tb.dominant_function || 'Escape')}</td>
-              </tr>
-            `,
-              )
-              .join('')}
+            ${
+              targetBehaviors.length > 0
+                ? targetBehaviors
+                    .map(
+                      (tb) => `
+                  <tr>
+                    <td style="font-weight: 700; color: #1E293B;">${escapeHtml(tb.behavior_name)}</td>
+                    <td>${escapeHtml(tb.definition || '—')}</td>
+                    <td style="text-align: center; font-weight: 700;">${tb.frequency ?? '—'}${tb.frequency != null ? 'x' : ''}</td>
+                    <td style="text-align: center;"><span class="badge ${(tb.intensity ?? 0) >= 3 ? 'badge-deficit' : 'badge-amber'}">Lvl ${tb.intensity ?? 2}</span></td>
+                    <td style="font-weight: 700; color: #2563EB;">${escapeHtml(tb.hypothesized_function || tb.dominant_function || '—')}</td>
+                  </tr>
+                `,
+                    )
+                    .join('')
+                : `<tr><td colspan="5" style="text-align: center; color: #64748B; padding: 12px;">No target problem behaviors recorded for this student.</td></tr>`
+            }
           </tbody>
         </table>
 
@@ -1311,7 +1180,7 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
         <div class="two-col-grid" style="margin-top: 8px;">
           <!-- MAS -->
           <div>
-            <div class="section-title">Motivational Assessment Scale (MAS - 16 Items)</div>
+            <div class="section-title">Motivational Assessment Scale (MAS)</div>
             <table class="clinical-table">
               <thead>
                 <tr>
@@ -1322,30 +1191,22 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>Demand / Escape</td>
-                  <td style="text-align: center; font-weight: 700;">19</td>
-                  <td style="text-align: center;">4.75</td>
-                  <td style="text-align: center;"><span class="badge badge-deficit">Rank 1</span></td>
-                </tr>
-                <tr>
-                  <td>Attention Seeking</td>
-                  <td style="text-align: center; font-weight: 700;">12</td>
-                  <td style="text-align: center;">3.00</td>
-                  <td style="text-align: center;"><span class="badge badge-amber">Rank 2</span></td>
-                </tr>
-                <tr>
-                  <td>Tangible Access</td>
-                  <td style="text-align: center; font-weight: 700;">9</td>
-                  <td style="text-align: center;">2.25</td>
-                  <td style="text-align: center;"><span class="badge badge-emerging">Rank 3</span></td>
-                </tr>
-                <tr>
-                  <td>Sensory / Automatic</td>
-                  <td style="text-align: center; font-weight: 700;">5</td>
-                  <td style="text-align: center;">1.25</td>
-                  <td style="text-align: center;"><span class="badge badge-neutral">Rank 4</span></td>
-                </tr>
+                ${
+                  masRows.length > 0
+                    ? masRows
+                        .map(
+                          (m) => `
+                      <tr>
+                        <td>${escapeHtml(m.category)}</td>
+                        <td style="text-align: center; font-weight: 700;">${m.total}</td>
+                        <td style="text-align: center;">${m.mean}</td>
+                        <td style="text-align: center;"><span class="badge badge-emerging">${escapeHtml(m.rank)}</span></td>
+                      </tr>
+                    `,
+                        )
+                        .join('')
+                    : `<tr><td colspan="4" style="text-align: center; color: #64748B; padding: 12px;">No MAS assessment scores recorded.</td></tr>`
+                }
               </tbody>
             </table>
           </div>
@@ -1363,37 +1224,29 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>Social Escape (Demands)</td>
-                  <td style="text-align: center; font-weight: 700;">7 / 8</td>
-                  <td style="text-align: center; font-weight: 700;">88%</td>
-                  <td style="text-align: center;"><span class="badge badge-deficit">PRIMARY</span></td>
-                </tr>
-                <tr>
-                  <td>Social Attention</td>
-                  <td style="text-align: center; font-weight: 700;">3 / 8</td>
-                  <td style="text-align: center;">38%</td>
-                  <td style="text-align: center;"><span class="badge badge-neutral">Secondary</span></td>
-                </tr>
-                <tr>
-                  <td>Social Tangibles</td>
-                  <td style="text-align: center; font-weight: 700;">2 / 8</td>
-                  <td style="text-align: center;">25%</td>
-                  <td style="text-align: center;"><span class="badge badge-neutral">Low</span></td>
-                </tr>
-                <tr>
-                  <td>Sensory Stimulation</td>
-                  <td style="text-align: center; font-weight: 700;">2 / 6</td>
-                  <td style="text-align: center;">33%</td>
-                  <td style="text-align: center;"><span class="badge badge-neutral">Low</span></td>
-                </tr>
+                ${
+                  fastRows.length > 0
+                    ? fastRows
+                        .map(
+                          (f) => `
+                      <tr>
+                        <td>${escapeHtml(f.variable)}</td>
+                        <td style="text-align: center; font-weight: 700;">${escapeHtml(f.yesCount)}</td>
+                        <td style="text-align: center; font-weight: 700;">${escapeHtml(f.pct)}</td>
+                        <td style="text-align: center;"><span class="badge ${f.isDominant ? 'badge-deficit' : 'badge-neutral'}">${escapeHtml(f.dominant)}</span></td>
+                      </tr>
+                    `,
+                        )
+                        .join('')
+                    : `<tr><td colspan="4" style="text-align: center; color: #64748B; padding: 12px;">No FAST evaluation records available.</td></tr>`
+                }
               </tbody>
             </table>
           </div>
         </div>
 
         <!-- Condensed Baseline ABC Episode Log -->
-        <div class="section-title">Condensed Baseline ABC Episode Log (Teacher Incident Records)</div>
+        <div class="section-title">Baseline ABC Incident Episodes (Teacher Records)</div>
         <table class="clinical-table">
           <thead>
             <tr>
@@ -1405,19 +1258,23 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
             </tr>
           </thead>
           <tbody>
-            ${abcLogs
-              .map(
-                (log) => `
-              <tr>
-                <td style="font-weight: 600;">${escapeHtml(log.date || '2026-03-24')}<br /><span style="color: #6B7280; font-size: 8.5px;">${escapeHtml(log.time || '10:00')}</span></td>
-                <td>${escapeHtml(log.antecedent)}</td>
-                <td style="font-weight: 700; color: #1A2233;">${escapeHtml(log.behavior_name)}</td>
-                <td>${escapeHtml(log.consequence)}</td>
-                <td style="text-align: center;"><span class="badge ${(log.intensity ?? 0) >= 3 ? 'badge-deficit' : 'badge-amber'}">Lvl ${log.intensity ?? 2}</span></td>
-              </tr>
-            `,
-              )
-              .join('')}
+            ${
+              abcLogs.length > 0
+                ? abcLogs
+                    .map(
+                      (log) => `
+                  <tr>
+                    <td style="font-weight: 600;">${escapeHtml(log.date || '—')}<br /><span style="color: #64748B; font-size: 8.5px;">${escapeHtml(log.time || '')}</span></td>
+                    <td>${escapeHtml(log.antecedent || '—')}</td>
+                    <td style="font-weight: 700; color: #1E293B;">${escapeHtml(log.behavior_name || '—')}</td>
+                    <td>${escapeHtml(log.consequence || '—')}</td>
+                    <td style="text-align: center;"><span class="badge ${(log.intensity ?? 0) >= 3 ? 'badge-deficit' : 'badge-amber'}">Lvl ${log.intensity ?? 2}</span></td>
+                  </tr>
+                `,
+                    )
+                    .join('')
+                : `<tr><td colspan="5" style="text-align: center; color: #64748B; padding: 12px;">No baseline ABC incident episodes logged.</td></tr>`
+            }
           </tbody>
         </table>
       </div>
@@ -1450,61 +1307,69 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
 
         <div class="doc-title-bar">
           <h2>Sub-Assessments 3 & 4: Preference & Sensory Engagement Profiles</h2>
-          <span class="status-tag status-tag-complete">12 ACTIVITIES EVALUATED</span>
+          <span class="status-tag status-tag-complete">${sensoryActivities.length} ACTIVITIES LOGGED</span>
         </div>
 
         <!-- Section 3: 3-Tier Reinforcer Hierarchy -->
         <div class="section-title">Sub-Assessment 3: Preference Assessment & 3-Tier Reinforcer Hierarchy</div>
         <div class="two-col-grid" style="margin-bottom: 8px;">
           <!-- Tier 1: Highest Preferred -->
-          <div style="background: #F8FAFC; border: 1px solid #E5E7EB; border-top: 3px solid #059669; border-radius: 6px; padding: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-top: 3px solid #059669; border-radius: 6px; padding: 8px;">
             <div style="font-weight: 800; font-size: 10px; color: #059669; text-transform: uppercase; margin-bottom: 4px;">
               Tier 1: Highest Preferred (Primary Reinforcers)
             </div>
-            ${highestPrefs
-              .map(
-                (p) => `
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #E5E7EB; padding: 3px 0; font-size: 9px;">
-                <strong>${escapeHtml(p.name)}</strong>
-                <span style="color: #6B7280;">${formatMMSS(p.duration_seconds || 180)} (${p.duration_seconds || 180}s) • ${p.frequency_count || 4}x • ${escapeHtml(p.context || 'Sensory Time')}</span>
-              </div>
-            `,
-              )
-              .join('')}
+            ${
+              highestPrefs.length > 0
+                ? highestPrefs
+                    .map(
+                      (p) => `
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #E2E8F0; padding: 3px 0; font-size: 9px;">
+                  <strong>${escapeHtml(p.name)}</strong>
+                  <span style="color: #64748B;">${p.duration_seconds ? formatMMSS(p.duration_seconds) : ''}${p.frequency_count ? ` • ${p.frequency_count}x` : ''}${p.context ? ` • ${escapeHtml(p.context)}` : ''}</span>
+                </div>
+              `,
+                    )
+                    .join('')
+                : `<div style="color: #64748B; font-size: 9px; padding: 8px 0;">No Tier 1 high-preference items recorded.</div>`
+            }
           </div>
 
           <!-- Tier 2 & 3: Moderate & Low -->
-          <div style="background: #F8FAFC; border: 1px solid #E5E7EB; border-top: 3px solid #F6C445; border-radius: 6px; padding: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-top: 3px solid #F59E0B; border-radius: 6px; padding: 8px;">
             <div style="font-weight: 800; font-size: 10px; color: #B45309; text-transform: uppercase; margin-bottom: 4px;">
               Tier 2 & 3: Moderate / Low Preferred Items
             </div>
-            ${moderatePrefs
-              .slice(0, 2)
-              .map(
-                (p) => `
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #E5E7EB; padding: 3px 0; font-size: 9px;">
-                <span>${escapeHtml(p.name)}</span>
-                <span class="badge badge-amber" style="font-size: 8px;">Secondary (${formatMMSS(p.duration_seconds || 60)})</span>
-              </div>
-            `,
-              )
-              .join('')}
-            ${lowPrefs
-              .slice(0, 1)
-              .map(
-                (p) => `
-              <div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 9px;">
-                <span>${escapeHtml(p.name)}</span>
-                <span class="badge badge-neutral" style="font-size: 8px;">Low / Avoidant</span>
-              </div>
-            `,
-              )
-              .join('')}
+            ${
+              moderatePrefs.length > 0 || lowPrefs.length > 0
+                ? `
+                ${moderatePrefs
+                  .map(
+                    (p) => `
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #E2E8F0; padding: 3px 0; font-size: 9px;">
+                    <span>${escapeHtml(p.name)}</span>
+                    <span class="badge badge-amber" style="font-size: 8px;">Secondary (${p.duration_seconds ? formatMMSS(p.duration_seconds) : 'Moderate'})</span>
+                  </div>
+                `,
+                  )
+                  .join('')}
+                ${lowPrefs
+                  .map(
+                    (p) => `
+                  <div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 9px;">
+                    <span>${escapeHtml(p.name)}</span>
+                    <span class="badge badge-neutral" style="font-size: 8px;">Low / Neutral</span>
+                  </div>
+                `,
+                  )
+                  .join('')}
+              `
+                : `<div style="color: #64748B; font-size: 9px; padding: 8px 0;">No Tier 2 or Tier 3 items recorded.</div>`
+            }
           </div>
         </div>
 
-        <!-- Section 4: 12 Canonical Sensory Activities Matrix -->
-        <div class="section-title">Sub-Assessment 4: Sensory Time Engagement Matrix (12 Canonical Activities)</div>
+        <!-- Section 4: Canonical Sensory Activities Matrix -->
+        <div class="section-title">Sub-Assessment 4: Sensory Time Engagement Matrix</div>
         <table class="clinical-table" style="font-size: 9px;">
           <thead>
             <tr>
@@ -1516,24 +1381,28 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
             </tr>
           </thead>
           <tbody>
-            ${sensoryActivities
-              .map((act) => {
-                let rxBadge = 'badge-mastered';
-                if (act.response_reaction === 'Neutral') rxBadge = 'badge-emerging';
-                if (act.response_reaction === 'Refused') rxBadge = 'badge-deficit';
-                if (act.response_reaction === 'Not Observed') rxBadge = 'badge-neutral';
+            ${
+              sensoryActivities.length > 0
+                ? sensoryActivities
+                    .map((act) => {
+                      let rxBadge = 'badge-mastered';
+                      if (act.response_reaction === 'Neutral') rxBadge = 'badge-emerging';
+                      if (act.response_reaction === 'Refused') rxBadge = 'badge-deficit';
+                      if (act.response_reaction === 'Not Observed') rxBadge = 'badge-neutral';
 
-                return `
-                <tr>
-                  <td style="font-weight: 800; color: #1A2233;">${escapeHtml(act.code)}</td>
-                  <td style="font-weight: 700;">${escapeHtml(act.name)}</td>
-                  <td style="text-align: center;"><span class="badge badge-neutral">${escapeHtml(act.engagement_level || 'Independent')}</span></td>
-                  <td style="text-align: center;"><span class="badge ${rxBadge}">${escapeHtml(act.response_reaction || 'Enjoyed')}</span></td>
-                  <td style="font-size: 8.5px; color: #4B5563;">${escapeHtml(act.remark || 'Observed active participation with positive regulation.')}</td>
-                </tr>
-              `;
-              })
-              .join('')}
+                      return `
+                      <tr>
+                        <td style="font-weight: 700; color: #2563EB;">${escapeHtml(act.code)}</td>
+                        <td style="font-weight: 600;">${escapeHtml(act.name)}</td>
+                        <td style="text-align: center;"><span class="badge badge-neutral">${escapeHtml(act.engagement_level)}</span></td>
+                        <td style="text-align: center;"><span class="badge ${rxBadge}">${escapeHtml(act.response_reaction)}</span></td>
+                        <td style="font-size: 8.5px; color: #475569;">${escapeHtml(act.remark)}</td>
+                      </tr>
+                    `;
+                    })
+                    .join('')
+                : `<tr><td colspan="5" style="text-align: center; color: #64748B; padding: 12px;">No sensory engagement activities recorded for this student.</td></tr>`
+            }
           </tbody>
         </table>
 
@@ -1544,32 +1413,32 @@ export function generateClinicalAssessmentHtml(data: ClinicalReportPayload): str
           <div class="signature-card">
             <h4>Lead Clinical Assessor / Teacher</h4>
             <div class="signature-line">
-              ${escapeHtml(leadClinician.split(',')[0])}
+              ${escapeHtml(leadClinician !== '—' ? leadClinician.split(',')[0] : 'Assessor Pending')}
             </div>
             <div class="signature-meta">
               <span><strong>Assessor:</strong> ${escapeHtml(leadClinician)}</span>
               <span><strong>Date:</strong> ${timestamp}</span>
             </div>
-            <div style="font-size: 8px; color: #6B7280; margin-top: 4px;">
+            <div style="font-size: 8px; color: #64748B; margin-top: 4px;">
               ☑ Verified baseline assessment battery administered per standardized clinical protocol.
             </div>
           </div>
 
           <!-- Program Director Signature -->
-          <div class="signature-card" style="border-left: 3px solid #059669;">
+          <div class="signature-card" style="${isReviewed ? 'border-left: 3px solid #059669;' : 'border-left: 3px solid #F59E0B;'}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <h4 style="margin: 0;">Clinical Program Director</h4>
-              <span class="badge badge-mastered">DIGITALLY APPROVED</span>
+              <span class="badge ${isReviewed ? 'badge-mastered' : 'badge-amber'}">${isReviewed ? 'DIGITALLY APPROVED' : 'PENDING REVIEW'}</span>
             </div>
-            <div class="signature-line" style="color: #059669;">
-              Dr. Sarah Jenkins, BCBA-D
+            <div class="signature-line" style="${isReviewed ? 'color: #059669;' : 'color: #94A3B8; font-style: italic; font-family: inherit; font-size: 11px;'}">
+              ${isReviewed ? escapeHtml((data as any).director_name || 'Clinical Program Director') : '(Pending Director Review & Sign-Off)'}
             </div>
             <div class="signature-meta">
-              <span><strong>Director:</strong> Dr. Sarah Jenkins, BCBA-D</span>
-              <span><strong>Approved:</strong> ${timestamp}</span>
+              <span><strong>Director:</strong> ${escapeHtml((data as any).director_name || 'Clinical Program Director')}</span>
+              <span><strong>Status:</strong> ${isReviewed ? `Approved: ${timestamp}` : 'Awaiting Approval'}</span>
             </div>
-            <div style="font-size: 8px; color: #059669; font-weight: 700; margin-top: 4px;">
-              ☑ Approved & Signed-Off. Student authorized for IUP Creation (Ready for IUP).
+            <div style="font-size: 8px; color: ${isReviewed ? '#059669' : '#B45309'}; font-weight: 700; margin-top: 4px;">
+              ${isReviewed ? '☑ Approved & Signed-Off. Student authorized for IUP Creation (Ready for IUP).' : '⏳ Under review by Program Director. Pending authorization for IUP creation.'}
             </div>
           </div>
         </div>

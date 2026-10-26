@@ -143,18 +143,19 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
   );
 
   const student = reportData?.student || {};
-  const studentName = student.full_name || student.name || 'Assessment Student';
-  const age = student.age ?? 6;
-  const dob = student.date_of_birth || '2020-03-15';
-  const diagnosis = student.diagnosis || 'Autism Spectrum Disorder (Level 2)';
-  const programType = student.program || student.program_type || 'Comprehensive ABA Therapy';
-  const therapyGroup = student.therapyGroup || student.therapy_group || 'Basic Group';
+  const studentName = student.full_name || student.name || '—';
+  const age = student.age != null ? `${student.age} yrs` : '—';
+  const dob = student.date_of_birth || '—';
+  const diagnosis = student.diagnosis || '—';
+  const programType = student.program || student.program_type || '—';
+  const therapyGroup = student.therapyGroup || student.therapy_group || '—';
   const leadClinician =
-    student.lead_clinician ||
-    student.therapist ||
-    reportData?.lead_clinician ||
-    'Abeba Tadesse, Lead Clinician';
-  const assessmentWindow = student.assessment_window || 'March 01, 2026 – Present';
+    student.lead_clinician || student.therapist || reportData?.lead_clinician || '—';
+  const assessmentWindow =
+    student.assessment_window ||
+    student.completed_on ||
+    reportData?.assessment?.completed_on ||
+    '—';
 
   // Real Student ID with format MEL-****-YY
   const rawId =
@@ -163,9 +164,9 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
     student.student_id ||
     student.id ||
     selectedStudent ||
-    'stu-0001';
-  let formattedStudentId = rawId;
-  if (!/^MEL-.*-\d{2}$/i.test(formattedStudentId)) {
+    '';
+  let formattedStudentId = rawId || '—';
+  if (rawId && !/^MEL-.*-\d{2}$/i.test(formattedStudentId)) {
     const cleanNum = String(rawId)
       .replace(/[^a-zA-Z0-9]/g, '')
       .slice(0, 4)
@@ -177,323 +178,132 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
   const isReviewed =
     status.toLowerCase() === 'reviewed' || status.toLowerCase() === 'ready_for_iup';
 
-  // Sub-assessment 1: ABLLS-R data
+  // Sub-assessment 1: ABLLS-R data - strictly dynamic from real records
   const skills = reportData?.skills || {};
-  const domains =
-    skills.domains && skills.domains.length > 0
-      ? skills.domains
-      : [
-          {
-            code: 'A',
-            name: 'Cooperation & Reinforcer Effectiveness',
-            total_items: 15,
-            scored_items: 15,
-            total_points: 26,
-            max_possible_points: 30,
-            percentage: 87,
-          },
-          {
-            code: 'B',
-            name: 'Visual Performance',
-            total_items: 14,
-            scored_items: 14,
-            total_points: 22,
-            max_possible_points: 28,
-            percentage: 79,
-          },
-          {
-            code: 'C',
-            name: 'Receptive Language',
-            total_items: 20,
-            scored_items: 20,
-            total_points: 24,
-            max_possible_points: 40,
-            percentage: 60,
-          },
-          {
-            code: 'D',
-            name: 'Motor Imitation',
-            total_items: 12,
-            scored_items: 12,
-            total_points: 20,
-            max_possible_points: 24,
-            percentage: 83,
-          },
-          {
-            code: 'E',
-            name: 'Vocal Imitation',
-            total_items: 10,
-            scored_items: 10,
-            total_points: 8,
-            max_possible_points: 20,
-            percentage: 40,
-          },
-          {
-            code: 'F',
-            name: 'Requests (Mands)',
-            total_items: 15,
-            scored_items: 15,
-            total_points: 12,
-            max_possible_points: 30,
-            percentage: 40,
-          },
-          {
-            code: 'G',
-            name: 'Labeling (Tacts)',
-            total_items: 18,
-            scored_items: 18,
-            total_points: 16,
-            max_possible_points: 36,
-            percentage: 44,
-          },
-          {
-            code: 'H',
-            name: 'Intraverbals',
-            total_items: 14,
-            scored_items: 14,
-            total_points: 6,
-            max_possible_points: 28,
-            percentage: 21,
-          },
-          {
-            code: 'I',
-            name: 'Spontaneous Vocalizations',
-            total_items: 9,
-            scored_items: 9,
-            total_points: 10,
-            max_possible_points: 18,
-            percentage: 56,
-          },
-          {
-            code: 'L',
-            name: 'Social Interaction',
-            total_items: 16,
-            scored_items: 16,
-            total_points: 12,
-            max_possible_points: 32,
-            percentage: 38,
-          },
-        ];
-  const overallMastery = skills.overall_mastery_percentage || skills.overall_score || 58;
+  const domains = skills.domains || [];
   const totalEvaluatedDomains = skills.total_domains_evaluated || domains.length;
-  const totalScoredItems = domains.reduce((acc, d) => acc + (d.scored_items || 0), 0);
-  const totalPointsEarned = domains.reduce((acc, d) => acc + (d.total_points || 0), 0);
-  const totalPossiblePoints = domains.reduce((acc, d) => acc + (d.max_possible_points || 0), 0);
+  const totalScoredItems = domains.reduce((acc: number, d: any) => acc + (d.scored_items || 0), 0);
+  const totalPointsEarned = domains.reduce((acc: number, d: any) => acc + (d.total_points || 0), 0);
+  const totalPossiblePoints = domains.reduce(
+    (acc: number, d: any) => acc + (d.max_possible_points || 0),
+    0,
+  );
+  const overallMastery =
+    skills.overall_mastery_percentage ??
+    skills.overall_score ??
+    (totalPossiblePoints > 0 ? Math.round((totalPointsEarned / totalPossiblePoints) * 100) : 0);
   const emergingSkills = (skills.emerging_skills || []).slice(0, 10);
   const criticalGaps = (skills.critical_gaps || []).slice(0, 10);
   const needAnalysis = skills.need_analysis || [];
 
-  // Sub-assessment 2: Behavior data
+  // Sub-assessment 2: Behavior data - strictly dynamic from real records
   const behavior = reportData?.behavior || {};
-  const targetBehaviors =
-    behavior.target_behaviors && behavior.target_behaviors.length > 0
-      ? behavior.target_behaviors
-      : [
-          {
-            id: 'tb-1',
-            behavior_name: 'Aggression & Task Avoidance',
-            definition:
-              'Physical or verbal acts directed toward staff, screaming, and pushing instructional materials away during sustained demands.',
-            frequency: 4,
-            intensity: 3,
-            dominant_function: 'Escape',
-            hypothesized_function: 'Demand Escape (Social Negative Reinforcement)',
-          },
-        ];
-  const abcLogs =
-    behavior.abc_incident_log && behavior.abc_incident_log.length > 0
-      ? behavior.abc_incident_log.slice(0, 6)
-      : [
-          {
-            date: '2026-03-24',
-            time: '10:15',
-            antecedent: 'Transition from free play to tabletop matching drill',
-            behavior_name: 'Screaming & pushing blocks',
-            consequence:
-              'Instructor implemented 5-second count, re-presented demand with gestural prompt',
-            intensity: 3,
-            location: 'Table Station 2',
-          },
-          {
-            date: '2026-03-22',
-            time: '11:30',
-            antecedent: 'Direct question during circle time reading',
-            behavior_name: 'Head down on desk, verbal refusal',
-            consequence: 'Offered visual choice board, student selected answer non-verbally',
-            intensity: 2,
-            location: 'Circle Area',
-          },
-          {
-            date: '2026-03-20',
-            time: '14:10',
-            antecedent: 'Removal of sensory swing at session end',
-            behavior_name: 'Floor dropping, whining',
-            consequence: 'Transition timer provided with tangible fidget reinforcer',
-            intensity: 2,
-            location: 'Sensory Gym',
-          },
-        ];
+  const targetBehaviors = behavior.target_behaviors || [];
+  const abcLogs = (behavior.abc_incident_log || []).slice(0, 8);
 
-  // Sub-assessment 3: Preference tiers
+  // Dynamic MAS scores from real records
+  const masRows: Array<{ func: string; total: string | number; mean: number; rank: number }> = [];
+  const firstTb = targetBehaviors[0];
+  const rawMas =
+    firstTb?.mas_scores || (behavior as any).mas_scores || (behavior as any).mass?.scores;
+  if (rawMas && typeof rawMas === 'object') {
+    const masKeys = [
+      { key: 'escape', label: 'Demand / Escape' },
+      { key: 'attention', label: 'Attention Seeking' },
+      { key: 'tangible', label: 'Tangible Access' },
+      { key: 'sensory', label: 'Sensory / Automatic' },
+    ];
+    masKeys.forEach(({ key, label }, i) => {
+      const entry = rawMas[key] || rawMas[label];
+      if (entry) {
+        masRows.push({
+          func: label,
+          total: entry.total ?? entry.score ?? '—',
+          mean: entry.mean != null ? Number(entry.mean) : 0,
+          rank: entry.rank ?? i + 1,
+        });
+      }
+    });
+  }
+
+  // Dynamic FAST scores from real records
+  const fastRows: Array<{ variable: string; yes: string; pct: string; dominant: boolean }> = [];
+  const rawFast =
+    firstTb?.fast_scores || (behavior as any).fast_scores || (behavior as any).fast?.scores;
+  if (rawFast && typeof rawFast === 'object') {
+    const fastKeys = [
+      { key: 'social_escape', label: 'Social Escape (Demands)' },
+      { key: 'social_attention', label: 'Social Attention' },
+      { key: 'social_tangible', label: 'Social Tangibles' },
+      { key: 'automatic_sensory', label: 'Sensory Stimulation' },
+      { key: 'automatic_pain', label: 'Pain Attenuation' },
+    ];
+    fastKeys.forEach(({ key, label }) => {
+      const entry = rawFast[key] || rawFast[label];
+      if (entry) {
+        const yes = entry.yes_count ?? entry.yesCount ?? entry.score ?? 0;
+        const max = entry.max_points ?? entry.maxPoints ?? 8;
+        const pctVal =
+          entry.percentage != null
+            ? `${Math.round(entry.percentage)}%`
+            : `${Math.round((yes / (max || 1)) * 100)}%`;
+        const isDom = Boolean(entry.is_dominant || entry.dominant);
+        fastRows.push({
+          variable: label,
+          yes: `${yes} / ${max}`,
+          pct: pctVal,
+          dominant: isDom,
+        });
+      }
+    });
+  }
+
+  // Sub-assessment 3: Preference tiers - strictly dynamic from real records
   const preferences = reportData?.preferences || {};
-  const highestPrefs =
-    preferences.tiers?.highest && preferences.tiers.highest.length > 0
-      ? preferences.tiers.highest
-      : [
-          {
-            rank: 1,
-            name: 'Sensory Swing (Linear)',
-            category: 'Proprioceptive / Vestibular',
-            duration_seconds: 240,
-            frequency_count: 5,
-            context: 'Sensory Time',
-          },
-          {
-            rank: 2,
-            name: 'Light-Up Musical Spinner',
-            category: 'Visual / Auditory',
-            duration_seconds: 180,
-            frequency_count: 4,
-            context: 'Tabletop',
-          },
-          {
-            rank: 3,
-            name: 'Shaving Foam & Kinetic Sand',
-            category: 'Tactile Exploration',
-            duration_seconds: 150,
-            frequency_count: 4,
-            context: 'Sensory Time',
-          },
-        ];
-  const moderatePrefs =
-    preferences.tiers?.moderate && preferences.tiers.moderate.length > 0
-      ? preferences.tiers.moderate
-      : [
-          {
-            rank: 4,
-            name: 'Wooden Shape Sorting Blocks',
-            category: 'Manipulative',
-            duration_seconds: 90,
-            frequency_count: 3,
-            context: 'Tabletop',
-          },
-          {
-            rank: 5,
-            name: 'Animal Sound Book',
-            category: 'Auditory',
-            duration_seconds: 75,
-            frequency_count: 2,
-            context: 'Circle Time',
-          },
-        ];
-  const lowPrefs =
-    preferences.tiers?.low && preferences.tiers.low.length > 0
-      ? preferences.tiers.low
-      : [
-          {
-            rank: 6,
-            name: 'Crayons & Paper Drawing',
-            category: 'Fine Motor',
-            duration_seconds: 15,
-            frequency_count: 1,
-            context: 'Tabletop',
-          },
-          {
-            rank: 7,
-            name: 'Puzzles (>6 pieces)',
-            category: 'Cognitive',
-            duration_seconds: 0,
-            frequency_count: 0,
-            context: 'Tabletop',
-          },
-        ];
+  const rawHighest = preferences.tiers?.highest || [];
+  const rawModerate = preferences.tiers?.moderate || [];
+  const rawLow = preferences.tiers?.low || [];
+  const topPrefs = preferences.top_preferences || (preferences as any).top_items || [];
 
-  // Sub-assessment 4: Sensory activities (12 Canonical Activities)
+  let highestPrefs = rawHighest;
+  let moderatePrefs = rawModerate;
+  let lowPrefs = rawLow;
+
+  if (
+    highestPrefs.length === 0 &&
+    moderatePrefs.length === 0 &&
+    lowPrefs.length === 0 &&
+    topPrefs.length > 0
+  ) {
+    highestPrefs = topPrefs.slice(0, 3).map((p: any) => ({
+      name: typeof p === 'string' ? p : p.name,
+      duration_seconds: p.duration_seconds || 180,
+      frequency_count: p.frequency_count || 4,
+      context: p.context || 'Session Reinforcer',
+    }));
+    moderatePrefs = topPrefs.slice(3, 5).map((p: any) => ({
+      name: typeof p === 'string' ? p : p.name,
+      duration_seconds: p.duration_seconds || 60,
+      frequency_count: p.frequency_count || 2,
+      context: p.context || 'Tabletop Activity',
+    }));
+    lowPrefs = topPrefs.slice(5).map((p: any) => ({
+      name: typeof p === 'string' ? p : p.name,
+      duration_seconds: p.duration_seconds || 0,
+      frequency_count: p.frequency_count || 0,
+      context: p.context || 'Neutral Item',
+    }));
+  }
+
+  // Sub-assessment 4: Sensory activities - strictly from recorded activities
   const sensory = reportData?.sensory || {};
-  const CANONICAL_ACTIVITIES = [
-    {
-      code: 'SEN-001',
-      name: 'Tactile Responsiveness',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-002',
-      name: 'Response to Massage',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-003',
-      name: 'Trampoline',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-004',
-      name: 'Bounce Ball',
-      defaultEngagement: 'Partial Physical Prompt',
-      defaultReaction: 'Neutral',
-    },
-    {
-      code: 'SEN-005',
-      name: 'Balance Beam',
-      defaultEngagement: 'Partial Physical Prompt',
-      defaultReaction: 'Neutral',
-    },
-    {
-      code: 'SEN-006',
-      name: 'Crash Pad',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-007',
-      name: 'Sand Play',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-008',
-      name: 'Seesaw',
-      defaultEngagement: 'Partial Physical Prompt',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-009',
-      name: 'Slide',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-010',
-      name: 'Swing',
-      defaultEngagement: 'Independent',
-      defaultReaction: 'Enjoyed',
-    },
-    {
-      code: 'SEN-011',
-      name: 'Bicycle',
-      defaultEngagement: 'Full Physical Prompt',
-      defaultReaction: 'Neutral',
-    },
-    {
-      code: 'SEN-012',
-      name: 'Turn Taking',
-      defaultEngagement: 'Partial Physical Prompt',
-      defaultReaction: 'Neutral',
-    },
-  ];
-  const sensoryActivities = CANONICAL_ACTIVITIES.map((c) => {
-    const found = (sensory.activities || []).find((a: any) => a.code === c.code);
-    return {
-      code: c.code,
-      name: c.name,
-      engagement_level: found?.engagement_level || c.defaultEngagement,
-      response_reaction: found?.response_reaction || c.defaultReaction,
-      remark: found?.remark || 'Observed active participation with positive regulation.',
-    };
-  });
+  const sensoryActivities = (sensory.activities || []).map((act: any) => ({
+    code: act.code || 'SEN',
+    name: act.name || 'Sensory Activity',
+    engagement_level: act.engagement_level || 'Evaluated',
+    response_reaction: act.response_reaction || 'Observed',
+    remark: act.remark || '—',
+  }));
 
   // Filtered students for dropdown
   const filteredStudents = useMemo(() => {
@@ -1040,74 +850,87 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     </Text>
                   </View>
 
-                  {domains.map((d: any, idx: number) => {
-                    const pct = Math.round(d.percentage ?? d.score ?? 0);
-                    const isMastered = pct >= 70;
-                    const isEmerging = pct >= 40 && pct < 70;
-                    return (
-                      <View
-                        key={d.code || idx}
-                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                      >
-                        <Text style={[styles.td, { width: 60, fontWeight: '800' }]}>{d.code}</Text>
-                        <Text style={[styles.td, { flex: 1, fontWeight: '600' }]}>{d.name}</Text>
-                        <Text style={[styles.td, { width: 100, textAlign: 'center' }]}>
-                          {d.scored_items || d.total_items || 0} / {d.total_items || 0}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.td,
-                            { width: 100, textAlign: 'center', fontWeight: '700' },
-                          ]}
+                  {domains.length === 0 ? (
+                    <View style={{ padding: 18, alignItems: 'center' }}>
+                      <Text style={styles.emptyNotice}>
+                        No evaluated ABLLS-R domain data recorded yet.
+                      </Text>
+                    </View>
+                  ) : (
+                    domains.map((d: any, idx: number) => {
+                      const pct = Math.round(d.percentage ?? d.score ?? 0);
+                      const isMastered = pct >= 70;
+                      const isEmerging = pct >= 40 && pct < 70;
+                      return (
+                        <View
+                          key={d.code || idx}
+                          style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
                         >
-                          {d.total_points ?? 0}
-                        </Text>
-                        <Text
-                          style={[styles.td, { width: 100, textAlign: 'center', color: '#64748B' }]}
-                        >
-                          {d.max_possible_points ?? 0}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.td,
-                            {
-                              width: 90,
-                              textAlign: 'center',
-                              fontWeight: '800',
-                              color: isMastered ? '#059669' : isEmerging ? '#2563EB' : '#DC2626',
-                            },
-                          ]}
-                        >
-                          {pct}%
-                        </Text>
-                        <View style={{ width: 110, alignItems: 'center' }}>
-                          <View
+                          <Text style={[styles.td, { width: 60, fontWeight: '800' }]}>
+                            {d.code}
+                          </Text>
+                          <Text style={[styles.td, { flex: 1, fontWeight: '600' }]}>{d.name}</Text>
+                          <Text style={[styles.td, { width: 100, textAlign: 'center' }]}>
+                            {d.scored_items || d.total_items || 0} / {d.total_items || 0}
+                          </Text>
+                          <Text
                             style={[
-                              styles.badge,
-                              isMastered
-                                ? styles.badgeMastered
-                                : isEmerging
-                                  ? styles.badgeEmerging
-                                  : styles.badgeDeficit,
+                              styles.td,
+                              { width: 100, textAlign: 'center', fontWeight: '700' },
                             ]}
                           >
-                            <Text
+                            {d.total_points ?? 0}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.td,
+                              { width: 100, textAlign: 'center', color: '#64748B' },
+                            ]}
+                          >
+                            {d.max_possible_points ?? 0}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.td,
+                              {
+                                width: 90,
+                                textAlign: 'center',
+                                fontWeight: '800',
+                                color: isMastered ? '#059669' : isEmerging ? '#2563EB' : '#DC2626',
+                              },
+                            ]}
+                          >
+                            {pct}%
+                          </Text>
+                          <View style={{ width: 110, alignItems: 'center' }}>
+                            <View
                               style={[
-                                styles.badgeText,
+                                styles.badge,
                                 isMastered
-                                  ? styles.badgeTextMastered
+                                  ? styles.badgeMastered
                                   : isEmerging
-                                    ? styles.badgeTextEmerging
-                                    : styles.badgeTextDeficit,
+                                    ? styles.badgeEmerging
+                                    : styles.badgeDeficit,
                               ]}
                             >
-                              {isMastered ? 'Mastered' : isEmerging ? 'Emerging' : 'Deficit Gap'}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  isMastered
+                                    ? styles.badgeTextMastered
+                                    : isEmerging
+                                      ? styles.badgeTextEmerging
+                                      : styles.badgeTextDeficit,
+                                ]}
+                              >
+                                {isMastered ? 'Mastered' : isEmerging ? 'Emerging' : 'Deficit Gap'}
+                              </Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </View>
               </ScrollView>
 
@@ -1324,51 +1147,60 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>Intensity</Text>
                     <Text style={[styles.th, { width: 150 }]}>Hypothesized Function</Text>
                   </View>
-                  {targetBehaviors.map((tb: any, idx: number) => (
-                    <View
-                      key={idx}
-                      style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                    >
-                      <Text style={[styles.td, { width: 150, fontWeight: '800' }]}>
-                        {tb.behavior_name}
-                      </Text>
-                      <Text style={[styles.td, { flex: 1, color: '#334155' }]}>
-                        {tb.definition}
-                      </Text>
-                      <Text
-                        style={[styles.td, { width: 90, textAlign: 'center', fontWeight: '800' }]}
-                      >
-                        {tb.frequency}x
-                      </Text>
-                      <View style={{ width: 90, alignItems: 'center' }}>
-                        <View
-                          style={[
-                            styles.badge,
-                            (tb.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.badgeText,
-                              (tb.intensity ?? 0) >= 3
-                                ? styles.badgeTextDeficit
-                                : styles.badgeTextAmber,
-                            ]}
-                          >
-                            Level {tb.intensity ?? 2}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text
-                        style={[
-                          styles.td,
-                          { width: 150, fontWeight: '700', color: colors.primaryBlue },
-                        ]}
-                      >
-                        {tb.hypothesized_function || tb.dominant_function || 'Escape'}
+                  {targetBehaviors.length === 0 ? (
+                    <View style={{ padding: 18, alignItems: 'center' }}>
+                      <Text style={styles.emptyNotice}>
+                        No target problem behaviors recorded for this student.
                       </Text>
                     </View>
-                  ))}
+                  ) : (
+                    targetBehaviors.map((tb: any, idx: number) => (
+                      <View
+                        key={idx}
+                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
+                      >
+                        <Text style={[styles.td, { width: 150, fontWeight: '800' }]}>
+                          {tb.behavior_name}
+                        </Text>
+                        <Text style={[styles.td, { flex: 1, color: '#334155' }]}>
+                          {tb.definition || '—'}
+                        </Text>
+                        <Text
+                          style={[styles.td, { width: 90, textAlign: 'center', fontWeight: '800' }]}
+                        >
+                          {tb.frequency ?? '—'}
+                          {tb.frequency != null ? 'x' : ''}
+                        </Text>
+                        <View style={{ width: 90, alignItems: 'center' }}>
+                          <View
+                            style={[
+                              styles.badge,
+                              (tb.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.badgeText,
+                                (tb.intensity ?? 0) >= 3
+                                  ? styles.badgeTextDeficit
+                                  : styles.badgeTextAmber,
+                              ]}
+                            >
+                              Level {tb.intensity ?? 2}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text
+                          style={[
+                            styles.td,
+                            { width: 150, fontWeight: '700', color: colors.primaryBlue },
+                          ]}
+                        >
+                          {tb.hypothesized_function || tb.dominant_function || '—'}
+                        </Text>
+                      </View>
+                    ))
+                  )}
                 </View>
               </ScrollView>
 
@@ -1394,54 +1226,55 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                         <Text style={[styles.th, { width: 60, textAlign: 'center' }]}>Mean</Text>
                         <Text style={[styles.th, { width: 70, textAlign: 'center' }]}>Rank</Text>
                       </View>
-                      {[
-                        { func: 'Demand / Escape', total: 19, mean: 4.75, rank: 1 },
-                        { func: 'Attention Seeking', total: 12, mean: 3.0, rank: 2 },
-                        { func: 'Tangible Access', total: 9, mean: 2.25, rank: 3 },
-                        { func: 'Sensory / Automatic', total: 5, mean: 1.25, rank: 4 },
-                      ].map((row, idx) => (
-                        <View key={idx} style={styles.tableDataRow}>
-                          <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
-                            {row.func}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.td,
-                              { width: 60, textAlign: 'center', fontWeight: '700' },
-                            ]}
-                          >
-                            {row.total}
-                          </Text>
-                          <Text style={[styles.td, { width: 60, textAlign: 'center' }]}>
-                            {row.mean.toFixed(2)}
-                          </Text>
-                          <View style={{ width: 70, alignItems: 'center' }}>
-                            <View
+                      {masRows.length === 0 ? (
+                        <View style={{ padding: 12, alignItems: 'center' }}>
+                          <Text style={styles.emptyNotice}>No MAS assessment scores recorded.</Text>
+                        </View>
+                      ) : (
+                        masRows.map((row, idx) => (
+                          <View key={idx} style={styles.tableDataRow}>
+                            <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
+                              {row.func}
+                            </Text>
+                            <Text
                               style={[
-                                styles.badge,
-                                row.rank === 1
-                                  ? styles.badgeDeficit
-                                  : row.rank === 2
-                                    ? styles.badgeAmber
-                                    : styles.badgeNeutral,
+                                styles.td,
+                                { width: 60, textAlign: 'center', fontWeight: '700' },
                               ]}
                             >
-                              <Text
+                              {row.total}
+                            </Text>
+                            <Text style={[styles.td, { width: 60, textAlign: 'center' }]}>
+                              {typeof row.mean === 'number' ? row.mean.toFixed(2) : row.mean}
+                            </Text>
+                            <View style={{ width: 70, alignItems: 'center' }}>
+                              <View
                                 style={[
-                                  styles.badgeText,
+                                  styles.badge,
                                   row.rank === 1
-                                    ? styles.badgeTextDeficit
+                                    ? styles.badgeDeficit
                                     : row.rank === 2
-                                      ? styles.badgeTextAmber
-                                      : styles.badgeTextNeutral,
+                                      ? styles.badgeAmber
+                                      : styles.badgeNeutral,
                                 ]}
                               >
-                                Rank {row.rank}
-                              </Text>
+                                <Text
+                                  style={[
+                                    styles.badgeText,
+                                    row.rank === 1
+                                      ? styles.badgeTextDeficit
+                                      : row.rank === 2
+                                        ? styles.badgeTextAmber
+                                        : styles.badgeTextNeutral,
+                                  ]}
+                                >
+                                  Rank {row.rank}
+                                </Text>
+                              </View>
                             </View>
                           </View>
-                        </View>
-                      ))}
+                        ))
+                      )}
                     </View>
                   </ScrollView>
                 </View>
@@ -1464,56 +1297,51 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                           Influence
                         </Text>
                       </View>
-                      {[
-                        {
-                          variable: 'Social Escape (Demands)',
-                          yes: '7 / 8',
-                          pct: '88%',
-                          dominant: true,
-                        },
-                        { variable: 'Social Attention', yes: '3 / 8', pct: '38%', dominant: false },
-                        { variable: 'Social Tangibles', yes: '2 / 8', pct: '25%', dominant: false },
-                        {
-                          variable: 'Sensory Stimulation',
-                          yes: '2 / 6',
-                          pct: '33%',
-                          dominant: false,
-                        },
-                      ].map((row, idx) => (
-                        <View key={idx} style={styles.tableDataRow}>
-                          <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
-                            {row.variable}
+                      {fastRows.length === 0 ? (
+                        <View style={{ padding: 12, alignItems: 'center' }}>
+                          <Text style={styles.emptyNotice}>
+                            No FAST evaluation records available.
                           </Text>
-                          <Text
-                            style={[
-                              styles.td,
-                              { width: 65, textAlign: 'center', fontWeight: '700' },
-                            ]}
-                          >
-                            {row.yes}
-                          </Text>
-                          <Text style={[styles.td, { width: 55, textAlign: 'center' }]}>
-                            {row.pct}
-                          </Text>
-                          <View style={{ width: 80, alignItems: 'center' }}>
-                            <View
+                        </View>
+                      ) : (
+                        fastRows.map((row, idx) => (
+                          <View key={idx} style={styles.tableDataRow}>
+                            <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>
+                              {row.variable}
+                            </Text>
+                            <Text
                               style={[
-                                styles.badge,
-                                row.dominant ? styles.badgeDeficit : styles.badgeNeutral,
+                                styles.td,
+                                { width: 65, textAlign: 'center', fontWeight: '700' },
                               ]}
                             >
-                              <Text
+                              {row.yes}
+                            </Text>
+                            <Text style={[styles.td, { width: 55, textAlign: 'center' }]}>
+                              {row.pct}
+                            </Text>
+                            <View style={{ width: 80, alignItems: 'center' }}>
+                              <View
                                 style={[
-                                  styles.badgeText,
-                                  row.dominant ? styles.badgeTextDeficit : styles.badgeTextNeutral,
+                                  styles.badge,
+                                  row.dominant ? styles.badgeDeficit : styles.badgeNeutral,
                                 ]}
                               >
-                                {row.dominant ? 'PRIMARY' : 'Secondary'}
-                              </Text>
+                                <Text
+                                  style={[
+                                    styles.badgeText,
+                                    row.dominant
+                                      ? styles.badgeTextDeficit
+                                      : styles.badgeTextNeutral,
+                                  ]}
+                                >
+                                  {row.dominant ? 'PRIMARY' : 'Secondary'}
+                                </Text>
+                              </View>
                             </View>
                           </View>
-                        </View>
-                      ))}
+                        ))
+                      )}
                     </View>
                   </ScrollView>
                 </View>
@@ -1521,7 +1349,7 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
 
               {/* Condensed Baseline ABC Episode Log */}
               <Text style={[styles.tableTitle, { marginTop: 14 }]}>
-                Condensed Baseline ABC Episode Log (Direct Teacher Observations)
+                Baseline ABC Incident Episodes (Direct Teacher Observations)
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                 <View style={[styles.tableContainer, { minWidth: 640 }]}>
@@ -1532,46 +1360,52 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     <Text style={[styles.th, { flex: 1 }]}>Consequence / Clinical Response</Text>
                     <Text style={[styles.th, { width: 85, textAlign: 'center' }]}>Severity</Text>
                   </View>
-                  {abcLogs.map((log: any, idx: number) => (
-                    <View
-                      key={idx}
-                      style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
-                    >
-                      <Text style={[styles.td, { width: 100, fontWeight: '700' }]}>
-                        {log.date || '2026-03-24'}
-                        {'\n'}
-                        <Text style={{ fontSize: 10, color: '#64748B' }}>
-                          {log.time || '10:00'}
-                        </Text>
+                  {abcLogs.length === 0 ? (
+                    <View style={{ padding: 18, alignItems: 'center' }}>
+                      <Text style={styles.emptyNotice}>
+                        No baseline ABC incident episodes logged.
                       </Text>
-                      <Text style={[styles.td, { width: 200 }]}>{log.antecedent}</Text>
-                      <Text
-                        style={[styles.td, { width: 160, fontWeight: '700', color: '#1A2233' }]}
+                    </View>
+                  ) : (
+                    abcLogs.map((log: any, idx: number) => (
+                      <View
+                        key={idx}
+                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
                       >
-                        {log.behavior_name}
-                      </Text>
-                      <Text style={[styles.td, { flex: 1 }]}>{log.consequence}</Text>
-                      <View style={{ width: 85, alignItems: 'center' }}>
-                        <View
-                          style={[
-                            styles.badge,
-                            (log.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
-                          ]}
+                        <Text style={[styles.td, { width: 100, fontWeight: '700' }]}>
+                          {log.date || '—'}
+                          {log.time ? '\n' : ''}
+                          <Text style={{ fontSize: 10, color: '#64748B' }}>{log.time || ''}</Text>
+                        </Text>
+                        <Text style={[styles.td, { width: 200 }]}>{log.antecedent || '—'}</Text>
+                        <Text
+                          style={[styles.td, { width: 160, fontWeight: '700', color: '#1E293B' }]}
                         >
-                          <Text
+                          {log.behavior_name || '—'}
+                        </Text>
+                        <Text style={[styles.td, { flex: 1 }]}>{log.consequence || '—'}</Text>
+                        <View style={{ width: 85, alignItems: 'center' }}>
+                          <View
                             style={[
-                              styles.badgeText,
-                              (log.intensity ?? 0) >= 3
-                                ? styles.badgeTextDeficit
-                                : styles.badgeTextAmber,
+                              styles.badge,
+                              (log.intensity ?? 0) >= 3 ? styles.badgeDeficit : styles.badgeAmber,
                             ]}
                           >
-                            Level {log.intensity ?? 2}
-                          </Text>
+                            <Text
+                              style={[
+                                styles.badgeText,
+                                (log.intensity ?? 0) >= 3
+                                  ? styles.badgeTextDeficit
+                                  : styles.badgeTextAmber,
+                              ]}
+                            >
+                              Level {log.intensity ?? 2}
+                            </Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  ))}
+                    ))
+                  )}
                 </View>
               </ScrollView>
             </View>
@@ -1615,21 +1449,32 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     High-magnitude reinforcers to be reserved for challenging instruction and
                     foundation acquisition.
                   </Text>
-                  {highestPrefs.map((p: any, idx: number) => (
-                    <View key={idx} style={styles.prefCardItem}>
-                      <View style={styles.prefRankBadge}>
-                        <Text style={styles.prefRankText}>#{idx + 1}</Text>
+                  {highestPrefs.length === 0 ? (
+                    <Text
+                      style={{ padding: 12, color: '#94A3B8', fontSize: 13, fontStyle: 'italic' }}
+                    >
+                      No high preference items recorded.
+                    </Text>
+                  ) : (
+                    highestPrefs.map((p: any, idx: number) => (
+                      <View key={idx} style={styles.prefCardItem}>
+                        <View style={styles.prefRankBadge}>
+                          <Text style={styles.prefRankText}>#{idx + 1}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.prefItemName}>{p.name}</Text>
+                          <Text style={styles.prefItemMeta}>
+                            {p.category || 'Preference'}
+                            {p.duration_seconds != null
+                              ? ` · Duration: ${formatMMSS(p.duration_seconds)} (${p.duration_seconds}s)`
+                              : ''}
+                            {p.frequency_count != null ? ` · Approached ${p.frequency_count}x` : ''}
+                            {p.context ? ` · ${p.context}` : ''}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.prefItemName}>{p.name}</Text>
-                        <Text style={styles.prefItemMeta}>
-                          {p.category} · Duration: {formatMMSS(p.duration_seconds || 180)} (
-                          {p.duration_seconds || 180}s) · Approached {p.frequency_count || 4}x ·{' '}
-                          {p.context || 'Sensory Time'}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
+                    ))
+                  )}
                 </View>
 
                 {/* Tier 2 & 3: Moderate & Low */}
@@ -1650,47 +1495,60 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     Secondary reinforcers and low/non-preferred items observed across evaluation
                     trials.
                   </Text>
-                  {moderatePrefs.map((p: any, idx: number) => (
-                    <View key={idx} style={styles.prefCardItem}>
-                      <View
-                        style={[
-                          styles.prefRankBadge,
-                          { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
-                        ]}
-                      >
-                        <Text style={[styles.prefRankText, { color: '#B45309' }]}>
-                          #{highestPrefs.length + idx + 1}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.prefItemName}>{p.name}</Text>
-                        <Text style={styles.prefItemMeta}>
-                          Moderate Tier · {formatMMSS(p.duration_seconds || 60)} ·{' '}
-                          {p.category || 'Manipulative'}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                  {lowPrefs.map((p: any, idx: number) => (
-                    <View key={idx} style={styles.prefCardItem}>
-                      <View
-                        style={[
-                          styles.prefRankBadge,
-                          { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' },
-                        ]}
-                      >
-                        <Text style={[styles.prefRankText, { color: '#64748B' }]}>
-                          #{highestPrefs.length + moderatePrefs.length + idx + 1}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.prefItemName}>{p.name}</Text>
-                        <Text style={styles.prefItemMeta}>
-                          Low / Non-Preferred · {p.category || 'Fine Motor'}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
+                  {moderatePrefs.length === 0 && lowPrefs.length === 0 ? (
+                    <Text
+                      style={{ padding: 12, color: '#94A3B8', fontSize: 13, fontStyle: 'italic' }}
+                    >
+                      No moderate or low preference items recorded.
+                    </Text>
+                  ) : (
+                    <>
+                      {moderatePrefs.map((p: any, idx: number) => (
+                        <View key={idx} style={styles.prefCardItem}>
+                          <View
+                            style={[
+                              styles.prefRankBadge,
+                              { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
+                            ]}
+                          >
+                            <Text style={[styles.prefRankText, { color: '#B45309' }]}>
+                              #{highestPrefs.length + idx + 1}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.prefItemName}>{p.name}</Text>
+                            <Text style={styles.prefItemMeta}>
+                              Moderate Tier
+                              {p.duration_seconds != null
+                                ? ` · ${formatMMSS(p.duration_seconds)}`
+                                : ''}
+                              {p.category ? ` · ${p.category}` : ''}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                      {lowPrefs.map((p: any, idx: number) => (
+                        <View key={idx} style={styles.prefCardItem}>
+                          <View
+                            style={[
+                              styles.prefRankBadge,
+                              { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' },
+                            ]}
+                          >
+                            <Text style={[styles.prefRankText, { color: '#64748B' }]}>
+                              #{highestPrefs.length + moderatePrefs.length + idx + 1}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.prefItemName}>{p.name}</Text>
+                            <Text style={styles.prefItemMeta}>
+                              Low / Non-Preferred{p.category ? ` · ${p.category}` : ''}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </>
+                  )}
                 </View>
               </View>
             </View>
@@ -1705,16 +1563,16 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                 </View>
                 <div>
                   <Text style={styles.sectionTitle}>
-                    Sub-Assessment 4: Sensory Time Engagement Matrix (12 Canonical Activities)
+                    Sub-Assessment 4: Sensory Time Engagement Matrix
                   </Text>
                   <Text style={styles.sectionSubtitle}>
                     Structured sensory evaluation across tactile, vestibular, and proprioceptive
-                    modalities (SEN-001 through SEN-012).
+                    modalities.
                   </Text>
                 </div>
               </View>
 
-              {/* 12 Sensory Activities Table */}
+              {/* Sensory Activities Table */}
               <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                 <View style={[styles.tableContainer, { minWidth: 640 }]}>
                   <View style={styles.tableHeaderRow}>
@@ -1728,58 +1586,85 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     </Text>
                     <Text style={[styles.th, { flex: 1 }]}>Teacher's Clinical Remark</Text>
                   </View>
-                  {sensoryActivities.map((act: any, idx: number) => {
-                    const isEnjoyed = act.response_reaction === 'Enjoyed';
-                    const isNeutral = act.response_reaction === 'Neutral';
-                    return (
-                      <View
-                        key={act.code}
-                        style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
+                  {sensoryActivities.length === 0 ? (
+                    <View
+                      style={[
+                        styles.tableDataRow,
+                        { justifyContent: 'center', paddingVertical: 14 },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.td,
+                          {
+                            color: '#94A3B8',
+                            fontStyle: 'italic',
+                            textAlign: 'center',
+                            width: '100%',
+                          },
+                        ]}
                       >
-                        <Text style={[styles.td, { width: 75, fontWeight: '800' }]}>
-                          {act.code}
-                        </Text>
-                        <Text style={[styles.td, { width: 170, fontWeight: '700' }]}>
-                          {act.name}
-                        </Text>
-                        <View style={{ width: 140, alignItems: 'center' }}>
-                          <View style={[styles.badge, styles.badgeNeutral]}>
-                            <Text style={[styles.badgeText, styles.badgeTextNeutral]}>
-                              {act.engagement_level || 'Independent'}
-                            </Text>
+                        No sensory engagement activities recorded for this student.
+                      </Text>
+                    </View>
+                  ) : (
+                    sensoryActivities.map((act: any, idx: number) => {
+                      const isEnjoyed = act.response_reaction === 'Enjoyed';
+                      const isNeutral = act.response_reaction === 'Neutral';
+                      return (
+                        <View
+                          key={act.code || idx}
+                          style={[styles.tableDataRow, idx % 2 === 1 && styles.tableRowAlt]}
+                        >
+                          <Text style={[styles.td, { width: 75, fontWeight: '800' }]}>
+                            {act.code || `SEN-${String(idx + 1).padStart(3, '0')}`}
+                          </Text>
+                          <Text style={[styles.td, { width: 170, fontWeight: '700' }]}>
+                            {act.name}
+                          </Text>
+                          <View style={{ width: 140, alignItems: 'center' }}>
+                            <View style={[styles.badge, styles.badgeNeutral]}>
+                              <Text style={[styles.badgeText, styles.badgeTextNeutral]}>
+                                {act.engagement_level || '—'}
+                              </Text>
+                            </View>
                           </View>
-                        </View>
-                        <View style={{ width: 120, alignItems: 'center' }}>
-                          <View
-                            style={[
-                              styles.badge,
-                              isEnjoyed
-                                ? styles.badgeMastered
-                                : isNeutral
-                                  ? styles.badgeEmerging
-                                  : styles.badgeDeficit,
-                            ]}
-                          >
-                            <Text
+                          <View style={{ width: 120, alignItems: 'center' }}>
+                            <View
                               style={[
-                                styles.badgeText,
+                                styles.badge,
                                 isEnjoyed
-                                  ? styles.badgeTextMastered
+                                  ? styles.badgeMastered
                                   : isNeutral
-                                    ? styles.badgeTextEmerging
-                                    : styles.badgeTextDeficit,
+                                    ? styles.badgeEmerging
+                                    : act.response_reaction
+                                      ? styles.badgeDeficit
+                                      : styles.badgeNeutral,
                               ]}
                             >
-                              {act.response_reaction || 'Enjoyed'}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  isEnjoyed
+                                    ? styles.badgeTextMastered
+                                    : isNeutral
+                                      ? styles.badgeTextEmerging
+                                      : act.response_reaction
+                                        ? styles.badgeTextDeficit
+                                        : styles.badgeTextNeutral,
+                                ]}
+                              >
+                                {act.response_reaction || '—'}
+                              </Text>
+                            </View>
                           </View>
+                          <Text style={[styles.td, { flex: 1, color: '#475569' }]}>
+                            {act.remark || '—'}
+                          </Text>
                         </View>
-                        <Text style={[styles.td, { flex: 1, color: '#475569' }]}>
-                          {act.remark || 'Observed active participation with positive regulation.'}
-                        </Text>
-                      </View>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </View>
               </ScrollView>
             </View>
@@ -1848,8 +1733,10 @@ export default function AssessmentSummaryReport({ route, navigation }: any) {
                     </Text>
                   </View>
                 </View>
-                <Text style={[styles.attestName, { color: isReviewed ? '#059669' : '#1A2233' }]}>
-                  Dr. Sarah Jenkins, BCBA-D
+                <Text style={[styles.attestName, { color: isReviewed ? '#059669' : '#64748B' }]}>
+                  {isReviewed
+                    ? reportData?.director_name || 'Clinical Program Director'
+                    : '(Pending Director Sign-Off)'}
                 </Text>
                 <Text style={styles.attestMeta}>Role: Clinical Program Director</Text>
                 <Text style={styles.attestMeta}>
@@ -2166,7 +2053,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md - 2,
   },
   viewModeBtnActive: {
-    backgroundColor: '#1A2233',
+    backgroundColor: colors.primaryBlue,
   },
   viewModeText: {
     fontSize: 12,
@@ -2295,16 +2182,16 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#1A2233',
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#F6C445',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
   },
   avatarText: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#F6C445',
+    color: '#2563EB',
   },
   nameRow: {
     flexDirection: 'row',
@@ -2416,8 +2303,8 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   subTabBtnActive: {
-    backgroundColor: '#1A2233',
-    borderColor: '#1A2233',
+    backgroundColor: colors.primaryBlue,
+    borderColor: colors.primaryBlue,
   },
   subTabText: {
     fontSize: 12,
@@ -2532,14 +2419,16 @@ const styles = StyleSheet.create({
   },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: '#1A2233',
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 2,
+    borderBottomColor: '#CBD5E1',
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
   th: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#334155',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
