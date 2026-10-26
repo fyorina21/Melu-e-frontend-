@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   Modal,
   Alert,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -43,6 +44,7 @@ const STATUS_OPTIONS = ['All', 'Not Started', 'In Progress', 'Complete', 'Review
 
 interface AssessmentListItem {
   studentId: string;
+  studentNumber: string;
   studentName: string;
   age: number;
   program: string;
@@ -65,6 +67,7 @@ interface DomainScore {
 
 interface AssessmentReport {
   studentId: string;
+  studentNumber?: string;
   studentName: string;
   age: number;
   program: string;
@@ -105,6 +108,8 @@ function ReportModal({
   const htmlContent = generateClinicalAssessmentHtml({
     student: {
       id: report.studentId,
+      student_number: report.studentNumber,
+      studentNumber: report.studentNumber,
       name: report.studentName,
       full_name: report.studentName,
       age: report.age,
@@ -330,8 +335,21 @@ function normalizeStatus(rawStatus?: string): string {
 }
 
 function normalizeAssessmentItem(item: any): AssessmentListItem {
+  const sId = String(item.studentId ?? item.student_id ?? item.id ?? '');
+  const formattedId =
+    item.studentNumber ||
+    item.student_number ||
+    item.student_id ||
+    item.student?.student_id ||
+    `MEL-${sId
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 4)
+      .toUpperCase()
+      .padEnd(4, '0')}-26`;
+
   return {
-    studentId: String(item.studentId ?? item.student_id ?? item.id ?? ''),
+    studentId: sId,
+    studentNumber: formattedId,
     studentName: String(item.studentName ?? item.student_name ?? item.name ?? 'Unknown Student'),
     age: Number(item.age ?? 0),
     program: String(item.program ?? item.program_type ?? 'Regular'),
@@ -341,11 +359,7 @@ function normalizeAssessmentItem(item: any): AssessmentListItem {
     abllsPct: Number(item.abllsPct ?? item.assessment_progress ?? item.completion_percentage ?? 0),
     behaviorStatus: String(item.behaviorStatus ?? item.behavior_assessment ?? 'notStarted'),
     sessionStatus: String(item.sessionStatus ?? ''),
-    dateCompleted:
-      item.dateCompleted ??
-      item.completed_at ??
-      item.completed_on ??
-      (normalizeStatus(item.status) === 'Complete' ? new Date().toISOString().split('T')[0] : null),
+    dateCompleted: item.dateCompleted ?? item.completed_at ?? item.completed_on ?? null,
   };
 }
 
@@ -355,6 +369,19 @@ function normalizeAssessmentReport(res: any): AssessmentReport {
   const skills = res?.skills || {};
   const behavior = res?.behavior || {};
   const preferences = res?.preferences || {};
+
+  const sId = String(student.id ?? res?.studentId ?? '');
+  const formattedId =
+    student.student_number ||
+    student.studentNumber ||
+    student.student_id ||
+    res?.studentNumber ||
+    res?.student_number ||
+    `MEL-${sId
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 4)
+      .toUpperCase()
+      .padEnd(4, '0')}-26`;
 
   const domainScores: DomainScore[] = Array.isArray(res?.domainScores)
     ? res.domainScores
@@ -379,7 +406,8 @@ function normalizeAssessmentReport(res: any): AssessmentReport {
         : [];
 
   return {
-    studentId: String(student.id ?? res?.studentId ?? ''),
+    studentId: sId,
+    studentNumber: formattedId,
     studentName: String(student.name ?? student.full_name ?? res?.studentName ?? 'Unknown Student'),
     age: Number(student.age ?? res?.age ?? 0),
     program: String(student.program_type ?? student.program ?? res?.program ?? 'Regular'),
@@ -463,6 +491,7 @@ export default function AssessmentReviewScreen({
       items = items.filter(
         (r) =>
           r.studentName.toLowerCase().includes(q) ||
+          (r.studentNumber && r.studentNumber.toLowerCase().includes(q)) ||
           r.program.toLowerCase().includes(q) ||
           r.therapist.toLowerCase().includes(q),
       );
@@ -607,11 +636,24 @@ export default function AssessmentReviewScreen({
         {filtered.map((s) => (
           <View key={s.studentId} style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text style={typography.bodyBold}>{s.studentName}</Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  marginBottom: 2,
+                }}
+              >
+                <Text style={typography.bodyBold}>{s.studentName}</Text>
+                <View style={styles.idBadge}>
+                  <Text style={styles.idBadgeText}>Student ID: {s.studentNumber}</Text>
+                </View>
+              </View>
               <Text style={typography.caption}>
                 Age {s.age} · {s.program}
                 {s.therapist !== 'Unassigned' ? ` · ${s.therapist}` : ''}
-                {s.dateCompleted ? ` · ${s.dateCompleted}` : ''}
+                {s.dateCompleted ? ` · Completed: ${s.dateCompleted}` : ''}
               </Text>
             </View>
             <View style={styles.rowRight}>
@@ -710,6 +752,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  idBadge: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  idBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1A2233',
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+  },
   progressCol: { width: 80, alignItems: 'center' },
   progressLabel: { fontSize: 11, fontWeight: '600', color: colors.navyText },
   progressBar: {

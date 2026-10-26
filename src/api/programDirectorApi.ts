@@ -752,14 +752,28 @@ export const getAssessmentsForReview = async (
             ? 'In Progress'
             : item.status || 'Not Started';
 
+      const formattedId =
+        item.studentNumber ||
+        item.student_number ||
+        item.student_id ||
+        item.student?.student_id ||
+        `MEL-${sId
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .slice(0, 4)
+          .toUpperCase()
+          .padEnd(4, '0')}-26`;
+
+      const realProgress = Number(
+        item.abllsPct ?? item.assessment_progress ?? item.completion_percentage ?? 0,
+      );
+
       const enriched = {
         ...item,
+        studentNumber: formattedId,
+        student_number: formattedId,
         status: effectiveStatus,
-        abllsPct: isComplete && (!item.abllsPct || item.abllsPct === 0) ? 100 : item.abllsPct,
-        dateCompleted:
-          item.dateCompleted ||
-          item.completed_at ||
-          (isComplete ? new Date().toISOString().split('T')[0] : null),
+        abllsPct: realProgress > 0 ? realProgress : isComplete ? 100 : 0,
+        dateCompleted: item.dateCompleted || item.completed_at || item.completed_on || null,
         reviewNotes: reviewedMap[sId]?.notes || item.reviewNotes || '',
       };
 
@@ -821,51 +835,54 @@ export const getAssessmentsForReview = async (
     return { data: merged, assessments: merged };
   }
 
-  // Resilient fallback: build list from /options/students or DEFAULT_PD_STUDENTS
-  let studentPool = DEFAULT_PD_STUDENTS;
+  // Resilient fallback: build list only from real backend students
   try {
     const { data: sData } = await client.get<any[]>('/options/students');
     if (Array.isArray(sData) && sData.length > 0) {
-      studentPool = sData.map((s: any, idx: number) => ({
-        id: String(s.id),
-        fullName: s.name || `Student ${idx + 1}`,
-        name: s.name || `Student ${idx + 1}`,
-        age: s.age || 6,
-        programType: s.program || 'Comprehensive ABA',
-        program: s.program || 'Comprehensive ABA',
-        therapyGroup: s.therapy_group || `Station ${(idx % 3) + 1}`,
-        therapist: DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length],
-        currentStage: idx % 2 === 0 ? 'assessment-complete' : 'in-assessment',
-        status: idx % 2 === 0 ? 'Assessment Completed' : 'In Assessment',
-        assessmentStatus: (idx % 2 === 0 ? 'completed' : 'in-progress') as
-          'completed' | 'in-progress',
-        sessionAssigned: idx % 2 === 0,
-      }));
+      const realStudents = sData.map((s: any) => {
+        const sId = String(s.id);
+        const isRev =
+          Boolean(reviewedMap[sId]?.reviewed) ||
+          s.status === 'ready_for_iup' ||
+          s.status === 'reviewed';
+        const isComp = isRev || s.status === 'assessment_complete' || s.status === 'complete';
+        const formattedId =
+          s.student_id ||
+          s.student_number ||
+          s.studentNumber ||
+          `MEL-${sId
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .slice(0, 4)
+            .toUpperCase()
+            .padEnd(4, '0')}-26`;
+        return {
+          studentId: sId,
+          studentName: s.name || s.fullName || 'Student',
+          studentNumber: formattedId,
+          student_number: formattedId,
+          age: s.age || 6,
+          program: s.program || s.programType || 'Regular',
+          therapyGroup: s.therapy_group || s.therapyGroup || 'Basic Group',
+          therapist: s.therapist || s.therapist_name || 'Assigned Clinician',
+          status: isRev
+            ? 'Reviewed'
+            : isComp
+              ? 'Complete'
+              : s.status === 'in_assessment'
+                ? 'In Progress'
+                : 'Not Started',
+          abllsPct: isRev ? 100 : isComp ? 100 : 0,
+          behaviorStatus: isComp ? 'completed' : 'not_started',
+          sessionStatus: isComp ? 'assigned' : 'pending',
+          dateCompleted: isComp ? s.dateCompleted || s.completed_at || null : null,
+          reviewNotes: reviewedMap[sId]?.notes || '',
+        };
+      });
+      return { data: realStudents, assessments: realStudents };
     }
   } catch {}
 
-  const synthesized = studentPool.map((s, idx) => {
-    const sId = String(s.id);
-    const isRev = Boolean(reviewedMap[sId]?.reviewed);
-    const isComp = isRev || idx % 2 === 0;
-
-    return {
-      studentId: sId,
-      studentName: s.fullName || s.name,
-      age: s.age || 6,
-      program: s.program || s.programType || 'Comprehensive ABA',
-      therapyGroup: s.therapyGroup || 'Station 1 · Early Learners',
-      therapist: s.therapist || DEFAULT_THERAPIST_NAMES[idx % DEFAULT_THERAPIST_NAMES.length],
-      status: isRev ? 'Reviewed' : isComp ? 'Complete' : 'In Progress',
-      abllsPct: isRev ? 100 : isComp ? 85 : 65,
-      behaviorStatus: 'completed',
-      sessionStatus: isComp ? 'assigned' : 'pending',
-      dateCompleted: isComp ? '2026-03-28' : null,
-      reviewNotes: reviewedMap[sId]?.notes || '',
-    };
-  });
-
-  return { data: synthesized, assessments: synthesized };
+  return { data: [], assessments: [] };
 };
 
 export const getAssessmentReport = async (studentId: string): Promise<{ data: any }> => {
@@ -881,11 +898,16 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
     if (res?.data) return res;
   } catch {}
 
-  // Resilient fallback: Synthesize detailed clinical report for this student
+  // Resilient fallback: build clinical report for this student
   let studentName = 'Student';
   let studentAge = 6;
   let studentProgram = 'Comprehensive ABA';
   let studentTherapist = 'Abeba Tadesse';
+  let realStudentId = `MEL-${String(studentId)
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase()
+    .padEnd(4, '0')}-26`;
 
   try {
     const { data: students } = await client.get<any[]>('/options/students');
@@ -893,19 +915,15 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
       ? students.find((s) => String(s.id) === String(studentId))
       : null;
     if (match) {
-      studentName = match.name || studentName;
+      studentName = match.name || match.fullName || studentName;
       studentAge = match.age || studentAge;
-      studentProgram = match.program || studentProgram;
+      studentProgram = match.program || match.programType || studentProgram;
+      studentTherapist = match.therapist || match.therapist_name || studentTherapist;
+      if (match.student_id || match.student_number) {
+        realStudentId = match.student_id || match.student_number;
+      }
     }
   } catch {}
-
-  const defaultMatch = DEFAULT_PD_STUDENTS.find((s) => s.id === studentId);
-  if (defaultMatch) {
-    studentName = defaultMatch.name;
-    studentAge = defaultMatch.age;
-    studentProgram = defaultMatch.program;
-    studentTherapist = defaultMatch.therapist;
-  }
 
   const reviewedMap = getStoredReviewedMap();
   const isReviewed = Boolean(reviewedMap[studentId]?.reviewed);
@@ -914,12 +932,14 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
   const reportPayload = {
     student: {
       id: studentId,
+      student_number: realStudentId,
+      student_id: realStudentId,
       name: studentName,
       full_name: studentName,
       age: studentAge,
       program_type: studentProgram,
       program: studentProgram,
-      therapy_group: 'Station 1 · Early Learners',
+      therapy_group: 'Basic Group',
       therapist: studentTherapist,
     },
     assessment: {
