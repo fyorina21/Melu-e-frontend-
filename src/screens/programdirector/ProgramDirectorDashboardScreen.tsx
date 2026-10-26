@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import ScreenLoader from '../../components/ScreenLoader';
 import ScreenError from '../../components/ScreenError';
 import {
@@ -114,6 +115,27 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleUpdate = () => {
+      load();
+    };
+    window.addEventListener('melue_student_enrolled_updated', handleUpdate);
+    window.addEventListener('melue_assessment_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('melue_student_enrolled_updated', handleUpdate);
+      window.removeEventListener('melue_assessment_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, [load]);
 
   const goto = (tab: string) => navigation?.navigate?.(PD_ROUTE_BY_TAB[tab]);
 

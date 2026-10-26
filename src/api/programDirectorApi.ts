@@ -22,6 +22,7 @@ import {
   getStudentIdAliases,
   normalizeStudentId,
   getSubmittedStudents,
+  isStudentInSession,
 } from '../utils/studentLifecycleHelper';
 
 import {
@@ -576,6 +577,117 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
     rawStudents = optionsStudentsRes.value.data;
   }
 
+  if (rawStudents.length === 0) {
+    rawStudents = DEFAULT_PD_STUDENTS.map((s) => ({ ...s }));
+  }
+
+  // Build lookup map for real students and therapist mapping
+  const studentTherapistMap = new Map<string, string>();
+  const storedEnrolled =
+    storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+  for (const es of storedEnrolled) {
+    const th = String(es.therapist || es.assignedTherapist || es.teacher || '').trim();
+    if (th && th !== 'Unassigned') {
+      const sid = String(es.id || es.studentId || '').toLowerCase().trim();
+      const sname = String(es.fullName || es.name || '').toLowerCase().trim();
+      if (sid) studentTherapistMap.set(sid, th);
+      if (sname) studentTherapistMap.set(sname, th);
+    }
+  }
+
+  const therapistAssignmentsStore =
+    storage.getJSONSync<Record<string, string[]>>('melue_therapist_assigned_students_v1', {}) || {};
+  for (const [thName, studentList] of Object.entries(therapistAssignmentsStore)) {
+    if (Array.isArray(studentList)) {
+      studentList.forEach((stuIdent) => {
+        if (stuIdent) {
+          studentTherapistMap.set(String(stuIdent).toLowerCase().trim(), thName);
+        }
+      });
+    }
+  }
+
+  const submittedList = getSubmittedStudents();
+  for (const sub of submittedList) {
+    const th = String(sub.therapist || '').trim();
+    if (th && th !== 'Unassigned') {
+      const sid = String(sub.id || sub.studentId || '').toLowerCase().trim();
+      const sname = String(sub.fullName || sub.name || '').toLowerCase().trim();
+      if (sid) studentTherapistMap.set(sid, th);
+      if (sname) studentTherapistMap.set(sname, th);
+    }
+  }
+
+  // Merge enrolled students from storage cache into rawStudents
+  for (const es of storedEnrolled) {
+    const esId = String(es.id || es.studentId || '').trim();
+    const esName = String(es.fullName || es.name || '').toLowerCase().trim();
+    const existingIndex = rawStudents.findIndex(
+      (s) =>
+        (esId && String(s.id || s.studentId || '').trim() === esId) ||
+        (esName && String(s.full_name || s.fullName || s.name || '').toLowerCase().trim() === esName),
+    );
+    if (existingIndex >= 0) {
+      rawStudents[existingIndex] = {
+        ...rawStudents[existingIndex],
+        ...es,
+        therapist: es.therapist || es.assignedTherapist || rawStudents[existingIndex].therapist,
+      };
+    } else {
+      rawStudents.unshift({
+        ...es,
+        id: esId,
+        studentId: esId,
+        fullName: es.fullName || es.name || 'Enrolled Student',
+        name: es.fullName || es.name || 'Enrolled Student',
+        programType: es.programType || es.program || 'Regular',
+        program: es.programType || es.program || 'Regular',
+        therapyGroup: es.therapyGroup || es.therapy_group || es.station || 'Station 1',
+        age: Number(es.age) || 6,
+        status: es.status || 'enrolled',
+        rawStatus: es.status || 'enrolled',
+        currentStage: es.currentStage || 'enrolled',
+      });
+    }
+  }
+
+  // Merge submitted students into rawStudents
+  for (const sub of submittedList) {
+    const subId = String(sub.id || sub.studentId || '').trim();
+    const subName = String(sub.fullName || sub.name || '').toLowerCase().trim();
+    const existingIndex = rawStudents.findIndex(
+      (s) =>
+        (subId && String(s.id || s.studentId || '').trim() === subId) ||
+        (subName && String(s.full_name || s.fullName || s.name || '').toLowerCase().trim() === subName),
+    );
+    if (existingIndex >= 0) {
+      rawStudents[existingIndex] = {
+        ...rawStudents[existingIndex],
+        ...sub,
+        status: 'assessment_complete',
+        rawStatus: 'assessment_complete',
+      };
+    } else {
+      rawStudents.unshift({
+        ...sub,
+        id: subId,
+        studentId: subId,
+        fullName: sub.fullName || sub.name || 'Student',
+        name: sub.fullName || sub.name || 'Student',
+        programType: sub.program || 'Comprehensive ABA',
+        program: sub.program || 'Comprehensive ABA',
+        therapyGroup: sub.therapyGroup || 'Station 1',
+        age: Number(sub.age) || 6,
+        status: 'assessment_complete',
+        rawStatus: 'assessment_complete',
+        currentStage: 'assessment-complete',
+      });
+    }
+  }
+
+  // Filter out any deleted students
+  rawStudents = filterOutDeletedStudents(rawStudents);
+
   let pipelineStudents: any[] = [];
   if (pipelineRes.status === 'fulfilled') {
     const pData = pipelineRes.value?.data;
@@ -685,34 +797,70 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
     };
 
     dashboardStudents = rawStudents.map((s: any, idx: number) => {
-      const id = String(s.id);
+      const id = String(s.id || s.studentId || `stu-${idx + 1}`);
       const fullName =
         s.full_name ||
+        s.fullName ||
         s.name ||
         `${s.first_name || ''} ${s.last_name || ''}`.trim() ||
         `Student ${idx + 1}`;
       const programType = s.program_type
         ? String(s.program_type).replace(/_/g, ' ')
-        : s.program || 'Regular';
+        : s.programType || s.program || 'Regular';
       const therapyGroup = s.therapy_group
         ? String(s.therapy_group).replace(/_/g, ' ')
-        : s.station || `Station ${(idx % 3) + 1}`;
+        : s.therapyGroup || s.station || `Station ${(idx % 3) + 1}`;
       const cleanStaff = filterOutDeletedStaff(staffList);
       const therapistPool =
         cleanStaff.map((st) => st.name).filter(Boolean).length > 0
           ? cleanStaff.map((st) => st.name)
           : safeTherapistNames;
-      const therapist =
-        s.therapist ||
-        (therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist);
 
-      const pipeMatch = pipelineStudents.find((p) => String(p.student_id) === id);
+      const thFromMap =
+        studentTherapistMap.get(id.toLowerCase()) ||
+        studentTherapistMap.get(fullName.toLowerCase());
+      const rawTherapist = String(
+        thFromMap ||
+          s.therapist ||
+          s.assignedTherapist ||
+          s.therapist_name ||
+          s.teacher ||
+          '',
+      ).trim();
+      const therapist =
+        rawTherapist && !isStaffDeleted(rawTherapist) && rawTherapist !== 'Unassigned'
+          ? rawTherapist
+          : (therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist);
+
+      const pipeMatch = pipelineStudents.find((p) => String(p.student_id || p.studentId || '') === id);
+
+      const isSub = isStudentAssessmentSubmitted(id);
+      const inSession = isStudentInSession(s);
+      const skillsData = getStudentSkillsProgress(id);
+      const behaviorData = getStudentBehaviorProgress(id);
+      const prefData = getStudentPreferenceProgress(id);
+      const sensoryData = getStudentSensoryProgress(id);
+      const hasAssessmentProgress =
+        (skillsData?.progress || 0) > 0 ||
+        (behaviorData?.progress || 0) > 0 ||
+        (prefData?.progress || 0) > 0 ||
+        (sensoryData?.progress || 0) > 0;
+
       const rawStatusKey = normalizeStatusKey(s.rawStatus || s.status);
       let stageInfo = STATUS_MAP[rawStatusKey];
       if (!stageInfo && pipeMatch) {
         stageInfo = STATUS_MAP[normalizeStatusKey(pipeMatch.status || pipeMatch.stage)];
       }
-      if (!stageInfo) {
+
+      if (inSession || rawStatusKey === 'active_therapy' || rawStatusKey === 'in_session') {
+        stageInfo = STATUS_MAP.in_session;
+      } else if (rawStatusKey === 'session_assigned') {
+        stageInfo = STATUS_MAP.session_assigned;
+      } else if (isSub || rawStatusKey === 'ready_for_iup' || rawStatusKey === 'assessment_complete') {
+        stageInfo = STATUS_MAP.assessment_complete;
+      } else if (hasAssessmentProgress || rawStatusKey === 'in_assessment') {
+        stageInfo = STATUS_MAP.in_assessment;
+      } else if (!stageInfo) {
         stageInfo = STATUS_MAP.enrolled;
       }
 
