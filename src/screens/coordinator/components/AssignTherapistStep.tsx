@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { StaffOption } from '../../../api/optionsApi';
 import { colors, radius, spacing } from '../../../theme/colors';
-import { type WizardState, MAX_CASELOAD } from '../enrollmentWizardTypes';
+import { type WizardState } from '../enrollmentWizardTypes';
 
 interface AssignTherapistStepProps {
   form: WizardState;
@@ -13,7 +13,6 @@ interface AssignTherapistStepProps {
 export function AssignTherapistStep({ form, set, therapists }: AssignTherapistStepProps) {
   const caseloadOf = (name: string) =>
     therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
-  const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
   const therapistNames = therapists.map((t) => t.name);
 
   return (
@@ -23,36 +22,25 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
           Therapist / Staff Member <Text style={styles.requiredStar}>*</Text>
         </Text>
         <Text style={styles.fieldHint}>
-          Each staff member can be assigned up to {MAX_CASELOAD} students at a time.
+          Select an assigned primary therapist or staff member for this student.
         </Text>
         {therapistNames.length ? (
           <View style={styles.chipRow}>
             {therapists.map((t) => {
               const count = t.assignedStudents?.length ?? 0;
-              const full = count >= MAX_CASELOAD;
               const selected = form.therapist === t.name;
               return (
                 <TouchableOpacity
                   key={t.name}
-                  disabled={full}
-                  style={[
-                    styles.chip,
-                    selected && styles.chipSelected,
-                    full && styles.chipDisabled,
-                  ]}
+                  style={[styles.chip, selected && styles.chipSelected]}
                   onPress={() => set('therapist', t.name)}
                   accessibilityRole="radio"
-                  accessibilityLabel={`${t.name}, ${count} of ${MAX_CASELOAD} students assigned`}
-                  accessibilityState={{ selected, disabled: full }}
+                  accessibilityLabel={`${t.name}${count > 0 ? `, ${count} students assigned` : ''}`}
+                  accessibilityState={{ selected }}
                 >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      selected && styles.chipTextSelected,
-                      full && styles.chipTextDisabled,
-                    ]}
-                  >
-                    {t.name} ({count}/{MAX_CASELOAD})
+                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                    {t.name}
+                    {count > 0 ? ` (${count} assigned)` : ''}
                   </Text>
                 </TouchableOpacity>
               );
@@ -60,19 +48,6 @@ export function AssignTherapistStep({ form, set, therapists }: AssignTherapistSt
           </View>
         ) : (
           <Text style={styles.fieldHint}>No staff members available.</Text>
-        )}
-
-        {form.therapist && isFull(form.therapist) && (
-          <Text style={styles.capacityWarning}>
-            {form.therapist} is at capacity — pick an available staff member to continue.
-          </Text>
-        )}
-
-        {therapistNames.length > 0 && therapistNames.every(isFull) && (
-          <Text style={styles.capacityWarning}>
-            All staff members are at maximum capacity (2/2). Reassign a student before enrolling
-            another.
-          </Text>
         )}
       </View>
     </View>

@@ -1,4 +1,5 @@
 // src/utils/studentStatusHelper.ts
+import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
 
 const REGISTERED_ACTIVE_STUDENTS_KEY = 'melue_registered_active_students_v1';
 const STATUS_OVERRIDES_KEY = 'melue_student_status_overrides_v1';
@@ -15,7 +16,9 @@ function getStoredJson<T>(key: string, defaultValue: T): T {
   if (typeof localStorage === 'undefined') return defaultValue;
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : defaultValue;
+    if (!raw) return defaultValue;
+    const decoded = unprotectStoragePayload(raw) || raw;
+    return JSON.parse(decoded);
   } catch {
     return defaultValue;
   }
@@ -24,7 +27,8 @@ function getStoredJson<T>(key: string, defaultValue: T): T {
 function setStoredJson<T>(key: string, value: T): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const protectedVal = sanitizeStoragePayload(JSON.stringify(value));
+    localStorage.setItem(key, protectedVal);
   } catch {}
 }
 
@@ -63,7 +67,7 @@ export function markStudentActive(id?: string, name?: string): void {
 export function toggleStudentStatus(
   id?: string,
   name?: string,
-  currentStatus?: 'Active' | 'Inactive'
+  currentStatus?: 'Active' | 'Inactive' | string,
 ): 'Active' | 'Inactive' {
   const overrides = getStoredJson<Record<string, 'Active' | 'Inactive'>>(STATUS_OVERRIDES_KEY, {});
   const nextStatus: 'Active' | 'Inactive' = currentStatus === 'Active' ? 'Inactive' : 'Active';
@@ -88,8 +92,7 @@ export function isStudentRegisteredActive(id?: string, name?: string): boolean {
   const nameKey = normalizeKey(name);
 
   return (
-    Boolean(idKey && activeList.includes(idKey)) ||
-    Boolean(nameKey && activeList.includes(nameKey))
+    Boolean(idKey && activeList.includes(idKey)) || Boolean(nameKey && activeList.includes(nameKey))
   );
 }
 
@@ -100,8 +103,15 @@ export function isStudentRegisteredActive(id?: string, name?: string): boolean {
 export function resolveStudentStatus(
   id?: string,
   name?: string,
-  rawStatus?: string | null
-): 'Active' | 'Inactive' {
+  rawStatus?: string | null,
+): 'Active' | 'Inactive' | 'Draft' {
+  if (rawStatus && String(rawStatus).trim().toLowerCase() === 'draft') {
+    return 'Draft';
+  }
+  if (id && String(id).startsWith('draft-')) {
+    return 'Draft';
+  }
+
   const overrides = getStoredJson<Record<string, 'Active' | 'Inactive'>>(STATUS_OVERRIDES_KEY, {});
   const idKey = normalizeKey(id);
   const nameKey = normalizeKey(name);
@@ -116,11 +126,7 @@ export function resolveStudentStatus(
   }
 
   // 3. Known legacy demo inactive student
-  if (
-    idKey === 'stu-4' ||
-    idKey === 'mlu-0015' ||
-    nameKey === 'liam wilson'
-  ) {
+  if (idKey === 'stu-4' || idKey === 'mlu-0015' || nameKey === 'liam wilson') {
     return 'Inactive';
   }
 

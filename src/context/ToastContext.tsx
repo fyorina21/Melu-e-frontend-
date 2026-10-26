@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo } from
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing, makeShadow } from '../theme/colors';
+import { secureRandomId } from '../utils/cryptoRandom';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -21,7 +22,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
-    const id = Math.random().toString(36).substring(2, 9);
+    const id = secureRandomId('toast');
     setToasts((prev) => [...prev, { id, message, type }]);
 
     // Auto-remove after 3 seconds

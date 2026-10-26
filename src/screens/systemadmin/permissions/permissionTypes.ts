@@ -49,7 +49,8 @@ export const FALLBACK_MODULES: CatalogModule[] = [
   {
     id: 'students',
     name: 'Students / Enrollment',
-    description: 'Student records, enrollment pipeline, and documents',
+    description:
+      'Student roster records, student profile inspection, enrollment pipeline, and documents',
     resource: 'students',
     permissions: [],
   },

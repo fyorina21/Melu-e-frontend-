@@ -33,6 +33,7 @@ import {
   usePreventUnsavedNavigation,
 } from '../../context/UnsavedChangesContext';
 import { confirmAction } from '../../utils/dialogs';
+import { secureRandomId } from '../../utils/cryptoRandom';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { SystemAdminStackParamList, Role } from '../../types';
 
@@ -193,7 +194,7 @@ export default function PermissionConfigurationScreen({
         const { data } = await getPermissionAuditTrail(roleId);
         if (Array.isArray(data)) {
           const formatted: AuditEntry[] = data.map((a: any) => ({
-            id: String(a.id || Math.random()),
+            id: String(a.id || secureRandomId('perm-audit')),
             date: a.created_at ? new Date(a.created_at).toLocaleString() : a.date || 'Recent',
             user: a.changed_by || a.metadata?.updated_by || a.user || 'System Admin',
             resource: a.resource_type || a.resource || 'Role Permissions',

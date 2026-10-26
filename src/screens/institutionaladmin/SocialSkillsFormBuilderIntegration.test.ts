@@ -53,7 +53,11 @@ describe('Social Skills Questionnaire FormBuilder & Assessment Sync', () => {
 
   it('computes next sequential question ID (e.g. q11) when adding a question', () => {
     const defaultFields = getDefaultFormConfig('Social Skills Questionnaire').fields;
-    const nextId = getNextIdForSection('Social Skills Questionnaire', 'Social Interaction', defaultFields);
+    const nextId = getNextIdForSection(
+      'Social Skills Questionnaire',
+      'Social Interaction',
+      defaultFields,
+    );
     expect(nextId).toBe('q11');
   });
 
@@ -115,7 +119,9 @@ describe('Social Skills Questionnaire FormBuilder & Assessment Sync', () => {
 
     const cached = getCachedFormConfig('Social Skills Questionnaire');
     expect(cached?.fields.length).toBe(11);
-    expect(cached?.fields.find((f: any) => f.id === 'q11')?.label).toBe('Expresses empathy towards upset classmates');
+    expect(cached?.fields.find((f: any) => f.id === 'q11')?.label).toBe(
+      'Expresses empathy towards upset classmates',
+    );
   });
 
   it('links correctly to live assessment route', () => {
@@ -128,7 +134,9 @@ describe('Social Skills Questionnaire FormBuilder & Assessment Sync', () => {
   it('resets form configuration back to default 10 questions', async () => {
     // Save modified
     await saveFormConfig('Social Skills Questionnaire', {
-      fields: [{ id: 'q1', label: 'Only one question', type: 'Radio', required: true, visible: true }],
+      fields: [
+        { id: 'q1', label: 'Only one question', type: 'Radio', required: true, visible: true },
+      ],
       isDefault: false,
     });
 
@@ -136,5 +144,13 @@ describe('Social Skills Questionnaire FormBuilder & Assessment Sync', () => {
     const resetConfig = await getFormConfig('Social Skills Questionnaire');
     expect(resetConfig.data.fields.length).toBe(10);
     expect(resetConfig.data.fields[0].id).toBe('q1');
+  });
+
+  it('ensures FormBuilderScreen does not reference undefined activeFilterSection', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const formBuilderFile = path.resolve(__dirname, 'FormBuilderScreen.tsx');
+    const content = fs.readFileSync(formBuilderFile, 'utf-8');
+    expect(content).not.toContain('activeFilterSection');
   });
 });

@@ -6,6 +6,7 @@
 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
 
 export interface KeyValueStorage {
   getItem(key: string): Promise<string | null>;
@@ -46,7 +47,12 @@ class UnifiedStorage implements KeyValueStorage {
   async getItem(key: string): Promise<string | null> {
     if (this.hasLocalStorage) {
       try {
-        return localStorage.getItem(key);
+        const val = localStorage.getItem(key);
+        if (val !== null) {
+          const decoded = unprotectStoragePayload(val);
+          return decoded ?? val;
+        }
+        return memoryStore.get(key) ?? null;
       } catch {
         return memoryStore.get(key) ?? null;
       }
@@ -68,7 +74,8 @@ class UnifiedStorage implements KeyValueStorage {
 
     if (this.hasLocalStorage) {
       try {
-        localStorage.setItem(key, value);
+        const protectedVal = sanitizeStoragePayload(value);
+        localStorage.setItem(key, protectedVal);
       } catch {
         // storage quota exceeded or disabled
       }
@@ -107,7 +114,10 @@ class UnifiedStorage implements KeyValueStorage {
     if (this.hasLocalStorage) {
       try {
         const val = localStorage.getItem(key);
-        if (val !== null) return val;
+        if (val !== null) {
+          const decoded = unprotectStoragePayload(val);
+          return decoded ?? val;
+        }
       } catch {}
     }
     return memoryStore.get(key) ?? null;
@@ -117,7 +127,8 @@ class UnifiedStorage implements KeyValueStorage {
     memoryStore.set(key, value);
     if (this.hasLocalStorage) {
       try {
-        localStorage.setItem(key, value);
+        const protectedVal = sanitizeStoragePayload(value);
+        localStorage.setItem(key, protectedVal);
       } catch {}
     }
   }

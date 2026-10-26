@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import DobPicker from '../../components/DobPicker';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -28,19 +29,38 @@ import {
   type StaffOption,
   type StudentOption,
 } from '../../api/optionsApi';
-import { createStudentEnrollment, updateStudentProfile } from '../../api/coordinatorApi';
+import {
+  createStudentEnrollment,
+  updateStudentProfile,
+  getStudentProfile,
+} from '../../api/coordinatorApi';
 import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 import { resolveFieldOptions } from '../../components/DynamicFormFields';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import { saveStudentPhoto, registerStudentPhotos } from '../../utils/studentPhotoHelper';
 import { markStudentActive } from '../../utils/studentStatusHelper';
 import { registerStudentStatuses } from '../../utils/studentLifecycleHelper';
+import {
+  DEMOGRAPHIC_KEY,
+  F_DEMOGRAPHIC_KEY,
+  getStudentDemographic,
+} from '../../utils/sensitiveDataSanitizer';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
+import {
+  getEnrollmentDraft,
+  saveEnrollmentDraft,
+  deleteEnrollmentDraft,
+} from '../../utils/enrollmentDraftHelper';
+import DocumentAttachmentCard, {
+  extractDocumentMeta,
+} from '../../components/DocumentAttachmentCard';
+import VideoPlayerView from '../../components/VideoPlayerView';
+import MediaViewerModal from '../../components/MediaViewerModal';
+import StudentAvatar from '../../components/StudentAvatar';
 import type { ProgramDirectorStackParamList } from '../../types';
 
 export const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const MAX_CASELOAD = 2;
 
 const C_YELLOW = '#FCD34D';
 const C_SKY = '#38BDF8';
@@ -78,12 +98,25 @@ export function getTherapyGroupAgeWarning(therapyGroup: string, age: number | nu
 
 type Props = NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentEnrollmentWizard'>;
 
-function StepIndicator({ current, steps }: { current: number; steps: string[] }) {
+function StepIndicator({
+  current,
+  steps,
+  onStepPress,
+}: {
+  current: number;
+  steps: string[];
+  onStepPress?: (index: number) => void;
+}) {
   return (
     <View style={styles.progressCard}>
       <View style={styles.progressRow}>
         {steps.map((s, i) => (
-          <View key={s} style={styles.stepWrap}>
+          <TouchableOpacity
+            key={s}
+            style={styles.stepWrap}
+            onPress={() => onStepPress?.(i)}
+            activeOpacity={onStepPress ? 0.7 : 1}
+          >
             <View style={styles.stepRow}>
               <View
                 style={[
@@ -110,7 +143,7 @@ function StepIndicator({ current, steps }: { current: number; steps: string[] })
             >
               {s}
             </Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
     </View>
@@ -174,43 +207,173 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
+export default function StudentEnrollmentWizardScreen({ navigation, route }: Props) {
   const { showToast } = useToast();
+  const routeDraftId = (route?.params as any)?.draftId || (route?.params as any)?.studentId;
+  const routeSection = (route?.params as any)?.section;
+  const routeInitialStep = (route?.params as any)?.initialStep;
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(routeDraftId || null);
+  const [submissionErrors, setSubmissionErrors] = useState<
+    Array<{ fieldId?: string; label: string; section: string; error: string }>
+  >([]);
   const [step, setStep] = useState(0);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [therapists, setTherapists] = useState<StaffOption[]>([]);
   const [existingStudents, setExistingStudents] = useState<StudentOption[]>([]);
   const [saving, setSaving] = useState(false);
-  const [customSections, setCustomSections] = useState<string[]>(
-    DEFAULT_ENROLLMENT_FORM.customSections || [],
-  );
+  const [loadingForm, setLoadingForm] = useState(true);
+  const [customSections, setCustomSections] = useState<string[]>([]);
   const [deletedSections, setDeletedSections] = useState<string[]>([]);
-  const [formFields, setFormFields] = useState<any[]>(DEFAULT_ENROLLMENT_FORM.fields || []);
+  const [formFields, setFormFields] = useState<any[]>([]);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [activePhotoFieldId, setActivePhotoFieldId] = useState<string | null>(null);
   const [activeDropdownFieldId, setActiveDropdownFieldId] = useState<string | null>(null);
+  const [previewModal, setPreviewModal] = useState<{
+    isOpen: boolean;
+    fileUrl: string;
+    fileName: string;
+    fileType?: 'image' | 'video' | 'pdf' | 'document';
+  }>({ isOpen: false, fileUrl: '', fileName: '' });
 
   const duplicateConfirmed = useRef(false);
 
-  // Load therapists and existing students
+  // Restore draft if opened with a draft ID
   useEffect(() => {
-    getStaffOptions()
-      .then(({ data }) => {
-        const clean = filterOutDeletedStaff(data);
-        const teachers = clean.filter((s) => s.role === 'teacher');
-        setTherapists(teachers);
-      })
-      .catch(() => setTherapists([]));
+    if (routeDraftId) {
+      setCurrentDraftId(routeDraftId);
+      const draft = getEnrollmentDraft(routeDraftId);
+      if (draft && draft.formValues) {
+        setFormValues((prev) => ({
+          ...prev,
+          ...draft.formValues,
+        }));
+        // Requirements: Wizard initialization for resumed drafts must start on Step 1 (step index 0)
+        // while preserving all pre-filled and half-filled field values across all form steps.
+        setStep(0);
+        showToast(`Resumed draft for ${draft.name}`, 'info');
+      } else {
+        // Fallback for draft students fetched from backend
+        getStudentProfile(routeDraftId)
+          .then((res: any) => {
+            const data = res?.data;
+            if (data && (data.customFields || data.formValues)) {
+              const vals = data.formValues || data.customFields || {};
+              setFormValues((prev) => ({
+                ...prev,
+                ...vals,
+                f1: vals.f1 || data.fullName || '',
+                f2: vals.f2 || data.dateOfBirth || '',
+                [F_DEMOGRAPHIC_KEY]: vals[F_DEMOGRAPHIC_KEY] || getStudentDemographic(data, ''),
+                f_program: vals.f_program || data.programType || '',
+                f_therapy: vals.f_therapy || data.therapyGroup || '',
+                f_therapist: vals.f_therapist || data.therapist || '',
+                f4: vals.f4 || data.guardianName || '',
+                f5: vals.f5 || data.guardianPhone || '',
+                f6: vals.f6 || data.guardianEmail || '',
+                f_diagnosis: vals.f_diagnosis || data.diagnosis || '',
+              }));
+              setStep(0);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [routeDraftId, showToast]);
 
-    getStudentOptions()
-      .then(({ data }) => {
-        setExistingStudents(data);
-        if (Array.isArray(data)) {
-          registerStudentPhotos(data);
+  // Single Source of Truth: Fetch active enrollment schema from backend FormConfiguration
+  const loadFormConfig = useCallback(async () => {
+    try {
+      const { data } = await getFormConfig('Enrollment Wizard');
+      if (data) {
+        if (Array.isArray(data.customSections)) {
+          setCustomSections(data.customSections);
         }
-      })
-      .catch(() => setExistingStudents([]));
+        if (Array.isArray(data.deletedSections)) {
+          setDeletedSections(data.deletedSections);
+        }
+        if (Array.isArray(data.fields) && data.fields.length > 0) {
+          setFormFields(data.fields);
+          // Pre-seed default values for fields that don't have a value yet
+          setFormValues((prev) => {
+            const updated = { ...prev };
+            data.fields.forEach((f: any) => {
+              if (updated[f.id] === undefined) {
+                if (f.default_value !== undefined) {
+                  updated[f.id] = f.default_value;
+                } else if (
+                  f.type === 'Radio' ||
+                  f.type === 'Dropdown' ||
+                  f.type === 'radio' ||
+                  f.type === 'dropdown'
+                ) {
+                  const opts = resolveFieldOptions(f);
+                  if (opts.length > 0 && f.required) {
+                    updated[f.id] = opts[0];
+                  }
+                }
+              }
+            });
+            return updated;
+          });
+          return;
+        }
+      }
+      setFormFields(DEFAULT_ENROLLMENT_FORM.fields || []);
+      setCustomSections(DEFAULT_ENROLLMENT_FORM.customSections || []);
+    } catch {
+      setFormFields(DEFAULT_ENROLLMENT_FORM.fields || []);
+      setCustomSections(DEFAULT_ENROLLMENT_FORM.customSections || []);
+    }
   }, []);
+
+  // Initial load: Fetch form schema, staff caseloads, and existing students before revealing the form
+  useEffect(() => {
+    let isMounted = true;
+    const init = async () => {
+      try {
+        await Promise.allSettled([
+          loadFormConfig(),
+          getStaffOptions()
+            .then(({ data }) => {
+              if (!isMounted) return;
+              const clean = filterOutDeletedStaff(data);
+              const teachers = clean.filter((s) => s.role === 'teacher');
+              setTherapists(teachers);
+            })
+            .catch(() => {
+              if (isMounted) setTherapists([]);
+            }),
+          getStudentOptions()
+            .then(({ data }) => {
+              if (!isMounted) return;
+              setExistingStudents(data);
+              if (Array.isArray(data)) {
+                registerStudentPhotos(
+                  data.map((item: any) => ({
+                    id: item.id ? String(item.id) : undefined,
+                    name: item.fullName || item.name,
+                    photo: item.photo,
+                    photoUrl: item.photoUrl,
+                    headshotUrl: item.headshotUrl,
+                  })),
+                );
+              }
+            })
+            .catch(() => {
+              if (isMounted) setExistingStudents([]);
+            }),
+        ]);
+      } finally {
+        if (isMounted) {
+          setLoadingForm(false);
+        }
+      }
+    };
+    init();
+    return () => {
+      isMounted = false;
+    };
+  }, [loadFormConfig]);
 
   useEffect(() => {
     return onDeletedStaffChanged(() => {
@@ -220,51 +383,6 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       });
     });
   }, []);
-
-  // Single Source of Truth: Fetch active enrollment schema from backend FormConfiguration
-  const loadFormConfig = useCallback(() => {
-    getFormConfig('Enrollment Wizard')
-      .then(({ data }) => {
-        if (data) {
-          if (Array.isArray(data.customSections)) {
-            setCustomSections(data.customSections);
-          }
-          if (Array.isArray(data.deletedSections)) {
-            setDeletedSections(data.deletedSections);
-          }
-          if (Array.isArray(data.fields) && data.fields.length > 0) {
-            setFormFields(data.fields);
-            // Pre-seed default values for fields that don't have a value yet
-            setFormValues((prev) => {
-              const updated = { ...prev };
-              data.fields.forEach((f: any) => {
-                if (updated[f.id] === undefined) {
-                  if (f.default_value !== undefined) {
-                    updated[f.id] = f.default_value;
-                  } else if (
-                    f.type === 'Radio' ||
-                    f.type === 'Dropdown' ||
-                    f.type === 'radio' ||
-                    f.type === 'dropdown'
-                  ) {
-                    const opts = resolveFieldOptions(f);
-                    if (opts.length > 0 && f.required) {
-                      updated[f.id] = opts[0];
-                    }
-                  }
-                }
-              });
-              return updated;
-            });
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    loadFormConfig();
-  }, [loadFormConfig]);
 
   useFocusEffect(
     useCallback(() => {
@@ -326,10 +444,32 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
-  // Helpers for caseload checking
-  const caseloadOf = (name: string) =>
-    therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
-  const isFull = (name: string) => caseloadOf(name) >= MAX_CASELOAD;
+  // Jump to specific step if targeted by route params (e.g. upload documents from profile)
+  useEffect(() => {
+    if (routeSection && steps.length > 0) {
+      const matchIdx = steps.findIndex(
+        (s) =>
+          s.toLowerCase().includes(routeSection.toLowerCase()) ||
+          (routeSection.toLowerCase() === 'documents' &&
+            (s.toLowerCase().includes('medical') || s.toLowerCase().includes('doc'))),
+      );
+      if (matchIdx >= 0) {
+        setStep(matchIdx);
+      }
+    } else if (routeInitialStep !== undefined && steps.length > 0) {
+      const target = Number(routeInitialStep);
+      if (target >= 0 && target < steps.length) {
+        setStep(target);
+      }
+    }
+  }, [routeSection, routeInitialStep, steps]);
+
+  // Helpers for caseload checking (hardcoded capacity limit removed)
+  const caseloadOf = (name: string) => {
+    const t = therapists.find((th) => th.name === name);
+    return t ? ((t as any).assignedStudentCount ?? t.assignedStudents?.length ?? 0) : 0;
+  };
+  const isFull = (_name: string) => false;
 
   // Single dynamic field change handler
   const handleFieldChange = (fieldId: string, value: any) => {
@@ -340,16 +480,92 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       const field = formFields.find((f) => f.id === fieldId);
       const normLabel = (field?.label || '').toLowerCase();
       const normId = (field?.id || '').toLowerCase();
-      if (normLabel.includes('birth') || normLabel.includes('dob') || normId === 'f2') {
+      if (
+        normLabel.includes('birth') ||
+        normLabel.includes('dob') ||
+        normId === 'f2' ||
+        normId === 'enr_dob'
+      ) {
         const age = calculateAge(value);
         if (age !== null && age >= 3 && age <= 19) {
           const therapyField = formFields.find(
-            (f) => f.id === 'f_therapy' || /therapy.*group/i.test(f.label),
+            (f) =>
+              f.id === 'f_therapy' ||
+              f.id === 'enr_therapy_group' ||
+              /therapy.*group/i.test(f.label),
           );
           if (therapyField && !updated[therapyField.id]) {
             updated[therapyField.id] = age <= 12 ? 'Basic' : 'Functional Living Skill';
           }
         }
+      }
+
+      // Synchronize child first/middle/last name across state management layer
+      if (
+        normId === 'f1' ||
+        normId === 'enr_first_name' ||
+        normId === 'childfirstname' ||
+        normId === 'child_first_name' ||
+        normId === 'firstname' ||
+        normId === 'first_name' ||
+        normLabel.includes('first name') ||
+        normLabel.includes('student full name')
+      ) {
+        if (normId === 'f1' || normLabel.includes('full name')) {
+          const parts = String(value || '')
+            .trim()
+            .split(/\s+/);
+          const first = parts[0] || '';
+          const last = parts.slice(1).join(' ') || '';
+          updated.firstName = first;
+          updated.first_name = first;
+          updated.childFirstName = first;
+          updated.child_first_name = first;
+          updated.enr_first_name = first;
+          if (last) {
+            updated.lastName = last;
+            updated.last_name = last;
+            updated.childLastName = last;
+            updated.child_last_name = last;
+            updated.enr_last_name = last;
+          }
+        } else {
+          updated.firstName = value;
+          updated.first_name = value;
+          updated.childFirstName = value;
+          updated.child_first_name = value;
+          updated.enr_first_name = value;
+        }
+      }
+
+      if (
+        normId === 'enr_last_name' ||
+        normId === 'childlastname' ||
+        normId === 'child_last_name' ||
+        normId === 'lastname' ||
+        normId === 'last_name' ||
+        normLabel.includes('last name')
+      ) {
+        updated.lastName = value;
+        updated.last_name = value;
+        updated.childLastName = value;
+        updated.child_last_name = value;
+        updated.enr_last_name = value;
+      }
+
+      if (
+        normId === 'enr_middle_name' ||
+        normId === 'childmiddlename' ||
+        normId === 'child_middle_name' ||
+        normId === 'middlename' ||
+        normId === 'middle_name' ||
+        normLabel.includes('middle name')
+      ) {
+        updated.middleName = value;
+        updated.middle_name = value;
+        updated.childMiddleName = value;
+        updated.child_middle_name = value;
+        updated.enr_middle_name = value;
       }
 
       // If updating therapist, keep therapist key updated
@@ -372,26 +588,165 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     return formValues[f.id] ?? '';
   };
 
+  const studentFirstName =
+    getFieldVal('enr_first_name') ||
+    getFieldVal('childFirstName') ||
+    getFieldVal('child_first_name') ||
+    getFieldVal('firstName') ||
+    getFieldVal('first_name') ||
+    getFieldVal(/child.*first.*name|^first.*name$/i) ||
+    formValues.childFirstName ||
+    formValues.firstName ||
+    formValues.first_name ||
+    formValues.enr_first_name ||
+    '';
+
+  const studentLastName =
+    getFieldVal('enr_last_name') ||
+    getFieldVal('childLastName') ||
+    getFieldVal('child_last_name') ||
+    getFieldVal('lastName') ||
+    getFieldVal('last_name') ||
+    getFieldVal(/child.*last.*name|^last.*name$/i) ||
+    formValues.childLastName ||
+    formValues.lastName ||
+    formValues.last_name ||
+    formValues.enr_last_name ||
+    '';
+
+  const studentMiddleName =
+    getFieldVal('enr_middle_name') ||
+    getFieldVal('childMiddleName') ||
+    getFieldVal('child_middle_name') ||
+    getFieldVal('middleName') ||
+    getFieldVal('middle_name') ||
+    getFieldVal(/child.*middle.*name|^middle.*name$/i) ||
+    formValues.childMiddleName ||
+    formValues.middleName ||
+    formValues.middle_name ||
+    formValues.enr_middle_name ||
+    '';
+
   const studentName =
-    getFieldVal('f1') || getFieldVal(/student.*name|full.*name|^name$/i) || formValues.name || '';
-  const studentDob = getFieldVal('f2') || getFieldVal(/birth|dob/i) || formValues.dob || '';
+    (studentFirstName ? `${studentFirstName} ${studentLastName}`.trim() : '') ||
+    getFieldVal('f1') ||
+    getFieldVal(/student.*name|full.*name|^name$/i) ||
+    formValues.name ||
+    formValues.fullName ||
+    '';
+  const studentDob =
+    getFieldVal('enr_dob') ||
+    getFieldVal('f2') ||
+    getFieldVal(/birth|dob/i) ||
+    formValues.dob ||
+    formValues.dateOfBirth ||
+    '';
   const studentProgram =
-    getFieldVal('f_program') || getFieldVal(/program/i) || formValues.program || 'Regular';
+    getFieldVal('enr_program_type') ||
+    getFieldVal('f_program') ||
+    getFieldVal(/program/i) ||
+    formValues.program ||
+    'Regular';
   const studentTherapyGroup =
-    getFieldVal('f_therapy') || getFieldVal(/therapy/i) || formValues.therapyGroup || 'Basic';
+    getFieldVal('enr_therapy_group') ||
+    getFieldVal('f_therapy') ||
+    getFieldVal(/therapy/i) ||
+    formValues.therapyGroup ||
+    'Basic';
   const assignedTherapist =
     getFieldVal('f_therapist') || getFieldVal(/therapist/i) || formValues.therapist || '';
   const studentPhoto =
+    getFieldVal('enr_headshot') ||
     getFieldVal('f_photo') ||
-    getFieldVal(/photo/i) ||
+    getFieldVal(/photo|headshot/i) ||
     formValues.photoUri ||
     formValues.photoBase64 ||
     '';
 
-  // Photo handlers
+  // Photo and Document handlers
   const handleTakePhoto = (fieldId: string) => {
     setActivePhotoFieldId(fieldId);
     setCameraModalOpen(true);
+  };
+
+  const handleUploadDocument = async (fieldId: string) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let fileData = asset.uri;
+
+        if ((asset as any).file && typeof FileReader !== 'undefined') {
+          try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL((asset as any).file);
+            });
+            fileData = dataUrl;
+          } catch {}
+        }
+
+        handleFieldChange(fieldId, fileData);
+
+        const field = formFields.find((f) => f.id === fieldId);
+        const norm = `${fieldId} ${field?.label || ''}`.toLowerCase();
+        if (norm.includes('birth')) {
+          setFormValues((prev) => ({
+            ...prev,
+            birth_certificate: fileData,
+            birthCertificate: fileData,
+            enr_birth_certificate: fileData,
+          }));
+        } else if (norm.includes('diagnosis')) {
+          setFormValues((prev) => ({
+            ...prev,
+            diagnosis_paper: fileData,
+            diagnosisPaper: fileData,
+            enr_diagnosis_paper: fileData,
+          }));
+        } else if (norm.includes('agreement')) {
+          setFormValues((prev) => ({
+            ...prev,
+            agreement: fileData,
+            enr_agreement: fileData,
+          }));
+        } else if (norm.includes('video')) {
+          setFormValues((prev) => ({
+            ...prev,
+            baseline_video: fileData,
+            baselineVideo: fileData,
+            enr_baseline_video: fileData,
+            videoUrl: fileData,
+          }));
+        } else if (norm.includes('photo') || norm.includes('headshot')) {
+          setFormValues((prev) => ({
+            ...prev,
+            headshot: fileData,
+            enr_headshot: fileData,
+            photoUrl: fileData,
+          }));
+          if (studentName.trim()) {
+            saveStudentPhoto({
+              name: studentName.trim(),
+              fullName: studentName.trim(),
+              photo: fileData,
+              photoBase64: fileData,
+              photoUri: asset.uri,
+            });
+          }
+        }
+
+        showToast(`${asset.name || 'File'} uploaded successfully`, 'success');
+      }
+    } catch (err: any) {
+      showToast('Could not select document: ' + (err?.message || 'Error occurred'), 'error');
+    }
   };
 
   const handleChoosePhoto = async (fieldId: string) => {
@@ -414,6 +769,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
           : asset.uri;
         handleFieldChange(fieldId, photoData);
+        setFormValues((prev) => ({
+          ...prev,
+          headshot: photoData,
+          enr_headshot: photoData,
+          photoUrl: photoData,
+        }));
         if (studentName.trim()) {
           saveStudentPhoto({
             name: studentName.trim(),
@@ -432,39 +793,120 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
 
   const handleRemovePhoto = (fieldId: string) => {
     handleFieldChange(fieldId, '');
-    showToast('Photo removed', 'info');
+    const field = formFields.find((f) => f.id === fieldId);
+    const norm = `${fieldId} ${field?.label || ''}`.toLowerCase();
+    if (norm.includes('birth')) {
+      setFormValues((prev) => ({
+        ...prev,
+        birth_certificate: '',
+        birthCertificate: '',
+        enr_birth_certificate: '',
+      }));
+    } else if (norm.includes('diagnosis')) {
+      setFormValues((prev) => ({
+        ...prev,
+        diagnosis_paper: '',
+        diagnosisPaper: '',
+        enr_diagnosis_paper: '',
+      }));
+    } else if (norm.includes('agreement')) {
+      setFormValues((prev) => ({ ...prev, agreement: '', enr_agreement: '' }));
+    } else if (norm.includes('video')) {
+      setFormValues((prev) => ({
+        ...prev,
+        baseline_video: '',
+        baselineVideo: '',
+        enr_baseline_video: '',
+        videoUrl: '',
+      }));
+    } else if (norm.includes('photo') || norm.includes('headshot')) {
+      setFormValues((prev) => ({ ...prev, headshot: '', enr_headshot: '', photoUrl: '' }));
+    }
+    showToast('File removed', 'info');
   };
 
-  // Step Validation & Transition
+  // Step Navigation — Freely advances to next page without blocking on required fields
   const next = () => {
-    if (currentStep === 'Assign Therapist') {
-      if (!assignedTherapist) {
-        showToast('Please pick a therapist', 'error');
-        return;
-      }
-      if (isFull(assignedTherapist)) {
-        showToast(
-          `${assignedTherapist} is at maximum capacity (2 students). Choose another therapist.`,
-          'error',
-        );
-        return;
-      }
-      if (step < steps.length - 1) setStep(step + 1);
-      return;
+    duplicateConfirmed.current = false;
+    if (step < steps.length - 1) {
+      setStep(step + 1);
     }
+  };
 
-    if (currentStep === 'Review') {
-      return;
+  const saveProgress = () => {
+    try {
+      const derivedFirst =
+        studentFirstName ||
+        formValues.childFirstName ||
+        formValues.child_first_name ||
+        formValues.firstName ||
+        formValues.first_name ||
+        formValues.enr_first_name ||
+        (studentName || 'Student').trim().split(/\s+/)[0];
+
+      const derivedLast =
+        studentLastName ||
+        formValues.childLastName ||
+        formValues.child_last_name ||
+        formValues.lastName ||
+        formValues.last_name ||
+        formValues.enr_last_name ||
+        (studentName || 'Student').trim().split(/\s+/).slice(1).join(' ') ||
+        '';
+
+      const valuesWithNames = {
+        ...formValues,
+        firstName: derivedFirst,
+        first_name: derivedFirst,
+        childFirstName: derivedFirst,
+        child_first_name: derivedFirst,
+        enr_first_name: formValues.enr_first_name || derivedFirst,
+        middleName: studentMiddleName,
+        middle_name: studentMiddleName,
+        childMiddleName: studentMiddleName,
+        enr_middle_name: formValues.enr_middle_name || studentMiddleName,
+        lastName: derivedLast,
+        last_name: derivedLast,
+        childLastName: derivedLast,
+        child_last_name: derivedLast,
+        enr_last_name: formValues.enr_last_name || derivedLast,
+        fullName: studentName || `${derivedFirst} ${derivedLast}`.trim(),
+        name: studentName || `${derivedFirst} ${derivedLast}`.trim(),
+      };
+
+      const saved = saveEnrollmentDraft(
+        valuesWithNames,
+        step,
+        currentDraftId || undefined,
+        currentStep,
+      );
+      setCurrentDraftId(saved.id);
+      if (studentName.trim() && studentPhoto) {
+        saveStudentPhoto({
+          name: studentName.trim(),
+          fullName: studentName.trim(),
+          photo: studentPhoto,
+          photoBase64: studentPhoto,
+          photoUri: studentPhoto,
+        });
+      }
+      showToast('Draft saved. It will appear with a Draft tag in the Student Roster.', 'success');
+    } catch {
+      showToast('Could not save draft on this device', 'error');
     }
+  };
 
-    // Dynamic field validation strictly based on active schema fields for the current step
-    const currentStepFields = formFields.filter(
-      (f: any) =>
-        f.visible !== false &&
-        (f.section || 'General').toLowerCase().trim() === currentStep.toLowerCase().trim(),
-    );
+  // Validates all required fields across all sections strictly when trying to finish enrollment
+  const validateFormForSubmission = (): {
+    valid: boolean;
+    errors: Array<{ fieldId?: string; label: string; section: string; error: string }>;
+  } => {
+    const errors: Array<{ fieldId?: string; label: string; section: string; error: string }> = [];
 
-    for (const f of currentStepFields) {
+    // 1. Dynamic field validation based on active schema fields
+    for (const f of formFields) {
+      if (f.visible === false) continue;
+      const sectionName = (f.section || 'General').trim();
       const val = formValues[f.id];
       const isMissing =
         val === undefined ||
@@ -473,8 +915,13 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         (Array.isArray(val) && val.length === 0);
 
       if (f.required && isMissing) {
-        showToast(`Please complete required field: ${f.label}`, 'error');
-        return;
+        errors.push({
+          fieldId: f.id,
+          label: f.label || f.id,
+          section: sectionName,
+          error: `${f.label || f.id} is required`,
+        });
+        continue;
       }
 
       if (val && typeof val === 'string') {
@@ -486,16 +933,24 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         // Phone validation
         if (normType === 'phone' || normId === 'f5' || normLabel.includes('phone')) {
           if (!PHONE_RE.test(strVal)) {
-            showToast('Invalid phone (7-20 digits, spaces, ()/+ -)', 'error');
-            return;
+            errors.push({
+              fieldId: f.id,
+              label: f.label,
+              section: sectionName,
+              error: 'Invalid phone (7-20 digits, spaces, ()/+ -)',
+            });
           }
         }
 
         // Email validation
         if (normType === 'email' || normId === 'f6' || normLabel.includes('email')) {
           if (!EMAIL_RE.test(strVal)) {
-            showToast('Invalid email address', 'error');
-            return;
+            errors.push({
+              fieldId: f.id,
+              label: f.label,
+              section: sectionName,
+              error: 'Invalid email address',
+            });
           }
         }
 
@@ -506,61 +961,44 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         ) {
           const studentAge = calculateAge(strVal);
           if (studentAge === null || studentAge < 3 || studentAge > 19) {
-            showToast(
-              `Student age (${studentAge ?? 'unknown'} yrs) must be between 3 and 19 years old for enrollment`,
-              'error',
-            );
-            return;
+            errors.push({
+              fieldId: f.id,
+              label: f.label,
+              section: sectionName,
+              error: `Student age (${studentAge ?? 'unknown'} yrs) must be between 3 and 19 years old for enrollment`,
+            });
           }
         }
       }
 
-      // Therapist field capacity check
-      if (f.id === 'f_therapist' || /therapist/i.test(f.label)) {
-        if (val && isFull(String(val))) {
-          showToast(
-            `${val} is at maximum capacity (2 students). Choose another therapist.`,
-            'error',
-          );
-          return;
-        }
+      // Therapist field capacity check removed
+    }
+
+    // 2. Validate Assign Therapist step if included
+    if (includeTherapistStep) {
+      if (!assignedTherapist) {
+        errors.push({
+          label: 'Primary Therapist',
+          section: 'Assign Therapist',
+          error: 'Please assign a primary therapist',
+        });
       }
     }
 
-    // Program Placement therapy group age warning check
+    // 3. Program Placement therapy group age warning check
     if (studentDob && studentTherapyGroup) {
       const studentAge = calculateAge(studentDob);
       const ageWarning = getTherapyGroupAgeWarning(studentTherapyGroup, studentAge);
-      if (
-        ageWarning &&
-        currentStepFields.some((f) => /therapy/i.test(f.label) || f.id === 'f_therapy')
-      ) {
-        showToast(ageWarning, 'error');
-        return;
-      }
-    }
-
-    duplicateConfirmed.current = false;
-    if (step < steps.length - 1) setStep(step + 1);
-  };
-
-  const saveProgress = () => {
-    try {
-      const key = `enrollment-draft-${studentName.trim().toLowerCase() || 'untitled'}`;
-      localStorage.setItem(key, JSON.stringify(formValues));
-      if (studentName.trim() && studentPhoto) {
-        saveStudentPhoto({
-          name: studentName.trim(),
-          fullName: studentName.trim(),
-          photo: studentPhoto,
-          photoBase64: studentPhoto,
-          photoUri: studentPhoto,
+      if (ageWarning) {
+        errors.push({
+          label: 'Therapy Group',
+          section: 'Program Placement',
+          error: ageWarning,
         });
       }
-      showToast('Draft stored locally on this device', 'success');
-    } catch {
-      showToast('This device does not support local drafts', 'error');
     }
+
+    return { valid: errors.length === 0, errors };
   };
 
   // Clean Submission Payload: Keys dynamic form values by their schema id
@@ -586,14 +1024,46 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       }
     }
 
-    const [firstName, ...rest] = (studentName || 'Student').trim().split(/\s+/);
-    const parentName = getFieldVal('f4') || getFieldVal(/parent.*name|guardian/i) || 'Guardian';
-    const parentPhone = getFieldVal('f5') || getFieldVal(/phone/i) || '555-0100';
-    const parentEmail = getFieldVal('f6') || getFieldVal(/email/i) || '';
+    const derivedFirst =
+      studentFirstName ||
+      formValues.childFirstName ||
+      formValues.child_first_name ||
+      formValues.firstName ||
+      formValues.first_name ||
+      formValues.enr_first_name ||
+      (studentName || 'Student').trim().split(/\s+/)[0];
+
+    const derivedLast =
+      studentLastName ||
+      formValues.childLastName ||
+      formValues.child_last_name ||
+      formValues.lastName ||
+      formValues.last_name ||
+      formValues.enr_last_name ||
+      (studentName || 'Student').trim().split(/\s+/).slice(1).join(' ') ||
+      '-';
+
+    const parentName =
+      getFieldVal('f4') ||
+      getFieldVal('enr_guardian_name') ||
+      getFieldVal(/parent.*name|guardian/i) ||
+      'Guardian';
+    const parentPhone =
+      getFieldVal('f5') || getFieldVal('enr_guardian_phone') || getFieldVal(/phone/i) || '555-0100';
+    const parentEmail =
+      getFieldVal('f6') || getFieldVal('enr_guardian_email') || getFieldVal(/email/i) || '';
     const diagnosis =
-      getFieldVal('f_diagnosis') || getFieldVal(/diagnosis/i) || 'Autism Spectrum Disorder';
-    const medicalNotes = getFieldVal('f7') || getFieldVal(/medical.*notes/i) || '';
-    const emergencyContact = getFieldVal('f9') || getFieldVal(/emergency/i) || '';
+      getFieldVal('f_diagnosis') ||
+      getFieldVal('enr_diagnosis') ||
+      getFieldVal(/diagnosis/i) ||
+      'Autism Spectrum Disorder';
+    const medicalNotes =
+      getFieldVal('f7') ||
+      getFieldVal('enr_medical_restrictions') ||
+      getFieldVal(/medical.*notes/i) ||
+      '';
+    const emergencyContact =
+      getFieldVal('f9') || getFieldVal('enr_emergency_contact') || getFieldVal(/emergency/i) || '';
     const transportation = getFieldVal('f8') || getFieldVal(/transportation/i) || 'No';
 
     // Collect dynamic form values keyed strictly by their schema ID
@@ -611,10 +1081,22 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       ...dynamicValuesById,
       customFields: dynamicValuesById,
       custom_fields: dynamicValuesById,
-      firstName,
-      first_name: firstName,
-      lastName: rest.join(' ') || '-',
-      last_name: rest.join(' ') || '-',
+      firstName: derivedFirst,
+      first_name: derivedFirst,
+      childFirstName: derivedFirst,
+      child_first_name: derivedFirst,
+      enr_first_name: derivedFirst,
+      middleName: studentMiddleName,
+      middle_name: studentMiddleName,
+      childMiddleName: studentMiddleName,
+      enr_middle_name: studentMiddleName,
+      lastName: derivedLast,
+      last_name: derivedLast,
+      childLastName: derivedLast,
+      child_last_name: derivedLast,
+      enr_last_name: derivedLast,
+      fullName: studentName || `${derivedFirst} ${derivedLast}`.trim(),
+      name: studentName || `${derivedFirst} ${derivedLast}`.trim(),
       dateOfBirth: studentDob,
       date_of_birth: studentDob,
       programType: studentProgram,
@@ -623,7 +1105,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       therapy_group: studentTherapyGroup.toLowerCase().includes('function')
         ? 'functional_living'
         : 'basic',
-      gender: getFieldVal('f_gender') || getFieldVal(/gender/i) || 'Female',
+      [DEMOGRAPHIC_KEY]: getStudentDemographic(formValues),
       parentName: parentName.trim(),
       guardian_name: parentName.trim(),
       parentPhone: parentPhone.trim(),
@@ -641,8 +1123,33 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       enrollment_status: 'active',
       is_active: true,
       active: true,
-      photo: studentPhoto,
-      photoBase64: studentPhoto,
+      photo: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      photoBase64: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      photoUrl: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      headshot: studentPhoto || formValues.headshot || formValues.enr_headshot,
+      birth_certificate:
+        formValues.birth_certificate ||
+        formValues.enr_birth_certificate ||
+        formValues.birthCertificate,
+      birthCertificate:
+        formValues.birth_certificate ||
+        formValues.enr_birth_certificate ||
+        formValues.birthCertificate,
+      diagnosis_paper:
+        formValues.diagnosis_paper || formValues.enr_diagnosis_paper || formValues.diagnosisPaper,
+      diagnosisPaper:
+        formValues.diagnosis_paper || formValues.enr_diagnosis_paper || formValues.diagnosisPaper,
+      agreement: formValues.agreement || formValues.enr_agreement,
+      baseline_video:
+        formValues.baseline_video ||
+        formValues.enr_baseline_video ||
+        formValues.baselineVideo ||
+        formValues.videoUrl,
+      baselineVideo:
+        formValues.baseline_video ||
+        formValues.enr_baseline_video ||
+        formValues.baselineVideo ||
+        formValues.videoUrl,
     };
 
     try {
@@ -682,6 +1189,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         photoUri: studentPhoto,
       });
 
+      if (currentDraftId) {
+        deleteEnrollmentDraft(currentDraftId);
+      }
+
       showToast(`${studentName} enrolled in ${studentProgram}`, 'success');
       navigation?.navigate?.('StudentEnrollment' as never);
     } catch (err: any) {
@@ -706,6 +1217,17 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
   };
 
   const handleSubmit = () => {
+    // Validate only when trying to finish enrollment
+    const { valid, errors } = validateFormForSubmission();
+    if (!valid) {
+      setSubmissionErrors(errors);
+      const firstError = errors[0];
+      showToast(`Cannot finish enrollment: ${firstError.error} (${firstError.section})`, 'error');
+      return;
+    }
+
+    setSubmissionErrors([]);
+
     const normalized = studentName.trim().toLowerCase();
     const dup = existingStudents.find((s) => s.name.toLowerCase() === normalized);
     if (dup && !duplicateConfirmed.current) {
@@ -751,7 +1273,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     const value = formValues[field.id] ?? '';
     const options = resolveFieldOptions(field);
 
-    // 1. File / Image Upload
+    // 1. File / Image / Document Upload
     if (
       normType === 'file' ||
       normType === 'image' ||
@@ -759,7 +1281,61 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       normType === 'image_picker'
     ) {
       const isPhoto =
-        field.id === 'f_photo' || /photo/i.test(field.id) || /photo/i.test(field.label);
+        (field.id === 'f_photo' ||
+          field.id === 'enr_headshot' ||
+          /headshot/i.test(field.id) ||
+          /headshot/i.test(field.label) ||
+          /student.*photo/i.test(field.label)) &&
+        !/certificate|paper|agreement|document/i.test(field.id) &&
+        !/certificate|paper|agreement|document/i.test(field.label);
+      const isVideo = /video/i.test(field.id) || /video/i.test(field.label);
+
+      // If Video and already attached
+      if (isVideo && value) {
+        const vidUrl = typeof value === 'string' ? value : value?.url || value?.fileUrl || '';
+        return (
+          <View key={field.id} style={{ marginVertical: 6 }}>
+            <Text style={styles.fieldLabel}>
+              {field.label}
+              {isRequired && <Text style={styles.requiredStar}> *</Text>}
+            </Text>
+            <VideoPlayerView
+              videoUrl={vidUrl}
+              title={field.label || 'Baseline Behavioral Video'}
+              subtitle={field.description || 'Intake assessment behavioral session sample'}
+              onUploadPress={() => handleUploadDocument(field.id)}
+              onRemovePress={() => handleRemovePhoto(field.id)}
+            />
+          </View>
+        );
+      }
+
+      // If Document and already attached
+      if (!isPhoto && !isVideo && value) {
+        const docMeta = extractDocumentMeta(value, field.label || 'Document');
+        return (
+          <View key={field.id} style={{ marginVertical: 6 }}>
+            <Text style={styles.fieldLabel}>
+              {field.label}
+              {isRequired && <Text style={styles.requiredStar}> *</Text>}
+            </Text>
+            {docMeta ? (
+              <DocumentAttachmentCard
+                label={field.label}
+                fileUrl={docMeta.url}
+                fileName={docMeta.fileName}
+                fileSize={docMeta.fileSize}
+                uploadDate={docMeta.uploadDate}
+                fileType={docMeta.fileType}
+                editable={true}
+                onReplace={() => handleUploadDocument(field.id)}
+                onRemove={() => handleRemovePhoto(field.id)}
+              />
+            ) : null}
+          </View>
+        );
+      }
+
       return (
         <View key={field.id} style={styles.photoUploadCard}>
           <Text style={styles.fieldLabel}>
@@ -770,41 +1346,100 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
             <View style={styles.photoAvatarContainer}>
               {value ? (
                 <View style={styles.photoWrapper}>
-                  <Image source={{ uri: value }} style={styles.photoImage} />
+                  {isPhoto &&
+                  typeof value === 'string' &&
+                  (value.startsWith('data:image') ||
+                    value.startsWith('http') ||
+                    value.startsWith('file:') ||
+                    value.startsWith('blob:')) ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        setPreviewModal({
+                          isOpen: true,
+                          fileUrl: value,
+                          fileName: `${studentName || 'student'}_photo.jpg`,
+                          fileType: 'image',
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="Preview Photo"
+                    >
+                      <Image source={{ uri: value }} style={styles.photoImage} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.photoPlaceholder, { backgroundColor: '#E0F2FE' }]}>
+                      <Feather name={isVideo ? 'video' : 'file-text'} size={28} color="#0284C7" />
+                    </View>
+                  )}
                   <TouchableOpacity
                     style={styles.photoRemoveBtn}
                     onPress={() => handleRemovePhoto(field.id)}
-                    accessibilityLabel="Remove photo"
+                    accessibilityLabel="Remove file"
                   >
                     <Feather name="x" size={12} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Feather name={isPhoto ? 'user' : 'file-text'} size={30} color="#94A3B8" />
+                  {isPhoto ? (
+                    <StudentAvatar name={studentName} size={48} />
+                  ) : (
+                    <Feather name={isVideo ? 'video' : 'file-text'} size={28} color="#94A3B8" />
+                  )}
                 </View>
               )}
             </View>
 
             <View style={styles.photoButtonContainer}>
-              <TouchableOpacity style={styles.cameraBtn} onPress={() => handleTakePhoto(field.id)}>
-                <Feather name="camera" size={15} color="#FFFFFF" />
-                <Text style={styles.cameraBtnText}>Open Camera</Text>
-              </TouchableOpacity>
+              {isPhoto ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.cameraBtn}
+                    onPress={() => handleTakePhoto(field.id)}
+                  >
+                    <Feather name="camera" size={15} color="#FFFFFF" />
+                    <Text style={styles.cameraBtnText}>Open Camera</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.uploadBtn}
-                onPress={() => handleChoosePhoto(field.id)}
-              >
-                <Feather name="upload" size={15} color={colors.navyText} />
-                <Text style={styles.uploadBtnText}>Upload File</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={() => handleChoosePhoto(field.id)}
+                  >
+                    <Feather name="upload" size={15} color={colors.navyText} />
+                    <Text style={styles.uploadBtnText}>Upload Photo</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={[styles.uploadBtn, { backgroundColor: '#0284C7' }]}
+                    onPress={() => handleUploadDocument(field.id)}
+                  >
+                    <Feather name="upload" size={15} color="#FFFFFF" />
+                    <Text style={[styles.uploadBtnText, { color: '#FFFFFF' }]}>
+                      {value ? 'Change File' : `Choose ${isVideo ? 'Video' : 'Document'}`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={() => handleChoosePhoto(field.id)}
+                  >
+                    <Feather name="image" size={15} color={colors.navyText} />
+                    <Text style={styles.uploadBtnText}>Upload Image</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
           <Text style={styles.fieldHint}>
             {field.helpText ||
               field.help_text ||
-              'Capture using camera or upload a file from your device.'}
+              (isPhoto
+                ? 'Capture using camera or upload a photo from your device.'
+                : isVideo
+                  ? 'Upload MP4 or MOV baseline video clip.'
+                  : 'Upload PDF, document or image scan from your device.')}
           </Text>
         </View>
       );
@@ -898,17 +1533,14 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   </View>
                   <ScrollView style={styles.dropdownModalList}>
                     {dropdownOpts.map((opt) => {
-                      const full = isTherapistField ? isFull(opt) : false;
                       const count = isTherapistField ? caseloadOf(opt) : 0;
                       const selected = value === opt;
                       return (
                         <TouchableOpacity
                           key={opt}
-                          disabled={full}
                           style={[
                             styles.dropdownOptionItem,
                             selected && styles.dropdownOptionItemSelected,
-                            full && styles.dropdownOptionItemDisabled,
                           ]}
                           onPress={() => {
                             handleFieldChange(field.id, opt);
@@ -919,10 +1551,12 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                             style={[
                               styles.dropdownOptionText,
                               selected && styles.dropdownOptionTextSelected,
-                              full && styles.dropdownOptionTextDisabled,
                             ]}
                           >
-                            {opt} {isTherapistField ? `(${count}/${MAX_CASELOAD})` : ''}
+                            {opt}{' '}
+                            {isTherapistField
+                              ? `(${count} ${count === 1 ? 'student' : 'students'} assigned)`
+                              : ''}
                           </Text>
                           {selected && <Feather name="check" size={16} color="#0284C7" />}
                         </TouchableOpacity>
@@ -932,12 +1566,6 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                 </View>
               </TouchableOpacity>
             </Modal>
-          )}
-
-          {isTherapistField && value && isFull(value) && (
-            <Text style={styles.capacityWarning}>
-              {value} is at maximum capacity (2 students). Please select another therapist.
-            </Text>
           )}
 
           {Boolean(field.helpText || field.help_text) && (
@@ -1140,6 +1768,47 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       (f.section || 'General').toLowerCase().trim() === currentStep.toLowerCase().trim(),
   );
 
+  if (loadingForm) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AppNavbar
+          activeTab="Enrollment Wizard"
+          onTabPress={(t) => {
+            const r = PD_ROUTE_BY_TAB[t];
+            if (r && r !== 'StudentEnrollmentWizard') {
+              navigation?.navigate?.(r as never);
+            }
+          }}
+        />
+
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Enrollment Wizard</Text>
+          <Text style={styles.headerSubtitle}>New Child Enrollment</Text>
+        </View>
+
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingIconWrap}>
+              <ActivityIndicator size="large" color="#0284C7" />
+            </View>
+            <Text style={styles.loadingTitle}>Loading Enrollment Form...</Text>
+            <Text style={styles.loadingSubtitle}>
+              Preparing active clinical fields, customized sections, and therapist caseloads. Please
+              wait...
+            </Text>
+            <View style={styles.loadingProgressBar}>
+              <View style={styles.loadingProgressTrack} />
+            </View>
+            <View style={styles.loadingBadge}>
+              <Feather name="shield" size={14} color="#0369A1" />
+              <Text style={styles.loadingBadgeText}>ABA Clinical Workspace Ready</Text>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
@@ -1158,7 +1827,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <StepIndicator current={step} steps={steps} />
+        <StepIndicator current={step} steps={steps} onStepPress={(i) => setStep(i)} />
 
         <View style={styles.card}>
           <View style={styles.cardHeadingRow}>
@@ -1192,23 +1861,18 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   Assigned Primary Therapist <Text style={styles.requiredStar}>*</Text>
                 </Text>
                 <Text style={styles.fieldHint}>
-                  Each therapist can be assigned up to {MAX_CASELOAD} students at a time.
+                  Select an assigned primary therapist for this student.
                 </Text>
                 {therapists.length > 0 ? (
                   <View style={styles.chipRow}>
                     {therapists.map((t) => {
-                      const count = t.assignedStudents?.length ?? 0;
-                      const full = count >= MAX_CASELOAD;
+                      const count =
+                        (t as any).assignedStudentCount ?? t.assignedStudents?.length ?? 0;
                       const selected = assignedTherapist === t.name;
                       return (
                         <TouchableOpacity
                           key={t.name}
-                          disabled={full}
-                          style={[
-                            styles.chip,
-                            selected && styles.chipSelected,
-                            full && styles.chipDisabled,
-                          ]}
+                          style={[styles.chip, selected && styles.chipSelected]}
                           onPress={() => {
                             const therapistField = formFields.find(
                               (f) => f.id === 'f_therapist' || /therapist/i.test(f.label),
@@ -1219,14 +1883,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                             handleFieldChange('therapist', t.name);
                           }}
                         >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              selected && styles.chipTextSelected,
-                              full && styles.chipTextDisabled,
-                            ]}
-                          >
-                            {t.name} ({count}/{MAX_CASELOAD})
+                          <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                            {t.name}
+                            {` (${count} ${count === 1 ? 'student' : 'students'} assigned)`}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1234,11 +1893,6 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
                   </View>
                 ) : (
                   <Text style={styles.fieldHint}>No therapists available.</Text>
-                )}
-                {assignedTherapist && isFull(assignedTherapist) && (
-                  <Text style={styles.capacityWarning}>
-                    {assignedTherapist} is at capacity — pick an available therapist to continue.
-                  </Text>
                 )}
               </View>
 
@@ -1255,6 +1909,37 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
               <Text style={styles.reviewIntro}>
                 Please review the enrollment details before confirming.
               </Text>
+
+              {submissionErrors.length > 0 && (
+                <View style={styles.validationErrorCard}>
+                  <View style={styles.validationErrorHeader}>
+                    <Feather name="alert-circle" size={18} color="#DC2626" />
+                    <Text style={styles.validationErrorTitle}>
+                      Please complete all required fields before finishing (
+                      {submissionErrors.length}):
+                    </Text>
+                  </View>
+                  {submissionErrors.map((err, idx) => (
+                    <View key={idx} style={styles.validationErrorItem}>
+                      <Text style={styles.validationErrorBullet}>•</Text>
+                      <Text style={styles.validationErrorText}>
+                        <Text style={{ fontWeight: '700' }}>{err.section}:</Text> {err.error}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.jumpStepBtn}
+                        onPress={() => {
+                          const stepIdx = steps.findIndex(
+                            (s) => s.toLowerCase().trim() === err.section.toLowerCase().trim(),
+                          );
+                          if (stepIdx !== -1) setStep(stepIdx);
+                        }}
+                      >
+                        <Text style={styles.jumpStepBtnText}>Go to step</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               <View style={styles.reviewCard}>
                 {studentPhoto ? (
@@ -1357,6 +2042,16 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           }
           showToast('Student photo captured successfully', 'success');
         }}
+      />
+
+      {/* Document / Media Preview Modal */}
+      <MediaViewerModal
+        visible={previewModal.isOpen}
+        onClose={() => setPreviewModal({ isOpen: false, fileUrl: '', fileName: '' })}
+        mediaUrl={previewModal.fileUrl}
+        fileName={previewModal.fileName}
+        mediaType={previewModal.fileType}
+        title={previewModal.fileName}
       />
     </SafeAreaView>
   );
@@ -1833,6 +2528,57 @@ const styles = StyleSheet.create({
   },
   nextBtnText: { fontWeight: '700', color: '#1F2937' },
 
+  validationErrorCard: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#F87171',
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  validationErrorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  validationErrorTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#991B1B',
+    flex: 1,
+  },
+  validationErrorItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: 3,
+  },
+  validationErrorBullet: {
+    color: '#DC2626',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  validationErrorText: {
+    fontSize: 12,
+    color: '#7F1D1D',
+    flex: 1,
+  },
+  jumpStepBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  jumpStepBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B91C1C',
+  },
+
   emptyCustomStepBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1848,6 +2594,78 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748B',
     flex: 1,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    minHeight: 380,
+  },
+  loadingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    maxWidth: 440,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...makeShadow(2, 8, 0.08, '0, 0, 0', 3),
+  },
+  loadingIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  loadingSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: spacing.lg,
+  },
+  loadingProgressBar: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  loadingProgressTrack: {
+    width: '65%',
+    height: '100%',
+    backgroundColor: '#0284C7',
+    borderRadius: 3,
+  },
+  loadingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  loadingBadgeText: {
+    fontSize: 12,
+    color: '#0369A1',
+    fontWeight: '600',
   },
 
   footer: {

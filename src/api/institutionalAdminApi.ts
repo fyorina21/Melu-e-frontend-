@@ -20,9 +20,9 @@ export const DEFAULT_ENROLLMENT_FORM = {
   fields: [
     {
       id: 'f_photo',
-      type: 'File',
-      label: 'Student Photo',
-      required: false,
+      type: 'file_upload',
+      label: 'Headshot Photo',
+      required: true,
       visible: true,
       section: 'Student Info',
     },
@@ -116,6 +116,38 @@ export const DEFAULT_ENROLLMENT_FORM = {
       options: ['Yes', 'No'],
     },
     {
+      id: 'enr_birth_certificate',
+      type: 'file_upload',
+      label: 'Birth Certificate',
+      required: false,
+      visible: true,
+      section: 'Documents & Media',
+    },
+    {
+      id: 'enr_diagnosis_paper',
+      type: 'file_upload',
+      label: 'Medical Diagnosis Paper',
+      required: false,
+      visible: true,
+      section: 'Documents & Media',
+    },
+    {
+      id: 'enr_agreement',
+      type: 'file_upload',
+      label: 'Agreement Document',
+      required: false,
+      visible: true,
+      section: 'Documents & Media',
+    },
+    {
+      id: 'enr_baseline_video',
+      type: 'file_upload',
+      label: 'Baseline Video',
+      required: false,
+      visible: true,
+      section: 'Documents & Media',
+    },
+    {
       id: 'f_program',
       type: 'Radio',
       label: 'Program Type',
@@ -142,11 +174,104 @@ export const DEFAULT_ENROLLMENT_FORM = {
       section: 'Assign Therapist',
       options: ['Sarah Jenkins', 'Marcus Vance', 'Elena Rostova'],
     },
+    // ── Integrated Pre-Enrollment Info Type: Social Skills Questionnaire ────
+    {
+      id: 'soc_q1',
+      type: 'Radio',
+      label: 'Initiates interactions with peers without prompting',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q2',
+      type: 'Radio',
+      label: 'Maintains eye contact during conversations',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q3',
+      type: 'Radio',
+      label: 'Takes turns during play or group activities',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q4',
+      type: 'Radio',
+      label: 'Responds appropriately to greetings',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q5',
+      type: 'Radio',
+      label: 'Shares materials or toys with others',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q6',
+      type: 'Radio',
+      label: 'Recognizes and respects personal space',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q7',
+      type: 'Radio',
+      label: 'Follows group instructions during activities',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q8',
+      type: 'Radio',
+      label: 'Expresses needs and preferences verbally or with gestures',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q9',
+      type: 'Radio',
+      label: 'Demonstrates coping strategies when frustrated',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
+    {
+      id: 'soc_q10',
+      type: 'Radio',
+      label: 'Transitions between activities without significant distress',
+      required: true,
+      visible: true,
+      section: 'Social Skills Questionnaire',
+      options: ['0 — Never', '1 — Sometimes', '2 — Often', '3 — Always'],
+    },
   ],
   customSections: [
     'Student Info',
     'Parent Info',
     'Medical Info',
+    'Documents & Media',
+    'Social Skills Questionnaire',
     'Program Placement',
     'Assign Therapist',
     'Review & Complete',
@@ -1047,22 +1172,72 @@ export const getFormConfig = async (formName: string) => {
 };
 
 export const saveFormConfig = async (formName: string, payload: Payload) => {
-  setCachedFormConfig(formName, payload);
   if (process.env.VITEST) {
-    return { data: payload };
+    const prev = getCachedFormConfig(formName) || getDefaultFormConfig(formName) || {};
+    const prevRevNum = Number(prev.revisionNumber || prev.revision_number || 1);
+    const userChangedRev =
+      payload.revision_number !== undefined && payload.revision_number !== prevRevNum;
+    const newRevNum = userChangedRev ? Number(payload.revision_number) : prevRevNum + 1;
+    const revDate =
+      payload.revision_date || payload.revisionDate || new Date().toISOString().split('T')[0];
+    const newRevStr = payload.revision || `Rev ${newRevNum}.0 · ${revDate}`;
+
+    const prevMeta = prev.metadata || {};
+    const prevFields = prev.fields || [];
+    const prevHist = Array.isArray(payload.history)
+      ? payload.history
+      : Array.isArray(prev.history)
+        ? prev.history
+        : [];
+
+    const snapshot = {
+      id: `snap_${prevRevNum}`,
+      versionNumber: `v${prevRevNum}.0`,
+      revision_number: prevRevNum,
+      revision: prev.revision || `Rev ${prevRevNum}.0`,
+      formId: prev.formId || prevMeta.formId || 'FRM-SYS-001',
+      formName: prev.formName || prev.form_name || formName,
+      organization: prev.organization || prevMeta.organization || 'Melu-e Center',
+      fields: prevFields,
+      date: revDate,
+      user: 'Institutional Admin',
+      field: 'Form Header & Metadata',
+      oldValue: `Rev ${prevRevNum}.0`,
+      newValue: `Rev ${newRevNum}.0`,
+    };
+
+    const enriched = {
+      ...payload,
+      formName: payload.formName || payload.form_name || formName,
+      form_name: payload.formName || payload.form_name || formName,
+      revisionNumber: newRevNum,
+      revision_number: newRevNum,
+      revisionDate: revDate,
+      revision_date: revDate,
+      revision: newRevStr,
+      history: [snapshot, ...prevHist],
+      metadata: {
+        ...(payload.metadata || {}),
+        revision: newRevStr,
+        revisionNumber: newRevNum,
+        revision_number: newRevNum,
+        revisionDate: revDate,
+        revision_date: revDate,
+      },
+    };
+
+    setCachedFormConfig(formName, enriched);
+    return { data: enriched };
   }
+
   try {
     const res = await client.post(`/admin/forms/${encodeURIComponent(formName)}`, payload);
+    if (res?.data) {
+      setCachedFormConfig(formName, res.data);
+    }
     return res;
   } catch (err: any) {
-    if (
-      err?.status === 403 ||
-      err?.response?.status === 403 ||
-      err?.status === 404 ||
-      err?.response?.status === 404
-    ) {
-      return { data: payload };
-    }
+    setCachedFormConfig(formName, payload);
     return { data: payload };
   }
 };
