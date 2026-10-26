@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
-  Modal,
   Alert,
   Platform,
 } from 'react-native';
@@ -16,107 +15,140 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AppNavbar from '../../components/AppNavbar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
-import { savePreferenceAssessment, getPreferenceAssessment, getTeacherStudentProfile } from '../../api/teacherExtrasApi';
-import { getFormConfig } from '../../api/institutionalAdminApi';
+import {
+  savePreferenceAssessment,
+  getPreferenceAssessment,
+  getTeacherStudentProfile,
+} from '../../api/teacherExtrasApi';
 import { openPrintWindow } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
 
-interface StimulusItem {
+export interface TrialRecord {
+  id: string;
+  durationSeconds: number;
+  timestamp: string;
+}
+
+export interface StimulusItem {
   id: string;
   name: string;
   category: string;
-  timerSeconds: number;
-  isRunning: boolean;
+  approached?: 'Approached' | 'Did Not Approach';
+  engaged?: 'Yes' | 'No';
   frequency: number;
   durationSeconds: number;
+  timerSeconds: number;
+  isRunning: boolean;
   notes: string;
-  engaged?: 'Engaged' | 'Did Not Engage';
-  approached?: 'Approached' | 'Did Not Approach';
+  trials: TrialRecord[];
 }
 
-const CATEGORIES = ['Visual', 'Auditory', 'Tactile', 'Toys', 'Movement'];
+export const CANONICAL_PREFERENCE_ITEMS: Omit<
+  StimulusItem,
+  'timerSeconds' | 'isRunning' | 'frequency' | 'durationSeconds' | 'notes' | 'trials'
+>[] = [
+  { id: 'pref-1', name: 'Tube car', category: 'Visual' },
+  { id: 'pref-2', name: 'Frog toy', category: 'Toys' },
+  { id: 'pref-3', name: 'Calming tube', category: 'Tactile' },
+  { id: 'pref-4', name: 'Red plastic toy', category: 'Visual' },
+  { id: 'pref-5', name: 'Stress ball', category: 'Tactile' },
+  { id: 'pref-6', name: 'Flexy red', category: 'Tactile' },
+  { id: 'pref-7', name: 'Piano', category: 'Auditory' },
+  { id: 'pref-8', name: 'Calming glitter', category: 'Visual' },
+  { id: 'pref-9', name: 'Body part puzzle', category: 'Cognitive' },
+  { id: 'pref-10', name: 'Letter mat', category: 'Cognitive' },
+  { id: 'pref-11', name: 'Gross motor ladder', category: 'Movement' },
+  { id: 'pref-12', name: 'See saw', category: 'Movement' },
+  { id: 'pref-13', name: 'Magnetic Apple', category: 'Toys' },
+  { id: 'pref-14', name: 'Mobile art', category: 'Visual' },
+  { id: 'pref-15', name: 'Watch', category: 'Toys' },
+  { id: 'pref-16', name: 'Large & small toys', category: 'Toys' },
+  { id: 'pref-17', name: 'Harmonica', category: 'Auditory' },
+  { id: 'pref-18', name: 'Stretch spring', category: 'Tactile' },
+  { id: 'pref-19', name: 'Bicycle', category: 'Movement' },
+  { id: 'pref-20', name: 'Number book', category: 'Cognitive' },
+  { id: 'pref-21', name: 'Spinner', category: 'Visual' },
+  { id: 'pref-22', name: 'Crayons', category: 'Toys' },
+  { id: 'pref-23', name: 'Pouring liquids', category: 'Tactile' },
+  { id: 'pref-24', name: 'Shadow', category: 'Visual' },
+];
 
-const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+export const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   Visual: { bg: '#F3E8FF', text: '#9333EA' },
   Auditory: { bg: '#DCFCE7', text: '#16A34A' },
   Tactile: { bg: '#FFEDD5', text: '#EA580C' },
   Toys: { bg: '#FCE7F3', text: '#DB2777' },
   Movement: { bg: '#DBEAFE', text: '#2563EB' },
+  Cognitive: { bg: '#E0E7FF', text: '#4338CA' },
 };
 
-const DEFAULT_ITEMS: StimulusItem[] = [
-  { id: '1', name: 'Light-up toys', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-  { id: '2', name: 'Bubbles', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-  { id: '3', name: 'Mirror', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-  { id: '4', name: 'Kaleidoscope', category: 'Visual', timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' },
-];
+export function createInitialCanonicalItems(): StimulusItem[] {
+  return CANONICAL_PREFERENCE_ITEMS.map((item) => ({
+    ...item,
+    timerSeconds: 0,
+    isRunning: false,
+    frequency: 0,
+    durationSeconds: 0,
+    notes: '',
+    trials: [],
+  }));
+}
 
-type TabType = 'Sensory Time' | 'Circle Time' | 'Play Time';
-const TABS: TabType[] = ['Sensory Time', 'Circle Time', 'Play Time'];
+export function formatMMSS(totalSec: number): string {
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
 
-const createDefaultTabItems = (baseItems: StimulusItem[]): Record<TabType, StimulusItem[]> => ({
-  'Sensory Time': baseItems.map((i) => ({ ...i })),
-  'Circle Time': baseItems.map((i) => ({ ...i })),
-  'Play Time': baseItems.map((i) => ({ ...i })),
-});
+export function calculatePreferenceTiers(items: StimulusItem[]) {
+  const assessed = items.filter((i) => i.approached !== undefined);
+  const low: StimulusItem[] = [];
+  const engagedItems: StimulusItem[] = [];
 
-const mergeTabItems = (baseItems: StimulusItem[], savedItems?: StimulusItem[]): StimulusItem[] => {
-  if (!savedItems || !Array.isArray(savedItems) || savedItems.length === 0) {
-    return baseItems.map((i) => ({ ...i, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' }));
-  }
-  const savedMap = new Map(savedItems.map((it: any) => [String(it.id), it]));
-  const merged = baseItems.map((ci) => {
-    const saved =
-      savedMap.get(ci.id) ||
-      savedItems.find(
-        (it: any) => String(it.name).toLowerCase().trim() === String(ci.name).toLowerCase().trim()
-      );
-    return saved
-      ? {
-          ...ci,
-          ...saved,
-          name: ci.name,
-          category: saved.category || ci.category,
-          isRunning: false,
-        }
-      : { ...ci, timerSeconds: 0, isRunning: false, frequency: 0, durationSeconds: 0, notes: '' };
+  assessed.forEach((item) => {
+    if (
+      item.approached === 'Did Not Approach' ||
+      item.engaged === 'No' ||
+      (item.durationSeconds === 0 && item.frequency === 0)
+    ) {
+      low.push(item);
+    } else {
+      engagedItems.push(item);
+    }
   });
 
-  const baseIds = new Set(baseItems.map((ci) => String(ci.id)));
-  const baseNames = new Set(baseItems.map((ci) => String(ci.name).toLowerCase().trim()));
-  const customSavedItems = savedItems
-    .filter(
-      (it: any) =>
-        !baseIds.has(String(it.id)) &&
-        !baseNames.has(String(it.name).toLowerCase().trim())
-    )
-    .map((it: any) => ({ ...it, isRunning: false }));
+  // Sort engaged items by cumulative duration descending, then frequency descending
+  engagedItems.sort((a, b) => {
+    if (b.durationSeconds !== a.durationSeconds) return b.durationSeconds - a.durationSeconds;
+    return b.frequency - a.frequency;
+  });
 
-  return [...merged, ...customSavedItems];
-};
+  // Split engaged items into Highest and Moderately preferred
+  // Items with substantial engagement time and frequency make Highest
+  const midPoint = Math.max(1, Math.ceil(engagedItems.length / 2));
+  const highest = engagedItems.slice(0, midPoint);
+  const moderate = engagedItems.slice(midPoint);
+
+  return { highest, moderate, low, totalAssessed: assessed.length };
+}
 
 type Props = NativeStackScreenProps<SessionStackParamList, 'PreferenceAssessment'>;
 
 export default function PreferenceAssessmentScreen({ navigation, route }: Props) {
-  const urlSid = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentId') : null;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const localSid =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
   const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
   const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
+
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<TabType>('Sensory Time');
-  const [itemsByTab, setItemsByTab] = useState<Record<TabType, StimulusItem[]>>(() =>
-    createDefaultTabItems(DEFAULT_ITEMS)
-  );
   const [profile, setProfile] = useState<any>(null);
-
-  const currentItems = itemsByTab[activeTab] || [];
-
-  // Modal State
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState('Visual');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [items, setItems] = useState<StimulusItem[]>(() => createInitialCanonicalItems());
+  const [status, setStatus] = useState<'draft' | 'submitted'>('draft');
 
   useEffect(() => {
     if (typeof localStorage !== 'undefined' && studentId) {
@@ -126,84 +158,105 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
     }
   }, [studentId]);
 
+  // Load canonical items & saved observations
   const loadData = useCallback(async () => {
     try {
       const profileRes = await getTeacherStudentProfile(studentId).catch(() => null);
       if (profileRes?.data) setProfile(profileRes.data);
 
-      // Fetch form config from FormBuilder
-      let configItems: StimulusItem[] = DEFAULT_ITEMS;
-      try {
-        const { data: cfg } = await getFormConfig('Preference Assessment');
-        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-          const visible = cfg.fields.filter((f: any) => f.visible !== false);
-          if (visible.length > 0) {
-            configItems = visible.map((f: any, idx: number) => ({
-              id: String(f.id || `P${idx + 1}`),
-              name: String(f.label || f.name || 'Item'),
-              category: String(f.section || 'Visual'),
-              timerSeconds: 0,
-              isRunning: false,
-              frequency: 0,
-              durationSeconds: 0,
-              notes: '',
-            }));
-          }
-        }
-      } catch {}
-
       const res = await getPreferenceAssessment(studentId).catch(() => null);
       const savedData = res?.data?.data || res?.data;
 
-      let storedItemsByTab = savedData?.itemsByTab;
-      let storedItems = savedData?.items;
-      let storedSessionTab = savedData?.sessionTab;
+      let savedItems: any[] | null = null;
+      let savedStatus: 'draft' | 'submitted' = 'draft';
 
-      if (!storedItemsByTab && (!storedItems || storedItems.length === 0) && typeof localStorage !== 'undefined') {
+      if (Array.isArray(savedData?.items) && savedData.items.length > 0) {
+        savedItems = savedData.items;
+        savedStatus = savedData.status === 'submitted' ? 'submitted' : 'draft';
+      } else if (
+        Array.isArray(savedData?.allObservations) &&
+        savedData.allObservations.length > 0
+      ) {
+        savedItems = savedData.allObservations;
+        savedStatus = savedData.status === 'submitted' ? 'submitted' : 'draft';
+      } else if (typeof localStorage !== 'undefined') {
         try {
-          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          const alias =
+            studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
           const raw =
             localStorage.getItem(`melue_preference_assessment_${studentId}`) ||
             (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
           if (raw) {
             const parsed = JSON.parse(raw);
-            if (parsed?.itemsByTab) {
-              storedItemsByTab = parsed.itemsByTab;
-            }
             if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
-              storedItems = parsed.items;
-            }
-            if (parsed?.sessionTab) {
-              storedSessionTab = parsed.sessionTab;
+              savedItems = parsed.items;
+              savedStatus = parsed.status === 'submitted' ? 'submitted' : 'draft';
+            } else if (
+              Array.isArray(parsed?.allObservations) &&
+              parsed.allObservations.length > 0
+            ) {
+              savedItems = parsed.allObservations;
+              savedStatus = parsed.status === 'submitted' ? 'submitted' : 'draft';
             }
           }
         } catch {}
       }
 
-      const newItemsByTab: Record<TabType, StimulusItem[]> = {
-        'Sensory Time': mergeTabItems(
-          configItems,
-          storedItemsByTab?.['Sensory Time'] || (storedSessionTab === 'Sensory Time' ? storedItems : undefined)
-        ),
-        'Circle Time': mergeTabItems(
-          configItems,
-          storedItemsByTab?.['Circle Time'] || (storedSessionTab === 'Circle Time' ? storedItems : undefined)
-        ),
-        'Play Time': mergeTabItems(
-          configItems,
-          storedItemsByTab?.['Play Time'] || (storedSessionTab === 'Play Time' ? storedItems : undefined)
-        ),
-      };
+      setStatus(savedStatus);
 
-      setItemsByTab(newItemsByTab);
+      // Merge saved data strictly with canonical 24 items
+      const base = createInitialCanonicalItems();
+      if (savedItems && savedItems.length > 0) {
+        const savedMap = new Map<string, any>();
+        savedItems.forEach((it) => {
+          if (it.name) savedMap.set(String(it.name).toLowerCase().trim(), it);
+          if (it.id) savedMap.set(String(it.id), it);
+          if (it.itemId) savedMap.set(String(it.itemId), it);
+        });
 
-      if (
-        storedSessionTab &&
-        TABS.includes(storedSessionTab as TabType)
-      ) {
-        setActiveTab(storedSessionTab as TabType);
+        const merged = base.map((canon) => {
+          const saved = savedMap.get(canon.id) || savedMap.get(canon.name.toLowerCase().trim());
+
+          if (saved) {
+            const approached =
+              saved.approached === 'Approached' || saved.approached === 'Did Not Approach'
+                ? saved.approached
+                : saved.approached === 'Initiated'
+                  ? 'Approached'
+                  : undefined;
+
+            const engaged =
+              saved.engaged === 'Yes' || saved.engaged === 'No'
+                ? saved.engaged
+                : saved.engaged === 'Engaged' || saved.engaged === 'High'
+                  ? 'Yes'
+                  : saved.engaged === 'Did Not Engage'
+                    ? 'No'
+                    : undefined;
+
+            const dur = Number(saved.durationSeconds ?? saved.duration_seconds ?? 0);
+            const freq = Number(saved.frequency ?? saved.frequency_count ?? 0);
+            const trials = Array.isArray(saved.trials) ? saved.trials : [];
+
+            return {
+              ...canon,
+              approached,
+              engaged: approached === 'Did Not Approach' ? undefined : engaged,
+              frequency: approached === 'Did Not Approach' ? 0 : freq,
+              durationSeconds: approached === 'Did Not Approach' ? 0 : dur,
+              timerSeconds: 0,
+              isRunning: false,
+              notes: saved.notes || '',
+              trials,
+            };
+          }
+          return canon;
+        });
+        setItems(merged);
+      } else {
+        setItems(base);
       }
-    } catch (err) {}
+    } catch {}
   }, [studentId]);
 
   useEffect(() => {
@@ -213,274 +266,250 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleWindowFocus = () => {
-        loadData();
-      };
-      window.addEventListener('focus', handleWindowFocus);
-      return () => window.removeEventListener('focus', handleWindowFocus);
-    }
-  }, [loadData]);
-
-  useEffect(() => {
-    const handler = (e: any) => {
-      const name = (e?.detail?.formName || '').toLowerCase();
-      if (name.includes('preference')) {
-        const cfg = e.detail?.config;
-        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-          const visible = cfg.fields.filter((f: any) => f.visible !== false);
-          const newConfigItems: StimulusItem[] = visible.map((f: any, idx: number) => ({
-            id: String(f.id || `P${idx + 1}`),
-            name: String(f.label || f.name || 'Item'),
-            category: String(f.section || 'Visual'),
-            timerSeconds: 0,
-            isRunning: false,
-            frequency: 0,
-            durationSeconds: 0,
-            notes: '',
-          }));
-
-          setItemsByTab((prev) => {
-            const updated = { ...prev };
-            for (const tab of TABS) {
-              updated[tab] = mergeTabItems(newConfigItems, prev[tab]);
-            }
-            return updated;
-          });
-        }
-      }
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('melue_form_config_changed', handler);
-      return () => window.removeEventListener('melue_form_config_changed', handler);
-    }
-  }, []);
-
+  // Active Timer Tick Handler
   useEffect(() => {
     const interval = setInterval(() => {
-      setItemsByTab((prev) => {
-        let hasRunning = false;
-        for (const tab of TABS) {
-          if (prev[tab]?.some((i) => i.isRunning)) {
-            hasRunning = true;
-            break;
+      setItems((prev) => {
+        if (!prev.some((i) => i.isRunning)) return prev;
+        return prev.map((item) => {
+          if (item.isRunning) {
+            return {
+              ...item,
+              timerSeconds: item.timerSeconds + 1,
+              durationSeconds: item.durationSeconds + 1,
+            };
           }
-        }
-        if (!hasRunning) return prev;
-
-        const next = { ...prev };
-        for (const tab of TABS) {
-          if (next[tab]?.some((i) => i.isRunning)) {
-            next[tab] = next[tab].map((item) =>
-              item.isRunning
-                ? {
-                    ...item,
-                    timerSeconds: item.timerSeconds + 1,
-                    durationSeconds: item.durationSeconds + 1,
-                  }
-                : item
-            );
-          }
-        }
-        return next;
+          return item;
+        });
       });
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const formatMMSS = (totalSec: number) => {
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  // Approach Status Handler (Logic Tree)
+  const handleSetApproach = (id: string, value: 'Approached' | 'Did Not Approach') => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        if (value === 'Did Not Approach') {
+          // If Did Not Approach: Mark assessed, auto-rank as low preference, disable/clear duration and engagement
+          return {
+            ...item,
+            approached: 'Did Not Approach',
+            engaged: undefined,
+            frequency: 0,
+            durationSeconds: 0,
+            timerSeconds: 0,
+            isRunning: false,
+            trials: [],
+          };
+        } else {
+          // If Approached: Enable Engaged With, Frequency counter (default 1), and Duration
+          return {
+            ...item,
+            approached: 'Approached',
+            engaged: item.engaged || 'Yes',
+            frequency: Math.max(1, item.frequency),
+          };
+        }
+      }),
+    );
   };
 
-  const toggleTimer = (id: string) => {
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, isRunning: !i.isRunning } : i
-      ),
-    }));
+  // Engagement Handler
+  const handleSetEngaged = (id: string, value: 'Yes' | 'No') => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id || item.approached !== 'Approached') return item;
+        return { ...item, engaged: value };
+      }),
+    );
   };
 
-  const resetTimer = (id: string) => {
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, timerSeconds: 0, isRunning: false } : i
-      ),
-    }));
+  // Frequency Counter Handler
+  const handleUpdateFrequency = (id: string, delta: number) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id || item.approached !== 'Approached') return item;
+        return {
+          ...item,
+          frequency: Math.max(0, item.frequency + delta),
+        };
+      }),
+    );
   };
 
-  const updateFrequency = (id: string, delta: number) => {
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, frequency: Math.max(0, i.frequency + delta) } : i
-      ),
-    }));
+  // Timer Control & Multi-Trial Interval Persistence
+  const handleToggleTimer = (id: string) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id || item.approached !== 'Approached') return item;
+
+        if (item.isRunning) {
+          // Pausing timer -> log interval trial
+          const trialSec = item.timerSeconds;
+          const newTrials =
+            trialSec > 0
+              ? [
+                  ...item.trials,
+                  {
+                    id: Date.now().toString(),
+                    durationSeconds: trialSec,
+                    timestamp: new Date().toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    }),
+                  },
+                ]
+              : item.trials;
+
+          return {
+            ...item,
+            isRunning: false,
+            timerSeconds: 0,
+            trials: newTrials,
+          };
+        } else {
+          // Starting timer
+          return {
+            ...item,
+            isRunning: true,
+            timerSeconds: 0,
+          };
+        }
+      }),
+    );
   };
 
-  const updateNotes = (id: string, notes: string) => {
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, notes } : i
-      ),
-    }));
+  // Reset Timer Handler
+  const handleResetTimer = (id: string) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          isRunning: false,
+          timerSeconds: 0,
+          durationSeconds: 0,
+          trials: [],
+        };
+      }),
+    );
   };
 
-  const updateEngaged = (id: string, val: 'Engaged' | 'Did Not Engage') => {
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, engaged: val } : i
-      ),
-    }));
+  // Manual Quick Duration Add (+30s / +1m)
+  const handleAddManualDuration = (id: string, seconds: number) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id || item.approached !== 'Approached') return item;
+        const newTrials = [
+          ...item.trials,
+          {
+            id: Date.now().toString(),
+            durationSeconds: seconds,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ];
+        return {
+          ...item,
+          durationSeconds: item.durationSeconds + seconds,
+          trials: newTrials,
+        };
+      }),
+    );
   };
 
-  const updateApproached = (id: string, val: 'Approached' | 'Did Not Approach') => {
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: (prev[activeTab] || []).map((i) =>
-        i.id === id ? { ...i, approached: val } : i
-      ),
-    }));
+  // Notes Handler
+  const handleUpdateNotes = (id: string, notes: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, notes } : item)));
   };
 
-  const handleExport = () => {
-    const title = 'Preference Assessment Report';
-    const formattedHtml = `
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: sans-serif; padding: 30px; color: #1e293b; line-height: 1.6; }
-            h1 { font-size: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; }
-            .meta { margin-bottom: 30px; font-size: 14px; color: #64748b; }
-            .section-title { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #facc15; padding-left: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 13px; }
-            th { background-color: #f8fafc; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <h1>Preference Assessment Report</h1>
-          <div class="meta">
-            <strong>Student ID:</strong> ${studentId} &middot; 
-            <strong>Assessment Window:</strong> ${activeTab} &middot; 
-            <strong>Date:</strong> ${new Date().toLocaleDateString()}
-          </div>
+  // Dynamic Tiering Calculation
+  const tiers = useMemo(() => calculatePreferenceTiers(items), [items]);
 
-          <div class="section-title">Tested Stimulus Items (${activeTab})</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Item Name</th>
-                <th>Category</th>
-                <th>Frequency of Choice</th>
-                <th>Total Interaction Duration</th>
-                <th>Observations / Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${currentItems.map((i) => `
-                <tr>
-                  <td><strong>${i.name}</strong></td>
-                  <td>${i.category}</td>
-                  <td>${i.frequency} times</td>
-                  <td>${formatMMSS(i.durationSeconds)}</td>
-                  <td>${i.notes || '—'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `;
-    openPrintWindow(formattedHtml, title);
-  };
+  // Progress metrics: ratio of assessed items relative to canonical 24 items
+  const progressRatio = items.length > 0 ? tiers.totalAssessed / items.length : 0;
+  const progressPercent = Math.round(progressRatio * 100);
 
-  const handleOpenModal = () => {
-    setNewItemName('');
-    setNewItemCategory('Visual');
-    setIsDropdownOpen(false);
-    setIsModalVisible(true);
-  };
-
-  const handleConfirmAddItem = () => {
-    if (!newItemName.trim()) {
-      Alert.alert('Required', 'Please enter an item name.');
+  // Save / Submit Assessment Handler
+  const handleSave = async (targetStatus: 'draft' | 'submitted') => {
+    if (targetStatus === 'submitted' && tiers.totalAssessed < items.length) {
+      Alert.alert(
+        'Incomplete Inventory Assessment',
+        `You have assessed ${tiers.totalAssessed} out of ${items.length} items. All items must have an approach status before submitting for clinical review. Would you like to save as Draft instead?`,
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          { text: 'Save as Draft', onPress: () => performSave('draft') },
+        ],
+      );
       return;
     }
-
-    const newItem: StimulusItem = {
-      id: Date.now().toString(),
-      name: newItemName.trim(),
-      category: newItemCategory,
-      timerSeconds: 0,
-      isRunning: false,
-      frequency: 0,
-      durationSeconds: 0,
-      notes: '',
-    };
-
-    setItemsByTab((prev) => ({
-      ...prev,
-      [activeTab]: [...(prev[activeTab] || []), newItem],
-    }));
-    setIsModalVisible(false);
+    await performSave(targetStatus);
   };
 
-  const handleSave = async (status: 'draft' | 'submitted') => {
+  const performSave = async (saveStatus: 'draft' | 'submitted') => {
     try {
-      const allObservations: any[] = [];
-      for (const tab of TABS) {
-        const tabList = itemsByTab[tab] || [];
-        const sorted = [...tabList].sort((a, b) => {
-          const scoreA = (a.frequency * 60) + a.durationSeconds;
-          const scoreB = (b.frequency * 60) + b.durationSeconds;
-          return scoreB - scoreA;
-        });
+      // Build ranked observations
+      const assessed = items.filter((i) => i.approached !== undefined);
+      const sorted = [...assessed].sort((a, b) => {
+        if (a.approached === 'Did Not Approach' && b.approached !== 'Did Not Approach') return 1;
+        if (b.approached === 'Did Not Approach' && a.approached !== 'Did Not Approach') return -1;
+        if (b.durationSeconds !== a.durationSeconds) return b.durationSeconds - a.durationSeconds;
+        return b.frequency - a.frequency;
+      });
 
-        sorted.forEach((item, idx) => {
-          const sec = item.durationSeconds;
-          const durStr = sec > 0
-            ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`)
-            : '0 min';
+      const allObservations = sorted.map((item, idx) => {
+        const sec = item.durationSeconds;
+        const durStr = sec > 0 ? (sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`) : '0s';
+        return {
+          id: `pref-obs-${item.id}`,
+          itemId: item.id,
+          rank: idx + 1,
+          item: item.name,
+          name: item.name,
+          duration: durStr,
+          duration_seconds: sec,
+          durationSeconds: sec,
+          frequency: item.frequency,
+          frequency_count: item.frequency,
+          context: 'General Unified Inventory',
+          engaged: item.engaged || (item.approached === 'Did Not Approach' ? 'No' : 'N/A'),
+          approached: item.approached || 'Did Not Approach',
+          notes: item.notes,
+          category: item.category,
+          trials: item.trials,
+        };
+      });
 
-          allObservations.push({
-            id: `${tab.toLowerCase().replace(/\s+/g, '-')}-${item.id}`,
-            itemId: item.id,
-            rank: idx + 1,
-            item: item.name,
-            name: item.name,
-            duration: durStr,
-            duration_seconds: sec,
-            durationSeconds: sec,
-            frequency: item.frequency,
-            frequency_count: item.frequency,
-            context: tab,
-            engaged: item.engaged || (item.frequency > 0 || sec > 0 ? 'High' : 'N/A'),
-            approached: item.approached || (item.frequency > 0 ? 'Initiated' : 'N/A'),
-            notes: item.notes,
-            category: item.category,
-          });
-        });
-      }
+      const isSubmitting = saveStatus === 'submitted';
+      const progress = isSubmitting ? 100 : progressPercent;
 
       const payload = {
         studentId,
-        sessionTab: activeTab,
-        status,
-        items: itemsByTab[activeTab] || [],
-        itemsByTab,
+        status: saveStatus,
+        progress,
+        items,
         allObservations,
         ranked_observations: allObservations,
+        tiers: {
+          highest: tiers.highest.map((i) => ({
+            id: i.id,
+            name: i.name,
+            durationSeconds: i.durationSeconds,
+            frequency: i.frequency,
+          })),
+          moderate: tiers.moderate.map((i) => ({
+            id: i.id,
+            name: i.name,
+            durationSeconds: i.durationSeconds,
+            frequency: i.frequency,
+          })),
+          low: tiers.low.map((i) => ({ id: i.id, name: i.name, approached: i.approached })),
+        },
         preferences: {
           items: allObservations,
           ranked_observations: allObservations,
@@ -489,9 +518,18 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
 
       if (typeof localStorage !== 'undefined') {
         try {
-          const enriched = { ...payload, updatedAt: new Date().toISOString() };
-          localStorage.setItem(`melue_preference_assessment_${studentId}`, JSON.stringify(enriched));
-          const alias = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          const enriched = {
+            ...payload,
+            progress,
+            status: saveStatus,
+            updatedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(
+            `melue_preference_assessment_${studentId}`,
+            JSON.stringify(enriched),
+          );
+          const alias =
+            studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
           if (alias) {
             localStorage.setItem(`melue_preference_assessment_${alias}`, JSON.stringify(enriched));
           }
@@ -499,34 +537,284 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       }
 
       await savePreferenceAssessment(studentId, payload);
-      const aliasSid = studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      const aliasSid =
+        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
       if (aliasSid) {
         await savePreferenceAssessment(aliasSid, payload);
       }
 
-      showToast(status === 'submitted' ? 'Assessment submitted successfully' : 'Draft saved', 'success');
-      // Saved successfully without navigating away
+      setStatus(saveStatus);
+      showToast(
+        saveStatus === 'submitted'
+          ? 'Preference assessment submitted successfully!'
+          : 'Draft saved successfully',
+        'success',
+      );
+      if (isSubmitting) {
+        navigation?.navigate?.('AssessmentDashboard' as never);
+      }
     } catch {
-      showToast('Failed to save assessment data', 'error');
+      showToast('Failed to save preference assessment data', 'error');
     }
+  };
+
+  // PDF / Print Export Handler strictly matching MCTC-TRP-013 layout
+  const handleExport = () => {
+    const title = 'MCTC-TRP-013 Preference Assessment Data Sheet';
+    const studentName = profile?.fullName || 'Student';
+    const studentAge = profile?.age || '?';
+    const dateStr = new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    const formattedHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+          <style>
+            @page { size: A4 portrait; margin: 15mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; padding: 20px; color: #0F172A; line-height: 1.4; background: #FFF; }
+            .header-block { border-bottom: 2px solid #0F172A; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+            .form-code { font-size: 11px; font-weight: 800; color: #475569; letter-spacing: 1px; }
+            .form-title { font-size: 20px; font-weight: 800; color: #0F172A; margin: 4px 0 0; }
+            .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 14px; margin-bottom: 20px; }
+            .meta-item { display: flex; flex-direction: column; }
+            .meta-label { font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; }
+            .meta-value { font-size: 13px; font-weight: 700; color: #0F172A; margin-top: 2px; }
+            
+            table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 11px; }
+            th, td { border: 1px solid #CBD5E1; padding: 6px 8px; text-align: left; vertical-align: middle; }
+            th { background-color: #F1F5F9; font-weight: 800; color: #1E293B; font-size: 10px; text-transform: uppercase; }
+            .center { text-align: center; }
+            .bold { font-weight: 700; }
+            .category-tag { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #E2E8F0; color: #334155; display: inline-block; }
+            .status-approached { color: #16A34A; font-weight: 700; }
+            .status-didnot { color: #DC2626; font-weight: 700; }
+
+            .summary-title { font-size: 14px; font-weight: 800; color: #0F172A; margin: 20px 0 10px; border-left: 4px solid #0284C7; padding-left: 8px; text-transform: uppercase; }
+            .tier-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+            .tier-card { border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px; background: #FAFAFA; }
+            .tier-highest { border-top: 4px solid #16A34A; }
+            .tier-moderate { border-top: 4px solid #D97706; }
+            .tier-low { border-top: 4px solid #DC2626; }
+            .tier-header { font-size: 12px; font-weight: 800; margin-bottom: 8px; display: flex; justify-content: space-between; }
+            .tier-list { margin: 0; padding-left: 16px; font-size: 11px; }
+            .tier-list li { margin-bottom: 4px; }
+
+            .footer-sig { margin-top: 30px; display: flex; justify-content: space-between; font-size: 11px; border-top: 1px solid #E2E8F0; padding-top: 16px; }
+          </style>
+        </head>
+        <body>
+          <div class="header-block">
+            <div>
+              <div class="form-code">MELUE FOUNDATION &middot; 6-WEEK BASELINE ASSESSMENT &middot; FORM MCTC-TRP-013</div>
+              <h1 class="form-title">Preference Assessment Data Sheet</h1>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 12px; font-weight: 800; color: ${status === 'submitted' ? '#16A34A' : '#D97706'};">
+                ${status === 'submitted' ? 'CLINICALLY SUBMITTED' : 'DRAFT INVENTORY'}
+              </span>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-label">Student Name</span>
+              <span class="meta-value">${studentName}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Age / ID</span>
+              <span class="meta-value">Age ${studentAge} &middot; ${studentId}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Assessment Date</span>
+              <span class="meta-value">${dateStr}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Inventory Completion</span>
+              <span class="meta-value">${tiers.totalAssessed} / ${items.length} Items (${progressPercent}%)</span>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 25px;" class="center">#</th>
+                <th style="width: 140px;">Stimulus Item</th>
+                <th style="width: 80px;">Category</th>
+                <th style="width: 95px;" class="center">Approach Status</th>
+                <th style="width: 75px;" class="center">Engaged With</th>
+                <th style="width: 65px;" class="center">Frequency</th>
+                <th style="width: 80px;" class="center">Total Duration</th>
+                <th style="width: 60px;" class="center">Trials</th>
+                <th>Observational Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items
+                .map((item, idx) => {
+                  const approachedText =
+                    item.approached === 'Approached'
+                      ? '<span class="status-approached">&#10003; Approached</span>'
+                      : item.approached === 'Did Not Approach'
+                        ? '<span class="status-didnot">&#10005; Did Not</span>'
+                        : '<span style="color: #94A3B8;">Unassessed</span>';
+
+                  const engagedText =
+                    item.approached === 'Did Not Approach'
+                      ? '&mdash;'
+                      : item.engaged === 'Yes'
+                        ? '<strong>Yes</strong>'
+                        : item.engaged === 'No'
+                          ? 'No'
+                          : '&mdash;';
+
+                  const freqText =
+                    item.approached === 'Did Not Approach' ? '&mdash;' : `${item.frequency}`;
+                  const durText =
+                    item.approached === 'Did Not Approach'
+                      ? '&mdash;'
+                      : formatMMSS(item.durationSeconds);
+                  const trialsCount =
+                    item.approached === 'Did Not Approach' ? '&mdash;' : item.trials.length;
+
+                  return `
+                    <tr>
+                      <td class="center bold">${idx + 1}</td>
+                      <td class="bold">${item.name}</td>
+                      <td><span class="category-tag">${item.category}</span></td>
+                      <td class="center">${approachedText}</td>
+                      <td class="center">${engagedText}</td>
+                      <td class="center bold">${freqText}</td>
+                      <td class="center bold">${durText}</td>
+                      <td class="center">${trialsCount}</td>
+                      <td style="color: #475569;">${item.notes || '&mdash;'}</td>
+                    </tr>
+                  `;
+                })
+                .join('')}
+            </tbody>
+          </table>
+
+          <div class="summary-title">Dynamic 3-Tier Preference Categorization</div>
+          <div class="tier-container">
+            <div class="tier-card tier-highest">
+              <div class="tier-header" style="color: #16A34A;">
+                <span>Highest Preferred</span>
+                <span>(${tiers.highest.length})</span>
+              </div>
+              <ul class="tier-list">
+                ${
+                  tiers.highest.length > 0
+                    ? tiers.highest
+                        .map(
+                          (i) =>
+                            `<li><strong>${i.name}</strong> &mdash; ${formatMMSS(i.durationSeconds)} (${i.frequency}x)</li>`,
+                        )
+                        .join('')
+                    : '<li style="color: #94A3B8; font-style: italic;">No items in tier</li>'
+                }
+              </ul>
+            </div>
+
+            <div class="tier-card tier-moderate">
+              <div class="tier-header" style="color: #D97706;">
+                <span>Moderately Preferred</span>
+                <span>(${tiers.moderate.length})</span>
+              </div>
+              <ul class="tier-list">
+                ${
+                  tiers.moderate.length > 0
+                    ? tiers.moderate
+                        .map(
+                          (i) =>
+                            `<li><strong>${i.name}</strong> &mdash; ${formatMMSS(i.durationSeconds)} (${i.frequency}x)</li>`,
+                        )
+                        .join('')
+                    : '<li style="color: #94A3B8; font-style: italic;">No items in tier</li>'
+                }
+              </ul>
+            </div>
+
+            <div class="tier-card tier-low">
+              <div class="tier-header" style="color: #DC2626;">
+                <span>Low Preferred</span>
+                <span>(${tiers.low.length})</span>
+              </div>
+              <ul class="tier-list">
+                ${
+                  tiers.low.length > 0
+                    ? tiers.low
+                        .map(
+                          (i) =>
+                            `<li><strong>${i.name}</strong> &mdash; ${i.approached === 'Did Not Approach' ? 'Did Not Approach' : 'Zero Engagement'}</li>`,
+                        )
+                        .join('')
+                    : '<li style="color: #94A3B8; font-style: italic;">No items in tier</li>'
+                }
+              </ul>
+            </div>
+          </div>
+
+          <div class="footer-sig">
+            <div>
+              <strong>Assessing Clinical Therapist:</strong> _____________________________
+            </div>
+            <div>
+              <strong>Date:</strong> ____________________
+            </div>
+            <div>
+              <strong>Lead BCBA Verification:</strong> _____________________________
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    openPrintWindow(formattedHtml, title);
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Assessments" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Assessments"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <View style={styles.backRow}>
-        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack?.()}>
           <Feather name="arrow-left" size={16} color="#334155" />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>Back to Assessments</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.topHeader}>
-        <View>
-          <Text style={styles.headerTitle}>Preference Assessment</Text>
-          <Text style={styles.headerSubtitle}>ABA Therapy Management</Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.codeRow}>
+            <Text style={styles.codeBadge}>FORM MCTC-TRP-013</Text>
+            {status === 'submitted' ? (
+              <View style={styles.submittedBadge}>
+                <Feather name="check" size={12} color="#FFFFFF" />
+                <Text style={styles.submittedText}>Clinically Submitted</Text>
+              </View>
+            ) : (
+              <View style={styles.draftBadge}>
+                <Feather name="edit-3" size={12} color="#854D0E" />
+                <Text style={styles.draftText}>Draft In Progress</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.headerTitle}>Preference Assessment Data Sheet</Text>
+          <Text style={styles.headerSubtitle}>
+            Unified 24-Item Catalog &middot; Multi-Trial Cumulative Duration &middot; 3-Tier Dynamic
+            Hierarchy
+          </Text>
         </View>
+
         <View style={styles.studentBadge}>
           <Text style={styles.studentName}>{profile?.fullName || 'Student'}</Text>
           <Text style={styles.studentAge}>Age {profile?.age || '?'}</Text>
@@ -534,403 +822,1008 @@ export default function PreferenceAssessmentScreen({ navigation, route }: Props)
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.sessionTabRow}>
-          {(['Sensory Time', 'Circle Time', 'Play Time'] as const).map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.sessionTabBtn, activeTab === tab && styles.sessionTabBtnActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.sessionTabText, activeTab === tab && styles.sessionTabTextActive]}>
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        {/* Progress & Compliance Bar */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Feather
+                name={tiers.totalAssessed === items.length ? 'check-circle' : 'activity'}
+                size={18}
+                color={tiers.totalAssessed === items.length ? '#16A34A' : '#0284C7'}
+              />
+              <Text style={styles.progressTitle}>Assessment Completion Progress</Text>
+            </View>
+            <Text style={styles.progressCountText}>
+              {tiers.totalAssessed} / {items.length} Assessed ({progressPercent}%)
+            </Text>
+          </View>
+          <View style={styles.progressBarTrack}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${progressPercent}%` },
+                progressPercent === 100 && { backgroundColor: '#16A34A' },
+              ]}
+            />
+          </View>
         </View>
 
-        {currentItems.map((item) => {
-          const categoryStyle = CATEGORY_COLORS[item.category] || { bg: '#F1F5F9', text: '#475569' };
-          return (
-            <View key={item.id} style={styles.itemCard}>
-              <View style={styles.itemInfoCol}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <View style={[styles.categoryPill, { backgroundColor: categoryStyle.bg }]}>
-                  <Text style={[styles.categoryText, { color: categoryStyle.text }]}>{item.category}</Text>
-                </View>
-              </View>
+        {/* Unified 24-Item Inventory Table Header */}
+        <View style={styles.tableCard}>
+          <View style={styles.tableHeaderBar}>
+            <Text style={styles.tableTitle}>
+              Canonical Preference Inventory (24 Authentic Items)
+            </Text>
+            <Text style={styles.tableSubtitle}>
+              MCTC-TRP-013 &middot; Choose Approach Status, Engagement, Timing & Approach Counter
+            </Text>
+          </View>
 
-              <View style={styles.metricCol}>
-                <Text style={styles.metricLabel}>TIMER</Text>
-                <Text style={styles.timerVal}>{formatMMSS(item.timerSeconds)}</Text>
-                <View style={styles.btnGroup}>
-                  <TouchableOpacity
-                    style={[styles.smallBtn, styles.startBtn, item.isRunning && styles.pauseBtn]}
-                    onPress={() => toggleTimer(item.id)}
-                  >
-                    <Text style={styles.startBtnText}>{item.isRunning ? 'Pause' : 'Start'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.smallBtn, styles.resetBtn]} onPress={() => resetTimer(item.id)}>
-                    <Text style={styles.resetBtnText}>Reset</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+          {items.map((item, index) => {
+            const categoryStyle = CATEGORY_COLORS[item.category] || {
+              bg: '#F1F5F9',
+              text: '#475569',
+            };
+            const isApproached = item.approached === 'Approached';
+            const isDidNotApproach = item.approached === 'Did Not Approach';
+            const isDisabled = isDidNotApproach;
 
-              <View style={styles.metricCol}>
-                <Text style={styles.metricLabel}>FREQUENCY</Text>
-                <Text style={styles.freqVal}>{item.frequency}</Text>
-                <View style={styles.btnGroup}>
-                  <TouchableOpacity style={[styles.stepBtn, styles.stepBtnMinus]} onPress={() => updateFrequency(item.id, -1)}>
-                    <Text style={styles.stepBtnText}>-</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.stepBtn, styles.stepBtnPlus]} onPress={() => updateFrequency(item.id, 1)}>
-                    <Text style={styles.stepBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.metricColCompact}>
-                <Text style={styles.metricLabel}>DURATION</Text>
-                <Text style={styles.displayVal}>{formatMMSS(item.durationSeconds)}</Text>
-              </View>
-
-              <View style={styles.metricColCompact}>
-                <Text style={styles.metricLabel}>COUNT</Text>
-                <Text style={styles.displayVal}>{item.frequency}</Text>
-              </View>
-
-              <View style={radioStyles.col}>
-                <Text style={styles.metricLabel}>ENGAGEMENT</Text>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Engaged')}>
-                  <View style={[radioStyles.radioCircle, item.engaged === 'Engaged' && radioStyles.radioCircleSelected]}>
-                    {item.engaged === 'Engaged' && <View style={radioStyles.radioDot} />}
-                  </View>
-                  <Text style={radioStyles.radioText}>Engaged</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateEngaged(item.id, 'Did Not Engage')}>
-                  <View style={[radioStyles.radioCircle, item.engaged === 'Did Not Engage' && radioStyles.radioCircleSelected]}>
-                    {item.engaged === 'Did Not Engage' && <View style={radioStyles.radioDot} />}
-                  </View>
-                  <Text style={radioStyles.radioText}>Did Not Engage</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={radioStyles.col}>
-                <Text style={styles.metricLabel}>APPROACH</Text>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Approached')}>
-                  <View style={[radioStyles.radioCircle, item.approached === 'Approached' && radioStyles.radioCircleSelected]}>
-                    {item.approached === 'Approached' && <View style={radioStyles.radioDot} />}
-                  </View>
-                  <Text style={radioStyles.radioText}>Approached</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={radioStyles.radioBtn} onPress={() => updateApproached(item.id, 'Did Not Approach')}>
-                  <View style={[radioStyles.radioCircle, item.approached === 'Did Not Approach' && radioStyles.radioCircleSelected]}>
-                    {item.approached === 'Did Not Approach' && <View style={radioStyles.radioDot} />}
-                  </View>
-                  <Text style={radioStyles.radioText}>Did Not Approach</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.notesCol}>
-                <Text style={styles.metricLabel}>NOTES</Text>
-                <TextInput
-                  style={styles.notesInput}
-                  placeholder="Optional notes..."
-                  placeholderTextColor="#94A3B8"
-                  value={item.notes}
-                  onChangeText={(txt) => updateNotes(item.id, txt)}
-                />
-              </View>
-            </View>
-          );
-        })}
-
-        <TouchableOpacity style={styles.addCustomBtn} onPress={handleOpenModal}>
-          <Feather name="plus" size={16} color="#64748B" />
-          <Text style={styles.addCustomText}>Add Custom Item</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* Footer action bar — outside ScrollView so always tappable */}
-      <View style={styles.footerRow}>
-        <TouchableOpacity style={styles.draftBtn} onPress={() => handleSave('draft')}>
-          <Text style={styles.draftBtnText}>Save Draft</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.submitBtn} onPress={() => handleSave('submitted')}>
-          <Text style={styles.submitBtnText}>Submit Assessment</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.printBtn} onPress={handleExport}>
-          <Text style={styles.printBtnText}>Print / Export</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Modal Popup */}
-      <Modal visible={isModalVisible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsDropdownOpen(false)}
-        >
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add Custom Item</Text>
-
-            {/* Input: Item Name */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Item Name</Text>
-              <TextInput
-                style={styles.textInputActive}
-                placeholder="Enter item name..."
-                placeholderTextColor="#94A3B8"
-                value={newItemName}
-                onChangeText={setNewItemName}
-              />
-            </View>
-
-            {/* Dropdown: Category */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Category</Text>
-              <TouchableOpacity
-                style={[styles.dropdownTrigger, isDropdownOpen && styles.dropdownTriggerActive]}
-                onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+            return (
+              <View
+                key={item.id}
+                style={[
+                  styles.itemCard,
+                  isDidNotApproach && styles.itemCardDidNotApproach,
+                  isApproached && styles.itemCardApproached,
+                ]}
               >
-                <Text style={styles.dropdownValue}>{newItemCategory}</Text>
-                <Feather name="chevron-down" size={16} color="#0F172A" />
-              </TouchableOpacity>
+                {/* 1. Item Identity & Category */}
+                <View style={styles.itemInfoCol}>
+                  <View style={styles.indexPill}>
+                    <Text style={styles.indexText}>{index + 1}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                    <View style={[styles.categoryPill, { backgroundColor: categoryStyle.bg }]}>
+                      <Text style={[styles.categoryText, { color: categoryStyle.text }]}>
+                        {item.category}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
 
-              {/* Options Overlay */}
-              {isDropdownOpen && (
-                <View style={styles.dropdownMenu}>
-                  {CATEGORIES.map((cat) => (
+                {/* 2. Approach Status Toggle (Required Binary) */}
+                <View style={styles.approachCol}>
+                  <Text style={styles.fieldLabel}>APPROACH STATUS</Text>
+                  <View style={styles.toggleRow}>
                     <TouchableOpacity
-                      key={cat}
+                      style={[styles.toggleBtn, isApproached && styles.approachActiveBtn]}
+                      onPress={() => handleSetApproach(item.id, 'Approached')}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isApproached }}
+                    >
+                      <Feather
+                        name="check"
+                        size={13}
+                        color={isApproached ? '#FFFFFF' : '#475569'}
+                      />
+                      <Text
+                        style={[styles.toggleBtnText, isApproached && styles.approachActiveText]}
+                      >
+                        Approached
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.toggleBtn, isDidNotApproach && styles.didNotActiveBtn]}
+                      onPress={() => handleSetApproach(item.id, 'Did Not Approach')}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isDidNotApproach }}
+                    >
+                      <Feather
+                        name="x"
+                        size={13}
+                        color={isDidNotApproach ? '#FFFFFF' : '#475569'}
+                      />
+                      <Text
+                        style={[styles.toggleBtnText, isDidNotApproach && styles.didNotActiveText]}
+                      >
+                        Did Not
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* 3. Engaged With (Yes / No) */}
+                <View style={[styles.engagedCol, isDisabled && styles.disabledCol]}>
+                  <Text style={styles.fieldLabel}>ENGAGED WITH</Text>
+                  <View style={styles.toggleRow}>
+                    <TouchableOpacity
+                      disabled={isDisabled}
                       style={[
-                        styles.dropdownItem,
-                        cat === newItemCategory && styles.dropdownItemActive,
+                        styles.toggleBtnSmall,
+                        item.engaged === 'Yes' && !isDisabled && styles.engagedYesBtn,
                       ]}
-                      onPress={() => {
-                        setNewItemCategory(cat);
-                        setIsDropdownOpen(false);
-                      }}
+                      onPress={() => handleSetEngaged(item.id, 'Yes')}
                     >
                       <Text
                         style={[
-                          styles.dropdownItemText,
-                          cat === newItemCategory && styles.dropdownItemTextActive,
+                          styles.toggleBtnSmallText,
+                          item.engaged === 'Yes' && !isDisabled && styles.engagedYesText,
                         ]}
                       >
-                        {cat}
+                        Yes
                       </Text>
                     </TouchableOpacity>
-                  ))}
+
+                    <TouchableOpacity
+                      disabled={isDisabled}
+                      style={[
+                        styles.toggleBtnSmall,
+                        item.engaged === 'No' && !isDisabled && styles.engagedNoBtn,
+                      ]}
+                      onPress={() => handleSetEngaged(item.id, 'No')}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleBtnSmallText,
+                          item.engaged === 'No' && !isDisabled && styles.engagedNoText,
+                        ]}
+                      >
+                        No
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
+
+                {/* 4. Frequency Counter (+ / -) */}
+                <View style={[styles.freqCol, isDisabled && styles.disabledCol]}>
+                  <Text style={styles.fieldLabel}>FREQUENCY</Text>
+                  <View style={styles.freqCounterRow}>
+                    <TouchableOpacity
+                      disabled={isDisabled}
+                      style={[styles.freqStepBtn, isDisabled && styles.btnDisabled]}
+                      onPress={() => handleUpdateFrequency(item.id, -1)}
+                    >
+                      <Text style={styles.freqStepBtnText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.freqValText}>{isDisabled ? '0' : item.frequency}</Text>
+                    <TouchableOpacity
+                      disabled={isDisabled}
+                      style={[
+                        styles.freqStepBtn,
+                        styles.freqStepBtnPlus,
+                        isDisabled && styles.btnDisabled,
+                      ]}
+                      onPress={() => handleUpdateFrequency(item.id, 1)}
+                    >
+                      <Text style={[styles.freqStepBtnText, styles.freqStepBtnPlusText]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* 5. Cumulative Duration & Multi-Trial Timer */}
+                <View style={[styles.durationCol, isDisabled && styles.disabledCol]}>
+                  <Text style={styles.fieldLabel}>CUMULATIVE DURATION</Text>
+                  <View style={styles.timerDisplayRow}>
+                    <Text
+                      style={[
+                        styles.durationText,
+                        item.durationSeconds > 0 && { color: '#0284C7' },
+                      ]}
+                    >
+                      {isDisabled ? '00:00' : formatMMSS(item.durationSeconds)}
+                    </Text>
+                    {item.trials.length > 0 && !isDisabled && (
+                      <View style={styles.trialsBadge}>
+                        <Text style={styles.trialsBadgeText}>
+                          {item.trials.length} {item.trials.length === 1 ? 'Trial' : 'Trials'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Timer Controls */}
+                  {!isDisabled && (
+                    <View style={styles.timerControlsRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.timerActionBtn,
+                          item.isRunning ? styles.timerPauseBtn : styles.timerStartBtn,
+                        ]}
+                        onPress={() => handleToggleTimer(item.id)}
+                      >
+                        <Feather
+                          name={item.isRunning ? 'pause' : 'play'}
+                          size={11}
+                          color="#FFFFFF"
+                        />
+                        <Text style={styles.timerActionBtnText}>
+                          {item.isRunning
+                            ? `Pause (${formatMMSS(item.timerSeconds)})`
+                            : 'Run Timer'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.quickAddBtn}
+                        onPress={() => handleAddManualDuration(item.id, 60)}
+                      >
+                        <Text style={styles.quickAddText}>+1m</Text>
+                      </TouchableOpacity>
+
+                      {item.durationSeconds > 0 && (
+                        <TouchableOpacity
+                          style={styles.timerResetBtn}
+                          onPress={() => handleResetTimer(item.id)}
+                        >
+                          <Feather name="rotate-ccw" size={11} color="#64748B" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* 6. Observational Notes */}
+                <View style={styles.notesCol}>
+                  <Text style={styles.fieldLabel}>OBSERVATIONS / CLINICAL NOTES</Text>
+                  <TextInput
+                    style={styles.notesInput}
+                    placeholder="Context, latency, engagement quality..."
+                    placeholderTextColor="#94A3B8"
+                    value={item.notes}
+                    onChangeText={(txt) => handleUpdateNotes(item.id, txt)}
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Dynamic 3-Tier Summary Hierarchy */}
+        <View style={styles.tierSummaryCard}>
+          <View style={styles.tierSummaryHeader}>
+            <Feather name="bar-chart-2" size={18} color="#0F172A" />
+            <Text style={styles.tierSummaryTitle}>
+              Dynamic Preference Tiering Hierarchy (SRS &sect;3.3.4)
+            </Text>
+          </View>
+          <Text style={styles.tierSummarySubtitle}>
+            Dynamically categorized based on approach decisions, engagement, and multi-trial
+            cumulative durations.
+          </Text>
+
+          <View style={styles.tiersGrid}>
+            {/* Tier 1: Highest Preferred */}
+            <View style={[styles.tierCard, styles.tierCardHighest]}>
+              <View style={styles.tierCardHeader}>
+                <View style={styles.tierBadgeGreen}>
+                  <Feather name="star" size={12} color="#16A34A" />
+                  <Text style={styles.tierBadgeTextGreen}>Highest Preferred Items</Text>
+                </View>
+                <Text style={styles.tierCountText}>{tiers.highest.length}</Text>
+              </View>
+              <Text style={styles.tierDescription}>
+                Approached frequently and engaged with for the longest total duration.
+              </Text>
+              <View style={styles.tierItemList}>
+                {tiers.highest.length > 0 ? (
+                  tiers.highest.map((item) => (
+                    <View key={item.id} style={styles.tierItemRow}>
+                      <Text style={styles.tierItemName}>{item.name}</Text>
+                      <View style={styles.tierItemStats}>
+                        <Text style={styles.tierDurationText}>
+                          {formatMMSS(item.durationSeconds)}
+                        </Text>
+                        <Text style={styles.tierFreqText}>({item.frequency}x)</Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.tierEmptyText}>No items assessed in this tier yet.</Text>
+                )}
+              </View>
             </View>
 
-            {/* Buttons Row */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelModalBtn}
-                onPress={() => setIsModalVisible(false)}
-              >
-                <Text style={styles.cancelModalText}>Cancel</Text>
-              </TouchableOpacity>
+            {/* Tier 2: Moderately Preferred */}
+            <View style={[styles.tierCard, styles.tierCardModerate]}>
+              <View style={styles.tierCardHeader}>
+                <View style={styles.tierBadgeAmber}>
+                  <Feather name="trending-up" size={12} color="#D97706" />
+                  <Text style={styles.tierBadgeTextAmber}>Moderately Preferred Items</Text>
+                </View>
+                <Text style={styles.tierCountText}>{tiers.moderate.length}</Text>
+              </View>
+              <Text style={styles.tierDescription}>
+                Approached and engaged with, but for shorter duration or inconsistent engagement.
+              </Text>
+              <View style={styles.tierItemList}>
+                {tiers.moderate.length > 0 ? (
+                  tiers.moderate.map((item) => (
+                    <View key={item.id} style={styles.tierItemRow}>
+                      <Text style={styles.tierItemName}>{item.name}</Text>
+                      <View style={styles.tierItemStats}>
+                        <Text style={styles.tierDurationText}>
+                          {formatMMSS(item.durationSeconds)}
+                        </Text>
+                        <Text style={styles.tierFreqText}>({item.frequency}x)</Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.tierEmptyText}>No items assessed in this tier yet.</Text>
+                )}
+              </View>
+            </View>
 
-              <TouchableOpacity
-                style={styles.addModalBtn}
-                onPress={handleConfirmAddItem}
-              >
-                <Text style={styles.addModalText}>Add Item</Text>
-              </TouchableOpacity>
+            {/* Tier 3: Low Preferred */}
+            <View style={[styles.tierCard, styles.tierCardLow]}>
+              <View style={styles.tierCardHeader}>
+                <View style={styles.tierBadgeRed}>
+                  <Feather name="minus-circle" size={12} color="#DC2626" />
+                  <Text style={styles.tierBadgeTextRed}>Low Preferred Items</Text>
+                </View>
+                <Text style={styles.tierCountText}>{tiers.low.length}</Text>
+              </View>
+              <Text style={styles.tierDescription}>
+                Marked as Did Not Approach or approached with zero engagement.
+              </Text>
+              <View style={styles.tierItemList}>
+                {tiers.low.length > 0 ? (
+                  tiers.low.map((item) => (
+                    <View key={item.id} style={styles.tierItemRow}>
+                      <Text style={styles.tierItemName}>{item.name}</Text>
+                      <Text style={styles.tierLowStatusText}>
+                        {item.approached === 'Did Not Approach'
+                          ? 'Did Not Approach'
+                          : 'Zero Engagement'}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.tierEmptyText}>No items marked as low preferred.</Text>
+                )}
+              </View>
             </View>
           </View>
+        </View>
+      </ScrollView>
+
+      {/* Persistent Bottom Action Bar */}
+      <View style={styles.footerRow}>
+        <TouchableOpacity style={styles.draftBtn} onPress={() => handleSave('draft')}>
+          <Feather name="save" size={15} color="#334155" />
+          <Text style={styles.draftBtnText}>Save Draft</Text>
         </TouchableOpacity>
-      </Modal>
+
+        <TouchableOpacity style={styles.submitBtn} onPress={() => handleSave('submitted')}>
+          <Feather name="check-circle" size={15} color="#0F172A" />
+          <Text style={styles.submitBtnText}>Submit Assessment</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.printBtn} onPress={handleExport}>
+          <Feather name="printer" size={15} color="#0284C7" />
+          <Text style={styles.printBtnText}>Print / Export (MCTC-TRP-013)</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  backRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 8 },
-  backText: { fontSize: 14, color: '#334155', fontWeight: '500', marginLeft: 4 },
-  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
-  headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
-  studentBadge: { backgroundColor: '#FEF9C3', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, alignItems: 'center' },
-  studentName: { fontSize: 13, fontWeight: '700', color: '#854D0E' },
-  studentAge: { fontSize: 11, color: '#A16207' },
-  content: { padding: 24, gap: 12 },
-  sessionTabRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
-  sessionTabBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' },
-  sessionTabBtnActive: { backgroundColor: '#38BDF8', borderColor: '#38BDF8' },
-  sessionTabText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-  sessionTabTextActive: { color: '#FFFFFF' },
-  itemCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16 },
-  itemInfoCol: { width: 140, gap: 6 },
-  itemName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  categoryPill: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
-  categoryText: { fontSize: 11, fontWeight: '700' },
-  metricCol: { alignItems: 'center', gap: 4, width: 90 },
-  metricColCompact: { alignItems: 'center', gap: 4, width: 60 },
-  metricLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
-  timerVal: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  freqVal: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  displayVal: { fontSize: 13, fontWeight: '600', color: '#334155', marginTop: 4 },
-  btnGroup: { flexDirection: 'row', gap: 4 },
-  smallBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-  startBtn: { backgroundColor: '#38BDF8' },
-  pauseBtn: { backgroundColor: '#F59E0B' },
-  startBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
-  resetBtn: { backgroundColor: '#F1F5F9' },
-  resetBtnText: { color: '#475569', fontSize: 11, fontWeight: '600' },
-  stepBtn: { width: 24, height: 24, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
-  stepBtnMinus: { backgroundColor: '#F1F5F9' },
-  stepBtnPlus: { backgroundColor: '#FACC15' },
-  stepBtnText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  notesCol: { flex: 1, minWidth: 200, gap: 4 },
-  notesInput: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, fontSize: 13, color: '#0F172A', backgroundColor: '#FFFFFF' },
-  addCustomBtn: { borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
-  addCustomText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-  footerRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  draftBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
-  draftBtnText: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  submitBtn: { backgroundColor: '#FACC15', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
-  submitBtnText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  printBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#38BDF8', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
-  printBtnText: { fontSize: 14, fontWeight: '600', color: '#0284C7' },
-
-  // Modal Styles
-  modalOverlay: {
+  safe: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  backRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    gap: 16,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 10px 20px rgba(0, 0, 0, 0.1)' }
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.1,
-          shadowRadius: 20,
-          elevation: 5,
-        }),
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  fieldGroup: {
-    gap: 6,
-    position: 'relative',
-    zIndex: 1,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-  textInputActive: {
-    borderWidth: 2,
-    borderColor: '#38BDF8',
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 24,
     paddingVertical: 10,
-    fontSize: 14,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
   },
-  dropdownTrigger: {
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  backText: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  dropdownTriggerActive: {
-    borderWidth: 2,
-    borderColor: '#38BDF8',
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
-  dropdownValue: {
-    fontSize: 14,
+  codeBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    letterSpacing: 0.5,
+  },
+  submittedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  submittedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  draftBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF08A',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  draftText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#854D0E',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
     color: '#0F172A',
   },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 70,
-    left: 0,
-    right: 0,
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  studentBadge: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  studentName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  studentAge: {
+    fontSize: 11,
+    color: '#3B82F6',
+  },
+  content: {
+    padding: 20,
+    gap: 16,
+  },
+  progressCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8,
+  },
+  progressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  progressCountText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#0284C7',
+    borderRadius: 4,
+  },
+  tableCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  tableHeaderBar: {
+    padding: 16,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tableTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  tableSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  itemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    flexWrap: 'wrap',
+    gap: 14,
+  },
+  itemCardApproached: {
+    backgroundColor: '#FAF5FF',
+  },
+  itemCardDidNotApproach: {
+    backgroundColor: '#F8FAFC',
+    opacity: 0.85,
+  },
+  itemInfoCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: 170,
+  },
+  indexPill: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  indexText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  categoryPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginTop: 3,
+  },
+  categoryText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  approachCol: {
+    width: 175,
+    gap: 4,
+  },
+  fieldLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  toggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  approachActiveBtn: {
+    backgroundColor: '#16A34A',
+    borderColor: '#15803D',
+  },
+  didNotActiveBtn: {
+    backgroundColor: '#DC2626',
+    borderColor: '#B91C1C',
+  },
+  toggleBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  approachActiveText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  didNotActiveText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  engagedCol: {
+    width: 100,
+    gap: 4,
+  },
+  disabledCol: {
+    opacity: 0.4,
+  },
+  toggleBtnSmall: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  engagedYesBtn: {
+    backgroundColor: '#0284C7',
+    borderColor: '#0369A1',
+  },
+  engagedNoBtn: {
+    backgroundColor: '#64748B',
+    borderColor: '#475569',
+  },
+  toggleBtnSmallText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  engagedYesText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  engagedNoText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  freqCol: {
+    width: 105,
+    gap: 4,
+    alignItems: 'center',
+  },
+  freqCounterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  freqStepBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  freqStepBtnPlus: {
+    backgroundColor: '#FEF08A',
+    borderColor: '#FACC15',
+  },
+  freqStepBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  freqStepBtnPlusText: {
+    color: '#854D0E',
+  },
+  btnDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  freqValText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  durationCol: {
+    width: 190,
+    gap: 4,
+  },
+  timerDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  durationText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+    fontVariant: ['tabular-nums'],
+  },
+  trialsBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  trialsBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  timerControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  timerActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  timerStartBtn: {
+    backgroundColor: '#0284C7',
+  },
+  timerPauseBtn: {
+    backgroundColor: '#D97706',
+  },
+  timerActionBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  quickAddBtn: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  quickAddText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  timerResetBtn: {
+    padding: 4,
+    borderRadius: 4,
+  },
+  notesCol: {
+    flex: 1,
+    minWidth: 180,
+    gap: 4,
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  tierSummaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+  },
+  tierSummaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tierSummaryTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  tierSummarySubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  tiersGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  tierCard: {
+    flex: 1,
+    minWidth: 260,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8,
+  },
+  tierCardHighest: {
+    borderTopWidth: 4,
+    borderTopColor: '#16A34A',
+  },
+  tierCardModerate: {
+    borderTopWidth: 4,
+    borderTopColor: '#D97706',
+  },
+  tierCardLow: {
+    borderTopWidth: 4,
+    borderTopColor: '#DC2626',
+  },
+  tierCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tierBadgeGreen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tierBadgeTextGreen: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#16A34A',
+  },
+  tierBadgeAmber: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tierBadgeTextAmber: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  tierBadgeRed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tierBadgeTextRed: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  tierCountText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  tierDescription: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  tierItemList: {
+    gap: 6,
+    marginTop: 4,
+  },
+  tierItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tierItemName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  tierItemStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tierDurationText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0284C7',
+  },
+  tierFreqText: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  tierLowStatusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  tierEmptyText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+    paddingVertical: 6,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    flexWrap: 'wrap',
+  },
+  draftBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 8,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)' }
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.1,
-          shadowRadius: 10,
-          elevation: 6,
-        }),
-    zIndex: 999,
-  },
-  dropdownItem: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  dropdownItemActive: {
-    backgroundColor: '#93C5FD',
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: '#334155',
-  },
-  dropdownItemTextActive: {
-    color: '#0F172A',
-    fontWeight: '600',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  cancelModalBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  cancelModalText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  addModalBtn: {
-    flex: 1,
-    backgroundColor: '#FACC15',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  addModalText: {
-    fontSize: 14,
+  draftBtnText: {
+    fontSize: 13,
     fontWeight: '700',
+    color: '#334155',
+  },
+  submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FACC15',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  submitBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#0F172A',
+  },
+  printBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  printBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0284C7',
   },
 });
-const radioStyles = StyleSheet.create({ col: { gap: 6, minWidth: 120 }, radioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }, radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#94A3B8', alignItems: 'center', justifyContent: 'center' }, radioCircleSelected: { borderColor: '#0284C7' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284C7' }, radioText: { fontSize: 13, color: '#334155' } });

@@ -2032,15 +2032,18 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     }
   } catch {}
 
-  if (studentsList.length === 0) {
-    studentsList = DEFAULT_PD_STUDENTS.map((s) => ({
-      id: s.id,
-      name: s.name,
-      age: s.age,
-      program: s.program,
-      status: 'Active',
-      photoUrl: '',
-    }));
+  // If no students from API or targetId specified, allow targetId directly
+  if (studentsList.length === 0 && studentId) {
+    studentsList = [
+      {
+        id: studentId,
+        name: 'Student',
+        age: 6,
+        program: 'Comprehensive ABA',
+        status: 'Active',
+        photoUrl: '',
+      },
+    ];
   }
 
   const targetId =
@@ -2148,19 +2151,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     }
   }
 
-  // Provide standard scores if abllsScores empty
-  if (Object.keys(abllsScores).length === 0) {
-    abllsScores['A1'] = 2;
-    abllsScores['A2'] = 2;
-    abllsScores['B1'] = 3;
-    abllsScores['B2'] = 2;
-    abllsScores['C1'] = 2;
-    abllsScores['C2'] = 1;
-    abllsScores['D1'] = 2;
-    abllsScores['D2'] = 2;
-    abllsScores['E1'] = 1;
-    abllsScores['F1'] = 2;
-  }
+  // Real scores only - do not inject fake placeholder scores
 
   // 2. Behavior Assessment
   const clientBehavior =

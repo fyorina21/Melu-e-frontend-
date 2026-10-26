@@ -12,6 +12,7 @@ import type { ViewMode } from '../types';
 interface AbllsMapHeaderProps {
   onBack: () => void;
   onSave: () => void;
+  onSubmit?: () => void;
   saving: boolean;
   onExport: () => void;
   studentName: string;
@@ -35,6 +36,7 @@ export const AbllsMapHeader: React.FC<AbllsMapHeaderProps> = React.memo(
   ({
     onBack,
     onSave,
+    onSubmit,
     saving,
     onExport,
     studentName,
@@ -57,14 +59,25 @@ export const AbllsMapHeader: React.FC<AbllsMapHeaderProps> = React.memo(
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           <Button
-            label={saving ? 'Saving...' : 'Save Assessment'}
-            variant="primary"
+            label={saving ? 'Saving...' : 'Save Draft'}
+            variant="outline"
             size="sm"
             loading={saving}
             disabled={saving}
             onPress={onSave}
             style={{ marginRight: spacing.sm }}
           />
+          {onSubmit ? (
+            <Button
+              label={saving ? 'Submitting...' : 'Submit Assessment'}
+              variant="primary"
+              size="sm"
+              loading={saving}
+              disabled={saving}
+              onPress={onSubmit}
+              style={{ marginRight: spacing.sm }}
+            />
+          ) : null}
           <Button
             label="Print / Export Sheet"
             variant="outline"

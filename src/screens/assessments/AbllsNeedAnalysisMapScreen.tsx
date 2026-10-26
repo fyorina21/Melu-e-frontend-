@@ -152,23 +152,40 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
     }
   };
 
-  const handleSaveAll = async () => {
+  const handleSaveAll = async (isSubmitting = false) => {
     setSaving(true);
     try {
-      saveStorageAssessment(studentId, {
+      const status = isSubmitting ? 'submitted' : undefined;
+      const progress = isSubmitting ? 100 : undefined;
+      const payload = {
         scores,
         notes: savedNotes,
         customFields: savedCustomFields,
-      });
-      await saveSkillsAssessment(studentId, {
-        scores,
-        notes: savedNotes,
-        customFields: savedCustomFields,
-      });
-      showToast('ABLLS assessment map saved successfully.', 'success');
-      navigation?.navigate?.('AssessmentSummaryReport' as never);
+        ...(status ? { status } : {}),
+        ...(progress !== undefined ? { progress } : {}),
+      };
+      saveStorageAssessment(studentId, payload);
+      const aliasSid =
+        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        saveStorageAssessment(aliasSid, payload);
+      }
+      await saveSkillsAssessment(studentId, payload);
+      if (aliasSid) {
+        await saveSkillsAssessment(aliasSid, payload);
+      }
+      if (isSubmitting) {
+        showToast('ABLLS assessment submitted successfully.', 'success');
+        navigation?.navigate?.('AssessmentDashboard' as never);
+      } else {
+        showToast('ABLLS assessment map saved successfully.', 'success');
+        navigation?.navigate?.('AssessmentSummaryReport' as never);
+      }
     } catch {
-      showToast('Failed to save assessment', 'error');
+      showToast(
+        isSubmitting ? 'Failed to submit assessment' : 'Failed to save assessment',
+        'error',
+      );
     } finally {
       setSaving(false);
     }
@@ -204,7 +221,8 @@ export default function AbllsNeedAnalysisMapScreen({ navigation, route }: Props)
       <View style={[styles.headerWrapper, isTablet && styles.headerWrapperTablet]}>
         <AbllsMapHeader
           onBack={() => navigation?.goBack?.()}
-          onSave={handleSaveAll}
+          onSave={() => handleSaveAll(false)}
+          onSubmit={() => handleSaveAll(true)}
           saving={saving}
           onExport={handleExport}
           studentName={studentName}
