@@ -10,7 +10,8 @@ import {
   generateAssessmentReportText,
   type AssessmentReport,
 } from '../reviewTypes';
-import { getAssessmentReport, getAssessmentsForReview } from '../../../../api/programDirectorApi';
+import { getAssessmentReport, getAssessmentsForReview, markAssessmentReviewed } from '../../../../api/programDirectorApi';
+import { saveStudentAssessmentSubmission } from '../../../../utils/studentLifecycleHelper';
 import { saveStorageAssessment } from '../../../assessments/abllsConfigHelper';
 import { storage } from '../../../../utils/storage';
 
@@ -238,5 +239,112 @@ describe('Assessment Review types and helpers', () => {
       expect(report.preferences.top_items).toEqual([]);
       expect(report.dateCompleted).toBeNull();
     });
+    it('accurately derives real student statuses (Not Started, In Progress, Complete, Reviewed) for Assessment Review', async () => {
+      // 1. Student A: Not Started
+      const studentNotStarted = 'stu-real-not-started';
+      // 2. Student B: In Progress (has 35% skills)
+      const studentInProgress = 'stu-real-in-progress';
+      // 3. Student C: Complete (submitted)
+      const studentComplete = 'stu-real-complete';
+      // 4. Student D: Reviewed (already reviewed by PD)
+      const studentReviewed = 'stu-real-reviewed';
+
+      storage.setJSONSync('melue_enrolled_students_cache', [
+        {
+          id: studentNotStarted,
+          fullName: 'Not Started Student',
+          name: 'Not Started Student',
+          age: 6,
+          program: 'Regular',
+          therapist: 'Abeba Tadesse',
+        },
+        {
+          id: studentInProgress,
+          fullName: 'In Progress Student',
+          name: 'In Progress Student',
+          age: 7,
+          program: 'Comprehensive',
+          therapist: 'Dawit Bekele',
+        },
+        {
+          id: studentComplete,
+          fullName: 'Completed Student',
+          name: 'Completed Student',
+          age: 8,
+          program: 'Regular',
+          therapist: 'Selam Tesfaye',
+        },
+        {
+          id: studentReviewed,
+          fullName: 'Reviewed Student',
+          name: 'Reviewed Student',
+          age: 9,
+          program: 'Comprehensive',
+          therapist: 'Bethlehem Tsegaye',
+        },
+      ]);
+
+      // Student B: save 35% draft skills
+      saveStorageAssessment(studentInProgress, {
+        progress: 35,
+        status: 'in_progress',
+      });
+
+      // Student C: save all and submit
+      saveStorageAssessment(studentComplete, { progress: 100, status: 'completed' });
+      await saveStudentAssessmentSubmission(studentComplete, {
+        studentName: 'Completed Student',
+      });
+
+      // Student D: save and mark reviewed
+      saveStorageAssessment(studentReviewed, { progress: 100, status: 'completed' });
+      await saveStudentAssessmentSubmission(studentReviewed, {
+        studentName: 'Reviewed Student',
+      });
+      await markAssessmentReviewed(studentReviewed, { notes: 'Approved for IUP' });
+
+      // Fetch assessments for review
+      const { data: list } = await getAssessmentsForReview();
+
+      const itemA = list.find((s: any) => s.studentId === studentNotStarted);
+      const itemB = list.find((s: any) => s.studentId === studentInProgress);
+      const itemC = list.find((s: any) => s.studentId === studentComplete);
+      const itemD = list.find((s: any) => s.studentId === studentReviewed);
+
+      expect(itemA).toBeDefined();
+      expect(itemA.status).toBe('Not Started');
+      expect(itemA.abllsPct).toBe(0);
+      expect(itemA.dateCompleted).toBeNull();
+      expect(itemA.therapist).toBe('Abeba Tadesse');
+
+      expect(itemB).toBeDefined();
+      expect(itemB.status).toBe('In Progress');
+      expect(itemB.abllsPct).toBe(35);
+      expect(itemB.dateCompleted).toBeNull();
+      expect(itemB.therapist).toBe('Dawit Bekele');
+
+      expect(itemC).toBeDefined();
+      expect(itemC.status).toBe('Complete');
+      expect(itemC.abllsPct).toBe(100);
+      expect(itemC.dateCompleted).toBeTruthy();
+
+      expect(itemD).toBeDefined();
+      expect(itemD.status).toBe('Reviewed');
+      expect(itemD.reviewNotes).toBe('Approved for IUP');
+
+      // Test status query filtering
+      const { data: completeOnly } = await getAssessmentsForReview({ status: 'complete' });
+      expect(completeOnly.some((s: any) => s.studentId === studentComplete)).toBe(true);
+      expect(completeOnly.some((s: any) => s.studentId === studentNotStarted)).toBe(false);
+
+      const { data: inProgOnly } = await getAssessmentsForReview({ status: 'in_progress' });
+      expect(inProgOnly.some((s: any) => s.studentId === studentInProgress)).toBe(true);
+      expect(inProgOnly.some((s: any) => s.studentId === studentNotStarted)).toBe(false);
+
+      const { data: reviewedOnly } = await getAssessmentsForReview({ status: 'reviewed' });
+      expect(reviewedOnly.some((s: any) => s.studentId === studentReviewed)).toBe(true);
+      expect(reviewedOnly.some((s: any) => s.studentId === studentComplete)).toBe(false);
+    });
+
   });
 });

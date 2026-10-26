@@ -15,8 +15,12 @@ import {
   getStudentAssessmentSubmission,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
+  getStudentPreferenceProgress,
+  getStudentSensoryProgress,
+  checkStudentAllAssessmentsCompleted,
   isStudentAssessmentSubmitted,
   getStudentIdAliases,
+  normalizeStudentId,
 } from '../utils/studentLifecycleHelper';
 
 import {
@@ -814,6 +818,155 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
 // ============================================================================
 // SCR-PD-002: Assessment Review & Approval
 // ============================================================================
+function evaluateRealStudentAssessment(
+  studentId: string,
+  studentName?: string,
+  studentObj?: any,
+  rawRecord?: any,
+  reviewedMap: Record<string, { reviewed: boolean; notes?: string }> = {},
+) {
+  const sid = String(studentId || studentObj?.id || studentObj?.studentId || '').trim();
+  const sname = String(
+    studentName ||
+      studentObj?.fullName ||
+      studentObj?.name ||
+      rawRecord?.student_name ||
+      rawRecord?.studentName ||
+      '',
+  ).trim();
+  const aliases = sid ? getStudentIdAliases(sid) : [];
+
+  // 1. Reviewed check: has Program Director approved it?
+  const isRev = Boolean(
+    (sid && reviewedMap[sid]?.reviewed) ||
+      aliases.some((a) => reviewedMap[a]?.reviewed) ||
+      (studentObj && reviewedMap[String(studentObj.id)]?.reviewed) ||
+      String(rawRecord?.status || '').toLowerCase() === 'reviewed' ||
+      String(rawRecord?.status || '').toLowerCase() === 'approved',
+  );
+
+  // 2. Submission check: has the teacher submitted it on AssessmentDashboard?
+  const isSubmitted =
+    isStudentAssessmentSubmitted(sid) ||
+    aliases.some((a) => isStudentAssessmentSubmitted(a)) ||
+    (studentObj && isStudentAssessmentSubmitted(String(studentObj.id)));
+
+  // 3. Real progress from all 4 assessment types
+  const skillsData = getStudentSkillsProgress(
+    sid,
+    Number(rawRecord?.abllsPct ?? rawRecord?.completion_percentage ?? 0),
+  );
+  const behaviorData = getStudentBehaviorProgress(sid);
+  const prefData = getStudentPreferenceProgress(sid);
+  const sensoryData = getStudentSensoryProgress(sid);
+
+  const skillsProg = Math.min(
+    100,
+    Math.max(0, isNaN(Number(skillsData?.progress)) ? 0 : Math.round(Number(skillsData?.progress))),
+  );
+  const behaviorProg = Math.min(
+    100,
+    Math.max(
+      0,
+      isNaN(Number(behaviorData?.progress)) ? 0 : Math.round(Number(behaviorData?.progress)),
+    ),
+  );
+  const prefProg = Math.min(
+    100,
+    Math.max(0, isNaN(Number(prefData?.progress)) ? 0 : Math.round(Number(prefData?.progress))),
+  );
+  const sensoryProg = Math.min(
+    100,
+    Math.max(
+      0,
+      isNaN(Number(sensoryData?.progress)) ? 0 : Math.round(Number(sensoryData?.progress)),
+    ),
+  );
+
+  const isAllFour100 =
+    skillsProg >= 100 && behaviorProg >= 100 && prefProg >= 100 && sensoryProg >= 100;
+
+  const rawStatus = String(rawRecord?.status || '').toLowerCase().trim();
+  const isCycleComplete =
+    rawStatus === 'complete' || rawStatus === 'completed' || rawStatus === 'ready_for_iup';
+
+  const isAllCompleted =
+    isSubmitted ||
+    isCycleComplete ||
+    (isAllFour100 &&
+      checkStudentAllAssessmentsCompleted(
+        sid,
+        undefined,
+        undefined,
+        skillsData,
+        behaviorData,
+        prefData,
+        sensoryData,
+        { requireAllFour: true },
+      ));
+
+  const hasAnyProgress =
+    skillsProg > 0 ||
+    behaviorProg > 0 ||
+    prefProg > 0 ||
+    sensoryProg > 0 ||
+    Number(rawRecord?.assessment_progress ?? rawRecord?.abllsPct ?? 0) > 0 ||
+    rawStatus === 'in_progress' ||
+    rawStatus === 'in_assessment' ||
+    rawStatus === 'inprogress' ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(skillsData?.status || '').toLowerCase(),
+    ) ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(behaviorData?.status || '').toLowerCase(),
+    ) ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(prefData?.status || '').toLowerCase(),
+    ) ||
+    ['in_progress', 'draft', 'in progress', 'completed'].includes(
+      String(sensoryData?.status || '').toLowerCase(),
+    );
+
+  let status = 'Not Started';
+  if (isRev) {
+    status = 'Reviewed';
+  } else if (isAllCompleted) {
+    status = 'Complete';
+  } else if (hasAnyProgress) {
+    status = 'In Progress';
+  }
+
+  const abllsPct = isSubmitted
+    ? 100
+    : Math.min(
+        100,
+        Math.max(Number(rawRecord?.abllsPct ?? rawRecord?.completion_percentage ?? 0), skillsProg),
+      );
+
+  const submission =
+    getStudentAssessmentSubmission(sid) ||
+    (studentObj ? getStudentAssessmentSubmission(String(studentObj.id)) : null);
+  const dateCompleted =
+    status === 'Complete' || status === 'Reviewed'
+      ? submission?.submittedAt?.slice(0, 10) ||
+        rawRecord?.completed_at?.slice?.(0, 10) ||
+        rawRecord?.completed_on?.slice?.(0, 10) ||
+        rawRecord?.dateCompleted ||
+        (isSubmitted ? new Date().toISOString().slice(0, 10) : null)
+      : null;
+
+  return {
+    status,
+    abllsPct,
+    behaviorStatus:
+      behaviorData?.status ||
+      String(rawRecord?.behavior_assessment ?? rawRecord?.behaviorStatus ?? 'notStarted'),
+    dateCompleted,
+    isSubmitted,
+    isRev,
+  };
+}
+
 export const getAssessmentsForReview = async (
   params?: QueryParams,
 ): Promise<{ data: any; assessments?: any }> => {
@@ -896,74 +1049,114 @@ export const getAssessmentsForReview = async (
           : [];
   }
 
-  // Build lookup map for real students
+  // Build lookup map for real students and therapist mapping
   const studentMap = new Map<string, any>();
+  const studentTherapistMap = new Map<string, string>();
+
   for (const s of rawStudents) {
     const sId = String(s.id || s.studentId || s.student_id || '').trim();
     if (sId) studentMap.set(sId, s);
-    const sName = String(s.fullName || s.name || '')
-      .toLowerCase()
-      .trim();
+    const sName = String(s.fullName || s.name || '').toLowerCase().trim();
     if (sName) studentMap.set(sName, s);
+
+    const th = String(s.therapist || s.assignedTherapist || s.therapist_name || s.teacher || '').trim();
+    if (th && th !== 'Unassigned') {
+      if (sId) studentTherapistMap.set(sId.toLowerCase(), th);
+      if (sName) studentTherapistMap.set(sName, th);
+    }
+  }
+
+  for (const es of storedEnrolled) {
+    const th = String(es.therapist || es.assignedTherapist || es.teacher || '').trim();
+    if (th && th !== 'Unassigned') {
+      const sid = String(es.id || es.studentId || '').toLowerCase().trim();
+      const sname = String(es.fullName || es.name || '').toLowerCase().trim();
+      if (sid) studentTherapistMap.set(sid, th);
+      if (sname) studentTherapistMap.set(sname, th);
+    }
+  }
+
+  const therapistAssignmentsStore =
+    storage.getJSONSync<Record<string, string[]>>('melue_therapist_assigned_students_v1', {}) || {};
+  for (const [thName, studentList] of Object.entries(therapistAssignmentsStore)) {
+    if (Array.isArray(studentList)) {
+      studentList.forEach((stuIdent) => {
+        if (stuIdent) {
+          studentTherapistMap.set(String(stuIdent).toLowerCase().trim(), thName);
+        }
+      });
+    }
   }
 
   const reviewedMap = getStoredReviewedMap();
   const itemsByStudent = new Map<string, any>();
+
+  const addOrUpdateItem = (item: any) => {
+    const sid = item.studentId;
+    const sname = item.studentName.toLowerCase().trim();
+    const possibleKeys = [
+      sid,
+      normalizeStudentId(sid),
+      sname,
+      ...getStudentIdAliases(sid),
+    ].filter(Boolean);
+
+    const foundKey = possibleKeys.find((k) => itemsByStudent.has(k));
+    if (foundKey) {
+      const existing = itemsByStudent.get(foundKey);
+      const statusRank: Record<string, number> = {
+        Reviewed: 4,
+        Complete: 3,
+        'In Progress': 2,
+        'Not Started': 1,
+      };
+      const existingRank = statusRank[existing.status] || 0;
+      const newRank = statusRank[item.status] || 0;
+
+      const merged = {
+        ...existing,
+        ...item,
+        status: newRank >= existingRank ? item.status : existing.status,
+        abllsPct: Math.max(existing.abllsPct, item.abllsPct),
+        therapist: item.therapist !== 'Unassigned' ? item.therapist : existing.therapist,
+        dateCompleted: item.dateCompleted || existing.dateCompleted,
+        reviewNotes: item.reviewNotes || existing.reviewNotes,
+      };
+      possibleKeys.forEach((k) => itemsByStudent.set(k, merged));
+    } else {
+      possibleKeys.forEach((k) => itemsByStudent.set(k, item));
+    }
+  };
 
   // Process real assessment records
   for (const a of rawAssessments) {
     const sId = String(a.student_id || a.studentId || a.id || '').trim();
     const sName = String(a.student_name || a.studentName || a.name || '').trim();
     const student = studentMap.get(sId) || studentMap.get(sName.toLowerCase());
+    const realSid = String(student?.id || student?.studentId || a.student_id || a.studentId || sId).trim();
+    const finalName = sName || String(student?.fullName || student?.name || 'Unknown Student');
 
-    const isRev = Boolean(
-      (sId && reviewedMap[sId]?.reviewed) || (student && reviewedMap[String(student.id)]?.reviewed),
-    );
-    const realSkills = getStudentSkillsProgress(sId || (student ? String(student.id) : ''));
-    const isSubmitted = isStudentAssessmentSubmitted(sId || (student ? String(student.id) : ''));
-    const progress = Math.min(
-      100,
-      Math.max(
-        Number(a.assessment_progress ?? a.abllsPct ?? 0),
-        realSkills.progress,
-        isSubmitted ? 100 : 0,
-      ),
-    );
-    const rawStatus = String(a.status || '')
-      .toLowerCase()
-      .trim();
+    const evalRes = evaluateRealStudentAssessment(realSid, finalName, student, a, reviewedMap);
 
-    let status = 'Not Started';
-    if (isRev || rawStatus === 'reviewed' || rawStatus === 'approved') {
-      status = 'Reviewed';
-    } else if (
-      isSubmitted ||
-      rawStatus === 'complete' ||
-      rawStatus === 'completed' ||
-      rawStatus === 'ready_for_iup' ||
-      progress >= 100
-    ) {
-      status = 'Complete';
-    } else if (rawStatus === 'in_progress' || rawStatus === 'in_assessment' || progress > 0) {
-      status = 'In Progress';
-    }
+    const thFromMap =
+      (realSid ? studentTherapistMap.get(realSid.toLowerCase()) : null) ||
+      (finalName ? studentTherapistMap.get(finalName.toLowerCase()) : null);
 
     const assignedTherapistRaw = String(
-      student?.therapist ??
-        student?.therapist_name ??
-        a.therapist ??
-        a.therapist_name ??
+      thFromMap ||
+        student?.therapist ||
+        student?.assignedTherapist ||
+        student?.therapist_name ||
+        student?.teacher ||
+        a.therapist ||
+        a.therapist_name ||
         'Unassigned',
     );
     const therapist = isStaffDeleted(assignedTherapistRaw) ? 'Unassigned' : assignedTherapistRaw;
 
-    const submission = getStudentAssessmentSubmission(sId);
-    const dateCompleted = a.completed_at || a.completed_on || a.dateCompleted || (isSubmitted ? submission?.submittedAt?.slice(0, 10) : null) || null;
-
     const item = {
-      studentId: sId || (student ? String(student.id || student.studentId) : ''),
-      studentName:
-        sName || (student ? String(student.fullName || student.name) : 'Unknown Student'),
+      studentId: realSid,
+      studentName: finalName,
       age: Number(student?.age ?? a.age ?? 0),
       program: String(
         student?.programType ?? student?.program ?? a.program ?? a.program_type ?? 'Regular',
@@ -972,86 +1165,99 @@ export const getAssessmentsForReview = async (
         student?.therapyGroup ?? student?.therapy_group ?? a.therapyGroup ?? a.therapy_group ?? '',
       ),
       therapist,
-      status,
-      abllsPct: progress,
-      behaviorStatus: String(a.behavior_assessment ?? a.behaviorStatus ?? 'notStarted'),
+      status: evalRes.status,
+      abllsPct: evalRes.abllsPct,
+      behaviorStatus: evalRes.behaviorStatus,
       sessionStatus: String(a.sessionStatus ?? ''),
-      dateCompleted,
-      reviewNotes: reviewedMap[sId]?.notes || '',
+      dateCompleted: evalRes.dateCompleted,
+      reviewNotes: reviewedMap[realSid]?.notes || '',
       createdAt: a.created_at || null,
     };
 
-    const key = item.studentId || item.studentName.toLowerCase();
-    const existing = itemsByStudent.get(key);
-    if (
-      !existing ||
-      item.abllsPct > existing.abllsPct ||
-      (item.createdAt && item.createdAt > existing.createdAt)
-    ) {
-      itemsByStudent.set(key, item);
-    }
+    addOrUpdateItem(item);
   }
 
   // Include pipeline or real enrolled students who do not have an assessment record yet
   for (const s of rawStudents) {
     const sId = String(s.id || s.studentId || '').trim();
     const sName = String(s.fullName || s.name || '').trim();
-    const key = sId || sName.toLowerCase();
+    const pipe = rawPipeline.find(
+      (p) =>
+        String(p.student_id || p.studentId || '').trim() === sId ||
+        String(p.student_name || p.studentName || '')
+          .toLowerCase()
+          .trim() === sName.toLowerCase(),
+    );
 
-    if (!itemsByStudent.has(key)) {
-      const isRev = Boolean(reviewedMap[sId]?.reviewed);
-      const pipe = rawPipeline.find(
-        (p) =>
-          String(p.student_id || p.studentId || '').trim() === sId ||
-          String(p.student_name || p.studentName || '')
-            .toLowerCase()
-            .trim() === sName.toLowerCase(),
-      );
+    const evalRes = evaluateRealStudentAssessment(sId, sName, s, pipe, reviewedMap);
 
-      const realSkills = getStudentSkillsProgress(sId);
-      const isSubmitted = isStudentAssessmentSubmitted(sId);
-      const pipeProgress = Number(pipe?.assessment_progress ?? 0);
-      const progress = Math.min(
-        100,
-        Math.max(pipeProgress, realSkills.progress, isSubmitted ? 100 : 0),
-      );
-      let status = 'Not Started';
-      const pipeStatus = String(pipe?.status || '')
-        .toLowerCase()
-        .trim();
+    const thFromMap =
+      (sId ? studentTherapistMap.get(sId.toLowerCase()) : null) ||
+      (sName ? studentTherapistMap.get(sName.toLowerCase()) : null);
 
-      if (isRev) {
-        status = 'Reviewed';
-      } else if (isSubmitted || pipeStatus === 'ready_for_iup' || pipeStatus === 'complete' || progress >= 100) {
-        status = 'Complete';
-      } else if (pipeStatus === 'in_assessment' || pipeStatus === 'in_progress' || progress > 0) {
-        status = 'In Progress';
-      }
+    const assignedTherapistRaw = String(
+      thFromMap ||
+        s.therapist ||
+        s.assignedTherapist ||
+        s.therapist_name ||
+        s.teacher ||
+        'Unassigned',
+    );
+    const therapist = isStaffDeleted(assignedTherapistRaw) ? 'Unassigned' : assignedTherapistRaw;
 
-      const assignedTherapistRaw = String(s.therapist ?? s.therapist_name ?? 'Unassigned');
-      const therapist = isStaffDeleted(assignedTherapistRaw) ? 'Unassigned' : assignedTherapistRaw;
+    const item = {
+      studentId: sId,
+      studentName: sName,
+      age: Number(s.age ?? 0),
+      program: String(s.programType ?? s.program ?? 'Regular'),
+      therapyGroup: String(s.therapyGroup ?? s.therapy_group ?? ''),
+      therapist,
+      status: evalRes.status,
+      abllsPct: evalRes.abllsPct,
+      behaviorStatus: evalRes.behaviorStatus,
+      sessionStatus: '',
+      dateCompleted: evalRes.dateCompleted,
+      reviewNotes: reviewedMap[sId]?.notes || '',
+    };
 
-      const submission = getStudentAssessmentSubmission(sId);
-      const dateCompleted = isSubmitted ? submission?.submittedAt?.slice(0, 10) || null : null;
+    addOrUpdateItem(item);
+  }
 
-      itemsByStudent.set(key, {
-        studentId: sId,
-        studentName: sName,
-        age: Number(s.age ?? 0),
-        program: String(s.programType ?? s.program ?? 'Regular'),
-        therapyGroup: String(s.therapyGroup ?? s.therapy_group ?? ''),
-        therapist,
-        status,
-        abllsPct: progress,
-        behaviorStatus: String(pipe?.behavior_assessment ?? 'notStarted'),
-        sessionStatus: '',
-        dateCompleted,
-        reviewNotes: reviewedMap[sId]?.notes || '',
-      });
+  // Deduplicate unique items by studentId
+  const uniqueItemsMap = new Map<string, any>();
+  for (const item of itemsByStudent.values()) {
+    const primaryId = item.studentId || item.studentName.toLowerCase();
+    if (!uniqueItemsMap.has(primaryId)) {
+      uniqueItemsMap.set(primaryId, item);
     }
   }
 
-  const finalItems = filterOutDeletedStudents(Array.from(itemsByStudent.values()));
+  let finalItems = filterOutDeletedStudents(Array.from(uniqueItemsMap.values()));
+
+  if (params?.status) {
+    const targetStatus = String(params.status).toLowerCase().replace(/[_s-]+/g, ' ').trim();
+    finalItems = finalItems.filter((item) => {
+      const itemStatus = String(item.status).toLowerCase().replace(/[_s-]+/g, ' ').trim();
+      if (targetStatus === 'complete' || targetStatus === 'completed') {
+        return itemStatus === 'complete' || itemStatus === 'completed';
+      }
+      if (
+        targetStatus === 'in progress' ||
+        targetStatus === 'inprogress' ||
+        targetStatus === 'in assessment'
+      ) {
+        return itemStatus === 'in progress' || itemStatus === 'inprogress';
+      }
+      if (targetStatus === 'reviewed' || targetStatus === 'approved') {
+        return itemStatus === 'reviewed' || itemStatus === 'approved';
+      }
+      if (targetStatus === 'not started' || targetStatus === 'notstarted') {
+        return itemStatus === 'not started' || itemStatus === 'notstarted';
+      }
+      return itemStatus === targetStatus;
+    });
+  }
+
   return { data: finalItems, assessments: finalItems };
 };
 
