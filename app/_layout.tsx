@@ -15,14 +15,14 @@ export default function RootLayout() {
 
     // Prevent pages from entering Back-Forward Cache (bfcache), which breaks
     // Metro HMR / Fast Refresh WebSockets when navigating away.
-    const noopUnload = () => {};
+    const handlePageHide = () => {};
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
         window.location.reload();
       }
     };
     if (typeof window.addEventListener === 'function') {
-      window.addEventListener('unload', noopUnload);
+      window.addEventListener('pagehide', handlePageHide);
       window.addEventListener('pageshow', handlePageShow);
     }
 
@@ -54,7 +54,7 @@ export default function RootLayout() {
 
     return () => {
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
-        window.removeEventListener('unload', noopUnload);
+        window.removeEventListener('pagehide', handlePageHide);
         window.removeEventListener('pageshow', handlePageShow);
       }
       console.warn = originalWarn;

@@ -1119,8 +1119,8 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
       transportation,
       transportation_required: transportation,
       assignedTherapist,
-      status: 'active',
-      enrollment_status: 'active',
+      status: 'in_assessment',
+      enrollment_status: 'in_assessment',
       is_active: true,
       active: true,
       photo: studentPhoto || formValues.headshot || formValues.enr_headshot,
@@ -1163,16 +1163,16 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
           id: createdId,
           name: studentName.trim(),
           fullName: studentName.trim(),
-          status: 'active',
-          rawStatus: 'active',
+          status: 'in_assessment',
+          rawStatus: 'in_assessment',
         },
       ]);
 
       if (createdId) {
         try {
           await updateStudentProfile(createdId, {
-            status: 'active',
-            enrollment_status: 'active',
+            status: 'in_assessment',
+            enrollment_status: 'in_assessment',
             is_active: true,
             active: true,
           });

@@ -382,6 +382,78 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
       if (lower.includes('therapist')) {
         next.therapist = value;
         next.f_therapist = value;
+        next.assignedTherapist = value;
+      }
+
+      // Keep program in sync
+      if (lower.includes('program')) {
+        next.program = value;
+        next.programType = value;
+        next.f_program = value;
+        next.enr_program_type = value;
+      }
+
+      // Keep therapy group in sync
+      if (lower.includes('therapy')) {
+        next.therapyGroup = value;
+        next.f_therapy = value;
+        next.enr_therapy_group = value;
+      }
+
+      // Keep status in sync
+      if (lower.includes('status')) {
+        next.status = value;
+        next.enrollment_status = value;
+      }
+
+      // Keep date of birth in sync
+      if (lower.includes('dob') || lower.includes('birth') || lower === 'f2') {
+        next.dob = value;
+        next.dateOfBirth = value;
+        next.date_of_birth = value;
+        next.enr_dob = value;
+        next.f2 = value;
+      }
+
+      // Keep diagnosis in sync
+      if (lower.includes('diagnosis')) {
+        next.diagnosis = value;
+        next.f_diagnosis = value;
+        next.enr_diagnosis = value;
+      }
+
+      // Keep guardian info in sync
+      if (lower.includes('guardian_name') || lower.includes('parent_name') || lower === 'f4') {
+        next.guardianName = value;
+        next.parentName = value;
+        next.enr_guardian_name = value;
+        next.f4 = value;
+      }
+      if (lower.includes('phone') || lower === 'f5') {
+        next.guardianPhone = value;
+        next.parentPhone = value;
+        next.enr_guardian_phone = value;
+        next.f5 = value;
+      }
+      if (lower.includes('email') || lower === 'f6') {
+        next.guardianEmail = value;
+        next.parentEmail = value;
+        next.enr_guardian_email = value;
+        next.f6 = value;
+      }
+      if (lower.includes('medical') || lower === 'f7') {
+        next.medicalNotes = value;
+        next.enr_medical_restrictions = value;
+        next.f7 = value;
+      }
+      if (lower.includes('transportation') || lower === 'f8') {
+        next.transportation = value;
+        next.f8 = value;
+      }
+      if (lower.includes('emergency') || lower === 'f9') {
+        next.emergencyContact = value;
+        next.enr_emergency_contact = value;
+        next.f9 = value;
       }
 
       return next;
@@ -621,20 +693,56 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
       enr_dob: dobVal,
       age: computedAge,
       [DEMOGRAPHIC_KEY]: getStudentDemographic(formValues, 'Male'),
-      programType: formValues.programType || formValues.enr_program_type || 'Regular Morning',
-      therapyGroup: formValues.therapyGroup || formValues.enr_therapy_group || 'Basic',
-      status: formValues.status || 'Active',
-      therapist: formValues.therapist || formValues.f_therapist || '',
-      guardianName: formValues.guardianName || formValues.enr_guardian_name || '',
+      programType:
+        formValues.programType ||
+        formValues.enr_program_type ||
+        formValues.f_program ||
+        formValues.program ||
+        'Regular Morning',
+      program:
+        formValues.program ||
+        formValues.programType ||
+        formValues.enr_program_type ||
+        formValues.f_program ||
+        'Regular Morning',
+      therapyGroup:
+        formValues.therapyGroup || formValues.enr_therapy_group || formValues.f_therapy || 'Basic',
+      status: formValues.status || formValues.enrollment_status || 'Active',
+      therapist:
+        formValues.therapist || formValues.f_therapist || formValues.assignedTherapist || '',
+      assignedTherapist:
+        formValues.assignedTherapist || formValues.therapist || formValues.f_therapist || '',
+      guardianName:
+        formValues.guardianName ||
+        formValues.enr_guardian_name ||
+        formValues.f4 ||
+        formValues.parentName ||
+        '',
       guardianRelationship:
         formValues.guardianRelationship || formValues.enr_guardian_relationship || 'Mother',
-      guardianPhone: formValues.guardianPhone || formValues.enr_guardian_phone || '',
-      guardianEmail: formValues.guardianEmail || formValues.enr_guardian_email || '',
-      emergencyContact: formValues.emergencyContact || formValues.enr_emergency_contact || '',
+      guardianPhone:
+        formValues.guardianPhone ||
+        formValues.enr_guardian_phone ||
+        formValues.f5 ||
+        formValues.parentPhone ||
+        '',
+      guardianEmail:
+        formValues.guardianEmail ||
+        formValues.enr_guardian_email ||
+        formValues.f6 ||
+        formValues.parentEmail ||
+        '',
+      emergencyContact:
+        formValues.emergencyContact || formValues.enr_emergency_contact || formValues.f9 || '',
       householdStructure: formValues.householdStructure || formValues.enr_household || '',
-      diagnosis: formValues.diagnosis || formValues.enr_diagnosis || 'Autism Spectrum Disorder',
+      diagnosis:
+        formValues.diagnosis ||
+        formValues.enr_diagnosis ||
+        formValues.f_diagnosis ||
+        'Autism Spectrum Disorder',
       diagnosisDate: formValues.diagnosisDate || formValues.enr_diagnosis_date || '',
-      medicalNotes: formValues.medicalNotes || formValues.enr_medical_restrictions || '',
+      medicalNotes:
+        formValues.medicalNotes || formValues.enr_medical_restrictions || formValues.f7 || '',
       developmentalHistory: formValues.developmentalHistory || formValues.enr_dev_history || '',
       transportation: formValues.transportation || formValues.f8 || 'No',
       reinforcerVisual: formValues.reinforcerVisual || formValues.enr_reinforcer_visual || '',
@@ -672,7 +780,7 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
         const draft = getEnrollmentDraft(studentId);
         if (draft) {
           saveEnrollmentDraft(
-            payload,
+            { ...(draft.formValues || {}), ...formValues, ...payload },
             draft.step || 0,
             studentId,
             draft.currentStep || (draft as any).stepName,
@@ -688,6 +796,14 @@ export default function StudentEditProfileScreen({ navigation, route }: Props) {
           fullName,
           photo: formValues.headshot,
         });
+      }
+
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(
+          new CustomEvent('melue_student_profile_updated', {
+            detail: { studentId, ...payload },
+          }),
+        );
       }
 
       showToast('Student profile successfully updated', 'success');
