@@ -8,13 +8,8 @@ import { getDirectorStudentProgress } from '../../api/directorApi';
 import { getStudentProgressOverview } from '../../api/coordinatorApi';
 import { getStudentOptions } from '../../api/optionsApi';
 import client from '../../api/sessionApi';
-import {
-  saveStorageAssessment,
-} from '../assessments/abllsConfigHelper';
-import {
-  saveBehaviorAssessment,
-  savePreferenceAssessment,
-} from '../../api/teacherExtrasApi';
+import { saveStorageAssessment } from '../assessments/abllsConfigHelper';
+import { saveBehaviorAssessment, savePreferenceAssessment } from '../../api/teacherExtrasApi';
 import {
   saveStudentAssessmentSubmission,
   markStudentAssessmentCompleted,
@@ -51,7 +46,13 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
       if (url.includes('/options/students')) {
         return {
           data: [
-            { id: studentId, name: 'Blen Hailu', age: 7, program: 'Comprehensive ABA', status: 'Active' },
+            {
+              id: studentId,
+              name: 'Blen Hailu',
+              age: 7,
+              program: 'Comprehensive ABA',
+              status: 'Active',
+            },
           ],
         } as any;
       }
@@ -101,14 +102,25 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
       if (url.includes('/options/students')) {
         return {
           data: [
-            { id: studentId, name: 'Yonas Tadesse', age: 8, program: 'Comprehensive ABA', status: 'Active' },
+            {
+              id: studentId,
+              name: 'Yonas Tadesse',
+              age: 8,
+              program: 'Comprehensive ABA',
+              status: 'Active',
+            },
           ],
         } as any;
       }
       if (url.includes('/progress_monitoring')) {
         return {
           data: {
-            student: { id: studentId, full_name: 'Yonas Tadesse', age: 8, program_type: 'Comprehensive ABA' },
+            student: {
+              id: studentId,
+              full_name: 'Yonas Tadesse',
+              age: 8,
+              program_type: 'Comprehensive ABA',
+            },
             current_goals: [],
             session_history: { recent_sessions: [] },
             behavior_incident_trends: { total_incidents: 0 },
@@ -136,9 +148,10 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
 
     // 3. Coordinator Student Progress reflects Completed
     const coordProgress = await getStudentProgressOverview(studentId);
-    expect(coordProgress.data.assessmentSummary.skills).toBe('Completed');
-    expect(coordProgress.data.assessmentSummary.behavior).toBe('Completed');
-    expect(coordProgress.data.assessmentSummary.preferences).toBe('Completed');
+    const coordSummary = (coordProgress.data as any)?.assessmentSummary || {};
+    expect(coordSummary.skills).toBe('Completed');
+    expect(coordSummary.behavior).toBe('Completed');
+    expect(coordSummary.preferences).toBe('Completed');
 
     // 4. Assessment Summary Report reflects Completed
     const reportData = await getAssessmentSummaryDashboard(studentId);
@@ -154,14 +167,25 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
       if (url.includes('/options/students')) {
         return {
           data: [
-            { id: studentId, name: 'Abebe Bikila', age: 9, program: 'Comprehensive ABA', status: 'Active' },
+            {
+              id: studentId,
+              name: 'Abebe Bikila',
+              age: 9,
+              program: 'Comprehensive ABA',
+              status: 'Active',
+            },
           ],
         } as any;
       }
       if (url.includes('/progress_monitoring')) {
         return {
           data: {
-            student: { id: studentId, full_name: 'Abebe Bikila', age: 9, program_type: 'Comprehensive ABA' },
+            student: {
+              id: studentId,
+              full_name: 'Abebe Bikila',
+              age: 9,
+              program_type: 'Comprehensive ABA',
+            },
             assessment_summary: {
               ablls: { status: 'completed', progress_percentage: 100 },
             },
@@ -185,14 +209,26 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
       if (url.includes('/options/students')) {
         return {
           data: [
-            { id: studentId, name: studentName, age: 7, program: 'Comprehensive ABA', status: 'Active' },
+            {
+              id: studentId,
+              name: studentName,
+              age: 7,
+              program: 'Comprehensive ABA',
+              status: 'Active',
+            },
           ],
         } as any;
       }
       if (url.includes('/coordinator/students')) {
         return {
           data: [
-            { id: studentId, fullName: studentName, age: 7, programType: 'Comprehensive ABA', status: 'Active' },
+            {
+              id: studentId,
+              fullName: studentName,
+              age: 7,
+              programType: 'Comprehensive ABA',
+              status: 'Active',
+            },
           ],
         } as any;
       }
@@ -212,7 +248,12 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
       if (url.includes('/progress_monitoring')) {
         return {
           data: {
-            student: { id: studentId, full_name: studentName, age: 7, program_type: 'Comprehensive ABA' },
+            student: {
+              id: studentId,
+              full_name: studentName,
+              age: 7,
+              program_type: 'Comprehensive ABA',
+            },
             assessment_summary: {
               ablls: { status: 'completed', progress_percentage: 100 },
             },
@@ -251,6 +292,6 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
 
     // 6. Coordinator Student Progress check
     const coordProgress = await getStudentProgressOverview(studentId);
-    expect(coordProgress.data.assessmentSummary.skills).toBe('Completed');
+    expect((coordProgress.data as any)?.assessmentSummary?.skills).toBe('Completed');
   });
 });

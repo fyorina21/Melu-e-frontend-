@@ -31,8 +31,6 @@ import {
   loadStorageAssessment,
 } from '../screens/assessments/abllsConfigHelper';
 
-
-
 // ============================================================================
 
 // ============================================================================
@@ -589,8 +587,12 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   for (const es of storedEnrolled) {
     const th = String(es.therapist || es.assignedTherapist || es.teacher || '').trim();
     if (th && th !== 'Unassigned') {
-      const sid = String(es.id || es.studentId || '').toLowerCase().trim();
-      const sname = String(es.fullName || es.name || '').toLowerCase().trim();
+      const sid = String(es.id || es.studentId || '')
+        .toLowerCase()
+        .trim();
+      const sname = String(es.fullName || es.name || '')
+        .toLowerCase()
+        .trim();
       if (sid) studentTherapistMap.set(sid, th);
       if (sname) studentTherapistMap.set(sname, th);
     }
@@ -612,8 +614,12 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   for (const sub of submittedList) {
     const th = String(sub.therapist || '').trim();
     if (th && th !== 'Unassigned') {
-      const sid = String(sub.id || sub.studentId || '').toLowerCase().trim();
-      const sname = String(sub.fullName || sub.name || '').toLowerCase().trim();
+      const sid = String(sub.id || sub.studentId || '')
+        .toLowerCase()
+        .trim();
+      const sname = String(sub.fullName || sub.name || '')
+        .toLowerCase()
+        .trim();
       if (sid) studentTherapistMap.set(sid, th);
       if (sname) studentTherapistMap.set(sname, th);
     }
@@ -622,11 +628,16 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   // Merge enrolled students from storage cache into rawStudents
   for (const es of storedEnrolled) {
     const esId = String(es.id || es.studentId || '').trim();
-    const esName = String(es.fullName || es.name || '').toLowerCase().trim();
+    const esName = String(es.fullName || es.name || '')
+      .toLowerCase()
+      .trim();
     const existingIndex = rawStudents.findIndex(
       (s) =>
         (esId && String(s.id || s.studentId || '').trim() === esId) ||
-        (esName && String(s.full_name || s.fullName || s.name || '').toLowerCase().trim() === esName),
+        (esName &&
+          String(s.full_name || s.fullName || s.name || '')
+            .toLowerCase()
+            .trim() === esName),
     );
     if (existingIndex >= 0) {
       rawStudents[existingIndex] = {
@@ -645,8 +656,8 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         program: es.programType || es.program || 'Regular',
         therapyGroup: es.therapyGroup || es.therapy_group || es.station || 'Station 1',
         age: Number(es.age) || 6,
-        status: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
-        rawStatus: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
+        status: es.status === 'active' ? 'enrolled' : es.status || 'enrolled',
+        rawStatus: es.status === 'active' ? 'enrolled' : es.status || 'enrolled',
         currentStage: es.currentStage || 'enrolled',
       });
     }
@@ -655,11 +666,16 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
   // Merge submitted students into rawStudents
   for (const sub of submittedList) {
     const subId = String(sub.id || sub.studentId || '').trim();
-    const subName = String(sub.fullName || sub.name || '').toLowerCase().trim();
+    const subName = String(sub.fullName || sub.name || '')
+      .toLowerCase()
+      .trim();
     const existingIndex = rawStudents.findIndex(
       (s) =>
         (subId && String(s.id || s.studentId || '').trim() === subId) ||
-        (subName && String(s.full_name || s.fullName || s.name || '').toLowerCase().trim() === subName),
+        (subName &&
+          String(s.full_name || s.fullName || s.name || '')
+            .toLowerCase()
+            .trim() === subName),
     );
     if (existingIndex >= 0) {
       rawStudents[existingIndex] = {
@@ -828,19 +844,18 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         studentTherapistMap.get(id.toLowerCase()) ||
         studentTherapistMap.get(fullName.toLowerCase());
       const rawTherapist = String(
-        thFromMap ||
-          s.therapist ||
-          s.assignedTherapist ||
-          s.therapist_name ||
-          s.teacher ||
-          '',
+        thFromMap || s.therapist || s.assignedTherapist || s.therapist_name || s.teacher || '',
       ).trim();
       const therapist =
         rawTherapist && !isStaffDeleted(rawTherapist) && rawTherapist !== 'Unassigned'
           ? rawTherapist
-          : (therapistPool.length > 0 ? therapistPool[idx % therapistPool.length] : fallbackTherapist);
+          : therapistPool.length > 0
+            ? therapistPool[idx % therapistPool.length]
+            : fallbackTherapist;
 
-      const pipeMatch = pipelineStudents.find((p) => String(p.student_id || p.studentId || '') === id);
+      const pipeMatch = pipelineStudents.find(
+        (p) => String(p.student_id || p.studentId || '') === id,
+      );
 
       const reviewedMap = getStoredReviewedMap();
       const evalRes = evaluateRealStudentAssessment(id, fullName, s, pipeMatch, reviewedMap);
@@ -881,7 +896,11 @@ export const getProgramDirectorDashboard = async (): Promise<{ data: any }> => {
         rawStatusKey === 'assessment_completed'
       ) {
         stageInfo = STATUS_MAP.assessment_complete;
-      } else if (hasAssessmentProgress || rawStatusKey === 'in_assessment' || rawStatusKey === 'in_progress') {
+      } else if (
+        hasAssessmentProgress ||
+        rawStatusKey === 'in_assessment' ||
+        rawStatusKey === 'in_progress'
+      ) {
         stageInfo = STATUS_MAP.in_assessment;
       } else if (!stageInfo) {
         stageInfo = STATUS_MAP.enrolled;
@@ -1031,8 +1050,8 @@ function evaluateRealStudentAssessment(
   // 1. Reviewed check: has Program Director approved it?
   const isRev = Boolean(
     aliases.some((a) => reviewedMap[a]?.reviewed) ||
-      String(rawRecord?.status || '').toLowerCase() === 'reviewed' ||
-      String(rawRecord?.status || '').toLowerCase() === 'approved',
+    String(rawRecord?.status || '').toLowerCase() === 'reviewed' ||
+    String(rawRecord?.status || '').toLowerCase() === 'approved',
   );
 
   // 2. Submission & completion check:
@@ -1044,10 +1063,7 @@ function evaluateRealStudentAssessment(
   );
 
   const rawAbllsPct = Number(
-    rawRecord?.abllsPct ??
-      rawRecord?.completion_percentage ??
-      rawRecord?.assessment_progress ??
-      0,
+    rawRecord?.abllsPct ?? rawRecord?.completion_percentage ?? rawRecord?.assessment_progress ?? 0,
   );
 
   // 3. Real progress from all 4 assessment types
@@ -1082,14 +1098,18 @@ function evaluateRealStudentAssessment(
   const isAllFour100 =
     skillsProg >= 100 && behaviorProg >= 100 && prefProg >= 100 && sensoryProg >= 100;
 
-  const rawStatus = String(rawRecord?.status || rawRecord?.stage || '').toLowerCase().trim();
+  const rawStatus = String(rawRecord?.status || rawRecord?.stage || '')
+    .toLowerCase()
+    .trim();
   const studentObjStatus = String(
     studentObj?.assessmentStatus ||
-    studentObj?.status ||
-    studentObj?.rawStatus ||
-    studentObj?.stage ||
-    '',
-  ).toLowerCase().trim();
+      studentObj?.status ||
+      studentObj?.rawStatus ||
+      studentObj?.stage ||
+      '',
+  )
+    .toLowerCase()
+    .trim();
 
   const isCycleComplete =
     rawStatus === 'complete' ||
@@ -1237,11 +1257,7 @@ export const getAssessmentsForReview = async (
   ) {
     rawStudents = optionsStudentsRes.value.data;
   }
-  if (
-    rawStudents.length === 0 &&
-    studentsRes.status === 'fulfilled' &&
-    studentsRes.value?.data
-  ) {
+  if (rawStudents.length === 0 && studentsRes.status === 'fulfilled' && studentsRes.value?.data) {
     const data = studentsRes.value.data;
     const list = Array.isArray(data)
       ? data
@@ -1262,18 +1278,23 @@ export const getAssessmentsForReview = async (
     storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
   for (const es of storedEnrolled) {
     const esId = String(es.id || es.studentId || '').trim();
-    const esName = String(es.fullName || es.name || '').toLowerCase().trim();
+    const esName = String(es.fullName || es.name || '')
+      .toLowerCase()
+      .trim();
     if (
       !rawStudents.some(
         (s) =>
           (esId && String(s.id || s.studentId || '') === esId) ||
-          (esName && String(s.fullName || s.name || '').toLowerCase().trim() === esName),
+          (esName &&
+            String(s.fullName || s.name || '')
+              .toLowerCase()
+              .trim() === esName),
       )
     ) {
       rawStudents.push({
         ...es,
-        status: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
-        rawStatus: es.status === 'active' ? 'enrolled' : (es.status || 'enrolled'),
+        status: es.status === 'active' ? 'enrolled' : es.status || 'enrolled',
+        rawStatus: es.status === 'active' ? 'enrolled' : es.status || 'enrolled',
         currentStage: es.currentStage || 'enrolled',
       });
     }
@@ -1283,12 +1304,17 @@ export const getAssessmentsForReview = async (
   const submittedList = getSubmittedStudents();
   for (const sub of submittedList) {
     const subId = String(sub.id || sub.studentId || '').trim();
-    const subName = String(sub.fullName || sub.name || '').toLowerCase().trim();
+    const subName = String(sub.fullName || sub.name || '')
+      .toLowerCase()
+      .trim();
     if (
       !rawStudents.some(
         (s) =>
           (subId && String(s.id || s.studentId || '') === subId) ||
-          (subName && String(s.fullName || s.name || '').toLowerCase().trim() === subName),
+          (subName &&
+            String(s.fullName || s.name || '')
+              .toLowerCase()
+              .trim() === subName),
       )
     ) {
       rawStudents.push(sub);
@@ -1314,10 +1340,14 @@ export const getAssessmentsForReview = async (
   for (const s of rawStudents) {
     const sId = String(s.id || s.studentId || s.student_id || '').trim();
     if (sId) studentMap.set(sId, s);
-    const sName = String(s.fullName || s.name || '').toLowerCase().trim();
+    const sName = String(s.fullName || s.name || '')
+      .toLowerCase()
+      .trim();
     if (sName) studentMap.set(sName, s);
 
-    const th = String(s.therapist || s.assignedTherapist || s.therapist_name || s.teacher || '').trim();
+    const th = String(
+      s.therapist || s.assignedTherapist || s.therapist_name || s.teacher || '',
+    ).trim();
     if (th && th !== 'Unassigned') {
       if (sId) studentTherapistMap.set(sId.toLowerCase(), th);
       if (sName) studentTherapistMap.set(sName, th);
@@ -1327,8 +1357,12 @@ export const getAssessmentsForReview = async (
   for (const es of storedEnrolled) {
     const th = String(es.therapist || es.assignedTherapist || es.teacher || '').trim();
     if (th && th !== 'Unassigned') {
-      const sid = String(es.id || es.studentId || '').toLowerCase().trim();
-      const sname = String(es.fullName || es.name || '').toLowerCase().trim();
+      const sid = String(es.id || es.studentId || '')
+        .toLowerCase()
+        .trim();
+      const sname = String(es.fullName || es.name || '')
+        .toLowerCase()
+        .trim();
       if (sid) studentTherapistMap.set(sid, th);
       if (sname) studentTherapistMap.set(sname, th);
     }
@@ -1337,8 +1371,12 @@ export const getAssessmentsForReview = async (
   for (const sub of submittedList) {
     const th = String(sub.therapist || '').trim();
     if (th && th !== 'Unassigned') {
-      const sid = String(sub.id || sub.studentId || '').toLowerCase().trim();
-      const sname = String(sub.fullName || sub.name || '').toLowerCase().trim();
+      const sid = String(sub.id || sub.studentId || '')
+        .toLowerCase()
+        .trim();
+      const sname = String(sub.fullName || sub.name || '')
+        .toLowerCase()
+        .trim();
       if (sid) studentTherapistMap.set(sid, th);
       if (sname) studentTherapistMap.set(sname, th);
     }
@@ -1362,12 +1400,9 @@ export const getAssessmentsForReview = async (
   const addOrUpdateItem = (item: any) => {
     const sid = item.studentId;
     const sname = item.studentName.toLowerCase().trim();
-    const possibleKeys = [
-      sid,
-      normalizeStudentId(sid),
-      sname,
-      ...getStudentIdAliases(sid),
-    ].filter(Boolean);
+    const possibleKeys = [sid, normalizeStudentId(sid), sname, ...getStudentIdAliases(sid)].filter(
+      Boolean,
+    );
 
     const foundKey = possibleKeys.find((k) => itemsByStudent.has(k));
     if (foundKey) {
@@ -1403,7 +1438,9 @@ export const getAssessmentsForReview = async (
     const sId = String(a.student_id || a.studentId || a.id || '').trim();
     const sName = String(a.student_name || a.studentName || a.name || '').trim();
     const student = studentMap.get(sId) || studentMap.get(sName.toLowerCase());
-    const realSid = String(student?.id || student?.studentId || a.student_id || a.studentId || sId).trim();
+    const realSid = String(
+      student?.id || student?.studentId || a.student_id || a.studentId || sId,
+    ).trim();
     const finalName = sName || String(student?.fullName || student?.name || 'Unknown Student');
 
     const evalRes = evaluateRealStudentAssessment(realSid, finalName, student, a, reviewedMap);
@@ -1505,7 +1542,11 @@ export const getAssessmentsForReview = async (
   let finalItems = filterOutDeletedStudents(Array.from(uniqueItemsMap.values())).map((item) => {
     const sname = String(item.studentName || '').toLowerCase();
     const sid = String(item.studentId || '').toLowerCase();
-    if (sname.includes('jjjj') || sid.includes('jjjj') || isStoredAssessmentCompleted(item.studentId)) {
+    if (
+      sname.includes('jjjj') ||
+      sid.includes('jjjj') ||
+      isStoredAssessmentCompleted(item.studentId)
+    ) {
       return {
         ...item,
         status: item.status === 'Reviewed' ? 'Reviewed' : 'Complete',
@@ -1518,9 +1559,15 @@ export const getAssessmentsForReview = async (
   });
 
   if (params?.status) {
-    const targetStatus = String(params.status).toLowerCase().replace(/[_s-]+/g, ' ').trim();
+    const targetStatus = String(params.status)
+      .toLowerCase()
+      .replace(/[_s-]+/g, ' ')
+      .trim();
     finalItems = finalItems.filter((item) => {
-      const itemStatus = String(item.status).toLowerCase().replace(/[_s-]+/g, ' ').trim();
+      const itemStatus = String(item.status)
+        .toLowerCase()
+        .replace(/[_s-]+/g, ' ')
+        .trim();
       if (targetStatus === 'complete' || targetStatus === 'completed') {
         return itemStatus === 'complete' || itemStatus === 'completed';
       }
@@ -1573,8 +1620,7 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
     const { data: students } = await client.get<any[]>('/options/students');
     const match = Array.isArray(students)
       ? students.find(
-          (s) =>
-            String(s.id) === String(studentId) || String(s.studentId) === String(studentId),
+          (s) => String(s.id) === String(studentId) || String(s.studentId) === String(studentId),
         )
       : null;
     if (match) {
@@ -1642,11 +1688,7 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
 
   const activeDomainsCount = domainScores.filter((d) => d.scoredCount > 0).length;
   const skillsStatus =
-    totalScoredItems >= 55
-      ? 'completed'
-      : totalScoredItems > 0
-        ? 'in_progress'
-        : 'not_started';
+    totalScoredItems >= 55 ? 'completed' : totalScoredItems > 0 ? 'in_progress' : 'not_started';
   const skillsSummary =
     totalScoredItems > 0
       ? `${totalScoredItems} ABLLS-R milestone skills assessed across ${activeDomainsCount} domain(s).`
@@ -1689,7 +1731,11 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
         : null);
     if (prefData) {
       const rawPrefs =
-        prefData.top_items || prefData.selectedItems || prefData.preferences || prefData.items || [];
+        prefData.top_items ||
+        prefData.selectedItems ||
+        prefData.preferences ||
+        prefData.items ||
+        [];
       if (Array.isArray(rawPrefs) && rawPrefs.length > 0) {
         realPreferences = rawPrefs
           .map((p: any) => (typeof p === 'string' ? p : p.name || p.item_name || ''))
@@ -1724,7 +1770,12 @@ export const getAssessmentReport = async (studentId: string): Promise<{ data: an
     checkStudentAllAssessmentsCompleted(studentId) ||
     studentName.toLowerCase().includes('jjjj') ||
     studentId.toLowerCase().includes('jjjj') ||
-    aliases.some((a) => isStudentAssessmentSubmitted(a) || isStoredAssessmentCompleted(a) || checkStudentAllAssessmentsCompleted(a)) ||
+    aliases.some(
+      (a) =>
+        isStudentAssessmentSubmitted(a) ||
+        isStoredAssessmentCompleted(a) ||
+        checkStudentAllAssessmentsCompleted(a),
+    ) ||
     studentProgram === 'completed' ||
     submissionData?.status === 'submitted' ||
     submissionData?.status === 'completed';
@@ -3104,9 +3155,11 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     } else {
       if (es.photoUrl && !existing.photoUrl) existing.photoUrl = String(es.photoUrl);
       if (es.age && !existing.age) existing.age = Number(es.age);
-      if (es.therapyGroup && !existing.therapyGroup) existing.therapyGroup = String(es.therapyGroup);
+      if (es.therapyGroup && !existing.therapyGroup)
+        existing.therapyGroup = String(es.therapyGroup);
       if (es.dateOfBirth && !existing.dateOfBirth) existing.dateOfBirth = String(es.dateOfBirth);
-      if (es.parentGuardian && !existing.parentGuardian) existing.parentGuardian = String(es.parentGuardian);
+      if (es.parentGuardian && !existing.parentGuardian)
+        existing.parentGuardian = String(es.parentGuardian);
     }
   }
 
@@ -3116,7 +3169,8 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
     const subId = String(sub.id || sub.studentId || '').trim();
     const subName = String(sub.fullName || sub.name || '').trim();
     const existing = studentsList.find(
-      (s) => (subId && s.id === subId) || (subName && s.name.toLowerCase() === subName.toLowerCase()),
+      (s) =>
+        (subId && s.id === subId) || (subName && s.name.toLowerCase() === subName.toLowerCase()),
     );
     if (!existing) {
       studentsList.push({
@@ -3134,9 +3188,11 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
       if (sub.photoUrl && !existing.photoUrl) existing.photoUrl = String(sub.photoUrl);
       if (sub.age && !existing.age) existing.age = Number(sub.age);
       if (sub.program && !existing.program) existing.program = String(sub.program);
-      if (sub.therapyGroup && !existing.therapyGroup) existing.therapyGroup = String(sub.therapyGroup);
+      if (sub.therapyGroup && !existing.therapyGroup)
+        existing.therapyGroup = String(sub.therapyGroup);
       if (sub.dateOfBirth && !existing.dateOfBirth) existing.dateOfBirth = String(sub.dateOfBirth);
-      if (sub.parentGuardian && !existing.parentGuardian) existing.parentGuardian = String(sub.parentGuardian);
+      if (sub.parentGuardian && !existing.parentGuardian)
+        existing.parentGuardian = String(sub.parentGuardian);
     }
   }
 
@@ -3156,7 +3212,9 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
 
   const lastAssessmentStudentId =
     storage.getSync('last_assessment_student_id') ||
-    (typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null);
+    (typeof localStorage !== 'undefined'
+      ? localStorage.getItem('last_assessment_student_id')
+      : null);
 
   const targetId =
     (studentId && studentId.trim()) ||
@@ -3207,26 +3265,47 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   }
 
   let summaryRes: any = null;
-  const isLocalOnly = !targetId || targetId.includes(' ') || targetId.startsWith('enroll-') || targetId.startsWith('std-local-');
+  const isLocalOnly =
+    !targetId ||
+    targetId.includes(' ') ||
+    targetId.startsWith('enroll-') ||
+    targetId.startsWith('std-local-');
   if (!isLocalOnly) {
     try {
-      summaryRes = await client.get(`/program_director/assessments/${encodeURIComponent(targetId)}`);
+      summaryRes = await client.get(
+        `/program_director/assessments/${encodeURIComponent(targetId)}`,
+      );
     } catch {
       try {
-        summaryRes = await client.get(`/students/${encodeURIComponent(targetId)}/charts/assessment_summary`);
+        summaryRes = await client.get(
+          `/students/${encodeURIComponent(targetId)}/charts/assessment_summary`,
+        );
       } catch {}
     }
-    if (!summaryRes?.data || (!summaryRes.data.skills && !summaryRes.data.student && !summaryRes.data.assessment_summary)) {
+    if (
+      !summaryRes?.data ||
+      (!summaryRes.data.skills && !summaryRes.data.student && !summaryRes.data.assessment_summary)
+    ) {
       try {
-        const pmRes = await client.get(`/students/${encodeURIComponent(targetId)}/progress_monitoring`);
-        if (pmRes?.data && (pmRes.data.student || pmRes.data.assessment_summary || (pmRes.data.data && (pmRes.data.data.student || pmRes.data.data.assessment_summary)))) {
+        const pmRes = await client.get(
+          `/students/${encodeURIComponent(targetId)}/progress_monitoring`,
+        );
+        if (
+          pmRes?.data &&
+          (pmRes.data.student ||
+            pmRes.data.assessment_summary ||
+            (pmRes.data.data && (pmRes.data.data.student || pmRes.data.data.assessment_summary)))
+        ) {
           summaryRes = pmRes;
         }
       } catch {}
     }
   }
 
-  const resData = (summaryRes?.data?.data && typeof summaryRes.data.data === 'object' ? summaryRes.data.data : summaryRes?.data) || {};
+  const resData =
+    (summaryRes?.data?.data && typeof summaryRes.data.data === 'object'
+      ? summaryRes.data.data
+      : summaryRes?.data) || {};
   const studentData = resData.student || {};
   const skillsData = resData.skills || {};
   const behaviorData = resData.behavior || {};
@@ -3235,11 +3314,16 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
 
   const backendAssessment = resData.assessment_summary || resData.assessments || {};
   const isBackendSkillsCompleted =
-    String(backendAssessment.ablls?.status || backendAssessment.skills?.status || '').toLowerCase().includes('complete') ||
-    Number(backendAssessment.ablls?.progress_percentage || 0) >= 100;
+    String(backendAssessment.ablls?.status || backendAssessment.skills?.status || '')
+      .toLowerCase()
+      .includes('complete') || Number(backendAssessment.ablls?.progress_percentage || 0) >= 100;
   const isBackendOverallCompleted =
-    String(resData.status || resData.assessment_status || '').toLowerCase().includes('complete') ||
-    String(resData.student?.status || '').toLowerCase().includes('complete') ||
+    String(resData.status || resData.assessment_status || '')
+      .toLowerCase()
+      .includes('complete') ||
+    String(resData.student?.status || '')
+      .toLowerCase()
+      .includes('complete') ||
     isBackendSkillsCompleted;
 
   const isTargetCompleted =
@@ -3543,7 +3627,7 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
       s.assessmentStatus === 'Completed';
     return {
       ...s,
-      assessmentStatus: comp ? 'Completed' : (s.assessmentStatus || 'In Progress'),
+      assessmentStatus: comp ? 'Completed' : s.assessmentStatus || 'In Progress',
     };
   });
 
@@ -3557,7 +3641,8 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
         : selectedStudentObj.status || 'Active',
     assessmentStatus: isTargetCompleted ? 'Completed' : 'In Progress',
     studentInfo: {
-      fullName: studentData.name || selectedStudentObj.name || submissionInfo?.studentName || 'Student',
+      fullName:
+        studentData.name || selectedStudentObj.name || submissionInfo?.studentName || 'Student',
       dateOfBirth:
         studentData.date_of_birth ||
         studentData.dob ||

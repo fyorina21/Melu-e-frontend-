@@ -18,7 +18,11 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
-import { getEnrollmentStudents, getStoredEnrolledStudents, deleteStudentEnrollment } from '../../api/coordinatorApi';
+import {
+  getEnrollmentStudents,
+  getStoredEnrolledStudents,
+  deleteStudentEnrollment,
+} from '../../api/coordinatorApi';
 import { useToast } from '../../context/ToastContext';
 import { confirmAction } from '../../utils/dialogs';
 import { getStaffOptions } from '../../api/optionsApi';
@@ -216,17 +220,30 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       }
       const stored = getStoredEnrolledStudents();
       const existingIds = new Set(
-        (Array.isArray(data) ? (data as Record<string, unknown>[]) : []).map((d: Record<string, unknown>) => String(d.id || d.studentId || '').toLowerCase()).filter(Boolean),
+        (Array.isArray(data) ? (data as Record<string, unknown>[]) : [])
+          .map((d: Record<string, unknown>) => String(d.id || d.studentId || '').toLowerCase())
+          .filter(Boolean),
       );
       const existingNames = new Set(
-        (Array.isArray(data) ? (data as Record<string, unknown>[]) : []).map((d: Record<string, unknown>) => String(d.fullName || d.name || '').toLowerCase().trim()).filter(Boolean),
+        (Array.isArray(data) ? (data as Record<string, unknown>[]) : [])
+          .map((d: Record<string, unknown>) =>
+            String(d.fullName || d.name || '')
+              .toLowerCase()
+              .trim(),
+          )
+          .filter(Boolean),
       );
       const missingStored = stored.filter((s: Record<string, unknown>) => {
         const sid = String(s.id || s.studentId || '').toLowerCase();
-        const sname = String(s.fullName || s.name || '').toLowerCase().trim();
+        const sname = String(s.fullName || s.name || '')
+          .toLowerCase()
+          .trim();
         return (!sid || !existingIds.has(sid)) && (!sname || !existingNames.has(sname));
       });
-      const rawList = [...missingStored, ...(Array.isArray(data) && data.length > 0 ? data : stored)];
+      const rawList = [
+        ...missingStored,
+        ...(Array.isArray(data) && data.length > 0 ? data : stored),
+      ];
       setStudents(
         (rawList as unknown as EnrollmentStudentRow[]).map((row) => ({
           id: row.id,

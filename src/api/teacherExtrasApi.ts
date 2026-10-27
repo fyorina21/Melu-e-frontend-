@@ -87,8 +87,12 @@ export const getAssessmentDashboard = async () => {
     if (isStudentInSession(es)) return;
 
     const existingIndex = backendStudents.findIndex((b) => {
-      const bId = String(b.id || b.studentId || '').toLowerCase().trim();
-      const bName = String(b.fullName || b.name || '').toLowerCase().trim();
+      const bId = String(b.id || b.studentId || '')
+        .toLowerCase()
+        .trim();
+      const bName = String(b.fullName || b.name || '')
+        .toLowerCase()
+        .trim();
       return (sid && bId === sid.toLowerCase()) || (sName && bName === sName.toLowerCase());
     });
 
@@ -129,7 +133,8 @@ export const getAssessmentDashboard = async () => {
         ...backendStudents[existingIndex],
         ...enrolledRecord,
         therapist: th !== 'Unassigned' ? th : backendStudents[existingIndex].therapist,
-        assignedTherapist: th !== 'Unassigned' ? th : backendStudents[existingIndex].assignedTherapist,
+        assignedTherapist:
+          th !== 'Unassigned' ? th : backendStudents[existingIndex].assignedTherapist,
       };
     } else {
       backendStudents.unshift(enrolledRecord);
@@ -145,8 +150,12 @@ export const getAssessmentDashboard = async () => {
         if (isStudentDeleted(normIdent)) return;
 
         const match = backendStudents.find((b) => {
-          const bId = String(b.id || b.studentId || '').toLowerCase().trim();
-          const bName = String(b.fullName || b.name || '').toLowerCase().trim();
+          const bId = String(b.id || b.studentId || '')
+            .toLowerCase()
+            .trim();
+          const bName = String(b.fullName || b.name || '')
+            .toLowerCase()
+            .trim();
           return bId === normIdent.toLowerCase() || bName === normIdent.toLowerCase();
         });
 
@@ -212,7 +221,11 @@ export const getAssessmentDashboard = async () => {
             therapist:
               studentTherapistMap.get(sid.toLowerCase()) ||
               studentTherapistMap.get(String(s.studentId || '').toLowerCase()) ||
-              studentTherapistMap.get(String(s.name || '').toLowerCase().trim()) ||
+              studentTherapistMap.get(
+                String(s.name || '')
+                  .toLowerCase()
+                  .trim(),
+              ) ||
               s.therapist ||
               'Unassigned',
             lastAssessment: 'In Progress',
@@ -233,7 +246,11 @@ export const getAssessmentDashboard = async () => {
       const resolved =
         studentTherapistMap.get(sid.toLowerCase()) ||
         studentTherapistMap.get(String(s.studentId || '').toLowerCase()) ||
-        studentTherapistMap.get(String(s.name || '').toLowerCase().trim());
+        studentTherapistMap.get(
+          String(s.name || '')
+            .toLowerCase()
+            .trim(),
+        );
       if (resolved) {
         s.therapist = resolved;
       }
@@ -257,7 +274,9 @@ export const getAssessmentDashboard = async () => {
     const isAllComp =
       isStudentAssessmentSubmitted(sid) ||
       isStoredAssessmentCompleted(sid) ||
-      String(s.name || s.fullName || '').toLowerCase().includes('jjjj') ||
+      String(s.name || s.fullName || '')
+        .toLowerCase()
+        .includes('jjjj') ||
       sid.toLowerCase().includes('jjjj') ||
       checkStudentAllAssessmentsCompleted(
         sid,
@@ -293,7 +312,9 @@ export const getAssessmentDashboard = async () => {
   });
 
   // Filter out any student in session
-  const activeStudents = filterOutDeletedStudents(backendStudents.filter((s) => !isStudentInSession(s)));
+  const activeStudents = filterOutDeletedStudents(
+    backendStudents.filter((s) => !isStudentInSession(s)),
+  );
 
   let completedCount = 0;
   let notStartedCount = 0;
@@ -317,7 +338,9 @@ export const getAssessmentDashboard = async () => {
     const isComp =
       isStudentAssessmentSubmitted(sid) ||
       isStoredAssessmentCompleted(sid) ||
-      String(s.name || s.fullName || '').toLowerCase().includes('jjjj') ||
+      String(s.name || s.fullName || '')
+        .toLowerCase()
+        .includes('jjjj') ||
       sid.toLowerCase().includes('jjjj') ||
       checkStudentAllAssessmentsCompleted(
         sid,

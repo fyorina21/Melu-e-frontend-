@@ -29,7 +29,12 @@ import {
 } from '../../api/sessionApi';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
 import { getStudentOptions, getRoomOptions, getStaffOptions } from '../../api/optionsApi';
-import { http, fetchAdminToken, fetchDirectorToken, fetchCoordinatorToken } from '../../api/http/client';
+import {
+  http,
+  fetchAdminToken,
+  fetchDirectorToken,
+  fetchCoordinatorToken,
+} from '../../api/http/client';
 import { getAccessToken } from '../../api/token';
 import { downloadTextFile } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
@@ -64,7 +69,14 @@ interface WeeklySummaryData {
 }
 
 const DATE_OPTIONS = ['All Dates', 'Today', 'This Week', 'Last Week', 'This Month'];
-const STATUS_OPTIONS = ['All Statuses', 'Approved', 'Saved', 'Pending', 'Revision Required', 'Draft'];
+const STATUS_OPTIONS = [
+  'All Statuses',
+  'Approved',
+  'Saved',
+  'Pending',
+  'Revision Required',
+  'Draft',
+];
 const DEFAULT_STATIONS = ['Station 1', 'Station 2'];
 
 export default function DailyNotesScreen({ navigation, route }: Props) {
@@ -80,9 +92,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           if (Array.isArray(parsed) && parsed.length > 0) {
             return parsed.filter(
               (n: any) =>
-                n &&
-                n.id &&
-                !['sn-101', 'sn-102', 'sn-103', 'sn-104', 'sn-105'].includes(n.id)
+                n && n.id && !['sn-101', 'sn-102', 'sn-103', 'sn-104', 'sn-105'].includes(n.id),
             );
           }
         }
@@ -119,11 +129,14 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
   // Student and options state
   const routeSid = route?.params?.studentId;
-  const localSid = typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const localSid =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
   const initialStudentId = routeSid || localSid || undefined;
 
   const [studentId, setStudentId] = useState<string | undefined>(initialStudentId);
-  const [studentOptions, setStudentOptions] = useState<{ id: string; name: string; initial: string }[]>([]);
+  const [studentOptions, setStudentOptions] = useState<
+    { id: string; name: string; initial: string }[]
+  >([]);
   const [roomOptions, setRoomOptions] = useState<{ id: string; name: string }[]>([]);
 
   // Dropdown filter states
@@ -157,9 +170,10 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         getStaffOptions().catch(() => ({ data: [] })),
       ]);
 
-      const rawStudents = Array.isArray(studentsRes.data) && studentsRes.data.length > 0
-        ? studentsRes.data
-        : (dashboardRes.data?.students ?? []);
+      const rawStudents =
+        Array.isArray(studentsRes.data) && studentsRes.data.length > 0
+          ? studentsRes.data
+          : (dashboardRes.data?.students ?? []);
 
       const mappedStudents = rawStudents.map((s: any) => {
         const fullName = s.name ?? s.fullName ?? s.id;
@@ -189,19 +203,22 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
       const fastConfig = { headers, timeout: 3500 };
 
       try {
-        const res = await http.get('/therapy_coordinator/session_summaries', fastConfig).catch(async () => {
-          return await http.get('/reports/session_summaries', fastConfig).catch(() => null);
-        });
+        const res = await http
+          .get('/therapy_coordinator/session_summaries', fastConfig)
+          .catch(async () => {
+            return await http.get('/reports/session_summaries', fastConfig).catch(() => null);
+          });
 
         const rawSummaries = res?.data?.session_summaries || res?.data?.data || [];
         if (Array.isArray(rawSummaries) && rawSummaries.length > 0) {
           backendRecords = rawSummaries.map((s: any) => {
             const sess = s.session || {};
-            const studentNames: string[] = Array.isArray(sess.students) && sess.students.length > 0
-              ? sess.students.map((st: any) => st.name || st.full_name).filter(Boolean)
-              : Array.isArray(s.students) && s.students.length > 0
-              ? s.students.map((st: any) => st.name || st.full_name).filter(Boolean)
-              : [];
+            const studentNames: string[] =
+              Array.isArray(sess.students) && sess.students.length > 0
+                ? sess.students.map((st: any) => st.name || st.full_name).filter(Boolean)
+                : Array.isArray(s.students) && s.students.length > 0
+                  ? s.students.map((st: any) => st.name || st.full_name).filter(Boolean)
+                  : [];
 
             const rawStatus = String(s.status || sess.status || '').toLowerCase();
             let status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft' = 'Approved';
@@ -232,18 +249,21 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
               ? staffRes.data.find(
                   (st: any) =>
                     String(st.id) === String(s.reviewed_by_user_id) ||
-                    st.role === 'therapy_coordinator'
+                    st.role === 'therapy_coordinator',
                 )
               : null;
             const coordinatorName = s.reviewed_at
-              ? (reviewer?.name ? `${reviewer.name} (Therapy Coordinator)` : 'Hana Kebede (Therapy Coordinator)')
+              ? reviewer?.name
+                ? `${reviewer.name} (Therapy Coordinator)`
+                : 'Hana Kebede (Therapy Coordinator)'
               : undefined;
 
-            const coordinatorFeedback = s.coordinator_feedback || s.feedback
-              ? (s.coordinator_feedback || s.feedback)
-              : s.reviewed_at
-              ? `Reviewed and approved on ${new Date(s.reviewed_at).toLocaleDateString()}`
-              : undefined;
+            const coordinatorFeedback =
+              s.coordinator_feedback || s.feedback
+                ? s.coordinator_feedback || s.feedback
+                : s.reviewed_at
+                  ? `Reviewed and approved on ${new Date(s.reviewed_at).toLocaleDateString()}`
+                  : undefined;
 
             return {
               id: String(s.id || sess.id),
@@ -285,8 +305,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                       'Ava Wilson',
                       'Ethan Moore',
                       'Assigned Student',
-                    ].includes(st)
-                  )
+                    ].includes(st),
+                  ),
               );
               if (cleaned.length !== parsed.length) {
                 localStorage.setItem('melue_session_notes_store', JSON.stringify(cleaned));
@@ -315,8 +335,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
               'Ava Wilson',
               'Ethan Moore',
               'Assigned Student',
-            ].includes(st)
-          )
+            ].includes(st),
+          ),
       );
 
       const mergedBackendRecords = backendRecords.map((br) => {
@@ -332,25 +352,49 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         return br;
       });
 
-      const finalRecords = backendRecords.length > 0 ? [...userCreatedNotes, ...mergedBackendRecords] : localRecords;
+      const finalRecords =
+        backendRecords.length > 0 ? [...userCreatedNotes, ...mergedBackendRecords] : localRecords;
       setRecords(finalRecords);
 
       // Compute real metrics using performance metrics API or from final records
-      let completedCount = finalRecords.filter((r) => r.status === 'Approved' || r.status === 'Saved').length;
-      let pendingCount = finalRecords.filter((r) => r.status === 'Pending' || r.status === 'Revision Required').length;
+      let completedCount = finalRecords.filter(
+        (r) => r.status === 'Approved' || r.status === 'Saved',
+      ).length;
+      let pendingCount = finalRecords.filter(
+        (r) => r.status === 'Pending' || r.status === 'Revision Required',
+      ).length;
       let totalTrialsComputed = 0;
       let avgIndepComputed = 0;
 
       try {
-        const metricsRes = await http.get('/therapy_coordinator/operational_management/performance_metrics', { headers, timeout: 3000 });
+        const metricsRes = await http.get(
+          '/therapy_coordinator/operational_management/performance_metrics',
+          { headers, timeout: 3000 },
+        );
         if (Array.isArray(metricsRes.data) && metricsRes.data.length > 0) {
           const metrics = metricsRes.data;
-          const metricCompleted = metrics.reduce((acc: number, m: any) => acc + (m.sessions_completed || 0), 0);
-          const metricTrials = metrics.reduce((acc: number, m: any) => acc + (m.total_trials || 0), 0);
-          const metricPending = metrics.reduce((acc: number, m: any) => acc + (m.review_status?.pending_review_count || 0), 0);
-          const metricIndep = metricTrials > 0
-            ? Math.round(metrics.reduce((acc: number, m: any) => acc + (m.total_trials || 0) * (m.average_independence_percentage || 0), 0) / metricTrials)
-            : 0;
+          const metricCompleted = metrics.reduce(
+            (acc: number, m: any) => acc + (m.sessions_completed || 0),
+            0,
+          );
+          const metricTrials = metrics.reduce(
+            (acc: number, m: any) => acc + (m.total_trials || 0),
+            0,
+          );
+          const metricPending = metrics.reduce(
+            (acc: number, m: any) => acc + (m.review_status?.pending_review_count || 0),
+            0,
+          );
+          const metricIndep =
+            metricTrials > 0
+              ? Math.round(
+                  metrics.reduce(
+                    (acc: number, m: any) =>
+                      acc + (m.total_trials || 0) * (m.average_independence_percentage || 0),
+                    0,
+                  ) / metricTrials,
+                )
+              : 0;
 
           if (metricCompleted > 0 || metricTrials > 0) {
             completedCount = metricCompleted;
@@ -373,16 +417,30 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
       const dayOfWeek = (now.getDay() + 6) % 7;
       const monday = new Date(now.getTime() - dayOfWeek * 86400000);
       const sunday = new Date(monday.getTime() + 6 * 86400000);
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthNames = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       const weekRange = `${monthNames[monday.getMonth()]} ${String(monday.getDate()).padStart(2, '0')} - ${monthNames[sunday.getMonth()]} ${String(sunday.getDate()).padStart(2, '0')}, ${sunday.getFullYear()}`;
       const mondayStr = monday.toISOString().split('T')[0];
       const sundayStr = sunday.toISOString().split('T')[0];
 
       const thisWeekNotes = finalRecords.filter((r) => r.date >= mondayStr && r.date <= sundayStr);
       const sessionsThisWeek = thisWeekNotes.length;
-      const totalTrialsThisWeek = finalRecords.length > 0 && totalTrialsComputed > 0
-        ? Math.round((totalTrialsComputed / finalRecords.length) * sessionsThisWeek)
-        : 0;
+      const totalTrialsThisWeek =
+        finalRecords.length > 0 && totalTrialsComputed > 0
+          ? Math.round((totalTrialsComputed / finalRecords.length) * sessionsThisWeek)
+          : 0;
       const avgIndependenceThisWeek = sessionsThisWeek > 0 ? avgIndepComputed : 0;
 
       setSummary({
@@ -409,7 +467,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   // Dynamic Date Bounds for Real Filtering
@@ -522,7 +580,9 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         station: newNoteStation,
         room: newNoteRoom,
         status: newNoteStatus,
-        bodyMarkdown: newNoteBody.trim() || `Session note recorded for ${studentToAssign} at ${newNoteStation}.`,
+        bodyMarkdown:
+          newNoteBody.trim() ||
+          `Session note recorded for ${studentToAssign} at ${newNoteStation}.`,
       });
       showToast('Session note recorded successfully', 'success');
       setNewNoteOpen(false);
@@ -560,7 +620,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
     ];
     downloadTextFile(
       `WeeklySummary_${summary.weekRange.replace(/[^a-z0-9]/gi, '_')}.html`,
-      lines.map((l) => `<p>${l}</p>`).join('')
+      lines.map((l) => `<p>${l}</p>`).join(''),
     );
   };
 
@@ -568,7 +628,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
     search.trim() ||
     dateFilter !== 'All Dates' ||
     statusFilter !== 'All Statuses' ||
-    studentId !== undefined
+    studentId !== undefined,
   );
 
   const resetAllFilters = () => {
@@ -582,12 +642,19 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Daily Notes" onTabPress={(tab) => handleTeacherTabPress(navigation, tab)} />
+      <AppNavbar
+        activeTab="Daily Notes"
+        onTabPress={(tab) => handleTeacherTabPress(navigation, tab)}
+      />
 
       <ScrollView contentContainerStyle={styles.content} nestedScrollEnabled>
         {/* Title Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityLabel="Go back">
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Go back"
+          >
             <Feather name="arrow-left" size={18} color="#475569" />
           </TouchableOpacity>
           <View>
@@ -640,10 +707,15 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           {/* Date Filter Dropdown */}
           <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'date' ? 1001 : 1 }]}>
             <TouchableOpacity
-              style={[styles.dropdownTrigger, openDropdown === 'date' && styles.dropdownTriggerActive]}
+              style={[
+                styles.dropdownTrigger,
+                openDropdown === 'date' && styles.dropdownTriggerActive,
+              ]}
               onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
             >
-              <Text style={styles.dropdownTriggerText} numberOfLines={1}>{dateFilter}</Text>
+              <Text style={styles.dropdownTriggerText} numberOfLines={1}>
+                {dateFilter}
+              </Text>
               <Feather name="chevron-down" size={14} color="#64748B" />
             </TouchableOpacity>
 
@@ -652,13 +724,21 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                 {DATE_OPTIONS.map((opt) => (
                   <TouchableOpacity
                     key={opt}
-                    style={[styles.dropdownOption, dateFilter === opt && styles.dropdownOptionSelected]}
+                    style={[
+                      styles.dropdownOption,
+                      dateFilter === opt && styles.dropdownOptionSelected,
+                    ]}
                     onPress={() => {
                       setDateFilter(opt);
                       setOpenDropdown(null);
                     }}
                   >
-                    <Text style={[styles.dropdownOptionText, dateFilter === opt && styles.dropdownOptionTextSelected]}>
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        dateFilter === opt && styles.dropdownOptionTextSelected,
+                      ]}
+                    >
                       {opt}
                     </Text>
                   </TouchableOpacity>
@@ -668,12 +748,19 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           </View>
 
           {/* Status Filter Dropdown */}
-          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'status' ? 1001 : 1 }]}>
+          <View
+            style={[styles.dropdownContainer, { zIndex: openDropdown === 'status' ? 1001 : 1 }]}
+          >
             <TouchableOpacity
-              style={[styles.dropdownTrigger, openDropdown === 'status' && styles.dropdownTriggerActive]}
+              style={[
+                styles.dropdownTrigger,
+                openDropdown === 'status' && styles.dropdownTriggerActive,
+              ]}
               onPress={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
             >
-              <Text style={styles.dropdownTriggerText} numberOfLines={1}>{statusFilter}</Text>
+              <Text style={styles.dropdownTriggerText} numberOfLines={1}>
+                {statusFilter}
+              </Text>
               <Feather name="chevron-down" size={14} color="#64748B" />
             </TouchableOpacity>
 
@@ -682,13 +769,21 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                 {STATUS_OPTIONS.map((opt) => (
                   <TouchableOpacity
                     key={opt}
-                    style={[styles.dropdownOption, statusFilter === opt && styles.dropdownOptionSelected]}
+                    style={[
+                      styles.dropdownOption,
+                      statusFilter === opt && styles.dropdownOptionSelected,
+                    ]}
                     onPress={() => {
                       setStatusFilter(opt);
                       setOpenDropdown(null);
                     }}
                   >
-                    <Text style={[styles.dropdownOptionText, statusFilter === opt && styles.dropdownOptionTextSelected]}>
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        statusFilter === opt && styles.dropdownOptionTextSelected,
+                      ]}
+                    >
                       {opt}
                     </Text>
                   </TouchableOpacity>
@@ -698,9 +793,14 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           </View>
 
           {/* Student Selector Dropdown with 'All Students' Clear option */}
-          <View style={[styles.dropdownContainer, { zIndex: openDropdown === 'student' ? 1001 : 1 }]}>
+          <View
+            style={[styles.dropdownContainer, { zIndex: openDropdown === 'student' ? 1001 : 1 }]}
+          >
             <TouchableOpacity
-              style={[styles.dropdownTrigger, openDropdown === 'student' && styles.dropdownTriggerActive]}
+              style={[
+                styles.dropdownTrigger,
+                openDropdown === 'student' && styles.dropdownTriggerActive,
+              ]}
               onPress={() => setOpenDropdown(openDropdown === 'student' ? null : 'student')}
             >
               <Text style={styles.dropdownTriggerText} numberOfLines={1}>
@@ -718,20 +818,33 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                     setOpenDropdown(null);
                   }}
                 >
-                  <Text style={[styles.dropdownOptionText, !studentId && styles.dropdownOptionTextSelected]}>
+                  <Text
+                    style={[
+                      styles.dropdownOptionText,
+                      !studentId && styles.dropdownOptionTextSelected,
+                    ]}
+                  >
                     All Students
                   </Text>
                 </TouchableOpacity>
                 {studentOptions.map((opt) => (
                   <TouchableOpacity
                     key={opt.id}
-                    style={[styles.dropdownOption, studentId === opt.id && styles.dropdownOptionSelected]}
+                    style={[
+                      styles.dropdownOption,
+                      studentId === opt.id && styles.dropdownOptionSelected,
+                    ]}
                     onPress={() => {
                       setStudentId(opt.id);
                       setOpenDropdown(null);
                     }}
                   >
-                    <Text style={[styles.dropdownOptionText, studentId === opt.id && styles.dropdownOptionTextSelected]}>
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        studentId === opt.id && styles.dropdownOptionTextSelected,
+                      ]}
+                    >
                       {opt.name} ({opt.initial})
                     </Text>
                   </TouchableOpacity>
@@ -747,8 +860,6 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           )}
         </View>
-
-
 
         {/* Interactive Session Records Card */}
         <View style={styles.tableCard}>
@@ -776,31 +887,59 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
           {/* Table Header with Interactive Column Sorting */}
           <View style={styles.tableHeaderRow}>
-            <TouchableOpacity style={[styles.thCol, styles.colDate]} onPress={() => toggleSort('date')}>
+            <TouchableOpacity
+              style={[styles.thCol, styles.colDate]}
+              onPress={() => toggleSort('date')}
+            >
               <Text style={styles.thText}>DATE</Text>
               {sortField === 'date' && (
-                <Feather name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} color="#0284C7" />
+                <Feather
+                  name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color="#0284C7"
+                />
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.thCol, styles.colStudents]} onPress={() => toggleSort('students')}>
+            <TouchableOpacity
+              style={[styles.thCol, styles.colStudents]}
+              onPress={() => toggleSort('students')}
+            >
               <Text style={styles.thText}>STUDENTS</Text>
               {sortField === 'students' && (
-                <Feather name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} color="#0284C7" />
+                <Feather
+                  name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color="#0284C7"
+                />
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.thCol, styles.colStation]} onPress={() => toggleSort('station')}>
+            <TouchableOpacity
+              style={[styles.thCol, styles.colStation]}
+              onPress={() => toggleSort('station')}
+            >
               <Text style={styles.thText}>STATION</Text>
               {sortField === 'station' && (
-                <Feather name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} color="#0284C7" />
+                <Feather
+                  name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color="#0284C7"
+                />
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.thCol, styles.colStatus]} onPress={() => toggleSort('status')}>
+            <TouchableOpacity
+              style={[styles.thCol, styles.colStatus]}
+              onPress={() => toggleSort('status')}
+            >
               <Text style={styles.thText}>STATUS</Text>
               {sortField === 'status' && (
-                <Feather name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} color="#0284C7" />
+                <Feather
+                  name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color="#0284C7"
+                />
               )}
             </TouchableOpacity>
 
@@ -823,7 +962,13 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
             sortedRecords.map((r, i) => {
               const isExpanded = expandedId === r.id;
               return (
-                <View key={r.id} style={[styles.tableRowWrapper, i === sortedRecords.length - 1 && styles.tableRowLast]}>
+                <View
+                  key={r.id}
+                  style={[
+                    styles.tableRowWrapper,
+                    i === sortedRecords.length - 1 && styles.tableRowLast,
+                  ]}
+                >
                   <TouchableOpacity
                     style={styles.tableRow}
                     activeOpacity={0.7}
@@ -855,14 +1000,17 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                           r.status === 'Approved'
                             ? 'approved'
                             : r.status === 'Revision Required'
-                            ? 'revision'
-                            : 'pending'
+                              ? 'revision'
+                              : 'pending'
                         }
                         label={r.status}
                       />
                     </View>
 
-                    <View style={[styles.colActions, styles.actionsRow]} onStartShouldSetResponder={() => true}>
+                    <View
+                      style={[styles.colActions, styles.actionsRow]}
+                      onStartShouldSetResponder={() => true}
+                    >
                       <TouchableOpacity
                         style={styles.viewActionBtn}
                         onPress={() => setViewNoteTarget(r)}
@@ -997,8 +1145,13 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                 <View style={styles.statusBadgesRow}>
                   {approved > 0 && (
                     <TouchableOpacity
-                      style={[styles.badgeApproved, statusFilter === 'Approved' && styles.badgeActiveRing]}
-                      onPress={() => setStatusFilter(statusFilter === 'Approved' ? 'All Statuses' : 'Approved')}
+                      style={[
+                        styles.badgeApproved,
+                        statusFilter === 'Approved' && styles.badgeActiveRing,
+                      ]}
+                      onPress={() =>
+                        setStatusFilter(statusFilter === 'Approved' ? 'All Statuses' : 'Approved')
+                      }
                     >
                       <Feather name="check-circle" size={12} color="#166534" />
                       <Text style={styles.badgeApprovedText}>{approved} Approved</Text>
@@ -1006,8 +1159,13 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   )}
                   {pending > 0 && (
                     <TouchableOpacity
-                      style={[styles.badgePending, statusFilter === 'Pending' && styles.badgeActiveRing]}
-                      onPress={() => setStatusFilter(statusFilter === 'Pending' ? 'All Statuses' : 'Pending')}
+                      style={[
+                        styles.badgePending,
+                        statusFilter === 'Pending' && styles.badgeActiveRing,
+                      ]}
+                      onPress={() =>
+                        setStatusFilter(statusFilter === 'Pending' ? 'All Statuses' : 'Pending')
+                      }
                     >
                       <Feather name="clock" size={12} color="#854D0E" />
                       <Text style={styles.badgePendingText}>{pending} Pending</Text>
@@ -1015,8 +1173,17 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   )}
                   {revision > 0 && (
                     <TouchableOpacity
-                      style={[styles.badgeRevision, statusFilter === 'Revision Required' && styles.badgeActiveRing]}
-                      onPress={() => setStatusFilter(statusFilter === 'Revision Required' ? 'All Statuses' : 'Revision Required')}
+                      style={[
+                        styles.badgeRevision,
+                        statusFilter === 'Revision Required' && styles.badgeActiveRing,
+                      ]}
+                      onPress={() =>
+                        setStatusFilter(
+                          statusFilter === 'Revision Required'
+                            ? 'All Statuses'
+                            : 'Revision Required',
+                        )
+                      }
                     >
                       <Feather name="alert-circle" size={12} color="#991B1B" />
                       <Text style={styles.badgeRevisionText}>{revision} Revision Required</Text>
@@ -1024,8 +1191,13 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   )}
                   {draft > 0 && (
                     <TouchableOpacity
-                      style={[styles.badgeDraft, statusFilter === 'Draft' && styles.badgeActiveRing]}
-                      onPress={() => setStatusFilter(statusFilter === 'Draft' ? 'All Statuses' : 'Draft')}
+                      style={[
+                        styles.badgeDraft,
+                        statusFilter === 'Draft' && styles.badgeActiveRing,
+                      ]}
+                      onPress={() =>
+                        setStatusFilter(statusFilter === 'Draft' ? 'All Statuses' : 'Draft')
+                      }
                     >
                       <Feather name="file-text" size={12} color="#334155" />
                       <Text style={styles.badgeDraftText}>{draft} Draft</Text>
@@ -1045,7 +1217,11 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         animationType="fade"
         onRequestClose={() => setFeedbackTarget(null)}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setFeedbackTarget(null)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setFeedbackTarget(null)}
+        >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Coordinator Feedback</Text>
@@ -1060,11 +1236,14 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   {feedbackTarget.station} ({feedbackTarget.room})
                 </Text>
                 <Text style={styles.modalFrom}>
-                  From: {feedbackTarget.coordinatorName || (session?.role === 'coordinator' ? session.userName : 'Therapy Coordinator')}
+                  From:{' '}
+                  {feedbackTarget.coordinatorName ||
+                    (session?.role === 'coordinator' ? session.userName : 'Therapy Coordinator')}
                 </Text>
                 <View style={styles.feedbackBox}>
                   <Text style={styles.feedbackBoxText}>
-                    {feedbackTarget.coordinatorFeedback || 'No feedback provided yet for this note.'}
+                    {feedbackTarget.coordinatorFeedback ||
+                      'No feedback provided yet for this note.'}
                   </Text>
                 </View>
               </>
@@ -1080,7 +1259,11 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         animationType="fade"
         onRequestClose={() => setViewNoteTarget(null)}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setViewNoteTarget(null)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setViewNoteTarget(null)}
+        >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1091,8 +1274,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                       viewNoteTarget.status === 'Approved'
                         ? 'approved'
                         : viewNoteTarget.status === 'Revision Required'
-                        ? 'revision'
-                        : 'pending'
+                          ? 'revision'
+                          : 'pending'
                     }
                     label={viewNoteTarget.status}
                   />
@@ -1183,8 +1366,15 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
         animationType="fade"
         onRequestClose={() => setNewNoteOpen(false)}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setNewNoteOpen(false)}>
-          <View style={[styles.modalCard, { maxWidth: 540 }]} onStartShouldSetResponder={() => true}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNewNoteOpen(false)}
+        >
+          <View
+            style={[styles.modalCard, { maxWidth: 540 }]}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Record New Session Note</Text>
               <TouchableOpacity onPress={() => setNewNoteOpen(false)}>
@@ -1204,7 +1394,9 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                         style={[styles.chipSelectBtn, isSelected && styles.chipSelectBtnActive]}
                         onPress={() => setNewNoteStudent(st.name)}
                       >
-                        <Text style={[styles.chipSelectText, isSelected && styles.chipSelectTextActive]}>
+                        <Text
+                          style={[styles.chipSelectText, isSelected && styles.chipSelectTextActive]}
+                        >
                           {st.name}
                         </Text>
                       </TouchableOpacity>
@@ -1227,18 +1419,34 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                   <Text style={styles.formLabel}>Status</Text>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
                     <TouchableOpacity
-                      style={[styles.statusToggleBtn, newNoteStatus === 'Pending' && styles.statusToggleBtnActive]}
+                      style={[
+                        styles.statusToggleBtn,
+                        newNoteStatus === 'Pending' && styles.statusToggleBtnActive,
+                      ]}
                       onPress={() => setNewNoteStatus('Pending')}
                     >
-                      <Text style={[styles.statusToggleText, newNoteStatus === 'Pending' && styles.statusToggleTextActive]}>
+                      <Text
+                        style={[
+                          styles.statusToggleText,
+                          newNoteStatus === 'Pending' && styles.statusToggleTextActive,
+                        ]}
+                      >
                         Pending Review
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.statusToggleBtn, newNoteStatus === 'Draft' && styles.statusToggleBtnActive]}
+                      style={[
+                        styles.statusToggleBtn,
+                        newNoteStatus === 'Draft' && styles.statusToggleBtnActive,
+                      ]}
                       onPress={() => setNewNoteStatus('Draft')}
                     >
-                      <Text style={[styles.statusToggleText, newNoteStatus === 'Draft' && styles.statusToggleTextActive]}>
+                      <Text
+                        style={[
+                          styles.statusToggleText,
+                          newNoteStatus === 'Draft' && styles.statusToggleTextActive,
+                        ]}
+                      >
                         Draft
                       </Text>
                     </TouchableOpacity>
@@ -1267,7 +1475,12 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
                           style={[styles.chipSelectBtn, isSelected && styles.chipSelectBtnActive]}
                           onPress={() => setNewNoteRoom(r.name)}
                         >
-                          <Text style={[styles.chipSelectText, isSelected && styles.chipSelectTextActive]}>
+                          <Text
+                            style={[
+                              styles.chipSelectText,
+                              isSelected && styles.chipSelectTextActive,
+                            ]}
+                          >
                             {r.name}
                           </Text>
                         </TouchableOpacity>
@@ -1691,16 +1904,39 @@ const styles = StyleSheet.create({
   },
   feedbackBoxText: { fontSize: 13, color: '#991B1B', lineHeight: 18 },
 
-  modalInfoGrid: { flexDirection: 'row', gap: 12, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8 },
+  modalInfoGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 8,
+  },
   modalInfoItem: { flex: 1 },
-  modalInfoLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', marginBottom: 2 },
+  modalInfoLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
   modalInfoVal: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   modalStudentsSection: { gap: 6 },
   modalNotesBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, gap: 6 },
-  modalNotesTitle: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase' },
+  modalNotesTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+  },
   modalNotesText: { fontSize: 13, color: '#334155', lineHeight: 18 },
   modalActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
-  modalSecondaryBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' },
+  modalSecondaryBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
   modalSecondaryBtnText: { fontSize: 13, fontWeight: '600', color: '#475569' },
   modalPrimaryBtn: {
     flexDirection: 'row',

@@ -30,7 +30,11 @@ import {
   type StaffOption,
   type StudentOption,
 } from '../../api/optionsApi';
-import { createStudentEnrollment, updateStudentProfile, saveEnrolledStudentLocally } from '../../api/coordinatorApi';
+import {
+  createStudentEnrollment,
+  updateStudentProfile,
+  saveEnrolledStudentLocally,
+} from '../../api/coordinatorApi';
 import { getFormConfig, DEFAULT_ENROLLMENT_FORM } from '../../api/institutionalAdminApi';
 import type { FormField } from '../../types/forms';
 import { resolveFieldOptions } from '../../components/DynamicFormFields';
@@ -80,7 +84,8 @@ export {
 export function resolveEnrichedTherapists(teachers: StaffOption[]): StaffOption[] {
   const store =
     storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
-  const enrolledCache = storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+  const enrolledCache =
+    storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
 
   let directorStore: Record<string, { studentIds?: unknown[] }> = {};
   try {
@@ -632,13 +637,19 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     (formValues.therapist != null ? String(formValues.therapist) : '') ||
     '';
   const studentPhoto: string =
-    (activePhotoFieldId && formValues[activePhotoFieldId] != null && String(formValues[activePhotoFieldId]) !== ''
+    (activePhotoFieldId &&
+    formValues[activePhotoFieldId] != null &&
+    String(formValues[activePhotoFieldId]) !== ''
       ? String(formValues[activePhotoFieldId])
       : '') ||
     getFieldVal('f_photo') ||
     getFieldVal(/photo/i) ||
-    (formValues.photoUri != null && String(formValues.photoUri) !== '' ? String(formValues.photoUri) : '') ||
-    (formValues.photoBase64 != null && String(formValues.photoBase64) !== '' ? String(formValues.photoBase64) : '') ||
+    (formValues.photoUri != null && String(formValues.photoUri) !== ''
+      ? String(formValues.photoUri)
+      : '') ||
+    (formValues.photoBase64 != null && String(formValues.photoBase64) !== ''
+      ? String(formValues.photoBase64)
+      : '') ||
     '';
 
   // Photo handlers
@@ -670,10 +681,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           fieldId ||
           activePhotoFieldId ||
           formFields.find(
-            (f) =>
-              f.id === 'f_photo' ||
-              /photo/i.test(f.id) ||
-              /photo/i.test(f.label),
+            (f) => f.id === 'f_photo' || /photo/i.test(f.id) || /photo/i.test(f.label),
           )?.id ||
           'f_photo';
 
@@ -788,10 +796,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       // Therapist field capacity check
       if (f.id === 'f_therapist' || /therapist/i.test(f.label)) {
         if (val && isFull(String(val))) {
-          showToast(
-            `${val} is at maximum capacity. Choose another therapist.`,
-            'error',
-          );
+          showToast(`${val} is at maximum capacity. Choose another therapist.`, 'error');
           return;
         }
       }
@@ -905,14 +910,8 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       getFieldVal(/medical.*notes|medical.*restrictions/i) ||
       '';
     const emergencyContact =
-      getFieldVal('enr_emergency_contact') ||
-      getFieldVal('f9') ||
-      getFieldVal(/emergency/i) ||
-      '';
-    const transportation =
-      getFieldVal('f8') ||
-      getFieldVal(/transportation/i) ||
-      'No';
+      getFieldVal('enr_emergency_contact') || getFieldVal('f9') || getFieldVal(/emergency/i) || '';
+    const transportation = getFieldVal('f8') || getFieldVal(/transportation/i) || 'No';
 
     // Collect dynamic form values keyed strictly by their schema ID
     const dynamicValuesById: Record<string, unknown> = {};
@@ -978,7 +977,11 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     try {
       const res = await createStudentEnrollment(payload);
       const createdData = (res?.data || {}) as Record<string, unknown>;
-      const createdId = (createdData.id ? String(createdData.id) : createdData.studentId ? String(createdData.studentId) : undefined);
+      const createdId = createdData.id
+        ? String(createdData.id)
+        : createdData.studentId
+          ? String(createdData.studentId)
+          : undefined;
 
       markStudentActive(createdId, finalStudentFullName);
       registerStudentStatuses([
@@ -1006,7 +1009,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         id: createdId,
         name: finalStudentFullName,
         fullName: finalStudentFullName,
-        photo: (createdData.headshotUrl || createdData.photoUrl || createdData.photo || studentPhoto) as string,
+        photo: (createdData.headshotUrl ||
+          createdData.photoUrl ||
+          createdData.photo ||
+          studentPhoto) as string,
         photoBase64: studentPhoto,
         photoUri: studentPhoto,
       });
@@ -1050,7 +1056,10 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       showToast(`${finalStudentFullName} enrolled in ${studentProgram}`, 'success');
       navigateToEnrollment();
     } catch (err: unknown) {
-      const errObj = err as { message?: string; response?: { data?: { errors?: string[]; error?: string; message?: string } } };
+      const errObj = err as {
+        message?: string;
+        response?: { data?: { errors?: string[]; error?: string; message?: string } };
+      };
       markStudentActive(undefined, finalStudentFullName);
       saveStudentPhoto({
         name: finalStudentFullName,
@@ -1081,7 +1090,9 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         headshotUrl: studentPhoto || null,
       });
       const errorMsg =
-        (Array.isArray(errObj?.response?.data?.errors) ? errObj.response.data.errors.join(', ') : null) ||
+        (Array.isArray(errObj?.response?.data?.errors)
+          ? errObj.response.data.errors.join(', ')
+          : null) ||
         errObj?.response?.data?.error ||
         errObj?.response?.data?.message ||
         errObj?.message ||
@@ -1151,11 +1162,17 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         formValues[field.id] != null && String(formValues[field.id]) !== ''
           ? String(formValues[field.id])
           : isPhoto
-          ? (formValues.f_photo != null && String(formValues.f_photo) !== '' ? String(formValues.f_photo) : '') ||
-            (formValues.photoUri != null && String(formValues.photoUri) !== '' ? String(formValues.photoUri) : '') ||
-            (formValues.photoBase64 != null && String(formValues.photoBase64) !== '' ? String(formValues.photoBase64) : '') ||
-            ''
-          : '';
+            ? (formValues.f_photo != null && String(formValues.f_photo) !== ''
+                ? String(formValues.f_photo)
+                : '') ||
+              (formValues.photoUri != null && String(formValues.photoUri) !== ''
+                ? String(formValues.photoUri)
+                : '') ||
+              (formValues.photoBase64 != null && String(formValues.photoBase64) !== ''
+                ? String(formValues.photoBase64)
+                : '') ||
+              ''
+            : '';
       return (
         <View key={field.id} style={styles.photoUploadCard}>
           <Text style={styles.fieldLabel}>
@@ -1749,10 +1766,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
           const targetFieldId =
             activePhotoFieldId ||
             formFields.find(
-              (f) =>
-                f.id === 'f_photo' ||
-                /photo/i.test(f.id) ||
-                /photo/i.test(f.label),
+              (f) => f.id === 'f_photo' || /photo/i.test(f.id) || /photo/i.test(f.label),
             )?.id ||
             'f_photo';
 

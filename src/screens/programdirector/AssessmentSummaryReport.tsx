@@ -64,7 +64,6 @@ const FAST_ITEMS = [
   },
 ];
 
-
 interface StudentOption {
   id: string;
   name: string;
@@ -103,7 +102,12 @@ interface AssessmentSummaryData {
     fastAnswers?: Record<string, unknown>;
     abc?: {
       totalIncidents?: number;
-      topAntecedents?: Array<{ antecedent?: string; name?: string; count?: number; [key: string]: unknown }>;
+      topAntecedents?: Array<{
+        antecedent?: string;
+        name?: string;
+        count?: number;
+        [key: string]: unknown;
+      }>;
     };
     [key: string]: unknown;
   };
@@ -272,7 +276,8 @@ export default function AssessmentSummaryReport({
                 onPress={() => setDropdownOpen(!dropdownOpen)}
               >
                 <Text style={styles.dropdownToggleText}>
-                  {students.find((s: StudentOption) => s.id === selectedStudent)?.name || 'Select a Student'}
+                  {students.find((s: StudentOption) => s.id === selectedStudent)?.name ||
+                    'Select a Student'}
                 </Text>
               </TouchableOpacity>
               {dropdownOpen && (
@@ -286,7 +291,9 @@ export default function AssessmentSummaryReport({
                   />
                   <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
                     {students
-                      .filter((s: StudentOption) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                      .filter((s: StudentOption) =>
+                        s.name.toLowerCase().includes(searchQuery.toLowerCase()),
+                      )
                       .map((s: StudentOption) => (
                         <TouchableOpacity
                           key={s.id}
@@ -367,7 +374,8 @@ export default function AssessmentSummaryReport({
       data?.assessmentStatus === 'completed' ||
       selectedStudentObj?.status === 'completed' ||
       selectedStudentObj?.assessmentStatus === 'Completed' ||
-      (data?.assessmentSummary?.skills === 'Completed' && data?.assessmentSummary?.behavior === 'Completed'));
+      (data?.assessmentSummary?.skills === 'Completed' &&
+        data?.assessmentSummary?.behavior === 'Completed'));
 
   const submissionInfo = selectedStudent ? getStudentAssessmentSubmission(selectedStudent) : null;
 
@@ -478,7 +486,9 @@ export default function AssessmentSummaryReport({
                 />
                 <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled={true}>
                   {students
-                    .filter((s: StudentOption) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .filter((s: StudentOption) =>
+                      s.name.toLowerCase().includes(searchQuery.toLowerCase()),
+                    )
                     .map((s: StudentOption) => (
                       <TouchableOpacity
                         key={s.id}
@@ -581,7 +591,10 @@ export default function AssessmentSummaryReport({
                 label="Age"
                 value={studentInfo?.age ? `${studentInfo.age} years old` : '—'}
               />
-              <InfoItem label="Parent / Guardian" value={String(studentInfo?.parentGuardian || '—')} />
+              <InfoItem
+                label="Parent / Guardian"
+                value={String(studentInfo?.parentGuardian || '—')}
+              />
               <InfoItem label="Station" value={String(studentInfo?.station || 'Station 1')} />
               <InfoItem
                 label="Assessment Status"
@@ -607,17 +620,18 @@ export default function AssessmentSummaryReport({
             <AbllsGridView
               scores={(() => {
                 let sc: Record<string, Score> = (abllsScores as Record<string, Score>) || {};
-                if (
-                  Object.keys(sc).length === 0 &&
-                  selectedStudent
-                ) {
+                if (Object.keys(sc).length === 0 && selectedStudent) {
                   try {
                     const aliases = getStudentIdAliases(selectedStudent);
                     for (const a of aliases) {
                       const parsed =
-                        storage.getJSONSync<Record<string, unknown>>(`melue_skills_assessment_${a}`) ||
-                        storage.getJSONSync<Record<string, unknown>>(`skills_assessment_${a}`);
-                      if (parsed?.scores && Object.keys(parsed.scores as Record<string, unknown>).length > 0) {
+                        storage.getJSONSync<Record<string, unknown>>(
+                          `melue_skills_assessment_${a}`,
+                        ) || storage.getJSONSync<Record<string, unknown>>(`skills_assessment_${a}`);
+                      if (
+                        parsed?.scores &&
+                        Object.keys(parsed.scores as Record<string, unknown>).length > 0
+                      ) {
                         sc = parsed.scores as Record<string, Score>;
                         break;
                       }
@@ -642,43 +656,45 @@ export default function AssessmentSummaryReport({
               const aliases = getStudentIdAliases(selectedStudent);
               let parsed: Record<string, unknown> | null = null;
               for (const a of aliases) {
-                parsed = storage.getJSONSync<Record<string, unknown>>(`melue_behavior_assessment_${a}`);
+                parsed = storage.getJSONSync<Record<string, unknown>>(
+                  `melue_behavior_assessment_${a}`,
+                );
                 if (parsed) break;
               }
               if (parsed) {
-                  const rawRecs = Array.isArray(parsed.records)
-                    ? parsed.records
-                    : Array.isArray(parsed.incidents)
-                      ? parsed.incidents
-                      : [];
-                  const antecedentCounts: Record<string, number> = {};
-                  rawRecs.forEach((r: Record<string, unknown>) => {
-                    const ante = String(r.trigger || r.antecedent || r.description || '').trim();
-                    if (ante) antecedentCounts[ante] = (antecedentCounts[ante] || 0) + 1;
-                  });
-                  const computedAntecedents = Object.entries(antecedentCounts)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([antecedent, count]) => ({ antecedent, count }));
+                const rawRecs = Array.isArray(parsed.records)
+                  ? parsed.records
+                  : Array.isArray(parsed.incidents)
+                    ? parsed.incidents
+                    : [];
+                const antecedentCounts: Record<string, number> = {};
+                rawRecs.forEach((r: Record<string, unknown>) => {
+                  const ante = String(r.trigger || r.antecedent || r.description || '').trim();
+                  if (ante) antecedentCounts[ante] = (antecedentCounts[ante] || 0) + 1;
+                });
+                const computedAntecedents = Object.entries(antecedentCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([antecedent, count]) => ({ antecedent, count }));
 
-                  activeBehavior = {
-                    ...activeBehavior,
-                    massAnswers: {
-                      ...(activeBehavior?.massAnswers || {}),
-                      ...(parsed.massAnswers || {}),
-                    },
-                    fastAnswers: {
-                      ...(activeBehavior?.fastAnswers || {}),
-                      ...(parsed.fastAnswers || {}),
-                    },
-                    abc: {
-                      totalIncidents: rawRecs.length || activeBehavior?.abc?.totalIncidents || 0,
-                      topAntecedents:
-                        computedAntecedents.length > 0
-                          ? computedAntecedents
-                          : activeBehavior?.abc?.topAntecedents || [],
-                    },
-                  };
-                }
+                activeBehavior = {
+                  ...activeBehavior,
+                  massAnswers: {
+                    ...(activeBehavior?.massAnswers || {}),
+                    ...(parsed.massAnswers || {}),
+                  },
+                  fastAnswers: {
+                    ...(activeBehavior?.fastAnswers || {}),
+                    ...(parsed.fastAnswers || {}),
+                  },
+                  abc: {
+                    totalIncidents: rawRecs.length || activeBehavior?.abc?.totalIncidents || 0,
+                    topAntecedents:
+                      computedAntecedents.length > 0
+                        ? computedAntecedents
+                        : activeBehavior?.abc?.topAntecedents || [],
+                  },
+                };
+              }
             } catch {}
           }
 
@@ -759,19 +775,21 @@ export default function AssessmentSummaryReport({
                 {(activeBehavior?.abc?.topAntecedents || []).length > 0 ? (
                   <>
                     <TableHeader cols={['Top Antecedents', 'Count']} />
-                    {(activeBehavior?.abc?.topAntecedents || []).map((item: Record<string, unknown>, idx: number) => (
-                      <TableRow
-                        key={item.antecedent ? `ante-${item.antecedent}` : `ante-idx-${idx}`}
-                        values={[
-                          <Text key="a" style={styles.tableCell}>
-                            {String(item.antecedent || item.name || '')}
-                          </Text>,
-                          <Text key="c" style={[styles.tableCell, styles.tableRight]}>
-                            {String(item.count ?? 0)}
-                          </Text>,
-                        ]}
-                      />
-                    ))}
+                    {(activeBehavior?.abc?.topAntecedents || []).map(
+                      (item: Record<string, unknown>, idx: number) => (
+                        <TableRow
+                          key={item.antecedent ? `ante-${item.antecedent}` : `ante-idx-${idx}`}
+                          values={[
+                            <Text key="a" style={styles.tableCell}>
+                              {String(item.antecedent || item.name || '')}
+                            </Text>,
+                            <Text key="c" style={[styles.tableCell, styles.tableRight]}>
+                              {String(item.count ?? 0)}
+                            </Text>,
+                          ]}
+                        />
+                      ),
+                    )}
                   </>
                 ) : (
                   <Text
@@ -822,7 +840,9 @@ export default function AssessmentSummaryReport({
                   const aliases = getStudentIdAliases(selectedStudent);
                   let parsed: Record<string, unknown> | null = null;
                   for (const a of aliases) {
-                    parsed = storage.getJSONSync<Record<string, unknown>>(`melue_preference_assessment_${a}`);
+                    parsed = storage.getJSONSync<Record<string, unknown>>(
+                      `melue_preference_assessment_${a}`,
+                    );
                     if (parsed) break;
                   }
                   if (parsed) {
@@ -841,12 +861,16 @@ export default function AssessmentSummaryReport({
                 } catch {}
               }
 
-              const filteredItems = (allItems as Record<string, unknown>[]).filter((item: Record<string, unknown>) => {
-                if (!item.context) return true;
-                const cleanCtx = String(item.context || '').toLowerCase().replace(/_/g, ' ');
-                const cleanTab = prefTab.toLowerCase().replace(' time', '');
-                return cleanCtx.includes(cleanTab) || cleanCtx === prefTab.toLowerCase();
-              });
+              const filteredItems = (allItems as Record<string, unknown>[]).filter(
+                (item: Record<string, unknown>) => {
+                  if (!item.context) return true;
+                  const cleanCtx = String(item.context || '')
+                    .toLowerCase()
+                    .replace(/_/g, ' ');
+                  const cleanTab = prefTab.toLowerCase().replace(' time', '');
+                  return cleanCtx.includes(cleanTab) || cleanCtx === prefTab.toLowerCase();
+                },
+              );
 
               if (filteredItems.length === 0) {
                 return (
@@ -930,7 +954,9 @@ export default function AssessmentSummaryReport({
               const aliases = getStudentIdAliases(selectedStudent);
               let parsed: Record<string, unknown> | null = null;
               for (const a of aliases) {
-                parsed = storage.getJSONSync<Record<string, unknown>>(`melue_sensory_assessment_${a}`);
+                parsed = storage.getJSONSync<Record<string, unknown>>(
+                  `melue_sensory_assessment_${a}`,
+                );
                 if (parsed) break;
               }
               if (parsed && Array.isArray(parsed?.activities)) {
@@ -949,25 +975,27 @@ export default function AssessmentSummaryReport({
                   cols={['Activity', 'Engagement', 'Reaction', 'Notes']}
                   alignEnd={false}
                 />
-                {(activities as Record<string, unknown>[]).map((item: Record<string, unknown>, idx: number) => (
-                  <TableRow
-                    key={idx}
-                    values={[
-                      <Text key="n" style={styles.tableCell}>
-                        {String(item.name || '')}
-                      </Text>,
-                      <Text key="e" style={styles.tableCell}>
-                        {String(item.engagementLevel || 'N/A')}
-                      </Text>,
-                      <Text key="r" style={styles.tableCell}>
-                        {String(item.responseReaction || 'N/A')}
-                      </Text>,
-                      <Text key="m" style={styles.tableCell}>
-                        {String(item.remark || 'N/A')}
-                      </Text>,
-                    ]}
-                  />
-                ))}
+                {(activities as Record<string, unknown>[]).map(
+                  (item: Record<string, unknown>, idx: number) => (
+                    <TableRow
+                      key={idx}
+                      values={[
+                        <Text key="n" style={styles.tableCell}>
+                          {String(item.name || '')}
+                        </Text>,
+                        <Text key="e" style={styles.tableCell}>
+                          {String(item.engagementLevel || 'N/A')}
+                        </Text>,
+                        <Text key="r" style={styles.tableCell}>
+                          {String(item.responseReaction || 'N/A')}
+                        </Text>,
+                        <Text key="m" style={styles.tableCell}>
+                          {String(item.remark || 'N/A')}
+                        </Text>,
+                      ]}
+                    />
+                  ),
+                )}
               </View>
             </View>
           );
@@ -977,15 +1005,14 @@ export default function AssessmentSummaryReport({
         {(() => {
           let scores = socialSkills?.scores || {};
           let percent = socialSkills?.percent ?? 0;
-          if (
-            Object.keys(scores).length === 0 &&
-            selectedStudent
-          ) {
+          if (Object.keys(scores).length === 0 && selectedStudent) {
             try {
               const aliases = getStudentIdAliases(selectedStudent);
               let parsed: Record<string, unknown> | null = null;
               for (const a of aliases) {
-                parsed = storage.getJSONSync<Record<string, unknown>>(`melue_social_skills_assessment_${a}`);
+                parsed = storage.getJSONSync<Record<string, unknown>>(
+                  `melue_social_skills_assessment_${a}`,
+                );
                 if (parsed) break;
               }
               if (parsed?.scores) {

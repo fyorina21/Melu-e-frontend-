@@ -47,7 +47,7 @@ export const getStudentOptions = async () => {
         String(s.status || '').toLowerCase() === 'completed';
       return {
         ...s,
-        assessmentStatus: isCompleted ? 'Completed' : (s.assessmentStatus || s.status || 'Active'),
+        assessmentStatus: isCompleted ? 'Completed' : s.assessmentStatus || s.status || 'Active',
       };
     });
     return { ...res, data: enriched };
