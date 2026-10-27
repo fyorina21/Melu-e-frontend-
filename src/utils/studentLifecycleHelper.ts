@@ -252,10 +252,9 @@ export function getSubmittedStudents(): any[] {
  * Stores student statuses into a lightweight client registry for cross-screen lookup
  */
 export function registerStudentStatuses(students: any[]): void {
-  if (typeof localStorage === 'undefined' || !Array.isArray(students)) return;
+  if (!Array.isArray(students)) return;
   try {
-    const raw = localStorage.getItem(STUDENT_STATUS_REGISTRY_KEY);
-    const registry = raw ? JSON.parse(raw) : {};
+    const registry = storage.getJSONSync<Record<string, any>>(STUDENT_STATUS_REGISTRY_KEY, {}) || {};
     students.forEach((s) => {
       if (!s || !s.id) return;
       const sid = String(s.id);
@@ -267,7 +266,7 @@ export function registerStudentStatuses(students: any[]): void {
         name: s.name || s.fullName || registry[sid]?.name,
       };
     });
-    localStorage.setItem(STUDENT_STATUS_REGISTRY_KEY, JSON.stringify(registry));
+    storage.setJSONSync(STUDENT_STATUS_REGISTRY_KEY, registry);
   } catch {}
 }
 
@@ -275,11 +274,9 @@ export function registerStudentStatuses(students: any[]): void {
  * Retrieves registered student lifecycle info
  */
 export function getRegisteredStudentStatus(studentId: string | number): any {
-  if (typeof localStorage === 'undefined' || !studentId) return null;
+  if (!studentId) return null;
   try {
-    const raw = localStorage.getItem(STUDENT_STATUS_REGISTRY_KEY);
-    if (!raw) return null;
-    const registry = JSON.parse(raw);
+    const registry = storage.getJSONSync<Record<string, any>>(STUDENT_STATUS_REGISTRY_KEY, {}) || {};
     return registry[String(studentId)] || null;
   } catch {
     return null;
