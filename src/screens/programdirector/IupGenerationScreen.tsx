@@ -302,7 +302,7 @@ export default function IupGenerationScreen({
       setSelectedStudentId(null);
     }
     setLoading(false);
-  }, [route.params]);
+  }, [(route?.params as { studentId?: string })?.studentId]);
 
   useEffect(() => {
     loadData();
@@ -449,7 +449,8 @@ export default function IupGenerationScreen({
       .catch(() => setContext(null));
 
     // Fetch existing assigned goals to populate slots if not already restored from draft or library
-    if (goalBank.length > 0) {
+    const currentBank = goalBank.length > 0 ? goalBank : getStoredGoalBank();
+    if (currentBank.length > 0) {
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
           if (data?.goals && !finalized) {
@@ -463,7 +464,7 @@ export default function IupGenerationScreen({
                 station2: [],
               };
               data.goals.forEach((g: { id?: string; station?: number; slot?: number }) => {
-                const gbGoal = goalBank.find((b) => b.id === g.id);
+                const gbGoal = currentBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
                   const slotIdx = typeof g.slot === 'number' ? g.slot : next[stationKey].length;
@@ -481,7 +482,7 @@ export default function IupGenerationScreen({
         })
         .catch(console.error);
     }
-  }, [selectedStudentId, goalBank]);
+  }, [selectedStudentId]);
 
   const completedCandidates = useMemo(() => {
     return candidates

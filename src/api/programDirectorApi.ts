@@ -2189,7 +2189,8 @@ export const getIupCandidates = async () => {
 };
 
 export const getIupContext = async (studentId: string): Promise<{ data: any }> => {
-  if (isUserDirectorOrAdmin()) {
+  const isNumericBackendId = !String(studentId).startsWith('stu-') && !isNaN(Number(studentId));
+  if (isUserDirectorOrAdmin() && isNumericBackendId) {
     try {
       const res = await client.get(`/program_director/assessments/${studentId}`);
       const data = res?.data;
@@ -2567,7 +2568,8 @@ export const archiveIup = async (iupId: string): Promise<{ data: any }> => {
 // ============================================================================
 export const getStudentCaseload = async (studentId: string): Promise<{ data: any }> => {
   const backendGoals: any[] = [];
-  if (isUserProgramDirector()) {
+  const isNumericBackendId = !String(studentId).startsWith('stu-') && !isNaN(Number(studentId));
+  if (isUserProgramDirector() && isNumericBackendId) {
     try {
       const res = await client.get(`/students/${studentId}/goals`);
       const stations = res.data?.stations || [];
@@ -2775,14 +2777,18 @@ export const assignGoalToSlot = async (
   dispatchCaseloadEvent('melue_caseload_updated', { studentId, slotKey, goal: goalObj });
 
   // 4. Attempt live API call if available
+  const isNumericBackendId = !String(studentId).startsWith('stu-') && !isNaN(Number(studentId));
+  const isNumericGoalId = !String(goalId).startsWith('g-') && !isNaN(Number(goalId));
   try {
-    await client.post('/goal_assignments', {
+    if (isNumericBackendId && isNumericGoalId) {
+      await client.post('/goal_assignments', {
       student_id: studentId,
       goal_id: goalId,
       station: stationKey === 'station1' ? 1 : 2,
       slot: slotIdx,
       ...payload,
     });
+    }
   } catch {}
 
   return { data: { success: true, studentId, slotKey, ...goalObj } };
@@ -3700,3 +3706,4 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
 
   return { data: payload };
 };
+
