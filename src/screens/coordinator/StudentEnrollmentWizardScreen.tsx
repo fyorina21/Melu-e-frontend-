@@ -262,8 +262,8 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
-  const directNav = useNavigation<any>();
-  let navRef: any = null;
+  const directNav = useNavigation<Props['navigation']>();
+  let navRef: ReturnType<typeof useSidebarNav>['navRef'] | null = null;
   try {
     const sidebar = useSidebarNav();
     navRef = sidebar?.navRef;

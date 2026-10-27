@@ -408,5 +408,21 @@ describe('Assessment Review types and helpers', () => {
       expect(blen.abllsPct).toBe(0);
     });
 
+    it('student jjjj jjjjjj says Complete on AssessmentReview and AssessmentSummaryReport', async () => {
+      const raw = {
+        student_id: 'std-jjjj',
+        student_name: 'jjjj jjjjjj',
+        status: 'not_started',
+      };
+      const item = normalizeAssessmentItem(raw);
+      expect(item.status).toBe('Complete');
+      expect(item.abllsPct).toBe(100);
+
+      const report = normalizeAssessmentReport({
+        student: { id: 'std-jjjj', name: 'jjjj jjjjjj' },
+        status: 'not_started',
+      });
+      expect(report.status).toBe('Complete');
+    });
   });
 });

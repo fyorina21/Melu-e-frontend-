@@ -193,7 +193,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
           return await http.get('/reports/session_summaries', fastConfig).catch(() => null);
         });
 
-        const rawSummaries = res.data?.session_summaries || res.data?.data || [];
+        const rawSummaries = res?.data?.session_summaries || res?.data?.data || [];
         if (Array.isArray(rawSummaries) && rawSummaries.length > 0) {
           backendRecords = rawSummaries.map((s: any) => {
             const sess = s.session || {};

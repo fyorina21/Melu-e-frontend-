@@ -216,12 +216,12 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       }
       const stored = getStoredEnrolledStudents();
       const existingIds = new Set(
-        (Array.isArray(data) ? data : []).map((d: any) => String(d.id || d.studentId || '').toLowerCase()).filter(Boolean),
+        (Array.isArray(data) ? (data as Record<string, unknown>[]) : []).map((d: Record<string, unknown>) => String(d.id || d.studentId || '').toLowerCase()).filter(Boolean),
       );
       const existingNames = new Set(
-        (Array.isArray(data) ? data : []).map((d: any) => String(d.fullName || d.name || '').toLowerCase().trim()).filter(Boolean),
+        (Array.isArray(data) ? (data as Record<string, unknown>[]) : []).map((d: Record<string, unknown>) => String(d.fullName || d.name || '').toLowerCase().trim()).filter(Boolean),
       );
-      const missingStored = stored.filter((s: any) => {
+      const missingStored = stored.filter((s: Record<string, unknown>) => {
         const sid = String(s.id || s.studentId || '').toLowerCase();
         const sname = String(s.fullName || s.name || '').toLowerCase().trim();
         return (!sid || !existingIds.has(sid)) && (!sname || !existingNames.has(sname));

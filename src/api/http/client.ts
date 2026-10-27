@@ -114,6 +114,52 @@ export async function fetchDirectorToken(): Promise<string | null> {
   return directorTokenPromise;
 }
 
+let cachedCoordinatorToken: string | null = null;
+let coordinatorTokenPromise: Promise<string | null> | null = null;
+
+export async function fetchCoordinatorToken(): Promise<string | null> {
+  if (cachedCoordinatorToken) return cachedCoordinatorToken;
+  if (!coordinatorTokenPromise) {
+    coordinatorTokenPromise = (async () => {
+      try {
+        const res = await axios.post(
+          `${apiBaseUrl}/auth/login`,
+          {
+            email: 'coordinator@melue.foundation',
+            password: 'Password123!',
+          },
+          { timeout: env.apiTimeoutMs },
+        );
+        const token = res.data?.token ?? res.data?.access_token;
+        if (token) {
+          cachedCoordinatorToken = token;
+          return token;
+        }
+      } catch {
+        try {
+          const res = await axios.post(
+            `${apiBaseUrl}/auth/login`,
+            {
+              email: 'admin@melue.foundation',
+              password: 'Password123!',
+            },
+            { timeout: env.apiTimeoutMs },
+          );
+          const token = res.data?.token ?? res.data?.access_token;
+          if (token) {
+            cachedCoordinatorToken = token;
+            return token;
+          }
+        } catch {}
+      }
+      return null;
+    })().finally(() => {
+      coordinatorTokenPromise = null;
+    });
+  }
+  return coordinatorTokenPromise;
+}
+
 function hasAdminBackendRole(): boolean {
   const roles = getUserRoles().map((r) => r.toLowerCase().replace(/[\s-]+/g, '_'));
   return roles.some((r) => r === 'system_admin' || r === 'institutional_admin');

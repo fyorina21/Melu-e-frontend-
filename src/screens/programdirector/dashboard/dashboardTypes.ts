@@ -90,7 +90,12 @@ export const STAGE_COLORS: Record<
 export const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   'Not Started': { bg: '#F3F4F6', text: '#6B7280' },
   'In Assessment': { bg: '#FEF3C7', text: '#B45309' },
+  'In Progress': { bg: '#FEF3C7', text: '#B45309' },
   'Assessment Completed': { bg: '#DBEAFE', text: '#2563EB' },
+  'Assessment Complete': { bg: '#DBEAFE', text: '#2563EB' },
+  'Complete': { bg: '#DBEAFE', text: '#2563EB' },
+  'Reviewed': { bg: '#D1FAE5', text: '#059669' },
+  'Ready for IUP': { bg: '#DBEAFE', text: '#1E40AF' },
   'Session Assigned': { bg: '#EDE9FE', text: '#7C3AED' },
   'In Session': { bg: '#D1FAE5', text: '#059669' },
 };

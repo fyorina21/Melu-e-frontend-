@@ -7,6 +7,11 @@
 import client from './sessionApi';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
+import {
+  isStudentAssessmentSubmitted,
+  isStoredAssessmentCompleted,
+  checkStudentAllAssessmentsCompleted,
+} from '../utils/studentLifecycleHelper';
 
 export interface StudentOption {
   id: string;
@@ -33,7 +38,19 @@ export interface RoomOption {
 export const getStudentOptions = async () => {
   const res = await client.get<StudentOption[]>('/options/students');
   if (Array.isArray(res?.data)) {
-    return { ...res, data: filterOutDeletedStudents(res.data) };
+    const list = filterOutDeletedStudents(res.data);
+    const enriched = list.map((s) => {
+      const isCompleted =
+        isStudentAssessmentSubmitted(s.id) ||
+        isStoredAssessmentCompleted(s.id) ||
+        checkStudentAllAssessmentsCompleted(s.id) ||
+        String(s.status || '').toLowerCase() === 'completed';
+      return {
+        ...s,
+        assessmentStatus: isCompleted ? 'Completed' : (s.assessmentStatus || s.status || 'Active'),
+      };
+    });
+    return { ...res, data: enriched };
   }
   return res;
 };
