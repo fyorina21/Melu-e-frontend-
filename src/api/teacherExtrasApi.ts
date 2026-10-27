@@ -433,11 +433,6 @@ function setStoredAssessment(type: string, studentId: string, data: any): void {
       storage.setJSONSync(key, data);
       storage.setJSON(key, data).catch(() => {});
     } catch {}
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem(key, JSON.stringify(data));
-      } catch {}
-    }
   }
 }
 
