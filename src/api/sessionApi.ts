@@ -183,7 +183,7 @@ export interface NoteRecordItem {
   students: string[];
   station: string;
   room: string;
-  status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft';
+  status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft' | 'Saved';
   coordinatorFeedback?: string;
   bodyMarkdown?: string;
   attachments?: { id: string; type: string; name: string; uri?: string }[];

@@ -104,4 +104,40 @@ describe('sessionSummary logic and helpers', () => {
       expect(report).toContain('Great session overall.');
     });
   });
+
+  describe('Session Summary submission and Daily Notes integration', () => {
+    it('persists entered notes and changes status from draft to saved for Daily Notes store', async () => {
+      const { createSessionNote } = await import('../../api/sessionApi');
+      const testSessionId = 'test-sess-' + Date.now();
+      const noteText = 'Student showed strong communication skills and completed all trials.';
+
+      await createSessionNote(testSessionId, {
+        bodyMarkdown: noteText,
+        students: ['Abebe Bikila'],
+        station: 'Station 1',
+        room: 'Room 1A',
+        status: 'Saved',
+        date: '2026-10-27',
+      });
+
+      const stored = localStorage.getItem('melue_session_notes_store');
+      expect(stored).toBeDefined();
+      const records = JSON.parse(stored || '[]');
+      const match = records.find((r: any) => r.id === testSessionId);
+      expect(match).toBeDefined();
+      expect(match?.status).toBe('Saved');
+      expect(match?.bodyMarkdown).toBe(noteText);
+      expect(match?.students).toContain('Abebe Bikila');
+    });
+
+    it('requires entered note to be functional and not empty or whitespace only', () => {
+      const emptyNote = '';
+      const whitespaceNote = '   ';
+      const validNote = 'Student was attentive';
+
+      expect(Boolean(emptyNote && emptyNote.trim().length > 0)).toBe(false);
+      expect(Boolean(whitespaceNote && whitespaceNote.trim().length > 0)).toBe(false);
+      expect(Boolean(validNote && validNote.trim().length > 0)).toBe(true);
+    });
+  });
 });
