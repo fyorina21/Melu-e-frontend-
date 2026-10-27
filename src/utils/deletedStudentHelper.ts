@@ -41,23 +41,17 @@ function dispatchStudentEvent(name: string, detail?: any) {
 
 export function getDeletedStudentKeys(): Set<string> {
   try {
-    const s = getStorage();
-    if (s) {
-      const raw = s.getItem(DELETED_STUDENTS_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) {
-          return new Set(
-            arr
-              .map((k: string) =>
-                String(k || '')
-                  .trim()
-                  .toLowerCase(),
-              )
-              .filter(Boolean),
-          );
-        }
-      }
+    const arr = storage.getJSONSync<string[]>(DELETED_STUDENTS_KEY, []) || [];
+    if (Array.isArray(arr)) {
+      return new Set(
+        arr
+          .map((k: string) =>
+            String(k || '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      );
     }
   } catch {}
   return new Set();
@@ -65,14 +59,8 @@ export function getDeletedStudentKeys(): Set<string> {
 
 export function getDeletedStudentRecords(): DeletedStudentRecord[] {
   try {
-    const s = getStorage();
-    if (s) {
-      const raw = s.getItem(DELETED_STUDENT_RECORDS_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return arr;
-      }
-    }
+    const arr = storage.getJSONSync<DeletedStudentRecord[]>(DELETED_STUDENT_RECORDS_KEY, []) || [];
+    if (Array.isArray(arr)) return arr;
   } catch {}
   return [];
 }
@@ -234,17 +222,15 @@ export function recordDeletedStudent(student: {
       deletedAt: new Date().toISOString(),
     };
 
-    if (s) {
-      s.setItem(DELETED_STUDENTS_KEY, JSON.stringify(Array.from(currentKeys)));
+    storage.setJSONSync(DELETED_STUDENTS_KEY, Array.from(currentKeys));
 
-      // Save audit records
-      const records = getDeletedStudentRecords();
-      const filteredRecords = records.filter(
-        (r) => (!student.id || r.id !== student.id) && (!name || r.name.toLowerCase() !== name),
-      );
-      filteredRecords.push(newRecord);
-      s.setItem(DELETED_STUDENT_RECORDS_KEY, JSON.stringify(filteredRecords));
-    }
+    // Save audit records
+    const records = getDeletedStudentRecords();
+    const filteredRecords = records.filter(
+      (r) => (!student.id || r.id !== student.id) && (!name || r.name.toLowerCase() !== name),
+    );
+    filteredRecords.push(newRecord);
+    storage.setJSONSync(DELETED_STUDENT_RECORDS_KEY, filteredRecords);
 
     // 1. Purge from melue_enrolled_students_cache
     try {
@@ -431,9 +417,10 @@ export function recordDeletedStudent(student: {
 
     // Purge from session students cache (melue_session_students_cache)
     try {
-      const sessStudentsRaw = s ? s.getItem('melue_session_students_cache') : null;
-      if (sessStudentsRaw) {
-        const sessMap = JSON.parse(sessStudentsRaw);
+      const sessMap =
+        storage.getJSONSync<Record<string, any[]>>('melue_session_students_cache') ||
+        (s ? JSON.parse(s.getItem('melue_session_students_cache') || 'null') : null);
+      if (sessMap) {
         let changed = false;
         for (const k of Object.keys(sessMap)) {
           if (Array.isArray(sessMap[k])) {
@@ -444,8 +431,8 @@ export function recordDeletedStudent(student: {
             }
           }
         }
-        if (changed && s) {
-          s.setItem('melue_session_students_cache', JSON.stringify(sessMap));
+        if (changed) {
+          storage.setJSONSync('melue_session_students_cache', sessMap);
         }
       }
     } catch {}
