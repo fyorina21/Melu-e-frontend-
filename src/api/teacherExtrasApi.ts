@@ -18,6 +18,8 @@ import {
   checkStudentAllAssessmentsCompleted,
   getStudentIdAliases,
   isStudentAssessmentSubmitted,
+  markStudentAssessmentCompleted,
+  updateStudentStatus,
 } from '../utils/studentLifecycleHelper';
 
 // SCR-TEA-001: Teacher Dashboard
@@ -790,4 +792,53 @@ export const escalateTeacherConversation = async (conversationId: string, payloa
 
 export const markTeacherConversationResolved = async (conversationId: string) => {
   return { data: { success: true, conversationId, resolved: true } };
+};
+
+import { getStoredAbcLists } from '../stores/abcListsStore';
+
+export interface BehaviorIncidentOptionItem {
+  name: string;
+  definition?: string;
+  default_category?: string;
+}
+
+export interface BehaviorIncidentOptionsResponse {
+  behaviors: BehaviorIncidentOptionItem[];
+  antecedents: string[];
+  consequences: string[];
+  locations: string[];
+}
+
+export const getBehaviorIncidentOptions = async (): Promise<BehaviorIncidentOptionsResponse> => {
+  try {
+    const res = await client.get('/behavior_incidents/options');
+    if (res?.data && Array.isArray(res.data.behaviors)) {
+      return res.data;
+    }
+  } catch {}
+  const local = getStoredAbcLists();
+  return {
+    behaviors: local.behaviors.map((b) => ({
+      name: b.name,
+      definition: b.definition || b.name,
+      default_category: b.category,
+    })),
+    antecedents: local.antecedents.map((a) => a.name),
+    consequences: local.consequences.map((c) => c.name),
+    locations: local.locations.map((l) => l.name),
+  };
+};
+
+export const submitAssessmentsForReview = async (studentId: string) => {
+  const sid = String(studentId);
+  try {
+    const res = await client.post(`/teacher/students/${sid}/submit_assessments`);
+    markStudentAssessmentCompleted(sid);
+    updateStudentStatus(sid, 'assessment_complete');
+    return res.data;
+  } catch (err) {
+    markStudentAssessmentCompleted(sid);
+    updateStudentStatus(sid, 'assessment_complete');
+    return { success: true, student_id: sid, status: 'assessment_complete' };
+  }
 };

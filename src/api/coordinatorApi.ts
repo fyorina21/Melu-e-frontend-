@@ -1,18 +1,27 @@
+import {
+  isStoredAssessmentCompleted,
+  isStudentAssessmentSubmitted,
+} from '../utils/studentLifecycleHelper';
 import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
 import { saveCoordinatorAlert } from '../utils/alertNotificationHelper';
+import { getEnrollmentDraft, saveEnrollmentDraft } from '../utils/enrollmentDraftHelper';
+import { registerStudentStatuses } from '../utils/studentLifecycleHelper';
+import { saveStudentPhoto } from '../utils/studentPhotoHelper';
+import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
 import {
-  recordDeletedStudent,
-  isStudentDeleted as isStudentDeletedHelper,
-  filterOutDeletedStudents,
-} from '../utils/deletedStudentHelper';
-import {
-  isStudentAssessmentSubmitted,
-  isStoredAssessmentCompleted,
-  checkStudentAllAssessmentsCompleted,
-} from '../utils/studentLifecycleHelper';
+  DEMOGRAPHIC_KEY,
+  getStudentDemographic,
+  maskSensitiveDemographic,
+} from '../utils/sensitiveDataSanitizer';
+export {
+  getProgramOptions,
+  getTherapyGroupOptions,
+  getStatusOptions,
+  getTherapyStatusOptions,
+} from './optionsApi';
 
 // ============================================================================
 // Storage Keys
@@ -22,7 +31,6 @@ const ENROLLED_STUDENTS_STORAGE_KEY = 'melue_enrolled_students_cache';
 const ROOMS_CACHE_STORAGE_KEY = 'melue_rooms_cache';
 const RESOURCES_CACHE_STORAGE_KEY = 'melue_resources_cache';
 const STUDENT_FLAGS_STORAGE_KEY = 'melue_student_flags_cache';
-export const DELETED_STUDENTS_STORAGE_KEY = 'melue_deleted_students_cache';
 
 // ============================================================================
 // Default Datasets for Coordinator Resilient Fallbacks
@@ -166,89 +174,110 @@ const DEFAULT_RESOURCES = [
 ];
 
 // Helper to access custom enrolled students in storage
-export function getStoredEnrolledStudents(): Record<string, unknown>[] {
-  return storage.getJSONSync<Record<string, unknown>[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
+export function getStoredEnrolledStudents(): any[] {
+  const rawList = storage.getJSONSync<any[]>(ENROLLED_STUDENTS_STORAGE_KEY, []) || [];
+  return rawList.map((s) => ({
+    ...s,
+    [DEMOGRAPHIC_KEY]: s.demographic || 'Female',
+  }));
 }
 
-export function saveEnrolledStudentLocally(student: Record<string, unknown>): void {
+export function saveOrUpdateEnrolledStudentLocally(studentId: string, studentData: any): any {
   try {
     const list = getStoredEnrolledStudents();
-    const cleanName = String(student.fullName || student.name || '')
+    const cleanStudent = { ...studentData };
+    delete cleanStudent[DEMOGRAPHIC_KEY];
+    delete cleanStudent['gender'];
+    delete cleanStudent['f_gender'];
+    delete cleanStudent['enr_gender'];
+    cleanStudent.demographic = getStudentDemographic(studentData, 'Female');
+
+    const normId = (studentId || '').toLowerCase().trim();
+    const normSid = String(cleanStudent.studentId || cleanStudent.student_id || '')
       .toLowerCase()
       .trim();
-    const existingIndex = list.findIndex(
-      (s) =>
-        (s.id && student.id && String(s.id) === String(student.id)) ||
-        (cleanName &&
-          String(s.fullName || s.name || '')
-            .toLowerCase()
-            .trim() === cleanName),
-    );
-    if (existingIndex >= 0) {
-      list[existingIndex] = { ...list[existingIndex], ...student };
-    } else {
-      list.unshift(student);
-    }
-    storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent(new CustomEvent('melue_student_enrolled_updated', { detail: student }));
-    }
-  } catch {}
-}
+    const normName = String(cleanStudent.fullName || cleanStudent.name || '')
+      .toLowerCase()
+      .trim();
 
-function _removeStoredEnrolledStudentByName(name: string): void {
-  try {
-    if (!name) return;
-    const cleanName = name.toLowerCase().trim();
-    const list = getStoredEnrolledStudents();
-    const filtered = list.filter((s) => {
+    const idx = list.findIndex((s) => {
+      const sId = String(s.id || '')
+        .toLowerCase()
+        .trim();
+      const sSid = String(s.studentId || s.student_id || '')
+        .toLowerCase()
+        .trim();
       const sName = String(s.fullName || s.name || '')
         .toLowerCase()
         .trim();
-      return sName !== cleanName;
+      return (
+        (normId && (sId === normId || sSid === normId)) ||
+        (normSid && (sId === normSid || sSid === normSid)) ||
+        (normName && sName === normName)
+      );
     });
-    if (filtered.length !== list.length) {
-      storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, filtered);
+
+    let merged: any;
+    if (idx >= 0) {
+      merged = {
+        ...list[idx],
+        ...cleanStudent,
+        id: list[idx].id || studentId || cleanStudent.id,
+        studentId:
+          list[idx].studentId ||
+          list[idx].student_id ||
+          cleanStudent.studentId ||
+          cleanStudent.student_id ||
+          studentId,
+        student_id:
+          list[idx].student_id ||
+          list[idx].studentId ||
+          cleanStudent.student_id ||
+          cleanStudent.studentId ||
+          studentId,
+        customFields: {
+          ...(list[idx].customFields || list[idx].custom_fields || {}),
+          ...(cleanStudent.customFields ||
+            cleanStudent.custom_fields ||
+            cleanStudent.formValues ||
+            {}),
+        },
+        custom_fields: {
+          ...(list[idx].custom_fields || list[idx].customFields || {}),
+          ...(cleanStudent.custom_fields ||
+            cleanStudent.customFields ||
+            cleanStudent.formValues ||
+            {}),
+        },
+      };
+      list[idx] = merged;
+    } else {
+      merged = {
+        id: studentId || cleanStudent.id || `stu-${Date.now()}`,
+        studentId: cleanStudent.studentId || cleanStudent.student_id || studentId,
+        student_id: cleanStudent.student_id || cleanStudent.studentId || studentId,
+        ...cleanStudent,
+      };
+      list.unshift(merged);
     }
-  } catch {}
-}
 
-export function getDeletedStudentKeys(): Set<string> {
-  const list = storage.getJSONSync<string[]>(DELETED_STUDENTS_STORAGE_KEY, []) || [];
-  return new Set(
-    list
-      .map((k) =>
-        String(k || '')
-          .trim()
-          .toLowerCase(),
-      )
-      .filter(Boolean),
-  );
-}
+    storage.setJSONSync(ENROLLED_STUDENTS_STORAGE_KEY, list);
 
-export function isStudentDeleted(id?: string, name?: string): boolean {
-  if (!id && !name) return false;
-  return Boolean((id && isStudentDeletedHelper(id)) || (name && isStudentDeletedHelper(name)));
-}
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('melue_enrolled_students_changed', { detail: merged }));
+      window.dispatchEvent(new CustomEvent('melue_student_profile_updated', { detail: merged }));
+    }
 
-export function markStudentDeleted(id?: string, name?: string): void {
-  recordDeletedStudent({ id, fullName: name });
-}
-
-export const deleteStudentEnrollment = async (
-  studentId: string,
-  studentName?: string,
-): Promise<{ data: { success: boolean; id: string } }> => {
-  recordDeletedStudent({ id: studentId, fullName: studentName });
-  try {
-    await client.delete(`/coordinator/students/${studentId}`);
+    return merged;
   } catch {
-    try {
-      await client.delete(`/students/${studentId}`);
-    } catch {}
+    return studentData;
   }
-  return { data: { success: true, id: studentId } };
-};
+}
+
+export function saveEnrolledStudentLocally(student: any): void {
+  const sid = student?.id || student?.studentId || student?.student_id || '';
+  saveOrUpdateEnrolledStudentLocally(sid, student);
+}
 
 function getStoredSummaryStatusMap(): Record<string, 'approved' | 'revision-required' | 'pending'> {
   return storage.getJSONSync(SUMMARY_STATUS_STORAGE_KEY, {}) || {};
@@ -263,36 +292,30 @@ function setSummaryStatusLocally(id: string, status: 'approved' | 'revision-requ
 }
 
 // In-memory message thread store for coordinator communications
-const coordinatorThreadStore: Record<string, Record<string, unknown>[]> = {};
+const coordinatorThreadStore: Record<string, any[]> = {};
 
 // ============================================================================
 // SCR-TC-001: Coordinator Dashboard
 // ============================================================================
-export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, unknown> }> => {
+export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
   try {
     const res = await client.get('/therapy_coordinator/operational_management');
     if (res?.data && (res.data.summary || res.data.teachers || res.data.blocks)) {
       const d = res.data;
       const teachers = Array.isArray(d.teachers) ? d.teachers : [];
       const blocks = Array.isArray(d.blocks) ? d.blocks : [];
-      const _currentBlock = blocks.find((b: Record<string, unknown>) => b.is_current) || blocks[0];
+      const currentBlock = blocks.find((b: any) => b.is_current) || blocks[0];
 
-      const liveSessions: Record<string, unknown>[] = [];
-      teachers.forEach((t: Record<string, unknown>, idx: number) => {
-        const teacherBlocks = Array.isArray(t.blocks)
-          ? (t.blocks as Record<string, unknown>[])
-          : [];
-        const activeBlock =
-          teacherBlocks.find((b: Record<string, unknown>) => b.is_current) || teacherBlocks[0];
-        const assignments = Array.isArray(activeBlock?.assignments)
-          ? (activeBlock.assignments as Record<string, unknown>[])
-          : [];
-        const studentCount = Number(activeBlock?.students_count) || assignments.length;
+      const liveSessions: any[] = [];
+      teachers.forEach((t: any, idx: number) => {
+        const teacherBlocks = Array.isArray(t.blocks) ? t.blocks : [];
+        const activeBlock = teacherBlocks.find((b: any) => b.is_current) || teacherBlocks[0];
+        const studentCount = activeBlock?.students_count || (activeBlock?.assignments?.length ?? 0);
         if (studentCount > 0 || idx < 3) {
           liveSessions.push({
             id: `sess-active-${t.teacher_id || idx}`,
             teacherName: t.teacher_name || 'Teacher',
-            stationName: assignments[0]?.station_name || `Station ${idx + 1}`,
+            stationName: activeBlock?.assignments?.[0]?.station_name || `Station ${idx + 1}`,
             studentCount: studentCount > 0 ? studentCount : 2,
             status: t.is_available ? 'on_track' : 'needs_attention',
           });
@@ -300,13 +323,10 @@ export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, 
       });
 
       const totalStudents = teachers.reduce(
-        (acc: number, t: Record<string, unknown>) =>
-          acc + (Number((t.capacity as Record<string, unknown>)?.current) || 0),
+        (acc: number, t: any) => acc + (t.capacity?.current || 0),
         0,
       );
-      const activeTeachersCount = teachers.filter(
-        (t: Record<string, unknown>) => t.is_available,
-      ).length;
+      const activeTeachersCount = teachers.filter((t: any) => t.is_available).length;
 
       return {
         data: {
@@ -319,17 +339,15 @@ export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, 
               ? activeTeachersCount
               : d.summary?.available_teachers || teachers.length,
           liveSessions,
-          pendingReviews: (d.unassigned_alerts || []).map(
-            (a: Record<string, unknown>, i: number) => ({
-              id: `alert-${i}`,
-              teacherName: a.suggested_teacher_name || 'Staff Member',
-              stationName: a.block_name || 'Session Block',
-              date: 'Today',
-              studentNames: a.student_name ? [a.student_name] : ['Student'],
-              independencePercent: 80,
-              incidents: 0,
-            }),
-          ),
+          pendingReviews: (d.unassigned_alerts || []).map((a: any, i: number) => ({
+            id: `alert-${i}`,
+            teacherName: a.suggested_teacher_name || 'Staff Member',
+            stationName: a.block_name || 'Session Block',
+            date: 'Today',
+            studentNames: a.student_name ? [a.student_name] : ['Student'],
+            independencePercent: 80,
+            incidents: 0,
+          })),
           summary: {
             sessionsCompleted: d.summary?.total_assignments || 8,
             trialsLogged: 142,
@@ -342,26 +360,26 @@ export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, 
   } catch {}
 
   // Fetch real students and staff from backend database
-  let realStudents: Record<string, unknown>[] = [];
+  let realStudents: any[] = [];
   try {
-    const { data: sData } = await client.get<Record<string, unknown>[]>('/options/students');
+    const { data: sData } = await client.get<any[]>('/options/students');
     if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
   } catch {}
 
-  let realStaff: Record<string, unknown>[] = [];
+  let realStaff: any[] = [];
   try {
-    const { data: stData } = await client.get<Record<string, unknown>[]>('/options/staff');
+    const { data: stData } = await client.get<any[]>('/options/staff');
     if (Array.isArray(stData) && stData.length > 0) realStaff = stData;
   } catch {}
 
-  const teachers = realStaff.filter((s: Record<string, unknown>) => s.role === 'teacher');
+  const teachers = realStaff.filter((s: any) => s.role === 'teacher');
   const teacherNames =
     teachers.length > 0
-      ? teachers.map((t: Record<string, unknown>) => String(t.name || ''))
+      ? teachers.map((t: any) => t.name)
       : ['Abeba Tadesse', 'Dawit Bekele', 'Selam Tesfaye', 'fyori'];
   const studentNames =
     realStudents.length > 0
-      ? realStudents.map((s: Record<string, unknown>) => String(s.name || ''))
+      ? realStudents.map((s: any) => s.name)
       : DEFAULT_COORDINATOR_STUDENTS.map((s) => s.name);
 
   // Real live sessions with authentic students and assigned teachers
@@ -432,7 +450,7 @@ export const getCoordinatorDashboard = async (): Promise<{ data: Record<string, 
 // ============================================================================
 // SCR-TC-002: Live Session Monitoring
 // ============================================================================
-export const getActiveSessions = async (params: QueryParams): Promise<{ data: unknown }> => {
+export const getActiveSessions = async (params: QueryParams): Promise<{ data: any }> => {
   try {
     const res = await client.get('/coordinator/sessions/active', { params });
     if (Array.isArray(res?.data) && res.data.length > 0) {
@@ -444,9 +462,9 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: un
     }
   } catch {}
 
-  let realStudents: Record<string, unknown>[] = [];
+  let realStudents: any[] = [];
   try {
-    const { data: sData } = await client.get<Record<string, unknown>[]>('/options/students');
+    const { data: sData } = await client.get<any[]>('/options/students');
     if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
   } catch {}
 
@@ -554,7 +572,7 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: un
 export const sendAlertToTeacher = async (
   sessionId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   saveCoordinatorAlert({
     sessionId,
     teacherName: String(payload.teacherName || ''),
@@ -589,42 +607,29 @@ export const exportSessionLog = async (params: QueryParams): Promise<{ data: { c
 // ============================================================================
 // SCR-TC-003: Session Summary Review
 // ============================================================================
-export const getPendingSummaries = async (
-  params: QueryParams,
-): Promise<{ data: Record<string, unknown>[] }> => {
-  let backendList: Record<string, unknown>[] = [];
+export const getPendingSummaries = async (params: QueryParams): Promise<{ data: any }> => {
+  let backendList: any[] = [];
   try {
     const res = await client.get('/therapy_coordinator/session_summaries', { params });
     const list = Array.isArray(res?.data)
       ? res.data
       : Array.isArray(res?.data?.session_summaries)
-        ? (res.data.session_summaries as Record<string, unknown>[]).map(
-            (s: Record<string, unknown>) => {
-              const session = (s.session || {}) as Record<string, unknown>;
-              const teacher = (session.teacher || {}) as Record<string, unknown>;
-              const station = (session.station || {}) as Record<string, unknown>;
-              const sessionStudents = Array.isArray(session.students)
-                ? (session.students as Record<string, unknown>[])
-                : [];
-              const studentNames = sessionStudents.map((st) => String(st.name || ''));
-              return {
-                id: s.id,
-                status: s.status,
-                teacher: teacher.name,
-                teacherName: teacher.name,
-                station: station.name,
-                stationName: station.name,
-                date: s.submitted_at || 'Today',
-                students: studentNames,
-                studentNames,
-                trials: s.total_trials || 24,
-                independence: s.independence_percentage || 80,
-                independencePercent: s.independence_percentage || 80,
-                incidents: s.incident_count || 0,
-                notes: s.notes || 'Routine therapy progress.',
-              };
-            },
-          )
+        ? res.data.session_summaries.map((s: any) => ({
+            id: s.id,
+            status: s.status,
+            teacher: s.session?.teacher?.name,
+            teacherName: s.session?.teacher?.name,
+            station: s.session?.station?.name,
+            stationName: s.session?.station?.name,
+            date: s.submitted_at || 'Today',
+            students: (s.session?.students || []).map((st: any) => st.name),
+            studentNames: (s.session?.students || []).map((st: any) => st.name),
+            trials: s.total_trials || 24,
+            independence: s.independence_percentage || 80,
+            independencePercent: s.independence_percentage || 80,
+            incidents: s.incident_count || 0,
+            notes: s.notes || 'Routine therapy progress.',
+          }))
         : [];
     if (list.length > 0) backendList = list;
   } catch {}
@@ -632,7 +637,7 @@ export const getPendingSummaries = async (
   const statusMap = getStoredSummaryStatusMap();
 
   if (backendList.length > 0) {
-    const merged = backendList.map((item: Record<string, unknown>) => {
+    const merged = backendList.map((item: any) => {
       const id = String(item.id);
       if (statusMap[id]) {
         return { ...item, status: statusMap[id] };
@@ -698,7 +703,7 @@ export const getPendingSummaries = async (
 export const approveSummary = async (
   summaryId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   setSummaryStatusLocally(summaryId, 'approved');
 
   try {
@@ -720,7 +725,7 @@ export const approveSummary = async (
 export const requestSummaryChanges = async (
   summaryId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   setSummaryStatusLocally(summaryId, 'revision-required');
 
   try {
@@ -739,9 +744,7 @@ export const requestSummaryChanges = async (
   return { data: { success: true, summaryId, status: 'revision-required', ...payload } };
 };
 
-export const bulkApproveSummaries = async (
-  summaryIds: string[],
-): Promise<{ data: Record<string, unknown> }> => {
+export const bulkApproveSummaries = async (summaryIds: string[]): Promise<{ data: any }> => {
   (summaryIds || []).forEach((id) => setSummaryStatusLocally(id, 'approved'));
 
   try {
@@ -755,19 +758,10 @@ export const bulkApproveSummaries = async (
 // ============================================================================
 // SCR-TC-004: Student Progress Monitoring
 // ============================================================================
-export const getStudentProgressOverview = async (
-  studentId: string,
-): Promise<{ data: Record<string, unknown> }> => {
-  const assessmentLabel = (v: unknown): string => {
+export const getStudentProgressOverview = async (studentId: string): Promise<{ data: any }> => {
+  const assessmentLabel = (v: any): string => {
     if (!v) return 'Not Started';
-    if (typeof v === 'string') {
-      const s = v.toLowerCase();
-      if (s.includes('complete') || s === 'done' || s === 'finalized') return 'Completed';
-      if (s.includes('not_started') || s.includes('not started')) return 'Not Started';
-      return 'In Progress';
-    }
-    const rec = v as Record<string, unknown>;
-    const s = String(rec.status ?? '').toLowerCase();
+    const s = String(v.status ?? '').toLowerCase();
     if (s.includes('complete') || s === 'done' || s === 'finalized') return 'Completed';
     if (s.includes('not_started') || s.includes('not started')) return 'Not Started';
     return 'In Progress';
@@ -782,88 +776,63 @@ export const getStudentProgressOverview = async (
 
   // Query live student progress monitoring
   try {
-    let d: Record<string, unknown> | null = null;
+    let d: any = null;
     try {
-      const { data: res } = await client.get<Record<string, unknown>>(
-        `/students/${studentId}/progress_monitoring`,
-      );
-      d = (res?.data && typeof res.data === 'object' ? res.data : res) as Record<string, unknown>;
+      const { data: res } = await client.get<any>(`/students/${studentId}/progress_monitoring`);
+      d = res?.data ?? res;
     } catch {
-      const { data: res } = await client.get<Record<string, unknown>>('/reports/student_progress', {
+      const { data: res } = await client.get<any>('/reports/student_progress', {
         params: { student_id: studentId },
       });
-      d = (res?.data && typeof res.data === 'object' ? res.data : res) as Record<string, unknown>;
+      d = res?.data ?? res;
     }
 
     if (d && (d.student || d.current_goals || d.assessment_summary)) {
-      const charts: Record<string, unknown>[] = Array.isArray(d.goal_progress_charts)
-        ? (d.goal_progress_charts as Record<string, unknown>[])
-        : [];
+      const charts: any[] = Array.isArray(d.goal_progress_charts) ? d.goal_progress_charts : [];
       const trendFor = (goalName?: string): number[] => {
         const chart = charts.find((c) => c?.goal_name === goalName);
-        const pts = Array.isArray(chart?.data_points)
-          ? (chart.data_points as Record<string, unknown>[])
-          : [];
-        return pts.map((p: Record<string, unknown>) =>
-          Math.round(Number(p?.progress_percent) || 0),
-        );
+        const pts = Array.isArray(chart?.data_points) ? chart.data_points : [];
+        return pts.map((p: any) => Math.round(Number(p?.progress_percent) || 0));
       };
 
-      const rawGoals: Record<string, unknown>[] = Array.isArray(d.current_goals)
-        ? (d.current_goals as Record<string, unknown>[])
-        : [];
+      const rawGoals: any[] = Array.isArray(d.current_goals) ? d.current_goals : [];
       const goals = rawGoals.map((g) => ({
-        id: String(g?.id ?? g?.goal_id ?? Math.random()),
+        id: String(g?.id ?? g?.goal_id ?? secureRandomId('goal')),
         name: String(g?.goal_name ?? 'Goal'),
         percent: Math.round(Number(g?.progress_percent) || 0),
         status: g?.status || (Number(g?.progress_percent) >= 100 ? 'Mastered' : 'In Progress'),
         domain: g?.domain || 'General',
-        trend: trendFor(g?.goal_name ? String(g.goal_name) : undefined),
+        trend: trendFor(g?.goal_name),
       }));
 
-      const history = (d.session_history as Record<string, unknown>) ?? {};
-      const rawSessions: Record<string, unknown>[] = Array.isArray(history.recent_sessions)
-        ? (history.recent_sessions as Record<string, unknown>[])
+      const history = d.session_history ?? {};
+      const rawSessions: any[] = Array.isArray(history.recent_sessions)
+        ? history.recent_sessions
         : [];
-      const sessionHistory = rawSessions.map((s, i) => {
-        const summary = (s?.summary || {}) as Record<string, unknown>;
-        return {
-          id: String(s?.session_id ?? i),
-          date: toDateStr(s?.started_at ? String(s.started_at) : undefined),
-          stationName: String(s?.teacher_name ? `${s.teacher_name} Session` : 'Session'),
-          bodyPreview: String(
-            summary.strengths || summary.areas_for_growth || 'Session completed.',
-          ),
-          status: String(summary.status || 'Approved'),
-          independencePercent: Math.round(Number(summary.independence_percentage) || 75),
-        };
-      });
+      const sessionHistory = rawSessions.map((s, i) => ({
+        id: String(s?.session_id ?? i),
+        date: toDateStr(s?.started_at),
+        stationName: String(s?.teacher_name ? `${s.teacher_name} Session` : 'Session'),
+        bodyPreview: s?.summary?.strengths || s?.summary?.areas_for_growth || 'Session completed.',
+        status: s?.summary?.status || 'Approved',
+        independencePercent: Math.round(Number(s?.summary?.independence_percentage) || 75),
+      }));
 
-      const behavior = (d.behavior_incident_trends as Record<string, unknown>) ?? {};
+      const behavior = d.behavior_incident_trends ?? {};
       const totalIncidents = Number(behavior.total_incidents) || 0;
-      const recent: Record<string, unknown>[] = Array.isArray(behavior.recent_incidents)
-        ? (behavior.recent_incidents as Record<string, unknown>[])
+      const recent: any[] = Array.isArray(behavior.recent_incidents)
+        ? behavior.recent_incidents
         : [];
       const incidents = recent.map((inc) => ({
-        date: toDateStr(inc?.occurred_at ? String(inc.occurred_at) : undefined),
+        date: toDateStr(inc?.occurred_at),
         type: String(inc?.behavior_name || 'Behavior Incident'),
         detail: String(inc?.antecedent || inc?.notes || 'Incident recorded during session'),
       }));
 
-      const assessment = (d.assessment_summary || {}) as Record<string, unknown>;
-      const student = (d.student || {}) as Record<string, unknown>;
+      const assessment = d.assessment_summary ?? {};
+      const student = d.student ?? {};
       const hasCycle =
         !!assessment.latest_cycle || Number(assessment.cycles_count) > 0 || !!assessment.status;
-
-      const isComp = Boolean(
-        isStudentAssessmentSubmitted(studentId) ||
-        isStoredAssessmentCompleted(studentId) ||
-        checkStudentAllAssessmentsCompleted(studentId) ||
-        studentId.toLowerCase().includes('jjjj') ||
-        String(student.full_name || student.name || '')
-          .toLowerCase()
-          .includes('jjjj'),
-      );
 
       return {
         data: {
@@ -871,9 +840,20 @@ export const getStudentProgressOverview = async (
           age: Number(student.age) || 6,
           program: String(student.program_type || 'Comprehensive ABA'),
           assessmentSummary: {
-            skills: isComp ? 'Completed' : assessmentLabel(assessment.ablls),
-            behavior: isComp ? 'Completed' : hasCycle ? 'In Progress' : 'Not Started',
-            preferences: isComp ? 'Completed' : assessmentLabel(assessment.preference),
+            skills:
+              isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+                ? 'Completed'
+                : assessmentLabel(assessment.ablls),
+            behavior:
+              isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+                ? 'Completed'
+                : hasCycle
+                  ? 'In Progress'
+                  : 'Not Started',
+            preferences:
+              isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+                ? 'Completed'
+                : assessmentLabel(assessment.preference),
           },
           goals,
           sessionHistory,
@@ -894,16 +874,6 @@ export const getStudentProgressOverview = async (
   const flagMap = storage.getJSONSync<Record<string, boolean>>(STUDENT_FLAGS_STORAGE_KEY, {}) || {};
   const isFlagged = Boolean(flagMap[studentId]);
 
-  const isCompFallback = Boolean(
-    isStudentAssessmentSubmitted(studentId) ||
-    isStoredAssessmentCompleted(studentId) ||
-    checkStudentAllAssessmentsCompleted(studentId) ||
-    studentId.toLowerCase().includes('jjjj') ||
-    String(studentName || '')
-      .toLowerCase()
-      .includes('jjjj'),
-  );
-
   const overview = {
     studentId,
     studentName,
@@ -912,9 +882,15 @@ export const getStudentProgressOverview = async (
     program: match?.program || 'Comprehensive ABA',
     flagged: isFlagged,
     assessmentSummary: {
-      skills: isCompFallback ? 'Completed' : 'In Progress',
-      behavior: isCompFallback ? 'Completed' : 'In Progress',
-      preferences: isCompFallback ? 'Completed' : 'Completed',
+      skills:
+        isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+          ? 'Completed'
+          : 'In Progress',
+      behavior:
+        isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+          ? 'Completed'
+          : 'In Progress',
+      preferences: 'Completed',
     },
     abllsProgress: {
       overallPercent: 78,
@@ -1058,10 +1034,7 @@ export const getStudentProgressOverview = async (
   return { data: overview };
 };
 
-export const flagStudent = async (
-  studentId: string,
-  payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+export const flagStudent = async (studentId: string, payload: Payload): Promise<{ data: any }> => {
   try {
     const flagMap =
       storage.getJSONSync<Record<string, boolean>>(STUDENT_FLAGS_STORAGE_KEY, {}) || {};
@@ -1080,10 +1053,8 @@ export const flagStudent = async (
 // ============================================================================
 // SCR-TC-005: Operational Management & Scheduling
 // ============================================================================
-export const getOperationalSchedule = async (
-  params: QueryParams,
-): Promise<{ data: Record<string, unknown> }> => {
-  let scheduleData: Record<string, unknown> | null = null;
+export const getOperationalSchedule = async (params: QueryParams): Promise<{ data: any }> => {
+  let scheduleData: any = null;
   try {
     const res = await client.get('/therapy_coordinator/operational_management', { params });
     if (res?.data) scheduleData = res.data;
@@ -1095,7 +1066,7 @@ export const getOperationalSchedule = async (
   }
 
   if (scheduleData && typeof scheduleData === 'object') {
-    const filtered: Record<string, unknown> = {};
+    const filtered: Record<string, any> = {};
     Object.keys(scheduleData).forEach((key) => {
       filtered[key] = Array.isArray(scheduleData[key])
         ? filterOutDeletedStaff(scheduleData[key])
@@ -1105,7 +1076,7 @@ export const getOperationalSchedule = async (
   }
 
   // Resilient fallback appointments grid using real students
-  const mockSchedule: Record<number, Record<string, unknown>[]> = {
+  const mockSchedule: Record<number, any[]> = {
     0: [
       {
         therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
@@ -1205,23 +1176,21 @@ export const getOperationalSchedule = async (
     ],
   };
 
-  const filteredMock: Record<number, Record<string, unknown>[]> = {};
-  Object.keys(mockSchedule).forEach((k) => {
+  const filteredMock: Record<number, any[]> = {};
+  Object.keys(mockSchedule).forEach((k: any) => {
     filteredMock[Number(k)] = filterOutDeletedStaff(mockSchedule[Number(k)]);
   });
   return { data: filteredMock };
 };
 
-export const getTeacherPerformanceMetrics = async (
-  params: QueryParams,
-): Promise<{ data: Record<string, unknown>[] }> => {
+export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise<{ data: any }> => {
   try {
     const res = await client.get(
       '/therapy_coordinator/operational_management/performance_metrics',
       { params },
     );
-    const normalizeMetrics = (data: Record<string, unknown>[]): Record<string, unknown>[] =>
-      data.map((r: Record<string, unknown>) => ({
+    const normalizeMetrics = (data: any[]): any[] =>
+      data.map((r: any) => ({
         teacherId: r.teacher_id || r.teacherId || r.id || '',
         teacherName: r.teacher_name || r.teacherName || r.name || 'Teacher',
         sessions: r.sessions_completed ?? r.sessions ?? 0,
@@ -1277,12 +1246,12 @@ export const getTeacherPerformanceMetrics = async (
 // SCR-TC-006: Parent Communication (Coordinator View)
 // ============================================================================
 export const getCoordinatorConversations = async (
-  _params?: QueryParams,
-): Promise<{ data: Record<string, unknown>[] }> => {
+  params?: QueryParams,
+): Promise<{ data: any[] }> => {
   try {
-    const { data: students } = await client.get<Record<string, unknown>[]>('/options/students');
+    const { data: students } = await client.get<any[]>('/options/students');
     if (Array.isArray(students) && students.length > 0) {
-      const convos = students.map((s: Record<string, unknown>) => ({
+      const convos = students.map((s: any) => ({
         id: String(s.id),
         studentId: String(s.id),
         studentName: s.name,
@@ -1312,9 +1281,7 @@ export const getCoordinatorConversations = async (
   return { data: defaultConvos };
 };
 
-export const getConversationThread = async (
-  conversationId: string,
-): Promise<{ data: Record<string, unknown> }> => {
+export const getConversationThread = async (conversationId: string): Promise<{ data: any }> => {
   if (coordinatorThreadStore[conversationId]) {
     return {
       data: {
@@ -1351,7 +1318,7 @@ export const getConversationThread = async (
 export const sendCoordinatorMessage = async (
   conversationId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   const text = String(payload.text || payload.content || payload.message || '');
   const newMsg = {
     id: `msg-${Date.now()}`,
@@ -1377,358 +1344,449 @@ export const sendCoordinatorMessage = async (
 export const escalateConversation = async (
   conversationId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   return { data: { success: true, conversationId, ...payload } };
 };
 
-export const markConversationResolved = async (
-  conversationId: string,
-): Promise<{ data: Record<string, unknown> }> => {
+export const markConversationResolved = async (conversationId: string): Promise<{ data: any }> => {
   return { data: { success: true, conversationId, resolved: true } };
 };
 
 // ============================================================================
 // MR-16/18/19: Student Enrollment & Profile
 // ============================================================================
-export const getEnrollmentStudents = async (
-  params: QueryParams,
-): Promise<{ data: Record<string, unknown>[] }> => {
-  const deletedKeys = getDeletedStudentKeys();
-  const isDeleted = (id?: unknown, name?: unknown) => {
-    const idNorm = id ? String(id).trim().toLowerCase() : '';
-    const nameNorm = name ? String(name).trim().toLowerCase() : '';
-    return Boolean((idNorm && deletedKeys.has(idNorm)) || (nameNorm && deletedKeys.has(nameNorm)));
-  };
-
-  let backendStudents: Record<string, unknown>[] = [];
+export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data: any[] }> => {
+  let backendStudents: any[] = [];
   try {
     const res = await client.get('/coordinator/students', { params });
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      backendStudents = (res.data as Record<string, unknown>[]).filter(
-        (b: Record<string, unknown>) =>
-          !isDeleted(b.id || b.studentId || b.student_id, b.fullName || b.name),
-      );
+      backendStudents = res.data;
     }
   } catch {}
 
-  const storedEnrolled = getStoredEnrolledStudents().filter(
-    (s) => !isDeleted(s.id || s.studentId || s.student_id, s.fullName || s.name),
-  );
+  const storedEnrolled = getStoredEnrolledStudents();
 
-  // Map of locally enrolled students by ID and clean name
-  const storedMap = new Map<string, Record<string, unknown>>();
-  storedEnrolled.forEach((s) => {
-    if (s.id) storedMap.set(String(s.id).toLowerCase(), s);
-    if (s.studentId) storedMap.set(String(s.studentId).toLowerCase(), s);
-    if (s.student_id) storedMap.set(String(s.student_id).toLowerCase(), s);
-    const sName = String(s.fullName || s.name || '')
-      .toLowerCase()
-      .trim();
-    if (sName) storedMap.set(sName, s);
-  });
-
-  // Enhance backend students with local overrides (preserves assigned therapist, gender, age, photo, active status)
-  const enhancedBackendStudents = backendStudents.map((b) => {
-    const sName = String(b.fullName || b.name || '')
-      .toLowerCase()
-      .trim();
-    const bId = String(b.id || b.studentId || b.student_id || '').toLowerCase();
-    const localMatch = storedMap.get(bId) || storedMap.get(sName);
-    if (!localMatch) return b;
-
-    return {
-      ...b,
-      ...localMatch,
-      id: b.id || localMatch.id,
-      fullName: b.fullName || localMatch.fullName || b.name || localMatch.name,
-      name: b.name || localMatch.name || b.fullName || localMatch.fullName,
-      age: Number(localMatch.age || b.age || 6),
-      gender: String(localMatch.gender || b.gender || ''),
-      programType: String(
-        localMatch.programType ||
-          localMatch.program ||
-          b.programType ||
-          b.program ||
-          'Comprehensive ABA',
-      ),
-      therapyGroup: String(
-        localMatch.therapyGroup ||
-          localMatch.therapy_group ||
-          b.therapyGroup ||
-          b.therapy_group ||
-          'Station 1 · Early Learners',
-      ),
-      therapist: String(
-        localMatch.therapist && localMatch.therapist !== 'Unassigned'
-          ? localMatch.therapist
-          : b.therapist && b.therapist !== 'Unassigned'
-            ? b.therapist
-            : localMatch.therapist || 'Abeba Tadesse',
-      ),
-      status: String(localMatch.status || b.status || 'active'),
-      headshotUrl:
-        localMatch.photo ||
-        localMatch.photoUrl ||
-        localMatch.headshotUrl ||
-        b.headshotUrl ||
-        b.photoUrl ||
-        null,
-    };
-  });
-
-  // 1. All newly and locally enrolled students ALWAYS appear at the very top of the roster list
-  const enrolledTop: Record<string, unknown>[] = [];
-  const enrolledKeys = new Set<string>();
-
-  storedEnrolled.forEach((s) => {
-    const sId = String(s.id || s.studentId || s.student_id || '').toLowerCase();
-    const sName = String(s.fullName || s.name || '')
-      .toLowerCase()
-      .trim();
-    if (isDeleted(sId, sName)) return;
-
-    // Merge any enhanced backend fields if matched
-    const bMatch =
-      (sId
-        ? enhancedBackendStudents.find(
-            (b) => String(b.id || b.studentId || b.student_id || '').toLowerCase() === sId,
-          )
-        : undefined) ||
-      (sName
-        ? enhancedBackendStudents.find(
-            (b) =>
-              String(b.fullName || b.name || '')
-                .toLowerCase()
-                .trim() === sName,
-          )
-        : undefined);
-
-    const merged = bMatch ? { ...bMatch, ...s } : { ...s };
-    enrolledTop.push(merged);
-
-    if (sId) enrolledKeys.add(sId);
-    if (sName) enrolledKeys.add(sName);
-  });
-
-  // Remaining backend students that are not already at the top
-  const remainingBackend = enhancedBackendStudents.filter((b) => {
-    const bId = String(b.id || b.studentId || b.student_id || '').toLowerCase();
-    const bName = String(b.fullName || b.name || '')
-      .toLowerCase()
-      .trim();
-    return (!bId || !enrolledKeys.has(bId)) && (!bName || !enrolledKeys.has(bName));
-  });
-
-  let optionsPool: Record<string, unknown>[] = [];
+  let optionsPool: any[] = [];
   try {
-    const { data: opts } = await client.get<Record<string, unknown>[]>('/options/students');
+    const { data: opts } = await client.get<any[]>('/options/students');
     if (Array.isArray(opts) && opts.length > 0) optionsPool = opts;
   } catch {}
 
-  // Newly enrolled students appear at the top of the roster list
-  const pool: Record<string, unknown>[] = [...enrolledTop, ...remainingBackend];
-
-  const poolIds = new Set(
-    pool.map((s) => String(s.id || s.studentId || s.student_id || '')).filter(Boolean),
-  );
-  const poolNames = new Set(
-    pool
-      .map((s) =>
-        String(s.fullName || s.name || '')
-          .toLowerCase()
-          .trim(),
-      )
-      .filter(Boolean),
-  );
-
-  // 2. Merge optionsPool students not yet in pool
-  if (Array.isArray(optionsPool)) {
-    optionsPool.forEach((o) => {
-      const oId = String(o.id || o.studentId || '');
-      const oName = String(o.fullName || o.name || '')
+  const pool = [...storedEnrolled, ...backendStudents];
+  if (storedEnrolled.length > 0) {
+    DEFAULT_COORDINATOR_STUDENTS.forEach((d) => {
+      const dId = String(d.id || '').toLowerCase();
+      const dName = String(d.fullName || d.name || '')
         .toLowerCase()
         .trim();
-      if (isDeleted(oId, oName)) return;
-      if ((!oId || !poolIds.has(oId)) && (!oName || !poolNames.has(oName))) {
-        pool.push({
-          id: String(o.id),
-          studentId: String(o.studentId || o.id),
-          fullName: o.fullName || o.name,
-          name: o.name || o.fullName,
-          age: Number(o.age) || 6,
-          gender: String(o.gender || ''),
-          program: String(o.programType || o.program || 'Regular'),
-          programType: String(o.programType || o.program || 'Regular'),
-          therapyGroup: String(o.therapyGroup || o.therapy_group || 'Basic'),
-          therapist: String(o.therapist || o.assignedTherapist || o.teacher || 'Abeba Tadesse'),
-          status: String(o.status || 'active'),
-          headshotUrl: o.headshotUrl || o.photoUrl || o.photo || null,
-        });
-        if (oId) poolIds.add(oId);
-        if (oName) poolNames.add(oName);
+      if (isStudentDeletedHelper(dId) || isStudentDeletedHelper(dName)) return;
+      if (
+        !pool.some(
+          (p) =>
+            String(p.id || '').toLowerCase() === dId ||
+            String(p.fullName || p.name || '')
+              .toLowerCase()
+              .trim() === dName,
+        )
+      ) {
+        pool.push({ ...d });
       }
     });
+  } else if (pool.length === 0) {
+    if (optionsPool.length > 0) {
+      optionsPool.forEach((o) => {
+        pool.push({
+          id: String(o.id),
+          studentId: o.studentId || o.student_id,
+          student_id: o.student_id || o.studentId,
+          fullName: o.name,
+          name: o.name,
+          age: o.age || 6,
+          programType: o.program || 'Comprehensive ABA',
+          therapyGroup: 'Station 1 · Early Learners',
+          therapist: 'Abeba Tadesse',
+          status: 'active',
+        });
+      });
+    } else {
+      pool.push(...DEFAULT_COORDINATOR_STUDENTS);
+    }
   }
 
-  // 3. Fallback to default coordinator students if still empty or missing standard roster
-  DEFAULT_COORDINATOR_STUDENTS.forEach((d) => {
-    const dId = String(d.id || '');
-    const dName = String(d.fullName || d.name || '')
-      .toLowerCase()
-      .trim();
-    if (isDeleted(dId, dName)) return;
-    if ((!dId || !poolIds.has(dId)) && (!dName || !poolNames.has(dName))) {
-      pool.push({ ...d });
-      if (dId) poolIds.add(dId);
-      if (dName) poolNames.add(dName);
-    }
-  });
-
-  const optionsMap = new Map<string, Record<string, unknown>>();
-  optionsPool.forEach((o) => {
-    if (o.id) optionsMap.set(String(o.id).toLowerCase(), o);
-    if (o.studentId) optionsMap.set(String(o.studentId).toLowerCase(), o);
-    if (o.student_id) optionsMap.set(String(o.student_id).toLowerCase(), o);
-    if (o.name) optionsMap.set(String(o.name).toLowerCase().trim(), o);
-  });
-
+  const currentYearSuffix = String(new Date().getFullYear()).slice(-2);
   const normalized = pool.map((s, idx) => {
-    const opt =
-      optionsMap.get(String(s.id || '').toLowerCase()) ||
-      optionsMap.get(String(s.studentId || s.student_id || '').toLowerCase()) ||
-      optionsMap.get(
-        String(s.fullName || s.name || '')
-          .toLowerCase()
-          .trim(),
-      );
-
-    const isExplicitlyActive =
-      s.status === 'active' ||
-      s.raw_status === 'active' ||
-      s.enrollment_status === 'active' ||
-      s.is_active === true;
-
-    const resolvedStatus = isExplicitlyActive
-      ? 'active'
-      : opt?.status
-        ? String(opt.status)
-        : String(s.raw_status || s.status || 'active');
-
-    const prog = String(s.programType || s.program || 'Regular');
-
+    const rawSid = s.studentId || s.student_id;
+    const fallbackSid = String(s.id).startsWith('MEL-')
+      ? String(s.id)
+      : `MEL-${String(idx + 1).padStart(4, '0')}-${currentYearSuffix}`;
+    const sid = String(rawSid || fallbackSid);
     return {
-      id: String(s.id || `std-${idx + 1}`),
-      studentId: String(s.studentId || s.student_id || s.id || `std-${idx + 1}`),
+      id: String(s.id || sid),
+      studentId: sid,
+      student_id: sid,
       fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
       name: String(s.fullName || s.name || `Student ${idx + 1}`),
       age: Number(s.age || 6),
-      gender: String(s.gender || ''),
-      program: prog,
-      programType: prog,
+      gender: String(s.gender || s.demographic || s[DEMOGRAPHIC_KEY] || 'Female'),
+      demographic: String(s.gender || s.demographic || s[DEMOGRAPHIC_KEY] || 'Female'),
+      programType: String(s.programType || s.program || 'Comprehensive ABA'),
       therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
-      therapist: String(
-        s.therapist ||
-          s.assignedTherapist ||
-          s.assigned_therapist ||
-          s.therapistName ||
-          s.teacher ||
-          s.teacherName ||
-          'Abeba Tadesse',
-      ),
-      status: resolvedStatus,
+      therapist: String(s.therapist || 'Abeba Tadesse'),
+      status: s.status === 'inactive' ? 'inactive' : 'active',
+      rawStatus: s.rawStatus || s.raw_status || s.status,
+      raw_status: s.raw_status || s.rawStatus || s.status,
+      therapyStatus: s.therapyStatus || s.therapy_status || s.rawStatus || s.raw_status || s.status,
+      therapy_status:
+        s.therapy_status || s.therapyStatus || s.raw_status || s.rawStatus || s.status,
       headshotUrl: s.headshotUrl || s.photoUrl || s.photo || null,
     };
   });
 
-  return { data: filterOutDeletedStudents(normalized) };
+  return { data: normalized };
 };
 
-export const createStudentEnrollment = async (
-  payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
-  const chosenTherapist =
-    payload.therapist ||
-    payload.assignedTherapist ||
-    payload.assigned_therapist ||
-    payload.therapistName ||
-    payload.teacher ||
-    payload.teacherName ||
-    '';
-
-  const studentFullName =
-    `${payload.firstName || ''} ${payload.lastName || ''}`.trim() ||
-    String(payload.fullName || payload.name || 'New Student');
-
-  const firstName = String(payload.firstName || studentFullName.split(' ')[0] || 'Student');
-  const lastName = String(payload.lastName || studentFullName.split(' ').slice(1).join(' ') || '-');
+export const createStudentEnrollment = async (payload: Payload): Promise<{ data: any }> => {
+  const currentYearSuffix = String(new Date().getFullYear()).slice(-2);
+  const seq = secureRandomDigits(4);
+  const generatedStudentId = `MEL-${seq}-${currentYearSuffix}`;
 
   const newStudent = {
-    id: `stu-${Date.now()}`,
+    id: generatedStudentId,
+    studentId: generatedStudentId,
+    student_id: generatedStudentId,
+    fullName: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
+    name: `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'New Student',
     age: Number(payload.age || 6),
-    programType: payload.program || payload.programType || 'Regular',
-    program: payload.program || payload.programType || 'Regular',
-    therapyGroup: payload.therapyGroup || 'Basic',
-    status: 'active',
+    programType: payload.program || payload.programType || 'Comprehensive ABA',
+    therapyGroup: payload.therapyGroup || 'Station 1 · Early Learners',
+    therapist: payload.therapist || payload.assignedTherapist || 'Teacher Two',
+    status: payload.status || 'in_assessment',
+    enrollment_status: payload.enrollment_status || 'in_assessment',
     ...payload,
-    fullName: studentFullName,
-    name: studentFullName,
-    firstName,
-    first_name: firstName,
-    lastName,
-    last_name: lastName,
-    therapist: chosenTherapist || 'Abeba Tadesse',
-    assignedTherapist: chosenTherapist || 'Abeba Tadesse',
-    ...(chosenTherapist ? { therapist: chosenTherapist, assignedTherapist: chosenTherapist } : {}),
+    [DEMOGRAPHIC_KEY]: getStudentDemographic(payload, 'Female'),
   };
 
   try {
-    const res = await client.post('/coordinator/students', {
-      ...payload,
-      fullName: studentFullName,
-      name: studentFullName,
-      firstName,
-      first_name: firstName,
-      lastName,
-      last_name: lastName,
-      ...(chosenTherapist
-        ? { therapist: chosenTherapist, assignedTherapist: chosenTherapist }
-        : {}),
-    });
+    const res = await client.post('/coordinator/students', payload);
     if (res?.data) {
-      const savedStudent = {
-        ...newStudent,
-        ...res.data,
-        id: String(res.data.id || newStudent.id),
-        fullName: studentFullName,
-        name: studentFullName,
-        therapist: chosenTherapist || newStudent.therapist,
-        assignedTherapist: chosenTherapist || newStudent.therapist,
-      };
-      saveEnrolledStudentLocally(savedStudent);
+      saveEnrolledStudentLocally(res.data);
       return res;
     }
   } catch {}
 
   saveEnrolledStudentLocally(newStudent);
-
   return { data: newStudent };
 };
 
-export const getStudentProfile = async (
-  studentId: string,
-): Promise<{ data: Record<string, unknown> }> => {
+export const getStudentProfile = async (studentId: string): Promise<{ data: any }> => {
+  const draft = getEnrollmentDraft(studentId);
+  if (draft) {
+    const fullName =
+      (draft.fullName && draft.fullName !== 'Untitled Draft' ? draft.fullName : '') ||
+      (draft.name && draft.name !== 'Untitled Draft' ? draft.name : '') ||
+      (draft.formValues?.enr_first_name
+        ? `${draft.formValues.enr_first_name} ${draft.formValues.enr_last_name || ''}`.trim()
+        : '') ||
+      (draft.formValues?.first_name
+        ? `${draft.formValues.first_name} ${draft.formValues.last_name || ''}`.trim()
+        : '') ||
+      (draft.formValues?.f1 ? String(draft.formValues.f1).trim() : '') ||
+      draft.fullName ||
+      'Untitled Draft';
+    const firstName =
+      draft.firstName ||
+      draft.formValues?.enr_first_name ||
+      draft.formValues?.childFirstName ||
+      draft.formValues?.child_first_name ||
+      draft.formValues?.firstName ||
+      draft.formValues?.first_name ||
+      fullName.split(' ')[0] ||
+      'Draft';
+    const lastName =
+      draft.lastName ||
+      draft.formValues?.enr_last_name ||
+      draft.formValues?.childLastName ||
+      draft.formValues?.child_last_name ||
+      draft.formValues?.lastName ||
+      draft.formValues?.last_name ||
+      fullName.split(' ').slice(1).join(' ') ||
+      '';
+    const middleName =
+      draft.middleName ||
+      draft.formValues?.enr_middle_name ||
+      draft.formValues?.childMiddleName ||
+      draft.formValues?.child_middle_name ||
+      draft.formValues?.middleName ||
+      draft.formValues?.middle_name ||
+      '';
+    return {
+      data: {
+        id: draft.id,
+        fullName,
+        firstName,
+        lastName,
+        middleName,
+        dateOfBirth:
+          draft.formValues?.enr_dob ||
+          draft.formValues?.f2 ||
+          draft.formValues?.date_of_birth ||
+          '—',
+        age: draft.age || 0,
+        programType:
+          draft.program ||
+          draft.formValues?.enr_program_type ||
+          draft.formValues?.f_program ||
+          'Regular Morning',
+        therapyGroup:
+          draft.therapyGroup ||
+          draft.formValues?.enr_therapy_group ||
+          draft.formValues?.f_therapy ||
+          'Basic',
+        status: 'Draft',
+        headshotUrl: draft.photoUrl || null,
+        photoUrl: draft.photoUrl || null,
+        photo: draft.photoUrl || null,
+        currentFocusStudentGoalId: null,
+        goals: [],
+        customFields: draft.formValues || {},
+        formValues: draft.formValues || {},
+        [DEMOGRAPHIC_KEY]: getStudentDemographic(
+          draft as any,
+          getStudentDemographic(draft.formValues, 'Female'),
+        ),
+        guardianName:
+          draft.formValues?.f4 ||
+          draft.formValues?.guardian_name ||
+          draft.formValues?.parentName ||
+          'Guardian',
+        guardianPhone:
+          draft.formValues?.f5 ||
+          draft.formValues?.guardian_phone ||
+          draft.formValues?.parentPhone ||
+          '',
+        guardianEmail:
+          draft.formValues?.f6 ||
+          draft.formValues?.guardian_email ||
+          draft.formValues?.parentEmail ||
+          '',
+        emergencyContact:
+          draft.formValues?.f9 ||
+          draft.formValues?.emergency_contact ||
+          draft.formValues?.emergencyContact ||
+          '',
+        diagnosis: draft.diagnosis || draft.formValues?.f_diagnosis || 'Autism Spectrum Disorder',
+        medicalNotes: draft.formValues?.f7 || draft.formValues?.medicalNotes || '',
+        transportation: draft.formValues?.f8 || draft.formValues?.transportation || 'No',
+        therapist:
+          draft.therapist ||
+          draft.formValues?.f_therapist ||
+          draft.formValues?.assignedTherapist ||
+          'Unassigned',
+        isDraft: true,
+      },
+    };
+  }
+
   try {
     const res = await client.get(`/coordinator/students/${studentId}/profile`);
-    if (res?.data && res.data.fullName) {
-      return res;
+    if (res?.data && (res.data.fullName || res.data.name)) {
+      const sid =
+        res.data.studentId ||
+        res.data.student_id ||
+        (String(res.data.id).startsWith('MEL-') ? res.data.id : '') ||
+        studentId;
+      return {
+        data: {
+          ...res.data,
+          studentId: sid,
+          student_id: sid,
+          fullName: res.data.fullName || res.data.name || 'Student Profile',
+          goals: Array.isArray(res.data.goals) ? res.data.goals : [],
+          customFields: res.data.customFields || res.data.custom_fields || {},
+        },
+      };
     }
   } catch {}
+
+  // Check stored enrolled students cache
+  const storedEnrolled = getStoredEnrolledStudents();
+  const storedMatch = storedEnrolled.find(
+    (s) =>
+      s.id === studentId ||
+      s.studentId === studentId ||
+      s.student_id === studentId ||
+      s.name?.toLowerCase() === studentId.toLowerCase() ||
+      s.fullName?.toLowerCase() === studentId.toLowerCase(),
+  );
+  if (storedMatch) {
+    const sid =
+      storedMatch.studentId ||
+      storedMatch.student_id ||
+      (String(storedMatch.id).startsWith('MEL-') ? storedMatch.id : '') ||
+      studentId;
+    const full = storedMatch.fullName || storedMatch.name || 'Student Profile';
+    const first =
+      storedMatch.firstName ||
+      storedMatch.first_name ||
+      storedMatch.childFirstName ||
+      storedMatch.enr_first_name ||
+      full.split(' ')[0] ||
+      'Student';
+    const last =
+      storedMatch.lastName ||
+      storedMatch.last_name ||
+      storedMatch.childLastName ||
+      storedMatch.enr_last_name ||
+      full.split(' ').slice(1).join(' ') ||
+      '';
+    const middle =
+      storedMatch.middleName ||
+      storedMatch.middle_name ||
+      storedMatch.childMiddleName ||
+      storedMatch.enr_middle_name ||
+      '';
+    const dob =
+      storedMatch.dateOfBirth ||
+      storedMatch.date_of_birth ||
+      storedMatch.dob ||
+      storedMatch.enr_dob ||
+      '2020-01-01';
+    const customFieldsObj = {
+      ...(storedMatch.customFields || {}),
+      ...(storedMatch.custom_fields || {}),
+      ...(storedMatch.formValues || {}),
+    };
+
+    return {
+      data: {
+        ...storedMatch,
+        id: storedMatch.id || studentId,
+        studentId: sid,
+        student_id: sid,
+        fullName: full,
+        name: full,
+        firstName: first,
+        first_name: first,
+        lastName: last,
+        last_name: last,
+        middleName: middle,
+        middle_name: middle,
+        dateOfBirth: dob,
+        date_of_birth: dob,
+        dob: dob,
+        age: storedMatch.age || 6,
+        programType:
+          storedMatch.programType ||
+          storedMatch.program ||
+          storedMatch.enr_program_type ||
+          'Regular Morning',
+        program: storedMatch.program || storedMatch.programType || 'Regular Morning',
+        therapyGroup: storedMatch.therapyGroup || storedMatch.enr_therapy_group || 'Basic',
+        status: storedMatch.status || storedMatch.enrollment_status || 'active',
+        enrollment_status: storedMatch.enrollment_status || storedMatch.status || 'active',
+        therapist:
+          storedMatch.therapist ||
+          storedMatch.assignedTherapist ||
+          storedMatch.f_therapist ||
+          'Unassigned',
+        assignedTherapist: storedMatch.assignedTherapist || storedMatch.therapist || 'Unassigned',
+        guardianName:
+          storedMatch.guardianName ||
+          storedMatch.guardian_name ||
+          storedMatch.parentName ||
+          storedMatch.enr_guardian_name ||
+          '',
+        guardian_name:
+          storedMatch.guardian_name || storedMatch.guardianName || storedMatch.parentName || '',
+        guardianPhone:
+          storedMatch.guardianPhone ||
+          storedMatch.guardian_phone ||
+          storedMatch.parentPhone ||
+          storedMatch.enr_guardian_phone ||
+          '',
+        guardian_phone:
+          storedMatch.guardian_phone || storedMatch.guardianPhone || storedMatch.parentPhone || '',
+        guardianEmail:
+          storedMatch.guardianEmail ||
+          storedMatch.guardian_email ||
+          storedMatch.parentEmail ||
+          storedMatch.enr_guardian_email ||
+          '',
+        guardian_email:
+          storedMatch.guardian_email || storedMatch.guardianEmail || storedMatch.parentEmail || '',
+        guardianRelationship:
+          storedMatch.guardianRelationship ||
+          storedMatch.guardian_relationship ||
+          storedMatch.enr_guardian_relationship ||
+          'Mother',
+        emergencyContact:
+          storedMatch.emergencyContact ||
+          storedMatch.emergency_contact ||
+          storedMatch.enr_emergency_contact ||
+          '',
+        emergency_contact: storedMatch.emergency_contact || storedMatch.emergencyContact || '',
+        householdStructure: storedMatch.householdStructure || storedMatch.enr_household || '',
+        diagnosis: storedMatch.diagnosis || storedMatch.enr_diagnosis || 'Autism Spectrum Disorder',
+        diagnosisDate:
+          storedMatch.diagnosisDate ||
+          storedMatch.diagnosis_date ||
+          storedMatch.enr_diagnosis_date ||
+          '',
+        medicalNotes:
+          storedMatch.medicalNotes ||
+          storedMatch.medical_notes ||
+          storedMatch.enr_medical_restrictions ||
+          '',
+        developmentalHistory:
+          storedMatch.developmentalHistory ||
+          storedMatch.dev_history ||
+          storedMatch.enr_dev_history ||
+          '',
+        transportation:
+          storedMatch.transportation ||
+          storedMatch.transportation_required ||
+          storedMatch.f8 ||
+          'No',
+        reinforcerVisual: storedMatch.reinforcerVisual || storedMatch.enr_reinforcer_visual || '',
+        reinforcerAuditory:
+          storedMatch.reinforcerAuditory || storedMatch.enr_reinforcer_auditory || '',
+        reinforcerTactile:
+          storedMatch.reinforcerTactile || storedMatch.enr_reinforcer_tactile || '',
+        reinforcerKinetic:
+          storedMatch.reinforcerKinetic || storedMatch.enr_reinforcer_kinetic || '',
+        headshotUrl: storedMatch.headshotUrl || storedMatch.photoUrl || storedMatch.photo || null,
+        photoUrl: storedMatch.photoUrl || storedMatch.headshotUrl || storedMatch.photo || null,
+        photo: storedMatch.photo || storedMatch.photoUrl || storedMatch.headshotUrl || null,
+        currentFocusStudentGoalId: storedMatch.currentFocusStudentGoalId || 'g-1',
+        goals:
+          Array.isArray(storedMatch.goals) && storedMatch.goals.length > 0
+            ? storedMatch.goals
+            : [
+                {
+                  id: 'g-1',
+                  name: 'Receptive Identification of Common Objects',
+                  status: 'In Progress',
+                  progressPercent: 85,
+                },
+                {
+                  id: 'g-2',
+                  name: 'Independent Manding with Vocal Approximation',
+                  status: 'In Progress',
+                  progressPercent: 70,
+                },
+              ],
+        customFields: customFieldsObj,
+        custom_fields: customFieldsObj,
+        formValues: customFieldsObj,
+      },
+    };
+  }
 
   // Resilient fallback profile
   let fullName = 'Student Profile';
   let age = 6;
-  let program = 'Comprehensive ABA';
-  let therapyGroup = 'Station 1 · Early Learners';
+  let program = 'Regular Morning';
+  let therapyGroup = 'Basic';
 
   const defaultMatch = DEFAULT_COORDINATOR_STUDENTS.find(
     (s) =>
@@ -1784,13 +1842,101 @@ export const getStudentProfile = async (
 export const updateStudentProfile = async (
   studentId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
+  let backendResult: any = null;
   try {
     const res = await client.patch(`/coordinator/students/${studentId}/profile`, payload);
-    if (res?.data) return res;
+    if (res?.data) {
+      backendResult = res.data;
+    }
   } catch {}
 
-  return { data: { id: studentId, ...payload } };
+  // Always update local cache & drafts so changes persist reliably even if backend is 404 or offline
+  const updatedLocal = saveOrUpdateEnrolledStudentLocally(studentId, {
+    ...(backendResult?.student || backendResult?.data || {}),
+    ...payload,
+  });
+
+  // Also update draft if one exists
+  try {
+    const draft = getEnrollmentDraft(studentId);
+    if (draft) {
+      const mergedFormValues: Record<string, any> = {
+        ...(draft.formValues || {}),
+        ...payload,
+      };
+      if (payload.firstName) {
+        mergedFormValues.enr_first_name = payload.firstName;
+        mergedFormValues.firstName = payload.firstName;
+        mergedFormValues.first_name = payload.firstName;
+      }
+      if (payload.lastName) {
+        mergedFormValues.enr_last_name = payload.lastName;
+        mergedFormValues.lastName = payload.lastName;
+        mergedFormValues.last_name = payload.lastName;
+      }
+      if (payload.fullName) {
+        mergedFormValues.f1 = payload.fullName;
+        mergedFormValues.fullName = payload.fullName;
+        mergedFormValues.name = payload.fullName;
+      }
+      if (payload.therapist) {
+        mergedFormValues.f_therapist = payload.therapist;
+        mergedFormValues.therapist = payload.therapist;
+        mergedFormValues.assignedTherapist = payload.therapist;
+      }
+      saveEnrollmentDraft(
+        mergedFormValues,
+        draft.step || 0,
+        studentId,
+        draft.currentStep || (draft as any).stepName,
+      );
+    }
+  } catch {}
+
+  // Update student status registry
+  try {
+    const statusVal = String(payload.status || payload.enrollment_status || '');
+    const nameVal = String(
+      payload.fullName || payload.name || `${payload.firstName || ''} ${payload.lastName || ''}`,
+    ).trim();
+    if (statusVal) {
+      registerStudentStatuses([
+        {
+          id: studentId,
+          name: nameVal || 'Student',
+          fullName: nameVal || 'Student',
+          status: statusVal,
+          rawStatus: statusVal,
+        },
+      ]);
+    }
+  } catch {}
+
+  // Sync photo helper
+  try {
+    const photo = payload.headshot || payload.photo || payload.photoUrl || payload.photoBase64;
+    const nameVal = String(
+      payload.fullName || payload.name || `${payload.firstName || ''} ${payload.lastName || ''}`,
+    ).trim();
+    if (photo && typeof photo === 'string') {
+      saveStudentPhoto({
+        id: studentId,
+        name: nameVal,
+        fullName: nameVal,
+        photo,
+      });
+    }
+  } catch {}
+
+  return {
+    data: {
+      id: studentId,
+      ...(backendResult?.student || backendResult?.data || {}),
+      ...updatedLocal,
+      ...payload,
+    },
+  };
 };
 
 // ============================================================================
@@ -1800,17 +1946,15 @@ export const getWorkloadDashboard = async () => {
   try {
     const res = await client.get('/therapy_coordinator/operational_management/performance_metrics');
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      const mapped = (res.data as Record<string, unknown>[]).map((m: Record<string, unknown>) => ({
-        teacherId: String(m.teacher_id || m.id || ''),
-        teacherName: String(m.teacher_name || m.name || ''),
-        students: Number(m.student_count) || 1,
+      const mapped = res.data.map((m: any) => ({
+        teacherId: m.teacher_id || m.id,
+        teacherName: m.teacher_name || m.name,
+        students: m.student_count || 1,
         todaySessions: Math.min(Number(m.sessions_completed || 0), 2),
         weeklySessions: Number(m.sessions_completed || 0),
         hours: Math.round(Number(m.sessions_completed || 0) * 1.5),
         goals: Math.round(Number(m.total_trials || 0) / 10),
-        pendingNotes: Number(
-          (m.review_status as Record<string, unknown> | undefined)?.pending_review_count || 0,
-        ),
+        pendingNotes: Number(m.review_status?.pending_review_count || 0),
         attendanceRate: Number(m.sessions_completed ? 95 : 100),
       }));
       return { ...res, data: filterOutDeletedStaff(mapped) };
@@ -1820,22 +1964,20 @@ export const getWorkloadDashboard = async () => {
   try {
     const res = await client.get('/options/staff');
     if (Array.isArray(res?.data) && res.data.length > 0) {
-      const teachers = (res.data as Record<string, unknown>[]).filter(
-        (s: Record<string, unknown>) => !s.role || s.role === 'teacher' || s.role === 'therapist',
+      const teachers = res.data.filter(
+        (s: any) => !s.role || s.role === 'teacher' || s.role === 'therapist',
       );
-      const mapped = (teachers.length > 0 ? teachers : (res.data as Record<string, unknown>[])).map(
-        (t: Record<string, unknown>) => ({
-          teacherId: String(t.id),
-          teacherName: String(t.name || t.label || 'Teacher'),
-          students: 1,
-          todaySessions: 0,
-          weeklySessions: 0,
-          hours: 0,
-          goals: 0,
-          pendingNotes: 0,
-          attendanceRate: 100,
-        }),
-      );
+      const mapped = (teachers.length > 0 ? teachers : res.data).map((t: any) => ({
+        teacherId: String(t.id),
+        teacherName: t.name || t.label || 'Teacher',
+        students: 1,
+        todaySessions: 0,
+        weeklySessions: 0,
+        hours: 0,
+        goals: 0,
+        pendingNotes: 0,
+        attendanceRate: 100,
+      }));
       return { ...res, data: filterOutDeletedStaff(mapped) };
     }
   } catch {}
@@ -1847,8 +1989,8 @@ export const getWorkloadTrend = async () => {
   try {
     const dashRes = await getWorkloadDashboard();
     const rows = Array.isArray(dashRes?.data) ? dashRes.data : [];
-    const trend = (rows as Record<string, unknown>[]).map((r: Record<string, unknown>) => ({
-      label: String(r.teacherName || r.name || 'Therapist'),
+    const trend = rows.map((r: any) => ({
+      label: r.teacherName || r.name || 'Therapist',
       sessions: Number(r.weeklySessions ?? r.sessions ?? r.sessions_completed ?? 0),
     }));
     return { data: filterOutDeletedStaff(trend) };
@@ -1860,22 +2002,16 @@ export const getWorkloadTrend = async () => {
 // ============================================================================
 // MR-41: Room & Resource Scheduling
 // ============================================================================
-export const getRoomsResources = async (
-  params: QueryParams,
-): Promise<{ data: Record<string, unknown> }> => {
+export const getRoomsResources = async (params: QueryParams): Promise<{ data: any }> => {
   try {
     const res = await client.get('/coordinator/rooms-resources', { params });
     if (res?.data && res.data.rooms) return res;
   } catch {}
 
   const storedRooms =
-    storage.getJSONSync<Record<string, unknown>[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) ||
-    DEFAULT_ROOMS;
+    storage.getJSONSync<any[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) || DEFAULT_ROOMS;
   const storedResources =
-    storage.getJSONSync<Record<string, unknown>[]>(
-      RESOURCES_CACHE_STORAGE_KEY,
-      DEFAULT_RESOURCES,
-    ) || DEFAULT_RESOURCES;
+    storage.getJSONSync<any[]>(RESOURCES_CACHE_STORAGE_KEY, DEFAULT_RESOURCES) || DEFAULT_RESOURCES;
 
   const maintenance = [
     {
@@ -1898,11 +2034,10 @@ export const getRoomsResources = async (
 export const updateRoomStatus = async (
   roomId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   try {
     const rooms =
-      storage.getJSONSync<Record<string, unknown>[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) ||
-      DEFAULT_ROOMS;
+      storage.getJSONSync<any[]>(ROOMS_CACHE_STORAGE_KEY, DEFAULT_ROOMS) || DEFAULT_ROOMS;
     const match = rooms.find((r) => r.id === roomId);
     if (match && payload.status) {
       match.status = payload.status;
@@ -1921,13 +2056,11 @@ export const updateRoomStatus = async (
 export const updateResourceStatus = async (
   resourceId: string,
   payload: Payload,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   try {
     const resources =
-      storage.getJSONSync<Record<string, unknown>[]>(
-        RESOURCES_CACHE_STORAGE_KEY,
-        DEFAULT_RESOURCES,
-      ) || DEFAULT_RESOURCES;
+      storage.getJSONSync<any[]>(RESOURCES_CACHE_STORAGE_KEY, DEFAULT_RESOURCES) ||
+      DEFAULT_RESOURCES;
     const match = resources.find((r) => r.id === resourceId);
     if (match && typeof payload.inUse === 'number') {
       match.inUse = payload.inUse;
@@ -1946,9 +2079,7 @@ export const updateResourceStatus = async (
 // ============================================================================
 // Notifications
 // ============================================================================
-export const getCoordinatorNotifications = async (): Promise<{
-  data: Record<string, unknown>[];
-}> => {
+export const getCoordinatorNotifications = async (): Promise<{ data: any }> => {
   try {
     const res = await client.get('/notifications');
     if (Array.isArray(res?.data) && res.data.length > 0) return res;
@@ -1983,10 +2114,37 @@ export const getCoordinatorNotifications = async (): Promise<{
 
 export const markCoordinatorNotificationRead = async (
   notificationId: string,
-): Promise<{ data: Record<string, unknown> }> => {
+): Promise<{ data: any }> => {
   try {
     const res = await client.post(`/notifications/${notificationId}/mark_as_read`);
     if (res?.data) return res;
   } catch {}
   return { data: { success: true, notificationId, read: true } };
+};
+
+import {
+  recordDeletedStudent as recordDeletedStudentHelper,
+  isStudentDeleted as isStudentDeletedHelper,
+  filterOutDeletedStudents,
+} from '../utils/deletedStudentHelper';
+
+export { isStudentDeletedHelper as isStudentDeleted };
+
+export function markStudentDeleted(id?: string, name?: string): void {
+  recordDeletedStudentHelper({ id, fullName: name });
+}
+
+export const deleteStudentEnrollment = async (
+  studentId: string,
+  studentName?: string,
+): Promise<{ data: { success: boolean; id: string } }> => {
+  recordDeletedStudentHelper({ id: studentId, fullName: studentName });
+  try {
+    await client.delete(`/coordinator/students/${studentId}`);
+  } catch {
+    try {
+      await client.delete(`/students/${studentId}`);
+    } catch {}
+  }
+  return { data: { success: true, id: studentId } };
 };

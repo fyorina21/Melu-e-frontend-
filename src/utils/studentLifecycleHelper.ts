@@ -1053,3 +1053,116 @@ export function isStudentSchedulingEligible(s: any): boolean {
 
   return isStudentInSession(s) || isComp;
 }
+
+export function resolveStudentTherapyStatus(student: any): string {
+  if (!student) return 'Not Started';
+  if (student.isDraft || String(student.id || '').startsWith('draft-')) {
+    return 'Draft';
+  }
+  const sid = String(student.id || student.studentId || student.student_id || '');
+  let hasActiveIup = false;
+  if (sid) {
+    try {
+      const draft = getStoredIupDraft(sid);
+      if (
+        draft &&
+        ((Array.isArray(draft.goals) && draft.goals.length > 0) ||
+          draft.status === 'finalized' ||
+          draft.status === 'active' ||
+          (draft.slots && typeof draft.slots === 'object'))
+      ) {
+        hasActiveIup = true;
+      }
+    } catch {}
+  }
+  const raw = String(
+    student.therapyStatus ||
+      student.therapy_status ||
+      student.rawStatus ||
+      student.raw_status ||
+      student.currentStage ||
+      student.stage ||
+      student.assessmentStatus ||
+      student.status ||
+      '',
+  )
+    .toLowerCase()
+    .trim();
+  if (
+    raw === 'in_session' ||
+    raw === 'in session' ||
+    raw === 'in-session' ||
+    raw === 'active_therapy' ||
+    raw === 'active therapy' ||
+    raw === 'session_assigned' ||
+    raw === 'session assigned' ||
+    Boolean(student.sessionAssigned)
+  ) {
+    return 'In Session';
+  }
+  if (raw === 'active' && hasActiveIup) {
+    return 'In Session';
+  }
+  if (hasActiveIup || raw === 'iup_ready' || raw === 'iup ready' || raw === 'iup_active') {
+    return 'IUP Ready';
+  }
+  if (raw === 'ready_for_iup' || raw === 'ready for iup' || raw === 'ready-for-iup') {
+    return 'Ready for IUP';
+  }
+  if (
+    raw === 'assessment_complete' ||
+    raw === 'assessment complete' ||
+    raw === 'assessment completed' ||
+    raw === 'assessment-complete' ||
+    raw === 'assessment_completed'
+  ) {
+    return 'Assessment Complete';
+  }
+  if (sid && isStoredAssessmentCompleted(sid)) {
+    return 'Ready for IUP';
+  }
+  if (
+    raw === 'in_assessment' ||
+    raw === 'in assessment' ||
+    raw === 'in-assessment' ||
+    raw === 'assessment' ||
+    raw === 'in-progress' ||
+    raw === 'in progress'
+  ) {
+    return 'In Assessment';
+  }
+  if (raw === 'withdrawn') return 'Withdrawn';
+  if (raw === 'discharged') return 'Discharged';
+  if (raw === 'archived') return 'Archived';
+  if (raw === 'inactive') return 'Inactive';
+  if (
+    raw === 'registered' ||
+    raw === 'enrolled' ||
+    raw === 'not_started' ||
+    raw === 'not started' ||
+    raw === 'pending_review' ||
+    raw === 'new'
+  ) {
+    return 'Not Started';
+  }
+  if (raw === 'draft') return 'Draft';
+  if (raw === 'active') {
+    return 'In Session';
+  }
+  return 'Not Started';
+}
+
+export function updateStudentStatus(
+  studentId: string | number,
+  status: string,
+  name?: string,
+): void {
+  registerStudentStatuses([
+    {
+      id: String(studentId),
+      name: name || 'Student',
+      status,
+      rawStatus: status,
+    },
+  ]);
+}

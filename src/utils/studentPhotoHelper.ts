@@ -1,5 +1,6 @@
 // src/utils/studentPhotoHelper.ts
 import { env } from '../api/config/env';
+import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
 
 const STORAGE_KEY = 'melue_student_photos_registry_v1';
 
@@ -16,8 +17,9 @@ function loadRegistry() {
   try {
     if (typeof localStorage !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
+      const decoded = unprotectStoragePayload(stored) || stored;
+      if (decoded) {
+        const parsed = JSON.parse(decoded);
         if (parsed && typeof parsed === 'object') {
           Object.entries(parsed).forEach(([k, v]) => {
             if (typeof v === 'string' && v) {
@@ -40,7 +42,8 @@ function persistRegistry() {
       memoryRegistry.forEach((v, k) => {
         obj[k] = v;
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      const protectedVal = sanitizeStoragePayload(JSON.stringify(obj));
+      localStorage.setItem(STORAGE_KEY, protectedVal);
     }
   } catch (err) {
     // Ignore storage quota errors
@@ -49,13 +52,34 @@ function persistRegistry() {
 
 /**
  * Resolves a photo URL (handles relative backend blob URLs, base64, external links)
+ * Isolates strictly to image media; rejects PDF documents and non-headshot files.
  */
 export function resolveStudentPhotoUri(photoUriOrUrl?: string | null): string | null {
   if (!photoUriOrUrl || typeof photoUriOrUrl !== 'string') return null;
   const trimmed = photoUriOrUrl.trim();
   if (!trimmed) return null;
 
-  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:') || trimmed.startsWith('file:')) {
+  const lower = trimmed.toLowerCase();
+  // Never treat documents, certificates, or PDFs as headshot photos
+  if (
+    lower.startsWith('data:application/pdf') ||
+    lower.startsWith('data:text/') ||
+    lower.endsWith('.pdf') ||
+    lower.includes('.pdf?') ||
+    lower.endsWith('.docx') ||
+    lower.includes('birth_certificate') ||
+    lower.includes('diagnosis_paper') ||
+    lower.includes('medical_paper') ||
+    lower.includes('agreement_document')
+  ) {
+    return null;
+  }
+
+  if (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('file:')
+  ) {
     return trimmed;
   }
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -65,7 +89,7 @@ export function resolveStudentPhotoUri(photoUriOrUrl?: string | null): string | 
     const base = env.apiUrl.replace(/\/+$/, '');
     return `${base}${trimmed}`;
   }
-  return trimmed;
+  return null;
 }
 
 /**
@@ -83,11 +107,7 @@ export function saveStudentPhoto(info: {
 }) {
   loadRegistry();
   const rawPhoto =
-    info.photoBase64 ||
-    info.photo ||
-    info.photoUrl ||
-    info.headshotUrl ||
-    info.photoUri;
+    info.photoBase64 || info.photo || info.photoUrl || info.headshotUrl || info.photoUri;
 
   if (!rawPhoto || typeof rawPhoto !== 'string') return;
   const resolved = resolveStudentPhotoUri(rawPhoto);
@@ -126,7 +146,7 @@ export function registerStudentPhotos(
     headshotUrl?: string | null;
     photoBase64?: string | null;
     photoUri?: string | null;
-  }>
+  }>,
 ) {
   if (!Array.isArray(students)) return;
   students.forEach((s) => {

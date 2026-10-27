@@ -22,10 +22,10 @@ export type SessionStackParamList = {
   TeacherParentCommunication: undefined;
   ParentCommunication: undefined;
   Notifications: undefined;
-
-  StudentEnrollmentWizard: undefined;
-  StudentEnrollment?: undefined;
   StudentProfile: { studentId: string };
+  StudentEditProfile: { studentId?: string } | undefined;
+  StudentEnrollmentWizard: { draftId?: string } | undefined;
+  StudentEnrollment?: undefined;
 
   IupGeneration: { studentId?: string } | undefined;
   GoalMasteryApproval?: undefined;
@@ -41,12 +41,13 @@ export type CoordinatorStackParamList = {
   CoordinatorParentCommunication: undefined;
   StudentEnrollment: undefined;
   StudentProfile: { studentId?: string } | undefined;
+  StudentEditProfile: { studentId?: string } | undefined;
   WorkloadDashboard: undefined;
   RoomResourceScheduling: undefined;
   IupGeneration: { studentId?: string } | undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
   Notifications: undefined;
-  StudentEnrollmentWizard: undefined;
+  StudentEnrollmentWizard: { draftId?: string } | undefined;
   AssessmentDashboard: undefined;
   SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
   ChildProgress?: undefined;
@@ -64,8 +65,8 @@ export type DirectorStackParamList = {
   StudentEnrollmentWizard?: undefined;
   StudentProfile?: { studentId?: string } | undefined;
 
-
   AssessmentSummaryReport?: { studentId?: string } | undefined;
+  StudentEditProfile: { studentId?: string } | undefined;
 };
 
 export type ProgramDirectorStackParamList = {
@@ -79,9 +80,9 @@ export type ProgramDirectorStackParamList = {
   PdParentCommunication: undefined;
   GraphChartView: { studentId?: string; goalIds?: string[] } | undefined;
   StudentEnrollment?: undefined;
-  StudentProfile?: { studentId?: string } | undefined;
-
-  StudentEnrollmentWizard: undefined;
+  StudentProfile: { studentId?: string } | undefined;
+  StudentEditProfile: { studentId?: string } | undefined;
+  StudentEnrollmentWizard: { draftId?: string } | undefined;
   AssessmentSummaryReport?: { studentId?: string } | undefined;
   AssessmentDashboard: undefined;
   SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;

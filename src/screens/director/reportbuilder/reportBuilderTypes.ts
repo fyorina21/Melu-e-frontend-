@@ -1,6 +1,6 @@
 // src/screens/director/reportbuilder/reportBuilderTypes.ts
 
-export const PROGRAMS = ['All Programs', 'ABA', 'Speech Therapy', 'Occupational Therapy'];
+export const PROGRAMS = ['All Programs', 'Regular Morning', 'Regular Afternoon', 'Pulled Out'];
 export const PERIODS = ['All Periods', 'Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
 export const SCORE_FILTERS = ['All Scores', '>50%', '>70%', '>90%'];
 export const GOAL_STATUSES = ['All Statuses', 'On Track', 'Needs Support', 'Mastered'];

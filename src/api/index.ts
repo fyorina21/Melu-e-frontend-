@@ -23,5 +23,6 @@ export { parentApi } from './resources/parent';
 export { syncApi } from './resources/sync';
 export { adminApi } from './resources/admin';
 export { staffSchedulingApi } from './resources/staffScheduling';
+export { getStudentProfile, updateStudentProfile } from './coordinatorApi';
 
 export type * from './resources/types';

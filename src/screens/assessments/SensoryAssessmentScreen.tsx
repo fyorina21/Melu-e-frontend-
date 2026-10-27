@@ -16,6 +16,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
+import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import {
   saveSensoryAssessment,
   getTeacherStudentProfile,
@@ -66,22 +68,8 @@ const REACTION_OPTIONS: ResponseReaction[] = ['Enjoyed', 'Neutral', 'Refused', '
 type Props = NativeStackScreenProps<SessionStackParamList, 'SensoryAssessment'>;
 
 export default function SensoryAssessmentScreen({ navigation, route }: Props) {
-  const urlSid =
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('studentId')
-      : null;
-  const localSid = storage.getSync('last_assessment_student_id');
-  const rawId = (route?.params as any)?.studentId || urlSid || localSid || 'stu-1';
-  const studentId = normalizeStudentId(rawId);
-
-  useEffect(() => {
-    if (studentId) {
-      try {
-        storage.setSync('last_assessment_student_id', studentId);
-        storage.setItem('last_assessment_student_id', studentId).catch(() => {});
-      } catch {}
-    }
-  }, [studentId]);
+  const { studentId } = route.params;
+  const { showToast } = useToast();
 
   const [assessmentDate, setAssessmentDate] = useState('08/21/2026');
   const [profile, setProfile] = useState<any>(null);
@@ -169,21 +157,22 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
     }
   }, []);
 
-  // Custom Activity Modal state
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [newActivityName, setNewActivityName] = useState('');
-
   // Custom Dropdown Picker state
   const [activePicker, setActivePicker] = useState<{
     id: string;
     field: 'engagement' | 'reaction';
   } | null>(null);
 
-  // Metrics
+  const updateActivity = (id: string, updates: Partial<SensoryActivityItem>) => {
+    setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+  };
+
   const totalActivities = activities.length;
-  const scoredCount = activities.filter((a) => a.engagementLevel || a.responseReaction).length;
+  const scoredCount = activities.filter(
+    (a) => a.engagementLevel !== undefined || a.responseReaction !== undefined,
+  ).length;
   const progressPercent =
-    totalActivities === 0 ? 0 : Math.round((scoredCount / totalActivities) * 100);
+    totalActivities > 0 ? Math.round((scoredCount / totalActivities) * 100) : 0;
 
   const countEngagement = (level: EngagementLevel) =>
     activities.filter((a) => a.engagementLevel === level).length;
@@ -191,36 +180,45 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
   const countReaction = (reaction: ResponseReaction) =>
     activities.filter((a) => a.responseReaction === reaction).length;
 
-  const updateActivity = (id: string, updates: Partial<SensoryActivityItem>) => {
-    setActivities((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
-  };
-
-  const handleAddCustomActivity = () => {
-    if (!newActivityName.trim()) {
-      Alert.alert('Required', 'Please enter an activity name.');
-      return;
+  const performSaveSensory = async (status: 'draft' | 'submitted') => {
+    try {
+      const isSubmitting = status === 'submitted';
+      const progress = isSubmitting ? 100 : progressPercent;
+      const payload = { assessmentDate, activities, status, progress };
+      await saveSensoryAssessment(studentId, payload);
+      const aliasSid =
+        studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+      if (aliasSid) {
+        await saveSensoryAssessment(aliasSid, payload);
+      }
+      showToast(
+        isSubmitting
+          ? 'Sensory assessment submitted successfully (100%).'
+          : `Sensory assessment draft saved (${progressPercent}% complete).`,
+        'success',
+      );
+      if (isSubmitting) {
+        navigation?.navigate?.('AssessmentDashboard' as any);
+      }
+    } catch {
+      showToast('Failed to save sensory assessment.', 'error');
     }
-    const nextIdNumber = activities.length + 1;
-    const newId = `SEN-${String(nextIdNumber).padStart(3, '0')}`;
-
-    setActivities((prev) => [...prev, { id: newId, name: newActivityName.trim(), remark: '' }]);
-    setNewActivityName('');
-    setIsModalVisible(false);
   };
 
   const handleSave = async (status: 'draft' | 'submitted') => {
-    try {
-      await saveSensoryAssessment(studentId, { assessmentDate, activities, status });
-      Alert.alert(
-        status === 'submitted' ? 'Submitted' : 'Saved',
-        `Sensory assessment updated (${progressPercent}% complete).`,
-      );
-      if (status === 'submitted') {
-        navigation?.navigate?.('AssessmentSummaryReport' as any, { studentId } as any);
-      }
-    } catch {
-      Alert.alert('Error', 'Failed to save sensory assessment.');
+    if (status === 'submitted') {
+      confirmAction({
+        title: 'Submit Sensory Assessment?',
+        message:
+          'Are you sure you want to submit the Sensory Profile Assessment? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.',
+        confirmLabel: 'Submit Assessment',
+        onConfirm: async () => {
+          await performSaveSensory('submitted');
+        },
+      });
+      return;
     }
+    await performSaveSensory(status);
   };
 
   return (
@@ -423,12 +421,6 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
           })}
         </View>
 
-        {/* Add Custom Activity Button */}
-        <TouchableOpacity style={styles.addCustomBtn} onPress={() => setIsModalVisible(true)}>
-          <Feather name="plus" size={16} color="#64748B" />
-          <Text style={styles.addCustomText}>Add Custom Activity</Text>
-        </TouchableOpacity>
-
         {/* Summary Card */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Summary</Text>
@@ -518,43 +510,6 @@ export default function SensoryAssessmentScreen({ navigation, route }: Props) {
         ].join('\n')}
         onClose={() => setShowExport(false)}
       />
-
-      {/* Add Custom Activity Modal */}
-      <Modal visible={isModalVisible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsModalVisible(false)}
-        >
-          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Add Custom Activity</Text>
-
-            <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>Activity Name</Text>
-              <TextInput
-                style={styles.modalInputActive}
-                placeholder="Enter activity name..."
-                placeholderTextColor="#94A3B8"
-                value={newActivityName}
-                onChangeText={setNewActivityName}
-                autoFocus
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelModalBtn}
-                onPress={() => setIsModalVisible(false)}
-              >
-                <Text style={styles.cancelModalText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.addModalBtn} onPress={handleAddCustomActivity}>
-                <Text style={styles.addModalText}>Add Activity</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }

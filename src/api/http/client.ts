@@ -25,8 +25,38 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
 let cachedAdminToken: string | null = null;
 let adminTokenPromise: Promise<string | null> | null = null;
 
+function decodeBase64(str: string): string {
+  if (typeof globalThis.atob === 'function') {
+    return globalThis.atob(str);
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str, 'base64').toString('utf8');
+  }
+  return '';
+}
+
+function isJwtExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const jsonStr = decodeBase64(b64);
+    if (!jsonStr) return false;
+    const payload = JSON.parse(jsonStr);
+    if (payload && typeof payload.exp === 'number') {
+      return Date.now() >= payload.exp * 1000 - 30_000;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 export async function fetchAdminToken(): Promise<string | null> {
-  if (cachedAdminToken) return cachedAdminToken;
+  if (cachedAdminToken && !isJwtExpired(cachedAdminToken)) return cachedAdminToken;
+  cachedAdminToken = null;
   if (!adminTokenPromise) {
     adminTokenPromise = (async () => {
       try {
@@ -72,7 +102,8 @@ let cachedDirectorToken: string | null = null;
 let directorTokenPromise: Promise<string | null> | null = null;
 
 export async function fetchDirectorToken(): Promise<string | null> {
-  if (cachedDirectorToken) return cachedDirectorToken;
+  if (cachedDirectorToken && !isJwtExpired(cachedDirectorToken)) return cachedDirectorToken;
+  cachedDirectorToken = null;
   if (!directorTokenPromise) {
     directorTokenPromise = (async () => {
       try {
@@ -275,7 +306,15 @@ function createHttpClient(): AxiosInstance {
 
       let token = getAccessToken();
 
-      if (isDirectorRoute && (!token || !hasDirectorBackendRole())) {
+      // /director/schedule is an authorized endpoint for teachers to view their own schedule.
+      // If the current teacher is already authenticated with a valid session token, use it directly.
+      const isTeacherViewingSchedule =
+        config.url?.includes('/director/schedule') &&
+        config.method?.toLowerCase() === 'get' &&
+        !!token &&
+        !isJwtExpired(token);
+
+      if (isDirectorRoute && (!token || (!hasDirectorBackendRole() && !isTeacherViewingSchedule))) {
         const directorToken = await fetchDirectorToken();
         if (directorToken) {
           token = directorToken;

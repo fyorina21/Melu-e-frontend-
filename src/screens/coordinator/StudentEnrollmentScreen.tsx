@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,8 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
-  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -18,25 +16,27 @@ import AppNavbar from '../../components/AppNavbar';
 import StatusPill from '../../components/StatusPill';
 import StudentAvatar from '../../components/StudentAvatar';
 import { registerStudentPhotos } from '../../utils/studentPhotoHelper';
+import { getEnrollmentStudents } from '../../api/coordinatorApi';
 import {
-  getEnrollmentStudents,
-  getStoredEnrolledStudents,
-  deleteStudentEnrollment,
-} from '../../api/coordinatorApi';
-import { useToast } from '../../context/ToastContext';
-import { confirmAction } from '../../utils/dialogs';
-import { getStaffOptions } from '../../api/optionsApi';
-import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
+  getProgramOptions,
+  getTherapyGroupOptions,
+  getStatusOptions,
+  getTherapyStatusOptions,
+} from '../../api/optionsApi';
 import {
   resolveStudentStatus,
   toggleStudentStatus,
   onStudentStatusChanged,
 } from '../../utils/studentStatusHelper';
+import {
+  getEnrollmentDrafts,
+  deleteEnrollmentDraft,
+  onEnrollmentDraftsChanged,
+} from '../../utils/enrollmentDraftHelper';
+import { resolveStudentTherapyStatus } from '../../utils/studentLifecycleHelper';
+import { getStudentDemographic } from '../../utils/sensitiveDataSanitizer';
 import { routeMapForRole, COORDINATOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import type { CoordinatorStackParamList } from '../../types';
-
-const DEFAULT_PROGRAM_TYPES = ['Regular', 'Pulled Out'];
-const AGE_RANGES = ['3-5', '6-8', '9-11', '12+'];
 
 export interface EnrolledStudent {
   id: string;
@@ -44,357 +44,280 @@ export interface EnrolledStudent {
   age: number;
   gender: string;
   program: string;
+  therapyGroup: string;
   therapist: string;
-  diagnosis?: string;
-  status: 'Active' | 'Inactive';
+  diagnosis: string;
+  status: 'Active' | 'Inactive' | 'Draft';
+  therapyStatus: string;
   studentId: string;
   photoUrl?: string | null;
+  isDraft?: boolean;
 }
 
 interface EnrollmentStudentRow {
   id: string;
-  fullName: string;
-  name?: string;
   studentId?: string;
+  student_id?: string;
+  fullName: string;
   age: number;
-  programType?: string;
-  program?: string;
-  therapyGroup?: string;
+  programType: string;
+  therapyGroup: string;
   therapist?: string;
   status: string;
+  rawStatus?: string;
+  raw_status?: string;
+  therapyStatus?: string;
+  therapy_status?: string;
   headshotUrl?: string | null;
   photoUrl?: string | null;
   photo?: string | null;
-  gender?: string;
-}
-
-interface FilterDropdownProps {
-  label: string;
-  value: string;
-  options: string[];
-  isOpen: boolean;
-  onToggle: () => void;
-  onSelect: (val: string) => void;
-  allLabel?: string;
-}
-
-function FilterDropdown({
-  label,
-  value,
-  options,
-  isOpen,
-  onToggle,
-  onSelect,
-  allLabel = 'All',
-}: FilterDropdownProps) {
-  const isFiltered = value !== 'All';
-  const displayValue = isFiltered ? value : allLabel;
-
-  return (
-    <View style={[styles.dropdownContainer, isOpen && styles.dropdownContainerOpen]}>
-      <Text style={styles.filterLabel}>{label}</Text>
-      <TouchableOpacity
-        style={[
-          styles.dropdownTrigger,
-          isOpen && styles.dropdownTriggerOpen,
-          isFiltered && styles.dropdownTriggerActive,
-        ]}
-        onPress={onToggle}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={`${label}: ${displayValue}`}
-      >
-        <Text
-          style={[styles.dropdownValueText, isFiltered && styles.dropdownValueTextActive]}
-          numberOfLines={1}
-        >
-          {displayValue}
-        </Text>
-        <Feather
-          name={isOpen ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={isFiltered ? colors.navyText : colors.mutedText}
-        />
-      </TouchableOpacity>
-
-      {isOpen && (
-        <View style={styles.dropdownMenu}>
-          <ScrollView
-            style={styles.dropdownScroll}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator={true}
-          >
-            <TouchableOpacity
-              style={[styles.dropdownItem, value === 'All' && styles.dropdownItemSelected]}
-              onPress={() => onSelect('All')}
-            >
-              <Text
-                style={[
-                  styles.dropdownItemText,
-                  value === 'All' && styles.dropdownItemTextSelected,
-                ]}
-              >
-                {allLabel}
-              </Text>
-              {value === 'All' && <Feather name="check" size={14} color={colors.navyText} />}
-            </TouchableOpacity>
-            {options.map((opt) => {
-              const isSelected = value.toLowerCase().trim() === opt.toLowerCase().trim();
-              return (
-                <TouchableOpacity
-                  key={opt}
-                  style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
-                  onPress={() => onSelect(opt)}
-                >
-                  <Text
-                    style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}
-                  >
-                    {opt}
-                  </Text>
-                  {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
-    </View>
-  );
 }
 
 type Props = NativeStackScreenProps<CoordinatorStackParamList, 'StudentEnrollment'>;
 
-export default function StudentEnrollmentScreen({ navigation }: Props) {
-  const { showToast } = useToast();
-  const [students, setStudents] = useState<EnrolledStudent[]>([]);
+function getTherapyStatusStyle(status?: string): { bg: string; border: string; text: string } {
+  switch (status?.toLowerCase()) {
+    case 'in session':
+    case 'active therapy':
+      return { bg: '#E8F5E9', border: '#81C784', text: '#2E7D32' };
+    case 'in assessment':
+      return { bg: '#E1F5FE', border: '#4FC3F7', text: '#0277BD' };
+    case 'assessment complete':
+    case 'ready for iup':
+      return { bg: '#FFF8E1', border: '#FFD54F', text: '#F57F17' };
+    case 'iup ready':
+      return { bg: '#EDE7F6', border: '#B39DDB', text: '#512DA8' };
+    case 'draft':
+      return { bg: '#FEF3C7', border: '#F59E0B', text: '#B45309' };
+    case 'discharged':
+    case 'withdrawn':
+    case 'archived':
+    case 'inactive':
+      return { bg: '#F5F5F5', border: '#BDBDBD', text: '#616161' };
+    case 'not started':
+    default:
+      return { bg: '#F3E5F5', border: '#CE93D8', text: '#7B1FA2' };
+  }
+}
 
-  const handleDeleteStudent = (student: EnrolledStudent) => {
-    confirmAction({
-      title: 'Delete Student',
-      message: `Are you sure you want to delete ${student.name}? This will remove the student from the roster list.`,
-      confirmLabel: 'Delete',
-      cancelLabel: 'Cancel',
-      destructive: true,
-      onConfirm: async () => {
-        try {
-          await deleteStudentEnrollment(student.id, student.name);
-          showToast(`${student.name} deleted successfully`, 'success');
-          load();
-        } catch {
-          showToast('Failed to delete student', 'error');
-        }
-      },
-    });
-  };
-  const [therapistOptions, setTherapistOptions] = useState<string[]>([]);
+export default function StudentEnrollmentScreen({ navigation }: Props) {
+  const [students, setStudents] = useState<EnrolledStudent[]>([]);
   const [search, setSearch] = useState('');
   const [programFilter, setProgramFilter] = useState('All');
-  const [therapistFilter, setTherapistFilter] = useState('All');
+  const [therapyGroupFilter, setTherapyGroupFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [ageFilter, setAgeFilter] = useState('All');
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [therapyStatusFilter, setTherapyStatusFilter] = useState('All');
+  const [programOptions, setProgramOptions] = useState<string[]>([]);
+  const [therapyGroupOptions, setTherapyGroupOptions] = useState<string[]>([]);
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
+  const [therapyStatusOptions, setTherapyStatusOptions] = useState<string[]>([
+    'In Assessment',
+    'Assessment Complete',
+    'Ready for IUP',
+    'IUP Ready',
+    'In Session',
+    'Not Started',
+  ]);
 
-  const fetchTherapists = useCallback(() => {
-    getStaffOptions()
+  // Fetch dynamic Program, Therapy Group, Status, and Therapy Status lists from backend API on component mount
+  useEffect(() => {
+    let isMounted = true;
+    getProgramOptions()
       .then(({ data }) => {
-        const clean = filterOutDeletedStaff(data);
-        const therapists = clean.filter((s) => s.role === 'teacher').map((t) => t.name);
-        setTherapistOptions(therapists);
+        if (isMounted && Array.isArray(data)) {
+          setProgramOptions(data);
+        }
       })
-      .catch(() => setTherapistOptions([]));
+      .catch(() => {});
+
+    getTherapyGroupOptions()
+      .then(({ data }) => {
+        if (isMounted && Array.isArray(data)) {
+          setTherapyGroupOptions(data);
+        }
+      })
+      .catch(() => {});
+
+    getStatusOptions()
+      .then(({ data }) => {
+        if (isMounted && Array.isArray(data)) {
+          setStatusOptions(data);
+        }
+      })
+      .catch(() => {});
+
+    getTherapyStatusOptions()
+      .then(({ data }) => {
+        if (isMounted && Array.isArray(data)) {
+          setTherapyStatusOptions(data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  useEffect(() => {
-    fetchTherapists();
-  }, [fetchTherapists]);
-
-  useEffect(() => {
-    return onDeletedStaffChanged(fetchTherapists);
-  }, [fetchTherapists]);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await getEnrollmentStudents({});
+      const queryParams: Record<string, string> = {};
+      if (search) queryParams.search = search;
+      if (programFilter !== 'All') queryParams.program = programFilter;
+      if (therapyGroupFilter !== 'All') queryParams.therapy_group = therapyGroupFilter;
+      if (statusFilter !== 'All') queryParams.status = statusFilter;
+      if (therapyStatusFilter !== 'All') queryParams.therapy_status = therapyStatusFilter;
+
+      // 1. Load active enrollment drafts
+      const drafts = getEnrollmentDrafts();
+      const draftStudents: EnrolledStudent[] = drafts.map((d) => ({
+        id: d.id,
+        name: d.fullName || d.name || 'Untitled Draft',
+        age: d.age || 0,
+        gender: getStudentDemographic(d as any, ''),
+        program: d.program || 'Regular Morning',
+        therapyGroup: d.therapyGroup || 'Basic',
+        therapist: d.therapist || 'Unassigned',
+        diagnosis: d.diagnosis || 'Draft Enrollment',
+        status: 'Draft',
+        therapyStatus: 'Draft',
+        studentId: d.id,
+        photoUrl: d.photoUrl || null,
+        isDraft: true,
+      }));
+
+      // 2. Load backend and enrolled students
+      const { data } = await getEnrollmentStudents(queryParams);
       if (Array.isArray(data)) {
-        registerStudentPhotos(data);
+        registerStudentPhotos(
+          data.map((item) => ({
+            id: item.id ? String(item.id) : undefined,
+            name: item.fullName || item.name,
+            photo: item.photo,
+            photoUrl: item.photoUrl,
+            headshotUrl: item.headshotUrl,
+          })),
+        );
       }
-      const stored = getStoredEnrolledStudents();
-      const existingIds = new Set(
-        (Array.isArray(data) ? (data as Record<string, unknown>[]) : [])
-          .map((d: Record<string, unknown>) => String(d.id || d.studentId || '').toLowerCase())
-          .filter(Boolean),
-      );
-      const existingNames = new Set(
-        (Array.isArray(data) ? (data as Record<string, unknown>[]) : [])
-          .map((d: Record<string, unknown>) =>
-            String(d.fullName || d.name || '')
-              .toLowerCase()
-              .trim(),
-          )
-          .filter(Boolean),
-      );
-      const missingStored = stored.filter((s: Record<string, unknown>) => {
-        const sid = String(s.id || s.studentId || '').toLowerCase();
-        const sname = String(s.fullName || s.name || '')
-          .toLowerCase()
-          .trim();
-        return (!sid || !existingIds.has(sid)) && (!sname || !existingNames.has(sname));
-      });
-      const rawList = [
-        ...missingStored,
-        ...(Array.isArray(data) && data.length > 0 ? data : stored),
-      ];
-      setStudents(
-        (rawList as unknown as EnrollmentStudentRow[]).map((row) => ({
-          id: row.id,
-          name: row.fullName,
-          age: row.age,
-          gender: row.gender || '',
-          program: row.programType || row.program || 'Regular',
-          therapist: row.therapist || row.therapyGroup || '',
-          status: resolveStudentStatus(row.id, row.fullName || row.name, row.status),
-          studentId: row.studentId || row.id,
-          photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
-        })),
-      );
-    } catch {
-      const stored = getStoredEnrolledStudents();
-      setStudents(
-        (stored as unknown as EnrollmentStudentRow[]).map((row) => ({
-          id: row.id,
-          name: row.fullName || row.name || '',
-          age: Number(row.age) || 6,
-          gender: row.gender || '',
-          program: row.programType || row.program || 'Regular',
-          therapist: row.therapist || row.therapyGroup || '',
-          status: resolveStudentStatus(row.id, row.fullName || row.name, row.status),
-          studentId: row.studentId || row.id,
-          photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
-        })),
-      );
+      const enrolledRows: EnrolledStudent[] = (data as EnrollmentStudentRow[]).map((row) => ({
+        id: row.id,
+        name: row.fullName,
+        age: row.age,
+        gender: '',
+        program: row.programType,
+        therapyGroup: row.therapyGroup || 'Basic',
+        therapist: row.therapist || row.therapyGroup,
+        diagnosis: '',
+        status: resolveStudentStatus(row.id, row.fullName, row.status),
+        therapyStatus: resolveStudentTherapyStatus(row),
+        studentId: row.studentId || row.student_id || row.id,
+        photoUrl: row.photoUrl || row.headshotUrl || row.photo || null,
+        isDraft: false,
+      }));
+
+      setStudents([...draftStudents, ...enrolledRows]);
+    } catch (err) {
+      const drafts = getEnrollmentDrafts();
+      const draftStudents: EnrolledStudent[] = drafts.map((d) => ({
+        id: d.id,
+        name: d.fullName || d.name || 'Untitled Draft',
+        age: d.age || 0,
+        gender: getStudentDemographic(d as any, ''),
+        program: d.program || 'Regular Morning',
+        therapyGroup: d.therapyGroup || 'Basic',
+        therapist: d.therapist || 'Unassigned',
+        diagnosis: d.diagnosis || 'Draft Enrollment',
+        status: 'Draft',
+        therapyStatus: 'Draft',
+        studentId: d.id,
+        photoUrl: d.photoUrl || null,
+        isDraft: true,
+      }));
+      setStudents(draftStudents);
     }
-  }, []);
+  }, [search, programFilter, therapyGroupFilter, statusFilter, therapyStatusFilter]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    const unsubFocus = navigation?.addListener?.('focus', load);
+    const unsubStatus = onStudentStatusChanged(load);
+    const unsubDrafts = onEnrollmentDraftsChanged(load);
+    const handleUpdate = () => load();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_student_profile_updated', handleUpdate);
+      window.addEventListener('melue_enrolled_students_changed', handleUpdate);
+    }
+    return () => {
+      unsubFocus?.();
+      unsubStatus();
+      unsubDrafts();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('melue_student_profile_updated', handleUpdate);
+        window.removeEventListener('melue_enrolled_students_changed', handleUpdate);
+      }
+    };
+  }, [load, navigation]);
 
-  useEffect(() => {
-    return onStudentStatusChanged(load);
-  }, [load]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-      fetchTherapists();
-    }, [load, fetchTherapists]),
+  const filtered = students.filter(
+    (s) =>
+      (programFilter === 'All' ||
+        s.program?.toLowerCase().includes(programFilter.toLowerCase()) ||
+        programFilter.toLowerCase().includes(s.program?.toLowerCase())) &&
+      (therapyGroupFilter === 'All' ||
+        s.therapyGroup?.toLowerCase().includes(therapyGroupFilter.toLowerCase()) ||
+        therapyGroupFilter.toLowerCase().includes(s.therapyGroup?.toLowerCase())) &&
+      (statusFilter === 'All' || s.status?.toLowerCase() === statusFilter.toLowerCase()) &&
+      (therapyStatusFilter === 'All' ||
+        s.therapyStatus?.toLowerCase() === therapyStatusFilter.toLowerCase() ||
+        (therapyStatusFilter.toLowerCase() === 'in session' &&
+          (s.therapyStatus?.toLowerCase() === 'active therapy' ||
+            s.therapyStatus?.toLowerCase() === 'active')) ||
+        (therapyStatusFilter.toLowerCase() === 'ready for iup' &&
+          (s.therapyStatus?.toLowerCase() === 'ready for iup' ||
+            s.therapyStatus?.toLowerCase() === 'assessment complete'))) &&
+      (!search ||
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        s.studentId.toLowerCase().includes(search.toLowerCase())),
   );
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleRefresh = () => {
-      load();
-    };
-    window.addEventListener('melue_student_enrolled_updated', handleRefresh);
-    window.addEventListener('melue_student_deleted', handleRefresh);
-    window.addEventListener('melue_student_status_changed', handleRefresh);
-    window.addEventListener('melue_therapist_assignment_updated', handleRefresh);
-    return () => {
-      window.removeEventListener('melue_student_enrolled_updated', handleRefresh);
-      window.removeEventListener('melue_student_deleted', handleRefresh);
-      window.removeEventListener('melue_student_status_changed', handleRefresh);
-      window.removeEventListener('melue_therapist_assignment_updated', handleRefresh);
-    };
-  }, [load]);
-
-  // Dynamic program options derived from real enrolled students data and system options
-  const realProgramOptions = useMemo(() => {
-    const fromStudents = students.map((s) => s.program).filter(Boolean);
-    const map = new Map<string, string>();
-    [...DEFAULT_PROGRAM_TYPES, ...fromStudents].forEach((p) => {
-      const trimmed = p.trim();
-      const key = trimmed.toLowerCase();
-      if (!map.has(key)) {
-        map.set(key, trimmed);
-      }
-    });
-    return Array.from(map.values()).sort();
-  }, [students]);
-
-  // Dynamic therapist options derived from staff API and real enrolled students data
-  const realTherapistOptions = useMemo(() => {
-    const fromStudents = students.map((s) => s.therapist).filter(Boolean);
-    const map = new Map<string, string>();
-    [...therapistOptions, ...fromStudents].forEach((t) => {
-      const trimmed = t.trim();
-      const key = trimmed.toLowerCase();
-      if (!map.has(key)) {
-        map.set(key, trimmed);
-      }
-    });
-    return Array.from(map.values()).sort();
-  }, [students, therapistOptions]);
-
-  const matchesAge = (age: number, range: string) => {
-    if (range === 'All') return true;
-    if (range === '12+') return age >= 12;
-    const parts = range.split('-').map(Number);
-    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      return age >= parts[0] && age <= parts[1];
-    }
-    return age === Number(range);
-  };
-
-  const filtered = useMemo(() => {
-    return students.filter((s) => {
-      const matchProgram =
-        programFilter === 'All' ||
-        s.program.toLowerCase().trim() === programFilter.toLowerCase().trim();
-      const matchTherapist =
-        therapistFilter === 'All' ||
-        s.therapist.toLowerCase().trim() === therapistFilter.toLowerCase().trim();
-      const matchStatus =
-        statusFilter === 'All' || s.status.toLowerCase() === statusFilter.toLowerCase();
-      const matchAge = matchesAge(s.age, ageFilter);
-      const matchSearch =
-        !search ||
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.studentId.toLowerCase().includes(search.toLowerCase());
-
-      return matchProgram && matchTherapist && matchStatus && matchAge && matchSearch;
-    });
-  }, [students, programFilter, therapistFilter, statusFilter, ageFilter, search]);
-
-  const hasActiveFilters =
-    programFilter !== 'All' ||
-    therapistFilter !== 'All' ||
-    statusFilter !== 'All' ||
-    ageFilter !== 'All' ||
-    search.trim() !== '';
-
-  const clearAllFilters = () => {
-    setProgramFilter('All');
-    setTherapistFilter('All');
-    setStatusFilter('All');
-    setAgeFilter('All');
-    setSearch('');
-    setOpenDropdown(null);
-  };
+  const FilterChips = ({
+    label,
+    options,
+    value,
+    onChange,
+  }: {
+    label: string;
+    options: string[];
+    value: string;
+    onChange: (v: string) => void;
+  }) => (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <Text style={[typography.label, styles.filterLabel]}>{label}</Text>
+      {['All', ...options].map((opt) => (
+        <TouchableOpacity
+          key={opt}
+          style={[styles.filterChip, value === opt && styles.filterChipActive]}
+          onPress={() => onChange(opt)}
+        >
+          <Text
+            style={[
+              typography.body,
+              value === opt && { color: colors.navyText, fontWeight: '700' },
+            ]}
+          >
+            {opt}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
 
   const routeMap = routeMapForRole('coordinator');
 
   return (
     <SafeAreaView style={styles.safe}>
-      {openDropdown && (
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={() => setOpenDropdown(null)}
-        />
-      )}
-
       <AppNavbar
-        activeTab="Student Register & Roster List"
+        activeTab="Student Register"
         onTabPress={(t) => {
           const route = routeMap[t] || COORDINATOR_ROUTE_BY_TAB[t];
           if (route && route !== 'StudentEnrollment') {
@@ -406,9 +329,7 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       <View style={styles.header}>
         <View>
           <Text style={typography.h1}>Student Register</Text>
-          <Text style={typography.caption}>
-            MR-16 — register, search and filter enrolled students
-          </Text>
+          <Text style={typography.caption}>Register, search and filter enrolled students</Text>
         </View>
         <TouchableOpacity
           style={styles.addBtn}
@@ -427,72 +348,30 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
           value={search}
           onChangeText={setSearch}
         />
-
-        <View style={styles.dropdownsRow}>
-          <FilterDropdown
-            label="Program"
-            value={programFilter}
-            options={realProgramOptions}
-            isOpen={openDropdown === 'program'}
-            onToggle={() => setOpenDropdown((prev) => (prev === 'program' ? null : 'program'))}
-            onSelect={(val) => {
-              setProgramFilter(val);
-              setOpenDropdown(null);
-            }}
-            allLabel="All Programs"
-          />
-
-          <FilterDropdown
-            label="Therapist"
-            value={therapistFilter}
-            options={realTherapistOptions}
-            isOpen={openDropdown === 'therapist'}
-            onToggle={() => setOpenDropdown((prev) => (prev === 'therapist' ? null : 'therapist'))}
-            onSelect={(val) => {
-              setTherapistFilter(val);
-              setOpenDropdown(null);
-            }}
-            allLabel="All Therapists"
-          />
-
-          <FilterDropdown
-            label="Status"
-            value={statusFilter}
-            options={['Active', 'Inactive']}
-            isOpen={openDropdown === 'status'}
-            onToggle={() => setOpenDropdown((prev) => (prev === 'status' ? null : 'status'))}
-            onSelect={(val) => {
-              setStatusFilter(val);
-              setOpenDropdown(null);
-            }}
-            allLabel="All Statuses"
-          />
-
-          <FilterDropdown
-            label="Age"
-            value={ageFilter}
-            options={AGE_RANGES}
-            isOpen={openDropdown === 'age'}
-            onToggle={() => setOpenDropdown((prev) => (prev === 'age' ? null : 'age'))}
-            onSelect={(val) => {
-              setAgeFilter(val);
-              setOpenDropdown(null);
-            }}
-            allLabel="All Ages"
-          />
-
-          {hasActiveFilters && (
-            <TouchableOpacity
-              style={styles.resetBtn}
-              onPress={clearAllFilters}
-              accessibilityRole="button"
-              accessibilityLabel="Clear all filters"
-            >
-              <Feather name="x" size={14} color={colors.navyText} />
-              <Text style={styles.resetBtnText}>Clear filters</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        <FilterChips
+          label="Therapy Status"
+          options={therapyStatusOptions}
+          value={therapyStatusFilter}
+          onChange={setTherapyStatusFilter}
+        />
+        <FilterChips
+          label="Program"
+          options={programOptions}
+          value={programFilter}
+          onChange={setProgramFilter}
+        />
+        <FilterChips
+          label="Therapy Group"
+          options={therapyGroupOptions}
+          value={therapyGroupFilter}
+          onChange={setTherapyGroupFilter}
+        />
+        <FilterChips
+          label="Status"
+          options={statusOptions}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -500,43 +379,83 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
         {filtered.map((s) => (
           <TouchableOpacity
             key={s.id}
-            style={styles.row}
-            onPress={() => navigation?.navigate?.('StudentProfile', { studentId: s.id })}
+            style={[styles.row, s.isDraft && styles.rowDraft]}
+            onPress={() => {
+              navigation?.navigate?.('StudentProfile', { studentId: s.id });
+            }}
           >
             <StudentAvatar name={s.name} studentId={s.id} photoUrl={s.photoUrl} size={40} />
             <View style={{ flex: 1 }}>
-              <Text style={typography.bodyBold}>{s.name}</Text>
+              <View style={styles.nameRow}>
+                <Text style={typography.bodyBold}>{s.name}</Text>
+                {s.isDraft && (
+                  <View style={styles.draftBadge}>
+                    <Text style={styles.draftBadgeText}>Draft</Text>
+                  </View>
+                )}
+              </View>
               <Text style={typography.caption}>
-                {s.studentId} · Age {s.age}
-                {s.gender ? ` · ${s.gender}` : ''}
+                {s.isDraft
+                  ? 'In-progress Enrollment Draft'
+                  : `${s.studentId} · Age ${s.age} · ${s.gender}`}
               </Text>
               <Text style={typography.caption}>
-                {[s.program, s.therapist].filter(Boolean).join(' · ')}
+                {s.program} · {s.therapyGroup}
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={(e) => {
-                e?.stopPropagation?.();
-                toggleStudentStatus(s.id, s.name, s.status);
-              }}
-              activeOpacity={0.7}
-            >
-              <StatusPill
-                status={s.status === 'Active' ? 'approved' : 'revision'}
-                label={s.status}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={(e) => {
-                e?.stopPropagation?.();
-                handleDeleteStudent(s);
-              }}
-              style={styles.deleteBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Delete ${s.name}`}
-            >
-              <Feather name="trash-2" size={16} color="#DC2626" />
-            </TouchableOpacity>
+            <View style={styles.statusPillsRow}>
+              {Boolean(s.therapyStatus) && (
+                <View
+                  style={[
+                    styles.therapyBadge,
+                    {
+                      backgroundColor: getTherapyStatusStyle(s.therapyStatus).bg,
+                      borderColor: getTherapyStatusStyle(s.therapyStatus).border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.therapyBadgeText,
+                      { color: getTherapyStatusStyle(s.therapyStatus).text },
+                    ]}
+                  >
+                    {s.therapyStatus}
+                  </Text>
+                </View>
+              )}
+              {s.isDraft ? (
+                <View style={styles.draftActionGroup}>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e?.stopPropagation?.();
+                      deleteEnrollmentDraft(s.id);
+                      load();
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Discard Draft"
+                    style={styles.trashBtn}
+                  >
+                    <Feather name="trash-2" size={16} color={colors.mutedText} />
+                  </TouchableOpacity>
+                  <StatusPill status="draft" label="Draft" />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    toggleStudentStatus(s.id, s.name, s.status);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <StatusPill
+                    status={s.status === 'Active' ? 'approved' : 'revision'}
+                    label={s.status}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
             <Feather name="chevron-right" size={18} color={colors.mutedText} />
           </TouchableOpacity>
         ))}
@@ -555,15 +474,25 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
   );
 }
 
+function navRouteForTab(tab: string): keyof CoordinatorStackParamList {
+  return (
+    {
+      Dashboard: 'CoordinatorDashboard',
+      'Live Sessions': 'LiveSessionMonitoring',
+      Review: 'SessionSummaryReview',
+      Progress: 'CoordinatorStudentProgress',
+      Schedule: 'CoordinatorSchedule',
+      Parents: 'CoordinatorParentCommunication',
+      Enrollment: 'StudentEnrollment',
+      Workload: 'WorkloadDashboard',
+      Notifications: 'Notifications',
+      Rooms: 'RoomResourceScheduling',
+    } as Record<string, keyof CoordinatorStackParamList>
+  )[tab];
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  backdrop: {
-    ...(Platform.OS === 'web'
-      ? { position: 'fixed' as unknown as 'absolute', top: 0, left: 0, right: 0, bottom: 0 }
-      : StyleSheet.absoluteFillObject),
-    zIndex: 90,
-    backgroundColor: 'transparent',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -587,11 +516,10 @@ const styles = StyleSheet.create({
   addBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   filtersRow: {
     padding: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    zIndex: 100,
   },
   searchInput: {
     borderWidth: 1,
@@ -599,128 +527,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     backgroundColor: colors.bgApp,
-    fontSize: 14,
-    color: colors.navyText,
   },
-  dropdownsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-  },
-  dropdownContainer: {
-    position: 'relative',
-    minWidth: 140,
-    flexGrow: 1,
-    flexBasis: 140,
-    maxWidth: 220,
-    zIndex: 1,
-  },
-  dropdownContainerOpen: {
-    zIndex: 1000,
-  },
-  filterLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.mutedText,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  filterLabel: { marginRight: spacing.sm, paddingVertical: spacing.sm },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.xs,
     backgroundColor: colors.bgApp,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    height: 40,
-    gap: spacing.xs,
   },
-  dropdownTriggerOpen: {
-    borderColor: colors.navyText,
-    backgroundColor: '#FFFFFF',
-  },
-  dropdownTriggerActive: {
-    borderColor: colors.primaryYellow,
-    backgroundColor: '#FEF9C3',
-  },
-  dropdownValueText: {
-    fontSize: 13,
-    color: colors.navyText,
-    flex: 1,
-  },
-  dropdownValueTextActive: {
-    fontWeight: '700',
-    color: colors.navyText,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 64,
-    left: 0,
-    right: 0,
-    minWidth: 180,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    maxHeight: 220,
-    zIndex: 1001,
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-        }
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
-          elevation: 8,
-        }),
-  },
-  dropdownScroll: {
-    maxHeight: 220,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  dropdownItemSelected: {
-    backgroundColor: '#FEF9C3',
-  },
-  dropdownItemText: {
-    fontSize: 13,
-    color: colors.navyText,
-    flex: 1,
-  },
-  dropdownItemTextSelected: {
-    fontWeight: '700',
-    color: colors.navyText,
-  },
-  resetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: 40,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.bgApp,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignSelf: 'flex-end',
-  },
-  resetBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.navyText,
-  },
+  filterChipActive: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   content: { padding: spacing.lg, gap: spacing.md },
   row: {
     flexDirection: 'row',
@@ -741,11 +559,54 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: colors.white, fontWeight: '700', fontSize: 16 },
-  deleteBtn: {
-    padding: 8,
-    borderRadius: radius.md,
+  rowDraft: {
+    borderColor: '#F59E0B',
+    borderLeftWidth: 4,
+    backgroundColor: '#FFFDF5',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  draftBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  draftBadgeText: {
+    color: '#B45309',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  draftActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  trashBtn: {
+    padding: spacing.xs,
+    borderRadius: radius.sm,
+  },
+  statusPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  therapyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FEE2E2',
+  },
+  therapyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

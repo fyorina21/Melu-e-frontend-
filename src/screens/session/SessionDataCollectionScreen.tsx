@@ -26,6 +26,7 @@ import {
   onDeletedStudentChanged,
 } from '../../utils/deletedStudentHelper';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
+import { secureRandomId } from '../../utils/cryptoRandom';
 import StudentSessionCard from './components/StudentSessionCard';
 import BehaviorIncidentModal from './components/BehaviorIncidentModal';
 import type { IncidentPayload } from './components/BehaviorIncidentModal';
@@ -410,7 +411,9 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
         let assignedStudentIds = strictlyAssignedIds.filter((sid) => !isStudentDeleted(sid));
 
         if (directorAssignedIds !== null) {
-          assignedStudentIds = directorAssignedIds.filter((sid) => !isStudentDeleted(sid)).slice(0, 2);
+          assignedStudentIds = directorAssignedIds
+            .filter((sid) => !isStudentDeleted(sid))
+            .slice(0, 2);
         } else if (
           route.params?.students &&
           Array.isArray(route.params.students) &&
@@ -811,7 +814,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     }
 
     const resolvedGoalId = activeGoal.id;
-    const trialId = `trial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const trialId = secureRandomId('trial');
     const timeStr = new Date().toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
@@ -1091,8 +1094,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
       incidentData.student_goal_id ||
       '';
 
-    const incidentId =
-      incidentData.id || `inc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const incidentId = incidentData.id || secureRandomId('inc');
 
     const fullIncident: IncidentPayload = {
       ...incidentData,
@@ -1311,25 +1313,27 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           </View>
         ) : (
           <View style={[styles.studentsRow, isLandscape && styles.studentsRowLandscape]}>
-            {filterOutDeletedStudents(session.students || []).slice(0, 2).map((student) => (
-              <TouchableOpacity
-                key={student.id}
-                style={styles.studentCardWrapper}
-                activeOpacity={0.9}
-                onPress={() => handleActivate(student.id)}
-              >
-                <StudentSessionCard
-                  student={student}
-                  onSelectPromptLevel={handleSelectPromptLevel}
-                  onRecordIncident={handleOpenIncidentModal}
-                  onMasteryCheck={handleMasteryCheck}
-                  onActivate={handleActivate}
-                  onViewGoalProgress={handleViewGoalProgress}
-                  onViewProfile={handleViewProfile}
-                  onUndo={(goalId) => handleUndoTrial(student.id, goalId)}
-                />
-              </TouchableOpacity>
-            ))}
+            {filterOutDeletedStudents(session.students || [])
+              .slice(0, 2)
+              .map((student) => (
+                <TouchableOpacity
+                  key={student.id}
+                  style={styles.studentCardWrapper}
+                  activeOpacity={0.9}
+                  onPress={() => handleActivate(student.id)}
+                >
+                  <StudentSessionCard
+                    student={student}
+                    onSelectPromptLevel={handleSelectPromptLevel}
+                    onRecordIncident={handleOpenIncidentModal}
+                    onMasteryCheck={handleMasteryCheck}
+                    onActivate={handleActivate}
+                    onViewGoalProgress={handleViewGoalProgress}
+                    onViewProfile={handleViewProfile}
+                    onUndo={(goalId) => handleUndoTrial(student.id, goalId)}
+                  />
+                </TouchableOpacity>
+              ))}
           </View>
         )}
       </ScrollView>

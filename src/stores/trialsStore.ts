@@ -7,6 +7,8 @@ import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
 // which may not serialize trial logs in the roster response.
 
 import type { Trial, SessionIncident } from '../types';
+import { secureRandomId } from '../utils/cryptoRandom';
+import { sanitizeStoragePayload, unprotectStoragePayload } from '../utils/sensitiveDataSanitizer';
 
 const STORAGE_KEY = 'melue_session_trials_cache';
 
@@ -330,8 +332,7 @@ const ABC_STORAGE_KEY = 'melue_abc_incidents_cache';
 
 export function normalizeAbcIncident(incident: any): any {
   if (!incident) return null;
-  const incidentId =
-    incident.id || `abc-inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const incidentId = incident.id || secureRandomId('abc-inc');
 
   return {
     ...incident,
@@ -537,7 +538,8 @@ export function setStoredSessionStudents(
     } else {
       map['active'] = cleanStudents;
     }
-    localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(map));
+    const protectedVal = sanitizeStoragePayload(JSON.stringify(map));
+    localStorage.setItem(STUDENTS_STORAGE_KEY, protectedVal);
   } catch {}
 }
 
@@ -549,7 +551,8 @@ export function getStoredSessionStudents(
   try {
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
     if (!raw) return null;
-    const map = JSON.parse(raw);
+    const decoded = unprotectStoragePayload(raw) || raw;
+    const map = JSON.parse(decoded);
     if (teacherId) {
       const scoped = map[`${sessionId}_${teacherId}`] ?? map[`teacher_${teacherId}`];
       if (Array.isArray(scoped)) return filterOutDeletedStudents(scoped);

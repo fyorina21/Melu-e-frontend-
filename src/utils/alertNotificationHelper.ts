@@ -6,6 +6,8 @@
  * and TeacherNotificationsScreen without requiring backend database modifications.
  */
 
+import { secureRandomId } from './cryptoRandom';
+
 export interface StoredCoordinatorAlert {
   id: string;
   sessionId?: string;
@@ -70,7 +72,7 @@ export function saveCoordinatorAlert(alert: {
   message: string;
 }): StoredCoordinatorAlert {
   const newAlert: StoredCoordinatorAlert = {
-    id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: secureRandomId('alert'),
     sessionId: alert.sessionId,
     teacherName: alert.teacherName || 'Teacher',
     teacherEmail: alert.teacherEmail,

@@ -2782,12 +2782,12 @@ export const assignGoalToSlot = async (
   try {
     if (isNumericBackendId && isNumericGoalId) {
       await client.post('/goal_assignments', {
-      student_id: studentId,
-      goal_id: goalId,
-      station: stationKey === 'station1' ? 1 : 2,
-      slot: slotIdx,
-      ...payload,
-    });
+        student_id: studentId,
+        goal_id: goalId,
+        station: stationKey === 'station1' ? 1 : 2,
+        slot: slotIdx,
+        ...payload,
+      });
     }
   } catch {}
 
@@ -3707,3 +3707,5 @@ export const getAssessmentSummaryDashboard = async (studentId?: string): Promise
   return { data: payload };
 };
 
+// Re-export unified Student Profile functions for Program Director navigator & caseload workflows
+export { getStudentProfile, updateStudentProfile } from './coordinatorApi';

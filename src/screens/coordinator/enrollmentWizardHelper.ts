@@ -40,10 +40,10 @@ export function validateStep(
     if (!form.therapist) {
       return { valid: false, error: 'Please pick a therapist' };
     }
-    if (isTherapistFull(form.therapist)) {
+    if (isTherapistFull && isTherapistFull(form.therapist)) {
       return {
         valid: false,
-        error: `${form.therapist} is at maximum capacity (2 students). Choose another therapist.`,
+        error: `${form.therapist} is at maximum capacity. Choose another therapist.`,
       };
     }
   }

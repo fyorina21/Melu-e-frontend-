@@ -49,7 +49,11 @@ export function getDeletedStudentKeys(): Set<string> {
         if (Array.isArray(arr)) {
           return new Set(
             arr
-              .map((k: string) => String(k || '').trim().toLowerCase())
+              .map((k: string) =>
+                String(k || '')
+                  .trim()
+                  .toLowerCase(),
+              )
               .filter(Boolean),
           );
         }
@@ -76,7 +80,8 @@ export function getDeletedStudentRecords(): DeletedStudentRecord[] {
 /**
  * Checks whether the given identifier, name, or object matches a deleted student.
  */
-export function isStudentDeleted(item: any): boolean {
+export function isStudentDeleted(item: any, name?: string): boolean {
+  if (name && isStudentDeleted(name)) return true;
   if (!item) return false;
   const deletedKeys = getDeletedStudentKeys();
   if (deletedKeys.size === 0) return false;
@@ -87,10 +92,14 @@ export function isStudentDeleted(item: any): boolean {
   }
 
   if (typeof item === 'object') {
-    const id = String(item.id || item.studentId || item.student_id || '').trim().toLowerCase();
+    const id = String(item.id || item.studentId || item.student_id || '')
+      .trim()
+      .toLowerCase();
     if (id && deletedKeys.has(id)) return true;
 
-    const name = String(item.fullName || item.name || item.studentName || item.student_name || '').trim().toLowerCase();
+    const name = String(item.fullName || item.name || item.studentName || item.student_name || '')
+      .trim()
+      .toLowerCase();
     if (name && deletedKeys.has(name)) return true;
 
     // Check first/last name
@@ -148,7 +157,7 @@ export function filterStudentResponse(url: string, data: any): any {
           };
         }
         return item;
-      })
+      }),
     );
   }
 
@@ -200,10 +209,14 @@ export function recordDeletedStudent(student: {
     const currentKeys = getDeletedStudentKeys();
     const keysToAdd: string[] = [];
 
-    const id = String(student.id || student.studentId || student.student_id || '').trim().toLowerCase();
+    const id = String(student.id || student.studentId || student.student_id || '')
+      .trim()
+      .toLowerCase();
     if (id) keysToAdd.push(id);
 
-    const name = String(student.fullName || student.name || '').trim().toLowerCase();
+    const name = String(student.fullName || student.name || '')
+      .trim()
+      .toLowerCase();
     if (name) keysToAdd.push(name);
 
     if (student.firstName || student.lastName) {
@@ -227,9 +240,7 @@ export function recordDeletedStudent(student: {
       // Save audit records
       const records = getDeletedStudentRecords();
       const filteredRecords = records.filter(
-        (r) =>
-          (!student.id || r.id !== student.id) &&
-          (!name || r.name.toLowerCase() !== name),
+        (r) => (!student.id || r.id !== student.id) && (!name || r.name.toLowerCase() !== name),
       );
       filteredRecords.push(newRecord);
       s.setItem(DELETED_STUDENT_RECORDS_KEY, JSON.stringify(filteredRecords));
@@ -237,21 +248,31 @@ export function recordDeletedStudent(student: {
 
     // 1. Purge from melue_enrolled_students_cache
     try {
-      const enrolled = storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+      const enrolled =
+        storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
       const cleanEnrolled = enrolled.filter((item) => !isStudentDeleted(item));
       storage.setJSONSync('melue_enrolled_students_cache', cleanEnrolled);
     } catch {}
 
     // 2. Purge from melue_registered_active_students_v1
     try {
-      const activeList = storage.getJSONSync<string[]>('melue_registered_active_students_v1', []) || [];
-      const cleanActive = activeList.filter((item) => !currentKeys.has(String(item || '').trim().toLowerCase()));
+      const activeList =
+        storage.getJSONSync<string[]>('melue_registered_active_students_v1', []) || [];
+      const cleanActive = activeList.filter(
+        (item) =>
+          !currentKeys.has(
+            String(item || '')
+              .trim()
+              .toLowerCase(),
+          ),
+      );
       storage.setJSONSync('melue_registered_active_students_v1', cleanActive);
     } catch {}
 
     // 3. Purge from melue_student_status_overrides_v1
     try {
-      const overrides = storage.getJSONSync<Record<string, string>>('melue_student_status_overrides_v1', {}) || {};
+      const overrides =
+        storage.getJSONSync<Record<string, string>>('melue_student_status_overrides_v1', {}) || {};
       keysToAdd.forEach((k) => {
         delete overrides[k];
       });
@@ -260,14 +281,16 @@ export function recordDeletedStudent(student: {
 
     // 4. Purge from melue_student_status_registry
     try {
-      const registry = storage.getJSONSync<Record<string, unknown>[]>('melue_student_status_registry', []) || [];
+      const registry =
+        storage.getJSONSync<Record<string, unknown>[]>('melue_student_status_registry', []) || [];
       const cleanRegistry = registry.filter((item) => !isStudentDeleted(item));
       storage.setJSONSync('melue_student_status_registry', cleanRegistry);
     } catch {}
 
     // 5. Purge from melue_student_photos_registry_v1
     try {
-      const photos = storage.getJSONSync<Record<string, string>>('melue_student_photos_registry_v1', {}) || {};
+      const photos =
+        storage.getJSONSync<Record<string, string>>('melue_student_photos_registry_v1', {}) || {};
       keysToAdd.forEach((k) => {
         delete photos[k];
       });
@@ -276,12 +299,21 @@ export function recordDeletedStudent(student: {
 
     // 6. Purge from therapist assignments store (melue_therapist_assigned_students_v1)
     try {
-      const therapistStore = storage.getJSONSync<Record<string, string[]>>('melue_therapist_assigned_students_v1', {}) || {};
+      const therapistStore =
+        storage.getJSONSync<Record<string, string[]>>('melue_therapist_assigned_students_v1', {}) ||
+        {};
       let changed = false;
       for (const th of Object.keys(therapistStore)) {
         const list = therapistStore[th];
         if (Array.isArray(list)) {
-          const filtered = list.filter((sid) => !currentKeys.has(String(sid || '').trim().toLowerCase()));
+          const filtered = list.filter(
+            (sid) =>
+              !currentKeys.has(
+                String(sid || '')
+                  .trim()
+                  .toLowerCase(),
+              ),
+          );
           if (filtered.length !== list.length) {
             therapistStore[th] = filtered;
             changed = true;
@@ -295,12 +327,23 @@ export function recordDeletedStudent(student: {
 
     // 7. Purge from director assignments store (melue_director_assignments_store_v1)
     try {
-      const dirStore = storage.getJSONSync<Record<string, { studentIds?: unknown[] }>>('melue_director_assignments_store_v1', {}) || {};
+      const dirStore =
+        storage.getJSONSync<Record<string, { studentIds?: unknown[] }>>(
+          'melue_director_assignments_store_v1',
+          {},
+        ) || {};
       let changed = false;
       for (const key of Object.keys(dirStore)) {
         const entry = dirStore[key];
         if (entry && Array.isArray(entry.studentIds)) {
-          const filtered = entry.studentIds.filter((sid) => !currentKeys.has(String(sid || '').trim().toLowerCase()));
+          const filtered = entry.studentIds.filter(
+            (sid) =>
+              !currentKeys.has(
+                String(sid || '')
+                  .trim()
+                  .toLowerCase(),
+              ),
+          );
           if (filtered.length !== entry.studentIds.length) {
             entry.studentIds = filtered;
             changed = true;
@@ -314,12 +357,20 @@ export function recordDeletedStudent(student: {
 
     // 8. Purge from caseload assignments cache (melue_caseload_assignments_cache)
     try {
-      const caseloadStore = storage.getJSONSync<Record<string, string[]>>('melue_caseload_assignments_cache', {}) || {};
+      const caseloadStore =
+        storage.getJSONSync<Record<string, string[]>>('melue_caseload_assignments_cache', {}) || {};
       let changed = false;
       for (const th of Object.keys(caseloadStore)) {
         const list = caseloadStore[th];
         if (Array.isArray(list)) {
-          const filtered = list.filter((sid) => !currentKeys.has(String(sid || '').trim().toLowerCase()));
+          const filtered = list.filter(
+            (sid) =>
+              !currentKeys.has(
+                String(sid || '')
+                  .trim()
+                  .toLowerCase(),
+              ),
+          );
           if (filtered.length !== list.length) {
             caseloadStore[th] = filtered;
             changed = true;
@@ -333,7 +384,8 @@ export function recordDeletedStudent(student: {
 
     // 9. Purge IUP drafts (melue_iup_drafts_cache)
     try {
-      const drafts = storage.getJSONSync<Record<string, unknown>>('melue_iup_drafts_cache', {}) || {};
+      const drafts =
+        storage.getJSONSync<Record<string, unknown>>('melue_iup_drafts_cache', {}) || {};
       keysToAdd.forEach((k) => {
         delete drafts[k];
       });
@@ -355,10 +407,15 @@ export function recordDeletedStudent(student: {
     });
 
     try {
-      const submittedList = storage.getJSONSync<any[]>('melue_submitted_students_list_v1', []) || [];
+      const submittedList =
+        storage.getJSONSync<any[]>('melue_submitted_students_list_v1', []) || [];
       const updatedList = submittedList.filter((s: any) => {
-        const sid = String(s.id || s.studentId || '').trim().toLowerCase();
-        const sname = String(s.name || s.fullName || '').trim().toLowerCase();
+        const sid = String(s.id || s.studentId || '')
+          .trim()
+          .toLowerCase();
+        const sname = String(s.name || s.fullName || '')
+          .trim()
+          .toLowerCase();
         return !currentKeys.has(sid) && (!sname || !currentKeys.has(sname));
       });
       storage.setJSONSync('melue_submitted_students_list_v1', updatedList);

@@ -46,7 +46,7 @@ import IupGenerationScreen from '../screens/programdirector/IupGenerationScreen'
 import IupLibraryScreen from '../screens/programdirector/IupLibraryScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
-import StudentProfileScreen from '../screens/session/StudentProfileScreen';
+import StudentProfileScreen from '../screens/coordinator/StudentProfileScreen';
 import StudentCaseloadScreen from '../screens/programdirector/StudentCaseloadScreen';
 import SkillsAssessmentScreen from '../screens/assessments/SkillsAssessmentScreen';
 import AbllsNeedAnalysisMapScreen from '../screens/assessments/AbllsNeedAnalysisMapScreen';

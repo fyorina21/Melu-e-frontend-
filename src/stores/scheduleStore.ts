@@ -5,6 +5,7 @@
 // for backward compatibility across scheduling screens and modals.
 
 import { create } from 'zustand';
+import { secureRandomId } from '../utils/cryptoRandom';
 
 export interface ScheduleAppointment {
   id: string;
@@ -135,7 +136,7 @@ export const useScheduleStore = create<ScheduleStoreState>((set, get) => ({
 
   addAppointment: (dayIndex, appt) => {
     const created: ScheduleAppointment = {
-      id: `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: secureRandomId('local'),
       ...appt,
     };
     const s = get().schedule;

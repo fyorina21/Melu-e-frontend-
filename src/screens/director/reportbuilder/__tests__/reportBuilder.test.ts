@@ -18,7 +18,7 @@ import {
 
 describe('Report Builder types and helpers', () => {
   const mockFilters: ReportFilterState = {
-    program: 'ABA',
+    program: 'Regular Morning',
     therapist: 'Sarah Miller',
     ageRange: '3–5 yrs',
     attendanceFilter: '>80%',
@@ -35,7 +35,7 @@ describe('Report Builder types and helpers', () => {
       id: 'row-1',
       name: 'Leo Messi',
       age: 5,
-      program: 'ABA',
+      program: 'Regular Morning',
       therapist: 'Sarah Miller',
       attendance: 92,
       assessmentScore: 85,
@@ -47,7 +47,7 @@ describe('Report Builder types and helpers', () => {
       id: 'row-2',
       name: 'Alice Walker',
       age: 4,
-      program: 'Speech Therapy',
+      program: 'Pulled Out',
       therapist: 'Alex Tan',
       attendance: 78,
       assessmentScore: 68,
@@ -63,9 +63,11 @@ describe('Report Builder types and helpers', () => {
       expect(csv).toContain(
         'Name,Age,Program,Therapist,Attendance %,Assessment %,Goal Status,Behavior Type,Diagnosis',
       );
-      expect(csv).toContain('Leo Messi,5,ABA,Sarah Miller,92,85,On Track,Tantrums,Autism Spectrum');
       expect(csv).toContain(
-        'Alice Walker,4,Speech Therapy,Alex Tan,78,68,Needs Support,Non-Compliance,Speech Delay',
+        'Leo Messi,5,Regular Morning,Sarah Miller,92,85,On Track,Tantrums,Autism Spectrum',
+      );
+      expect(csv).toContain(
+        'Alice Walker,4,Pulled Out,Alex Tan,78,68,Needs Support,Non-Compliance,Speech Delay',
       );
     });
 
@@ -78,12 +80,14 @@ describe('Report Builder types and helpers', () => {
     it('generates formatted text document with filter details and matched students', () => {
       const text = buildReportText(mockRows, mockFilters, new Date('2026-10-09T12:00:00Z'));
       expect(text).toContain("MELU'E FOUNDATION — CUSTOM REPORT BUILDER");
-      expect(text).toContain('FILTERS: Program: ABA | Therapist: Sarah Miller | Period: Jan–Mar');
-      expect(text).toContain('TOTAL MATCHED STUDENTS: 2');
-      expect(text).toContain('1. Leo Messi (Age 5) | Program: ABA | Therapist: Sarah Miller');
       expect(text).toContain(
-        '2. Alice Walker (Age 4) | Program: Speech Therapy | Therapist: Alex Tan',
+        'FILTERS: Program: Regular Morning | Therapist: Sarah Miller | Period: Jan–Mar',
       );
+      expect(text).toContain('TOTAL MATCHED STUDENTS: 2');
+      expect(text).toContain(
+        '1. Leo Messi (Age 5) | Program: Regular Morning | Therapist: Sarah Miller',
+      );
+      expect(text).toContain('2. Alice Walker (Age 4) | Program: Pulled Out | Therapist: Alex Tan');
     });
 
     it('returns empty string if results is null', () => {
@@ -92,8 +96,16 @@ describe('Report Builder types and helpers', () => {
   });
 
   describe('Filter Option Constants', () => {
-    it('verifies dropdown options are non-empty arrays', () => {
-      expect(PROGRAMS.length).toBeGreaterThan(0);
+    it('verifies dropdown options are non-empty arrays with updated programs', () => {
+      expect(PROGRAMS).toEqual([
+        'All Programs',
+        'Regular Morning',
+        'Regular Afternoon',
+        'Pulled Out',
+      ]);
+      expect(PROGRAMS).not.toContain('ABA');
+      expect(PROGRAMS).not.toContain('Speech Therapy');
+      expect(PROGRAMS).not.toContain('Occupational Therapy');
       expect(PERIODS.length).toBeGreaterThan(0);
       expect(SCORE_FILTERS.length).toBeGreaterThan(0);
       expect(GOAL_STATUSES.length).toBeGreaterThan(0);

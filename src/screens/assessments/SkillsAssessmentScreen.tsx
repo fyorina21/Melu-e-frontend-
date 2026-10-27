@@ -17,6 +17,7 @@ import StudentAvatar from '../../components/StudentAvatar';
 import ScreenLoader from '../../components/ScreenLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { confirmAction } from '../../utils/dialogs';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import {
   getSkillsAssessment,
@@ -25,8 +26,6 @@ import {
   getTeacherStudentProfile,
 } from '../../api/teacherExtrasApi';
 import { getFormConfig } from '../../api/institutionalAdminApi';
-import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
-import storage from '../../utils/storage';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import {
   DEFAULT_ABLLS_DOMAINS,
@@ -54,15 +53,15 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('studentId')
       : null;
-  const localSid = storage.getSync('last_assessment_student_id');
-  const rawId = route?.params?.studentId || urlSid || localSid || 'stu-1';
-  const studentId = normalizeStudentId(rawId);
+  const localSid =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('last_assessment_student_id') : null;
+  const rawId = route?.params?.studentId || urlSid || localSid || 'student-a';
+  const studentId = rawId === 'stu-1' ? 'student-a' : rawId;
 
   useEffect(() => {
-    if (studentId) {
+    if (typeof localStorage !== 'undefined' && studentId) {
       try {
-        storage.setSync('last_assessment_student_id', studentId);
-        storage.setItem('last_assessment_student_id', studentId).catch(() => {});
+        localStorage.setItem('last_assessment_student_id', studentId);
       } catch {}
     }
   }, [studentId]);
@@ -76,6 +75,7 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -271,7 +271,6 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       const status = allAnswered ? 'completed' : totalAnswered > 0 ? 'in_progress' : 'not_started';
       const progress =
         totalItems > 0 ? Math.min(100, Math.round((totalAnswered / totalItems) * 100)) : 0;
-      // Only save skills assessment progress, do not mark entire student assessment completed
       saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
       const aliasSid =
         studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
@@ -301,7 +300,51 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
       );
     } catch (err) {
       showToast('Failed to save assessment draft', 'error');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleSubmitAssessment = () => {
+    confirmAction({
+      title: 'Submit ABLLS Skills Assessment?',
+      message: `Are you sure you want to submit the ABLLS Skills Assessment for ${studentName}? It will be marked as complete on your dashboard, and you can still open and modify it anytime before final submission of all 4 assessments.`,
+      confirmLabel: 'Submit Assessment',
+      onConfirm: async () => {
+        try {
+          setSaving(true);
+          const status = 'submitted';
+          const progress = 100;
+          saveStorageAssessment(studentId, { scores, notes, customFields, progress, status });
+          const aliasSid =
+            studentId === 'stu-1' ? 'student-a' : studentId === 'student-a' ? 'stu-1' : null;
+          if (aliasSid) {
+            saveStorageAssessment(aliasSid, { scores, notes, customFields, progress, status });
+          }
+          const formattedResponses = Object.entries(scores).map(([k, v]) => ({
+            skill_item_id: k,
+            score: String(v),
+            note: notes[k] || undefined,
+          }));
+          const targetId = assessmentId || studentId;
+          await bulkSaveAbllsResponses(targetId, {
+            responses: formattedResponses,
+            scores,
+            notes,
+          });
+          await saveSkillsAssessment(studentId, { scores, notes, customFields, status, progress });
+          if (aliasSid) {
+            await saveSkillsAssessment(aliasSid, { scores, notes, customFields, status, progress });
+          }
+          showToast(`${studentName} ABLLS Skills Assessment submitted successfully!`, 'success');
+          navigation?.navigate?.('AssessmentDashboard' as never);
+        } catch (err) {
+          showToast('Failed to submit skills assessment', 'error');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const openNeedMap = async () => {
@@ -450,14 +493,25 @@ export default function SkillsAssessmentScreen({ navigation, route }: Props) {
 
         {/* Bottom Action Bar — sits at the bottom of the flex column, always tappable */}
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft}>
+          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleSaveDraft} disabled={saving}>
             <Feather name="file-text" size={16} color="#0F172A" />
-            <Text style={styles.saveDraftText}>Save Draft</Text>
+            <Text style={styles.saveDraftText}>{saving ? 'Saving...' : 'Save Draft'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.submitBtn}
+            onPress={handleSubmitAssessment}
+            disabled={saving}
+          >
+            <Feather name="check-circle" size={16} color="#0F172A" />
+            <Text style={styles.submitBtnText}>
+              {saving ? 'Submitting...' : 'Submit Assessment'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.needMapBtn} onPress={openNeedMap}>
             <Feather name="bar-chart-2" size={16} color="#0F172A" />
-            <Text style={styles.needMapText}>View Need Analysis Map</Text>
+            <Text style={styles.needMapText}>Need Map</Text>
             <Feather name="chevron-right" size={16} color="#0F172A" />
           </TouchableOpacity>
         </View>
@@ -730,7 +784,7 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   needMapBtn: {
-    flex: 2,
+    flex: 1.2,
     backgroundColor: '#FACC15',
     borderRadius: 8,
     flexDirection: 'row',
@@ -743,5 +797,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
+  },
+  submitBtn: {
+    flex: 1.5,
+    backgroundColor: '#22C55E',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  submitBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

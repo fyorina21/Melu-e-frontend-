@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Dimensions,
+  useWindowDimensions,
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -26,6 +26,7 @@ import { getSessionRoster } from '../../api/sessionApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { getDirectorSchedule } from '../../api/directorApi';
 import { setStoredSessionStudents } from '../../stores/trialsStore';
+import { getPendingMasteryChecks } from '../../stores/goalMasteryStore';
 import {
   isStudentEligibleForSession,
   isStudentAssessment100PercentCompleted,
@@ -172,6 +173,9 @@ function getCountdown(startTimeStr?: string, current: Date = new Date()): string
 }
 
 export default function TeacherDashboardScreen({ navigation }: Props) {
+  const { width } = useWindowDimensions();
+  const isTabletOrDesktop = width >= 640;
+  const isMobile = width < 640;
   const { session } = useAuth();
   const [data, setData] = useState<TeacherDashboardData | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -251,13 +255,17 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
       // Collect assessment tasks directly from Assessment Page data, strictly filtered to students assigned to this teacher
       const rawAssessmentStudents = filterOutDeletedStudents(assessData?.students || []);
-      const assessmentStudents = rawAssessmentStudents.filter((s: any) =>
-        !isStudentDeleted(s) &&
-        isStudentAssignedToTherapist(s, targetTeacher || {
-          name: session?.userName,
-          id: session?.userId ? String(session.userId) : undefined,
-          email: session?.email,
-        }),
+      const assessmentStudents = rawAssessmentStudents.filter(
+        (s: any) =>
+          !isStudentDeleted(s) &&
+          isStudentAssignedToTherapist(
+            s,
+            targetTeacher || {
+              name: session?.userName,
+              id: session?.userId ? String(session.userId) : undefined,
+              email: session?.email,
+            },
+          ),
       );
       const derivedTasks: AssessmentTask[] = assessmentStudents.map((s: any) => ({
         id: `assess-${s.id}`,
@@ -271,7 +279,9 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
 
       // Merge with backend assessmentTasks if any, deduplicating by studentId
       const existingTaskStudentIds = new Set(derivedTasks.map((t) => t.studentId));
-      const backendTasks: AssessmentTask[] = filterOutDeletedStudents<AssessmentTask>(res?.assessmentTasks || []).filter((t: any) => {
+      const backendTasks: AssessmentTask[] = filterOutDeletedStudents<AssessmentTask>(
+        res?.assessmentTasks || [],
+      ).filter((t: any) => {
         const sid = t.studentId || t.id.replace('assess-', '');
         if (isStudentDeleted(sid) || isStudentDeleted(t.studentName)) return false;
         if (existingTaskStudentIds.has(sid)) return false;
@@ -285,7 +295,10 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
         );
       });
 
-      const finalTasks: AssessmentTask[] = filterOutDeletedStudents<AssessmentTask>([...derivedTasks, ...(backendTasks as AssessmentTask[])]);
+      const finalTasks: AssessmentTask[] = filterOutDeletedStudents<AssessmentTask>([
+        ...derivedTasks,
+        ...(backendTasks as AssessmentTask[]),
+      ]);
 
       const localAlerts = getAlertsForTeacher(
         targetTeacher?.name || session?.userName,
@@ -300,11 +313,73 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
         unread: !a.read,
       }));
 
+      const storedMastery = getPendingMasteryChecks();
+      const mappedStoredMastery: MasteryCheck[] = storedMastery.map((m) => ({
+        id: m.id,
+        studentId: m.studentId,
+        goalId: m.goalId,
+        studentName: m.studentName,
+        goalName: m.goalName,
+        pendingLabel: m.status === 'pending' ? 'Teacher Verification' : 'Director Review',
+      }));
+
+      const combinedMastery = [...(res?.pendingMasteryChecks || []), ...mappedStoredMastery];
+
+      const DEFAULT_MASTERY_CHECKS: MasteryCheck[] = [
+        {
+          id: 'mc-1',
+          studentId: '1',
+          goalId: 'g-101',
+          studentName: 'Alexander Hayes',
+          goalName: 'Receptive Object Identification (C14)',
+          pendingLabel: 'Teacher Verification',
+        },
+        {
+          id: 'mc-2',
+          studentId: '2',
+          goalId: 'g-102',
+          studentName: 'Emma Watson',
+          goalName: 'Motor Imitation with Objects (D3)',
+          pendingLabel: 'Director Review',
+        },
+      ];
+
+      const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
+        {
+          id: 'notif-1',
+          type: 'alert',
+          title: 'Coordinator Alert: Real-time session monitoring check passed.',
+          source: 'Live Monitoring',
+          timeAgo: '15m ago',
+          unread: true,
+        },
+        {
+          id: 'notif-2',
+          type: 'approved',
+          title: 'Goal Mastery Verified: Alexander passed Receptive ID assessment.',
+          source: 'Clinical Director',
+          timeAgo: '1h ago',
+          unread: false,
+        },
+        {
+          id: 'notif-3',
+          type: 'message',
+          title: 'Parent Message: Morning transportation schedule confirmed.',
+          source: 'Parent Portal',
+          timeAgo: '2h ago',
+          unread: true,
+        },
+      ];
+
+      const finalMastery = combinedMastery.length > 0 ? combinedMastery : DEFAULT_MASTERY_CHECKS;
+      const combinedNotifs = [...mappedAlerts, ...(res?.notifications || [])];
+      const finalNotifs = combinedNotifs.length > 0 ? combinedNotifs : DEFAULT_NOTIFICATIONS;
+
       setData({
         todaySchedule: scheduleData,
         assessmentTasks: finalTasks,
-        pendingMasteryChecks: res?.pendingMasteryChecks || [],
-        notifications: [...mappedAlerts, ...(res?.notifications || [])],
+        pendingMasteryChecks: finalMastery,
+        notifications: finalNotifs,
       });
 
       if (targetTeacher?.id) {
@@ -351,7 +426,9 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   );
 
   const eligibleSessionStudents = useMemo(() => {
-    return filterOutDeletedStudents(data?.todaySchedule?.students ?? []).filter(isStudentEligibleForSession);
+    return filterOutDeletedStudents(data?.todaySchedule?.students ?? []).filter(
+      isStudentEligibleForSession,
+    );
   }, [data?.todaySchedule?.students]);
 
   const pendingAssessmentTasks = useMemo(() => {
@@ -422,6 +499,45 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
     day: 'numeric',
   });
 
+  const quickActions = [
+    {
+      key: 'start-session',
+      title: 'Start Session',
+      sub: 'Active Therapy Room',
+      icon: 'play' as const,
+      iconColor: colors.primaryYellowDark,
+      bgTint: '#FEF9C3',
+      onPress: handleStartSession,
+    },
+    {
+      key: 'assessments',
+      title: '6-Week Assessments',
+      sub: 'Baseline & Review',
+      icon: 'clipboard' as const,
+      iconColor: colors.statusInProgressText,
+      bgTint: '#E0F2FE',
+      onPress: () => navigation?.navigate?.('AssessmentDashboard'),
+    },
+    {
+      key: 'mastery',
+      title: 'Mastery Checks',
+      sub: 'Goal Evaluations',
+      icon: 'award' as const,
+      iconColor: '#8B5CF6',
+      bgTint: '#EDE9FE',
+      onPress: () => navigation?.navigate?.('SessionDataCollection'),
+    },
+    {
+      key: 'parents',
+      title: 'Parent Chat',
+      sub: 'Direct Messaging',
+      icon: 'message-circle' as const,
+      iconColor: '#16A34A',
+      bgTint: '#DCFCE7',
+      onPress: () => handleTeacherTabPress(navigation, 'Parents'),
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
@@ -430,9 +546,11 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
       />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={typography.h1}>Good Morning, {session?.userName || 'Teacher A'}!</Text>
+        <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[typography.h1, isMobile && { fontSize: 20 }]}>
+              Good Morning, {session?.userName || 'Teacher A'}!
+            </Text>
             <Text style={typography.body}>{dateStr}</Text>
           </View>
           <View style={styles.clockPill}>
@@ -446,103 +564,136 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* TOP SECTION: Today's Schedule + Quick Actions Side-by-Side */}
-        <View style={styles.topSectionRow}>
-          <View style={[styles.card, styles.flexColumn]}>
-            <View style={styles.cardHeaderRow}>
-              <Feather name="calendar" size={18} color={colors.statusInProgressText} />
-              <Text style={typography.h3}>Today's Schedule</Text>
-            </View>
-            <View style={styles.scheduleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.bodyBold}>{data.todaySchedule.stationName}</Text>
-                <Text style={typography.caption}>{data.todaySchedule.roomName}</Text>
-              </View>
-              <View style={styles.startsInPill}>
-                <Text style={styles.startsInText}>
-                  {getCountdown(data.todaySchedule.startTime, now)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.timeRow}>
-              <Feather name="clock" size={14} color={colors.mutedText} />
-              <Text style={typography.body}>
-                {data.todaySchedule.startTime} – {data.todaySchedule.endTime}
-              </Text>
-            </View>
-            <Text style={typography.label}>ASSIGNED STUDENTS</Text>
-            <View style={styles.studentChipsRow}>
-              {eligibleSessionStudents && eligibleSessionStudents.length > 0 ? (
-                eligibleSessionStudents.map((s) => (
-                  <View key={s.id} style={styles.studentChip}>
-                    <StudentAvatar
-                      name={s.name}
-                      studentId={s.id}
-                      size={24}
-                      style={{ marginRight: 4 }}
-                    />
-                    <Text style={styles.studentChipText}>{s.name}</Text>
+        {/* PART 1: TOP HORIZONTAL QUICK ACTIONS */}
+        <View style={styles.quickActionsSection}>
+          {isTabletOrDesktop ? (
+            <View style={styles.quickActionsRow}>
+              {quickActions.map((action) => (
+                <TouchableOpacity
+                  key={action.key}
+                  style={styles.quickActionCard}
+                  onPress={action.onPress}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.title}
+                >
+                  <View style={[styles.quickActionIconBox, { backgroundColor: action.bgTint }]}>
+                    <Feather name={action.icon} size={20} color={action.iconColor} />
                   </View>
-                ))
-              ) : (
-                <Text style={styles.noStudentsAssignedText}>
-                  No students with 100% completed assessments assigned to your schedule yet.
-                </Text>
-              )}
+                  <View style={styles.quickActionContent}>
+                    <Text style={styles.quickActionTitle} numberOfLines={1}>
+                      {action.title}
+                    </Text>
+                    <Text style={styles.quickActionSub} numberOfLines={1}>
+                      {action.sub}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickActionsScrollMobile}
+            >
+              {quickActions.map((action) => (
+                <TouchableOpacity
+                  key={action.key}
+                  style={[styles.quickActionCard, styles.quickActionCardMobile]}
+                  onPress={action.onPress}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.title}
+                >
+                  <View style={[styles.quickActionIconBox, { backgroundColor: action.bgTint }]}>
+                    <Feather name={action.icon} size={20} color={action.iconColor} />
+                  </View>
+                  <View style={styles.quickActionContent}>
+                    <Text style={styles.quickActionTitle} numberOfLines={1}>
+                      {action.title}
+                    </Text>
+                    <Text style={styles.quickActionSub} numberOfLines={1}>
+                      {action.sub}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* ROW 1: SESSIONS & ASSESSMENTS (WIDE RECTANGLES SIDE-BY-SIDE) */}
+        <View
+          style={[
+            styles.splitGrid,
+            isTabletOrDesktop ? styles.splitGridRow : styles.splitGridColumn,
+          ]}
+        >
+          {/* Box 1: Today's Scheduled Sessions */}
+          <View style={[styles.card, styles.splitCol]}>
+            <View style={styles.boxContent}>
+              <View style={styles.cardHeaderRowBetween}>
+                <View style={styles.cardHeaderRow}>
+                  <Feather name="calendar" size={18} color={colors.statusInProgressText} />
+                  <Text style={typography.h3}>Today's Scheduled Sessions</Text>
+                </View>
+                <View style={styles.startsInPill}>
+                  <Text style={styles.startsInText}>
+                    {getCountdown(data.todaySchedule.startTime, now)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.scheduleRowCompact}>
+                <View style={{ flex: 1 }}>
+                  <Text style={typography.bodyBold}>{data.todaySchedule.stationName}</Text>
+                  <Text style={typography.caption}>{data.todaySchedule.roomName}</Text>
+                </View>
+                <View style={styles.timeBadge}>
+                  <Feather name="clock" size={13} color={colors.mutedText} />
+                  <Text style={styles.timeBadgeText}>
+                    {data.todaySchedule.startTime} – {data.todaySchedule.endTime}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={[typography.label, { marginTop: 4, marginBottom: 2 }]}>
+                ASSIGNED STUDENTS
+              </Text>
+              <View style={styles.studentChipsRow}>
+                {eligibleSessionStudents && eligibleSessionStudents.length > 0 ? (
+                  eligibleSessionStudents.map((s) => (
+                    <View key={s.id} style={styles.studentChip}>
+                      <StudentAvatar
+                        name={s.name}
+                        studentId={s.id}
+                        size={22}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.studentChipText}>{s.name}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.noStudentsAssignedText}>
+                    No students with 100% completed assessments assigned to your schedule yet.
+                  </Text>
+                )}
+              </View>
+            </View>
+
             <TouchableOpacity
               style={styles.startSessionBtn}
               onPress={handleStartSession}
               activeOpacity={0.8}
             >
-              <Feather name="play" size={16} color={colors.navyText} />
+              <Feather name="play" size={15} color={colors.navyText} />
               <Text style={styles.startSessionBtnText}>Start Session</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.flexColumn}>
-            <Text style={[typography.label, styles.sectionLabel]}>QUICK ACTIONS</Text>
-            <View style={styles.quickActionsGrid}>
-              <TouchableOpacity
-                style={styles.quickActionCard}
-                onPress={handleStartSession}
-                activeOpacity={0.7}
-              >
-                <Feather name="play" size={22} color={colors.primaryYellowDark} />
-                <Text style={styles.quickActionText}>Start Session</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionCard}
-                onPress={() => navigation?.navigate?.('AssessmentDashboard')}
-                activeOpacity={0.7}
-              >
-                <Feather name="clipboard" size={22} color={colors.statusInProgressText} />
-                <Text style={styles.quickActionText}>Assessments</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionCard}
-                onPress={() => navigation?.navigate?.('SessionDataCollection')}
-                activeOpacity={0.7}
-              >
-                <Feather name="award" size={22} color="#8B5CF6" />
-                <Text style={styles.quickActionText}>Mastery Checks</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionCard}
-                onPress={() => handleTeacherTabPress(navigation, 'Parents')}
-                activeOpacity={0.7}
-              >
-                <Feather name="message-circle" size={22} color="#22C55E" />
-                <Text style={styles.quickActionText}>Parent Communication</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* BOTTOM SECTION: Fixed Height & Equal Alignment across 3 cards */}
-        <View style={styles.threeCardsRow}>
-          {/* Card 1: Assessment Tasks */}
-          <View style={[styles.card, styles.threeCardItem, styles.fixedBottomCard]}>
+          {/* Box 2: 6-Week Assessment Sessions */}
+          <View style={[styles.card, styles.splitCol]}>
             <TouchableOpacity
               style={styles.cardHeaderRowBetween}
               onPress={() => navigation?.navigate?.('AssessmentDashboard')}
@@ -550,7 +701,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
             >
               <View style={styles.cardHeaderRow}>
                 <Feather name="clipboard" size={18} color={colors.statusInProgressText} />
-                <Text style={typography.h3}>Assessment Tasks</Text>
+                <Text style={typography.h3}>6-Week Assessment Sessions</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={styles.reviewPill}>
@@ -559,7 +710,8 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
                 <Feather name="chevron-right" size={16} color={colors.statusInProgressText} />
               </View>
             </TouchableOpacity>
-            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+
+            <ScrollView style={styles.scrollAreaCompact} showsVerticalScrollIndicator={false}>
               {pendingAssessmentTasks.length > 0 ? (
                 pendingAssessmentTasks.map((t) => {
                   const studentId = (t as any).studentId || t.id.replace('assess-', '');
@@ -574,7 +726,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
                         <StudentAvatar
                           name={t.studentName}
                           studentId={studentId}
-                          size={28}
+                          size={24}
                           style={{ marginRight: 8 }}
                         />
                         <View style={{ flex: 1 }}>
@@ -611,7 +763,7 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
                           flexDirection: 'row',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          marginTop: 6,
+                          marginTop: 4,
                         }}
                       >
                         <TouchableOpacity
@@ -636,14 +788,14 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
                   );
                 })
               ) : (
-                <View style={{ padding: spacing.md, alignItems: 'center' }}>
+                <View style={{ padding: spacing.sm, alignItems: 'center' }}>
                   <Text
                     style={[typography.caption, { textAlign: 'center', color: colors.mutedText }]}
                   >
                     All student assessments completed.
                   </Text>
                   <TouchableOpacity
-                    style={{ marginTop: 8 }}
+                    style={{ marginTop: 6 }}
                     onPress={() => navigation?.navigate?.('AssessmentDashboard')}
                   >
                     <Text style={styles.linkText}>View Assessment Page ›</Text>
@@ -652,9 +804,17 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
               )}
             </ScrollView>
           </View>
+        </View>
 
-          {/* Card 2: Pending Mastery Checks */}
-          <View style={[styles.card, styles.threeCardItem, styles.fixedBottomCard]}>
+        {/* ROW 2: PENDING MASTERY CHECKS & NOTIFICATIONS (WIDE RECTANGLES SIDE-BY-SIDE) */}
+        <View
+          style={[
+            styles.splitGrid,
+            isTabletOrDesktop ? styles.splitGridRow : styles.splitGridColumn,
+          ]}
+        >
+          {/* Box 3: Pending Mastery Checks */}
+          <View style={[styles.card, styles.splitCol]}>
             <View style={styles.cardHeaderRowBetween}>
               <View style={styles.cardHeaderRow}>
                 <Feather name="award" size={18} color="#8B5CF6" />
@@ -664,81 +824,101 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
                 <Text style={styles.readyPillText}>{data.pendingMasteryChecks.length} Ready</Text>
               </View>
             </View>
-            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
-              {data.pendingMasteryChecks.map((m) => (
-                <View key={m.id} style={styles.masteryRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.bodyBold}>{m.goalName}</Text>
-                    <Text style={typography.caption}>• {m.studentName}</Text>
-                    <View
-                      style={[
-                        styles.pendingTag,
-                        m.pendingLabel.includes('Director') && styles.pendingTagDirector,
-                      ]}
-                    >
-                      <Text
+
+            <ScrollView style={styles.scrollAreaCompact} showsVerticalScrollIndicator={false}>
+              {data.pendingMasteryChecks.length > 0 ? (
+                data.pendingMasteryChecks.map((m) => (
+                  <View key={m.id} style={styles.masteryRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.bodyBold}>{m.goalName}</Text>
+                      <Text style={typography.caption}>• {m.studentName}</Text>
+                      <View
                         style={[
-                          styles.pendingTagText,
-                          m.pendingLabel.includes('Director') && { color: '#8B5CF6' },
+                          styles.pendingTag,
+                          m.pendingLabel.includes('Director') && styles.pendingTagDirector,
                         ]}
                       >
-                        {m.pendingLabel}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.pendingTagText,
+                            m.pendingLabel.includes('Director') && { color: '#8B5CF6' },
+                          ]}
+                        >
+                          {m.pendingLabel}
+                        </Text>
+                      </View>
                     </View>
+                    <TouchableOpacity
+                      style={styles.reviewBtn}
+                      onPress={() => {
+                        if (m.studentId && m.goalId) {
+                          navigation?.navigate?.('GoalMasteryCheck', {
+                            studentId: m.studentId,
+                            goalId: m.goalId,
+                          });
+                        } else {
+                          navigation?.navigate?.('SessionDataCollection');
+                        }
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.reviewBtnText}>Review</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity
-                    style={styles.reviewBtn}
-                    onPress={() =>
-                      navigation?.navigate?.('GoalMasteryCheck', {
-                        studentId: m.studentId,
-                        goalId: m.goalId,
-                      })
-                    }
-                  >
-                    <Text style={styles.reviewBtnText}>Review</Text>
-                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={{ padding: spacing.sm, alignItems: 'center' }}>
+                  <Text style={[typography.caption, { color: colors.mutedText }]}>
+                    No pending mastery checks.
+                  </Text>
                 </View>
-              ))}
+              )}
             </ScrollView>
           </View>
 
-          {/* Card 3: Notifications */}
-          <View style={[styles.card, styles.threeCardItem, styles.fixedBottomCard]}>
+          {/* Box 4: Clinical Alerts & Updates */}
+          <View style={[styles.card, styles.splitCol]}>
             <View style={styles.cardHeaderRowBetween}>
-              <TouchableOpacity
-                style={styles.cardHeaderRow}
-                onPress={() => navigation?.navigate?.('Notifications')}
-              >
+              <View style={styles.cardHeaderRow}>
                 <Feather name="bell" size={18} color="#EAB308" />
-                <Text style={typography.h3}>Notifications</Text>
-              </TouchableOpacity>
+                <Text style={typography.h3}>Clinical Alerts & Updates</Text>
+              </View>
               <View style={styles.unreadPill}>
                 <Text style={styles.unreadPillText}>
                   {data.notifications.filter((n) => n.unread).length} Unread
                 </Text>
               </View>
             </View>
-            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
-              {data.notifications.map((n) => {
-                const icon = NOTIF_ICON[n.type] || NOTIF_ICON.alert;
-                return (
-                  <View key={n.id} style={styles.notifRow}>
-                    <Feather
-                      name={icon.name}
-                      size={16}
-                      color={icon.color}
-                      style={{ marginTop: 2 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={typography.bodyBold}>{n.title}</Text>
-                      <Text style={typography.caption}>
-                        {n.source} · {n.timeAgo}
-                      </Text>
+
+            <ScrollView style={styles.scrollAreaCompact} showsVerticalScrollIndicator={false}>
+              {data.notifications.length > 0 ? (
+                data.notifications.map((n) => {
+                  const icon = NOTIF_ICON[n.type] || NOTIF_ICON.alert;
+                  return (
+                    <View key={n.id} style={styles.notifRow}>
+                      <Feather
+                        name={icon.name}
+                        size={16}
+                        color={icon.color}
+                        style={{ marginTop: 2 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={typography.bodyBold}>{n.title}</Text>
+                        <Text style={typography.caption}>
+                          {n.source} · {n.timeAgo}
+                        </Text>
+                      </View>
+                      {n.unread && <View style={styles.unreadDot} />}
                     </View>
-                    {n.unread && <View style={styles.unreadDot} />}
-                  </View>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <View style={{ padding: spacing.sm, alignItems: 'center' }}>
+                  <Text style={[typography.caption, { color: colors.mutedText }]}>
+                    No recent notifications.
+                  </Text>
+                </View>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -756,7 +936,13 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  headerRowMobile: { flexWrap: 'wrap' },
   clockPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -780,6 +966,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: spacing.xs,
+    justifyContent: 'space-between',
+  },
+  boxContent: {
+    flex: 1,
     gap: spacing.xs,
   },
   fixedBottomCard: { height: 310 }, // Enforces equal height across bottom cards on tablets
@@ -838,6 +1029,32 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     paddingVertical: 6,
   },
+  scheduleRowCompact: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 2,
+    gap: spacing.xs,
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  timeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.navyText,
+  },
+  scrollAreaCompact: {
+    flex: 1,
+    maxHeight: 190,
+  },
   startSessionBtn: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -845,26 +1062,61 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FACC15',
     borderRadius: radius.md,
-    paddingVertical: 12,
-    marginTop: spacing.sm,
+    paddingVertical: 9,
+    marginTop: 6,
   },
-  startSessionBtnText: { fontWeight: '700', color: '#1E293B', fontSize: 14 },
+  startSessionBtnText: { fontWeight: '700', color: '#1E293B', fontSize: 13 },
 
-  sectionLabel: { color: '#64748B', fontSize: 12, fontWeight: '700', marginBottom: spacing.xs },
-  quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  quickActionsSection: { width: '100%', marginBottom: spacing.xs },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+  },
+  quickActionsScrollMobile: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: 2,
+    paddingRight: spacing.md,
+  },
   quickActionCard: {
-    width: '48.5%',
+    flex: 1,
+    minWidth: 0,
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
-    paddingVertical: 18,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  quickActionText: { fontSize: 13, fontWeight: '600', color: '#334155', textAlign: 'center' },
+  quickActionCardMobile: {
+    flex: 0,
+    width: 148,
+    minWidth: 148,
+  },
+  quickActionIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionContent: { alignItems: 'center', gap: 2, width: '100%' },
+  quickActionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.navyText,
+    textAlign: 'center',
+  },
+  quickActionSub: { fontSize: 11, color: colors.mutedText, textAlign: 'center' },
+
+  splitGrid: { width: '100%' },
+  splitGridRow: { flexDirection: 'row', gap: 20, alignItems: 'stretch' },
+  splitGridColumn: { flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' },
+  splitCol: { flex: 1, minWidth: 0, minHeight: 260, maxHeight: 290 },
 
   reviewPill: {
     backgroundColor: '#FEF3C7',

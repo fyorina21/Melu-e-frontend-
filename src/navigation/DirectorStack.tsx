@@ -13,6 +13,7 @@ import AssessmentSummaryReportScreen from '../screens/programdirector/Assessment
 import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
 import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import StudentProfileScreen from '../screens/coordinator/StudentProfileScreen';
+import StudentEditProfileScreen from '../screens/coordinator/StudentEditProfileScreen';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { withModuleGuard } from '../auth/withModuleGuard';
@@ -33,6 +34,7 @@ const GuardedAssessmentSummaryReport = withModuleGuard(
 const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
 const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
 const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
+const GuardedStudentEditProfile = withModuleGuard(StudentEditProfileScreen, 'students');
 
 const Stack = createNativeStackNavigator<DirectorStackParamList>();
 
@@ -67,6 +69,7 @@ export default function DirectorStack() {
           component={GuardedStudentEnrollmentWizard as never}
         />
         <Stack.Screen name="StudentProfile" component={GuardedStudentProfile as never} />
+        <Stack.Screen name="StudentEditProfile" component={GuardedStudentEditProfile as never} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

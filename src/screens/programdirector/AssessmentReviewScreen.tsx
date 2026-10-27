@@ -1,9 +1,8 @@
 // screens/programdirector/AssessmentReviewScreen.tsx
 // SCR-PD-002: Assessment Review & Approval
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import ScreenLoader from '../../components/ScreenLoader';
 import {
   View,
   Text,
@@ -14,12 +13,14 @@ import {
   SafeAreaView,
   Modal,
   Alert,
-  ActivityIndicator,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import ScreenLoader from '../../components/ScreenLoader';
-import ScreenError from '../../components/ScreenError';
-import StatusPill from '../../components/StatusPill';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { colors, radius, spacing } from '../../theme/colors';
+import { typography } from '../../theme/typography';
+import StatusPill, { type StatusType } from '../../components/StatusPill';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -29,250 +30,438 @@ import {
   markAssessmentReviewed,
   addAssessmentNote,
 } from '../../api/programDirectorApi';
+import { generateClinicalAssessmentHtml } from '../../utils/clinicalAssessmentPdfGenerator';
+import { openPrintWindow, downloadTextFile } from '../../utils/webExport';
 import type { ProgramDirectorStackParamList } from '../../types';
-import {
-  STATUS_KEY,
-  STATUS_OPTIONS,
-  type StatusOption,
-  type AssessmentListItem,
-  type AssessmentReport,
-  scoreColor,
-  normalizeStatus,
-  normalizeAssessmentItem,
-  normalizeAssessmentReport,
-  generateAssessmentReportText,
-} from './assessmentreview/reviewTypes';
-import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
 
-/* ------------------------------------------------------------------ */
-/*  Report Modal                                                      */
-/* ------------------------------------------------------------------ */
+const STATUS_KEY: Record<string, StatusType> = {
+  'Not Started': 'notStarted',
+  'In Progress': 'inProgress',
+  Complete: 'completed',
+  Reviewed: 'approved',
+};
 
-interface ReportModalProps {
-  visible: boolean;
-  report: AssessmentReport | null;
-  isSubmitting?: boolean;
-  onClose: () => void;
-  onMarkReviewed: (studentId: string, notes: string) => void;
-  onExport: (report: AssessmentReport) => void;
+const STATUS_OPTIONS = ['All', 'Not Started', 'In Progress', 'Complete', 'Reviewed'] as const;
+
+interface AssessmentListItem {
+  studentId: string;
+  studentNumber: string;
+  studentName: string;
+  age: number;
+  program: string;
+  therapyGroup: string;
+  therapist: string;
+  status: string;
+  progress: number;
+  abllsPct: number;
+  behaviorStatus: string;
+  sessionStatus: string;
+  dateCompleted: string | null;
+}
+
+interface DomainScore {
+  code: string;
+  name: string;
+  items: Array<{ id: string; description: string; score: unknown }>;
+  scoredCount: number;
+  total: number;
+}
+
+interface AssessmentReport {
+  studentId: string;
+  studentNumber?: string;
+  studentName: string;
+  age: number;
+  program: string;
+  therapyGroup: string;
+  therapist: string;
+  status: string;
+  skillsSummary: string;
+  skillsStatus: string;
+  domainScores: DomainScore[];
+  behaviorSummary: string;
+  behaviorStatus: string;
+  preferences: string[];
+  notes: string;
+  dateCompleted: string | null;
+  iupStatus: string;
+  reviewNotes: string;
+  assignedGoals?: { id: string; name: string; status: string }[];
 }
 
 function ReportModal({
   visible,
   report,
-  isSubmitting = false,
   onClose,
   onMarkReviewed,
-  onExport,
-}: ReportModalProps) {
+}: {
+  visible: boolean;
+  report: AssessmentReport | null;
+  onClose: () => void;
+  onMarkReviewed: (studentId: string, notes: string) => void;
+  onExport: (report: AssessmentReport) => void;
+}) {
   const [notes, setNotes] = useState('');
-
-  // Sync notes when report changes or modal opens
-  useEffect(() => {
-    if (visible && report) {
-      setNotes(report.reviewNotes || '');
-    }
-  }, [visible, report]);
-
+  const [showNotesField, setShowNotesField] = useState(false);
   if (!report) return null;
 
-  const activeDomains = report.domainScores?.filter((d) => d.scoredCount > 0) || [];
-  const unscoredDomains = report.domainScores?.filter((d) => d.scoredCount === 0) || [];
+  const isReviewed = report.status === 'Reviewed';
+
+  const htmlContent = generateClinicalAssessmentHtml({
+    student: {
+      id: report.studentId,
+      student_number: report.studentNumber,
+      studentNumber: report.studentNumber,
+      name: report.studentName,
+      full_name: report.studentName,
+      age: report.age,
+      program_type: report.program,
+      therapy_group: report.therapyGroup,
+      lead_clinician: report.therapist,
+      status: report.status,
+    },
+    assessment: {
+      id: report.studentId,
+      status: isReviewed ? 'reviewed' : 'complete',
+      completed_on: report.dateCompleted || undefined,
+    },
+    skills: {
+      status: report.skillsStatus,
+      domains: report.domainScores.map((d) => ({
+        code: d.code,
+        name: d.name,
+        scored_items: d.scoredCount,
+        total_items: d.total,
+        total_points: Math.round((d.scoredCount / (d.total || 1)) * (d.total * 2)),
+        max_possible_points: d.total * 2,
+        percentage: Math.round((d.scoredCount / (d.total || 1)) * 100),
+      })),
+    },
+    behavior: {
+      status: report.behaviorStatus,
+    },
+    preferences: {
+      top_preferences: (report.preferences || []).map((name, i) => ({
+        rank: i + 1,
+        name,
+      })),
+    },
+  });
+
+  const handlePrint = () => {
+    openPrintWindow(htmlContent, `Clinical_Assessment_${report.studentName}`, {
+      formId: 'MCTC-TRP-015',
+      revisionNumber: 'Rev: August 2025',
+    });
+  };
+
+  const handleDownload = () => {
+    downloadTextFile(
+      `Clinical_Assessment_MCTC-TRP-015_${report.studentName.replace(/\s+/g, '_')}.html`,
+      htmlContent,
+    );
+  };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalSheet}>
-          <Text style={typography.h2}>{report.studentName} — Assessment Summary</Text>
-          <Text style={typography.caption}>
-            {report.age ? `Age ${report.age}` : ''}
-            {report.age ? ' · ' : ''}
-            {report.program}
-            {report.therapist && report.therapist !== 'Unassigned' ? ` · ${report.therapist}` : ''}
-          </Text>
-
-          <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-            <Text style={typography.h3}>Skills Assessment (ABLLS)</Text>
-            <Text style={typography.body}>{report.skillsSummary}</Text>
-
-            {activeDomains.length > 0 && (
-              <View style={styles.domainSection}>
-                {activeDomains.map((d) => (
-                  <View key={d.code} style={styles.domainCard}>
-                    <View style={styles.domainHeader}>
-                      <Text style={styles.domainCode}>{d.code}</Text>
-                      <Text style={styles.domainName}>{d.name}</Text>
-                      <Text style={styles.domainScore}>
-                        {d.scoredCount}/{d.total}
-                      </Text>
-                    </View>
-                    <View style={styles.domainItems}>
-                      {(d.items || [])
-                        .filter((i) => i.score !== null && i.score !== undefined)
-                        .map((i) => (
-                          <View key={i.id} style={styles.domainItem}>
-                            <Text style={styles.domainItemId}>{i.id}</Text>
-                            <Text style={styles.domainItemDesc} numberOfLines={1}>
-                              {i.description}
-                            </Text>
-                            <View
-                              style={[styles.scoreBadge, { backgroundColor: scoreColor(i.score) }]}
-                            >
-                              <Text style={styles.scoreBadgeText}>{String(i.score)}</Text>
-                            </View>
-                          </View>
-                        ))}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {unscoredDomains.length > 0 && (
-              <Text style={[typography.caption, { marginTop: spacing.sm }]}>
-                Unscored domains: {unscoredDomains.map((d) => `${d.code} (${d.name})`).join(', ')}
-              </Text>
-            )}
-
-            <Text style={[typography.h3, { marginTop: spacing.md }]}>
-              Behavior Assessment (MASS/FAST)
+    <Modal visible={visible} animationType="fade" transparent={false} onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#525659' }}>
+        {/* Sleek Top Action Bar */}
+        <View
+          style={{
+            height: 56,
+            backgroundColor: '#FFFFFF',
+            borderBottomWidth: 1,
+            borderBottomColor: '#E2E8F0',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 16,
+          }}
+        >
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingVertical: 7,
+              paddingHorizontal: 10,
+              backgroundColor: '#EFF6FF',
+              borderRadius: radius.md,
+            }}
+            onPress={onClose}
+          >
+            <Feather name="arrow-left" size={15} color={colors.primaryBlue} />
+            <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.primaryBlue }}>
+              Back to Assessment Pipeline
             </Text>
-            <Text style={typography.body}>{report.behaviorSummary}</Text>
+          </TouchableOpacity>
 
-            <Text style={[typography.h3, { marginTop: spacing.md }]}>Top Preferences</Text>
-            <Text style={typography.body}>{(report.preferences || []).join(', ') || 'None recorded'}</Text>
-
-            {Boolean(report.notes && report.notes !== 'No notes recorded.') && (
-              <>
-                <Text style={[typography.h3, { marginTop: spacing.md }]}>Teacher Notes</Text>
-                <Text style={typography.body}>{report.notes}</Text>
-              </>
-            )}
-
-            {Boolean(report.reviewNotes && report.reviewNotes !== 'No notes recorded.') && (
-              <>
-                <Text style={[typography.h3, { marginTop: spacing.md }]}>Director Review Notes</Text>
-                <Text style={typography.body}>{report.reviewNotes}</Text>
-              </>
-            )}
-
-            <Text style={[typography.h3, { marginTop: spacing.md }]}>IUP Status</Text>
-            <Text style={typography.body}>{report.iupStatus}</Text>
-
-            {Boolean(report.assignedGoals && report.assignedGoals.length > 0) && (
-              <>
-                <Text style={[typography.h3, { marginTop: spacing.md }]}>Goal Status</Text>
-                {report.assignedGoals?.map((g, idx) => (
-                  <Text key={idx} style={typography.body}>
-                    • {g.name} ({g.status})
-                  </Text>
-                ))}
-              </>
-            )}
-
-            {Boolean(report.dateCompleted) && (
-              <>
-                <Text style={[typography.h3, { marginTop: spacing.md }]}>Date Completed</Text>
-                <Text style={typography.body}>{report.dateCompleted}</Text>
-              </>
-            )}
-          </ScrollView>
-
-          <View style={styles.field}>
-            <Text style={typography.label}>Internal Notes</Text>
-            <TextInput
-              style={styles.textArea}
-              multiline
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Not visible to parents or teachers..."
-              placeholderTextColor={colors.mutedText}
-              accessibilityLabel="Internal notes for review"
-              editable={!isSubmitting}
-            />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ fontSize: 13, color: '#334155', fontWeight: '500' }}>
+              <Text style={{ fontWeight: '700', color: '#0F172A' }}>{report.studentName}</Text>
+              {report.age ? ` • Age ${report.age}` : ''}
+              {report.program ? ` • Program: ${report.program}` : ''}
+            </Text>
+            <View
+              style={{
+                paddingVertical: 3,
+                paddingHorizontal: 8,
+                borderRadius: 12,
+                backgroundColor: isReviewed ? '#DCFCE7' : '#FEF3C7',
+                borderWidth: 1,
+                borderColor: isReviewed ? '#86EFAC' : '#FDE68A',
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: isReviewed ? '#166534' : '#92400E',
+                }}
+              >
+                Status:{' '}
+                {isReviewed ? 'Reviewed / Ready for IUP' : 'Assessment Complete / Pending Review'}
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.modalFooter}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={onClose}
-              disabled={isSubmitting}
-              accessibilityRole="button"
-              accessibilityLabel="Close report modal"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                backgroundColor: '#F1F5F9',
+                borderWidth: 1,
+                borderColor: '#CBD5E1',
+                borderRadius: radius.md,
+              }}
+              onPress={handlePrint}
             >
-              <Text style={styles.cancelBtnText}>Close</Text>
+              <Feather name="printer" size={14} color="#1E293B" />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>Print / PDF</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={styles.exportBtn}
-              onPress={() => onExport(report)}
-              disabled={isSubmitting}
-              accessibilityRole="button"
-              accessibilityLabel="Export Assessment Summary"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                backgroundColor: '#F1F5F9',
+                borderWidth: 1,
+                borderColor: '#CBD5E1',
+                borderRadius: radius.md,
+              }}
+              onPress={handleDownload}
             >
-              <Feather name="share-2" size={14} color={colors.navyText} />
-              <Text style={styles.exportBtnText}>Export</Text>
+              <Feather name="download" size={14} color="#1E293B" />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>Download</Text>
             </TouchableOpacity>
-            {report.status !== 'Reviewed' && (
+
+            {!isReviewed ? (
               <TouchableOpacity
-                style={[styles.approveBtn, isSubmitting && styles.approveBtnDisabled]}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  backgroundColor: '#16A34A',
+                  borderRadius: radius.md,
+                }}
                 onPress={() => onMarkReviewed(report.studentId, notes)}
-                disabled={isSubmitting}
-                accessibilityRole="button"
-                accessibilityLabel="Mark assessment as reviewed"
-                accessibilityState={{ busy: isSubmitting }}
               >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color={colors.navyText} />
-                ) : (
-                  <Text style={styles.approveBtnText}>Mark as Reviewed</Text>
-                )}
+                <Feather name="check-circle" size={14} color="#FFFFFF" />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                  Approve & Sign-Off (Ready for IUP)
+                </Text>
               </TouchableOpacity>
+            ) : (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  backgroundColor: '#059669',
+                  borderRadius: radius.md,
+                  opacity: 0.85,
+                }}
+              >
+                <Feather name="check" size={14} color="#FFFFFF" />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                  Approved (Ready for IUP)
+                </Text>
+              </View>
             )}
           </View>
         </View>
-      </View>
+
+        {/* Pure PDF Viewport */}
+        <View style={{ flex: 1, backgroundColor: '#525659' }}>
+          <iframe
+            srcDoc={htmlContent}
+            title="Clinical Intake Evaluation Report"
+            style={{ width: '100%', height: '100%', border: 'none' } as any}
+          />
+        </View>
+      </SafeAreaView>
     </Modal>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main Screen                                                       */
-/* ------------------------------------------------------------------ */
+function scoreColor(score: unknown): string {
+  const n =
+    typeof score === 'number' ? score : typeof score === 'string' ? parseInt(score, 10) : NaN;
+  if (isNaN(n)) return '#94A3B8';
+  if (n === 0) return '#EF4444';
+  if (n <= 1) return '#EAB308';
+  return '#16A34A';
+}
+
+function normalizeStatus(rawStatus?: string): string {
+  if (!rawStatus) return 'Not Started';
+  const s = rawStatus
+    .toLowerCase()
+    .replace(/[_\s-]+/g, ' ')
+    .trim();
+  if (s === 'not started' || s === 'notstarted') return 'Not Started';
+  if (s === 'in progress' || s === 'inprogress') return 'In Progress';
+  if (s === 'complete' || s === 'completed') return 'Complete';
+  if (s === 'reviewed' || s === 'approved') return 'Reviewed';
+  return rawStatus;
+}
+
+function normalizeAssessmentItem(item: any): AssessmentListItem {
+  const sId = String(item.studentId ?? item.student_id ?? item.id ?? '');
+  const formattedId =
+    item.studentNumber ||
+    item.student_number ||
+    item.student_id ||
+    item.student?.student_id ||
+    `MEL-${sId
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 4)
+      .toUpperCase()
+      .padEnd(4, '0')}-26`;
+
+  const overallProg = Number(
+    item.assessment_progress ??
+      item.assessmentProgress ??
+      item.overall_progress ??
+      item.overallProgress ??
+      item.completion_percentage ??
+      item.abllsPct ??
+      0,
+  );
+
+  return {
+    studentId: sId,
+    studentNumber: formattedId,
+    studentName: String(item.studentName ?? item.student_name ?? item.name ?? 'Unknown Student'),
+    age: Number(item.age ?? 0),
+    program: String(item.program ?? item.program_type ?? 'Regular'),
+    therapyGroup: String(item.therapyGroup ?? item.therapy_group ?? ''),
+    therapist: String(item.therapist ?? item.therapist_name ?? 'Unassigned'),
+    status: normalizeStatus(item.status),
+    progress: overallProg,
+    abllsPct: Number(item.abllsPct ?? overallProg),
+    behaviorStatus: String(item.behaviorStatus ?? item.behavior_assessment ?? 'notStarted'),
+    sessionStatus: String(item.sessionStatus ?? ''),
+    dateCompleted: item.dateCompleted ?? item.completed_at ?? item.completed_on ?? null,
+  };
+}
+
+function normalizeAssessmentReport(res: any): AssessmentReport {
+  const student = res?.student || {};
+  const assessment = res?.assessment || {};
+  const skills = res?.skills || {};
+  const behavior = res?.behavior || {};
+  const preferences = res?.preferences || {};
+
+  const sId = String(student.id ?? res?.studentId ?? '');
+  const formattedId =
+    student.student_number ||
+    student.studentNumber ||
+    student.student_id ||
+    res?.studentNumber ||
+    res?.student_number ||
+    `MEL-${sId
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 4)
+      .toUpperCase()
+      .padEnd(4, '0')}-26`;
+
+  const domainScores: DomainScore[] = Array.isArray(res?.domainScores)
+    ? res.domainScores
+    : Array.isArray(skills?.domains)
+      ? skills.domains.map((d: any) => ({
+          code: String(d.code || d.domain_code || ''),
+          name: String(d.name || d.domain_name || ''),
+          items: Array.isArray(d.items) ? d.items : [],
+          scoredCount: Number(d.scoredCount ?? d.completed_items ?? d.scored_count ?? 0),
+          total: Number(d.total ?? d.total_items ?? 0),
+        }))
+      : [];
+
+  const prefList: string[] = Array.isArray(res?.preferences)
+    ? res.preferences
+    : Array.isArray(preferences?.top_items)
+      ? preferences.top_items.map((p: any) =>
+          typeof p === 'string' ? p : p.name || p.item_name || '',
+        )
+      : Array.isArray(res?.top_preferences)
+        ? res.top_preferences.map((p: any) => (typeof p === 'string' ? p : p.name || ''))
+        : [];
+
+  return {
+    studentId: sId,
+    studentNumber: formattedId,
+    studentName: String(student.name ?? student.full_name ?? res?.studentName ?? 'Unknown Student'),
+    age: Number(student.age ?? res?.age ?? 0),
+    program: String(student.program_type ?? student.program ?? res?.program ?? 'Regular'),
+    therapyGroup: String(student.therapy_group ?? res?.therapyGroup ?? ''),
+    therapist: String(res?.therapist ?? student.therapist ?? 'Unassigned'),
+    status: normalizeStatus(assessment.status ?? res?.status),
+    skillsSummary: String(skills.summary ?? res?.skillsSummary ?? 'No skills summary available.'),
+    skillsStatus: String(skills.status ?? res?.skillsStatus ?? 'not_started'),
+    domainScores,
+    behaviorSummary: String(
+      behavior.summary ?? res?.behaviorSummary ?? 'No behavior summary available.',
+    ),
+    behaviorStatus: String(behavior.status ?? res?.behaviorStatus ?? 'not_started'),
+    preferences: prefList,
+    notes: String(res?.notes ?? res?.teacher_notes ?? 'No notes recorded.'),
+    dateCompleted: assessment.completed_on ?? res?.dateCompleted ?? null,
+    iupStatus: String(res?.iupStatus ?? 'Draft'),
+    reviewNotes: String(res?.reviewNotes ?? res?.review_notes ?? ''),
+    assignedGoals: res?.assignedGoals ?? [],
+  };
+}
 
 export default function AssessmentReviewScreen({
   navigation,
 }: NativeStackScreenProps<ProgramDirectorStackParamList, 'AssessmentReview'>) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 680;
+  const isTablet = width >= 680 && width < 1024;
+
   const [list, setList] = useState<AssessmentListItem[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusOption>('All');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
   const [reportTarget, setReportTarget] = useState<AssessmentReport | null>(null);
-  const [loadingReportId, setLoadingReportId] = useState<string | null>(null);
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [exportContent, setExportContent] = useState<string | null>(null);
 
-  // Guards against duplicate concurrent calls, stale responses, and unmounted state updates
-  const isMountedRef = useRef(true);
-  const inFlightRef = useRef(false);
-  const requestIdRef = useRef(0);
-  const lastFetchTimeRef = useRef(0);
-
-  const load = useCallback(async (force = false) => {
-    const now = Date.now();
-    // Debounce duplicate calls within 400ms unless forced
-    if (!force && now - lastFetchTimeRef.current < 400) {
-      return;
-    }
-    lastFetchTimeRef.current = now;
-
-    const currentReqId = ++requestIdRef.current;
-    inFlightRef.current = true;
-
+  const load = useCallback(async () => {
     try {
-      const { data: res } = await getAssessmentsForReview();
-      if (!isMountedRef.current || currentReqId !== requestIdRef.current) return;
-
+      const { data: res } = await getAssessmentsForReview(
+        search.trim() ? { search: search.trim() } : undefined,
+      );
       const rawList = Array.isArray(res)
         ? res
         : Array.isArray(res?.assessments)
@@ -280,108 +469,71 @@ export default function AssessmentReviewScreen({
           : Array.isArray(res?.data)
             ? res.data
             : [];
-      setList(rawList.map(normalizeAssessmentItem));
-      setLoadError(false);
+      const deduplicatedMap = new Map<string, AssessmentListItem>();
+      for (const raw of rawList) {
+        const item = normalizeAssessmentItem(raw);
+        if (!item.studentId) continue;
+        const existing = deduplicatedMap.get(item.studentId);
+        if (!existing) {
+          deduplicatedMap.set(item.studentId, item);
+        } else {
+          // Priority ranking: Reviewed (4) > Complete (3) > In Progress (2) > Not Started (1)
+          const priority = (s: string) =>
+            s === 'Reviewed' ? 4 : s === 'Complete' ? 3 : s === 'In Progress' ? 2 : 1;
+          if (priority(item.status) > priority(existing.status)) {
+            deduplicatedMap.set(item.studentId, item);
+          }
+        }
+      }
+      setList(Array.from(deduplicatedMap.values()));
     } catch (err) {
-      if (!isMountedRef.current || currentReqId !== requestIdRef.current) return;
       console.error('Failed to load assessments for review', err);
-      setLoadError(true);
-    } finally {
-      if (currentReqId === requestIdRef.current) {
-        inFlightRef.current = false;
-      }
+      setList([]);
     }
-  }, []);
+  }, [search]);
 
   useEffect(() => {
-    isMountedRef.current = true;
     load();
-    return () => {
-      isMountedRef.current = false;
-    };
   }, [load]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleUpdate = () => {
-      load(true);
-    };
-    window.addEventListener('melue_assessment_updated', handleUpdate);
-    window.addEventListener('melue_student_enrolled_updated', handleUpdate);
-    window.addEventListener('storage', handleUpdate);
-    return () => {
-      window.removeEventListener('melue_assessment_updated', handleUpdate);
-      window.removeEventListener('melue_student_enrolled_updated', handleUpdate);
-      window.removeEventListener('storage', handleUpdate);
-    };
-  }, [load]);
-
-  const handleNavTab = useCallback(
-    (tab: string) => {
-      if (!navigation?.navigate) return;
-      const route =
-        PD_ROUTE_BY_TAB[tab] || (tab in PD_ROUTE_BY_TAB ? PD_ROUTE_BY_TAB[tab] : undefined);
-      if (route) {
-        navigation.navigate(route as any);
-        return;
-      }
-      navigation.navigate(tab as any);
-    },
-    [navigation],
-  );
 
   const filtered = useMemo(() => {
     if (!Array.isArray(list)) return [];
     let items = list;
     if (statusFilter !== 'All') {
-      items = items.filter((r) => normalizeStatus(r.status) === statusFilter);
+      items = items.filter(
+        (r) => r.status === statusFilter || normalizeStatus(r.status) === statusFilter,
+      );
     }
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       items = items.filter(
         (r) =>
           r.studentName.toLowerCase().includes(q) ||
-          r.studentId.toLowerCase().includes(q) ||
+          (r.studentNumber && r.studentNumber.toLowerCase().includes(q)) ||
           r.program.toLowerCase().includes(q) ||
-          r.therapist.toLowerCase().includes(q) ||
-          r.therapyGroup.toLowerCase().includes(q),
+          r.therapist.toLowerCase().includes(q),
       );
     }
     return items;
   }, [list, statusFilter, search]);
 
-  if (loadError && !list) return <ScreenError onRetry={() => load(true)} />;
   if (!list) return <ScreenLoader />;
 
-  const handleViewReport = async (studentId: string) => {
-    if (!studentId) return;
-    setLoadingReportId(studentId);
-    try {
-      const { data: res } = await getAssessmentReport(studentId);
-      if (!isMountedRef.current) return;
-      setReportTarget(normalizeAssessmentReport(res));
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      console.error('Failed to get assessment report', err);
-      Alert.alert(
-        'Unable to Load Report',
-        'Could not fetch the assessment report for this student. Please check your network and try again.',
-      );
-    } finally {
-      if (isMountedRef.current) {
-        setLoadingReportId(null);
-      }
+  const handleViewReport = (studentId: string) => {
+    if (navigation && typeof navigation.navigate === 'function') {
+      navigation.navigate('AssessmentSummaryReport', { studentId });
+    } else {
+      getAssessmentReport(studentId)
+        .then(({ data: res }) => {
+          setReportTarget(normalizeAssessmentReport(res));
+        })
+        .catch((err) => {
+          console.error('Failed to get assessment report', err);
+        });
     }
   };
 
   const handleMarkReviewed = async (studentId: string, notes: string) => {
-    if (!studentId) return;
     Alert.alert(
       'Mark as reviewed?',
       'Mark this assessment as reviewed and ready for IUP creation?',
@@ -390,17 +542,9 @@ export default function AssessmentReviewScreen({
         {
           text: 'Confirm',
           onPress: async () => {
-            setIsSubmittingReview(true);
             try {
-              const trimmed = notes.trim();
-              await markAssessmentReviewed(studentId, {
-                notes: trimmed,
-                status: 'ready_for_iup',
-              });
-              if (trimmed) {
-                await addAssessmentNote(studentId, { note: trimmed });
-              }
-              if (!isMountedRef.current) return;
+              await markAssessmentReviewed(studentId, { notes, status: 'ready_for_iup' });
+              if (notes) await addAssessmentNote(studentId, { note: notes });
               setList((prev) =>
                 prev
                   ? prev.map((item) =>
@@ -408,20 +552,11 @@ export default function AssessmentReviewScreen({
                     )
                   : prev,
               );
-              setReportTarget(null);
-              await load(true);
+              await load();
             } catch (err) {
-              if (!isMountedRef.current) return;
               console.error('Failed to mark assessment reviewed', err);
-              Alert.alert(
-                'Review Failed',
-                'Failed to mark the assessment as reviewed. Please try again.',
-              );
-            } finally {
-              if (isMountedRef.current) {
-                setIsSubmittingReview(false);
-              }
             }
+            setReportTarget(null);
           },
         },
       ],
@@ -429,15 +564,51 @@ export default function AssessmentReviewScreen({
   };
 
   const handleExportPdf = (report: AssessmentReport) => {
-    const text = generateAssessmentReportText(report);
-    setExportContent(text);
+    const lines = [
+      `Melu'e Foundation — Assessment Summary Report`,
+      `Student: ${report.studentName}`,
+      report.age ? `Age: ${report.age}` : '',
+      `Program: ${report.program}`,
+      report.therapist !== 'Unassigned' ? `Therapist: ${report.therapist}` : '',
+      '',
+      'SKILLS ASSESSMENT (ABLLS)',
+      report.skillsSummary,
+    ];
+
+    if ((report.domainScores || []).filter((d) => d.scoredCount > 0).length > 0) {
+      lines.push('');
+      lines.push('DOMAIN BREAKDOWN');
+      for (const d of (report.domainScores || []).filter((d) => d.scoredCount > 0)) {
+        lines.push(`  ${d.code} ${d.name}: ${d.scoredCount}/${d.total} items scored`);
+        for (const i of (d.items || []).filter((i) => i.score !== null && i.score !== undefined)) {
+          lines.push(`    ${i.id} ${i.description}: ${i.score}`);
+        }
+      }
+    }
+
+    lines.push('', 'BEHAVIOR ASSESSMENT (MASS/FAST)', report.behaviorSummary || '');
+    lines.push('', 'TOP PREFERENCES', (report.preferences || []).join(', '));
+
+    if (report.notes && report.notes !== 'No notes recorded.') {
+      lines.push('', 'TEACHER NOTES', report.notes);
+    }
+
+    lines.push('', 'IUP STATUS', report.iupStatus);
+
+    if (report.dateCompleted) {
+      lines.push('', `DATE COMPLETED: ${report.dateCompleted}`);
+    }
+
+    lines.push('', `Generated ${new Date().toLocaleDateString()}`);
+
+    setExportContent(lines.filter(Boolean).join('\n'));
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <AppNavbar
-        activeTab="Assessment Review"
-        onTabPress={handleNavTab}
+        activeTab="Assessment"
+        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])}
       />
 
       <View style={styles.header}>
@@ -451,9 +622,6 @@ export default function AssessmentReviewScreen({
           placeholderTextColor={colors.mutedText}
           value={search}
           onChangeText={setSearch}
-          accessibilityLabel="Search students by name, ID, program, or therapist"
-          returnKeyType="search"
-          clearButtonMode="while-editing"
         />
       </View>
 
@@ -466,16 +634,13 @@ export default function AssessmentReviewScreen({
                 ? list.length
                 : 0
               : Array.isArray(list)
-                ? list.filter((r) => normalizeStatus(r.status) === opt).length
+                ? list.filter((r) => r.status === opt || normalizeStatus(r.status) === opt).length
                 : 0;
           return (
             <TouchableOpacity
               key={opt}
               style={[styles.chip, isActive && styles.chipActive]}
               onPress={() => setStatusFilter(opt)}
-              accessibilityRole="button"
-              accessibilityLabel={`Filter by ${opt}, ${count} students`}
-              accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
                 {opt} ({count})
@@ -485,88 +650,76 @@ export default function AssessmentReviewScreen({
         })}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {filtered.map((s, index) => {
-          const isLoadingThis = loadingReportId === s.studentId;
-          const rowKey = s.studentId ? `${s.studentId}-${s.dateCompleted || ''}` : `student-${index}`;
-
-          return (
-            <View key={rowKey} style={styles.row}>
-              <View style={styles.rowLeft}>
+      <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}>
+        {filtered.map((s) => (
+          <View key={s.studentId} style={[styles.row, isMobile && styles.rowMobile]}>
+            <View style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  marginBottom: 4,
+                }}
+              >
                 <Text style={typography.bodyBold}>{s.studentName}</Text>
-                <Text style={typography.caption}>
-                  {s.age > 0 ? `Age ${s.age} · ` : ''}
-                  {s.program}
-                  {s.therapist && s.therapist !== 'Unassigned' ? ` · ${s.therapist}` : ''}
-                  {s.dateCompleted ? ` · ${s.dateCompleted}` : ''}
-                </Text>
+                <View style={styles.idBadge}>
+                  <Text style={styles.idBadgeText}>Student ID: {s.studentNumber}</Text>
+                </View>
               </View>
-              <View style={styles.rowRight}>
-                <View style={styles.progressCol}>
-                  <Text style={styles.progressLabel}>ABLLS {s.abllsPct}%</Text>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${Math.min(100, s.abllsPct)}%` }]} />
-                  </View>
+              <Text style={typography.caption}>
+                Age {s.age} · {s.program}
+                {s.therapist !== 'Unassigned' ? ` · ${s.therapist}` : ''}
+                {s.dateCompleted ? ` · Completed: ${s.dateCompleted}` : ''}
+              </Text>
+            </View>
+            <View style={[styles.rowRight, isMobile && styles.rowRightMobile]}>
+              <View style={[styles.progressCol, isMobile && styles.progressColMobile]}>
+                <Text style={styles.progressLabel}>Progress {s.progress}%</Text>
+                <View style={styles.progressBar}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.min(100, Math.max(0, s.progress))}%` },
+                    ]}
+                  />
                 </View>
-                <StatusPill status={STATUS_KEY[s.status] || 'notStarted'} label={s.status} />
-                <View style={styles.rowActions}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, isLoadingThis && styles.actionBtnLoading]}
-                    onPress={() => handleViewReport(s.studentId)}
-                    disabled={isLoadingThis}
-                    accessibilityRole="button"
-                    accessibilityLabel={`View assessment report for ${s.studentName}`}
-                    accessibilityState={{ busy: isLoadingThis }}
-                  >
-                    {isLoadingThis ? (
-                      <ActivityIndicator size="small" color={colors.navyText} />
-                    ) : (
-                      <Text style={styles.actionBtnText}>View Report</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+              </View>
+              <StatusPill status={STATUS_KEY[s.status] || 'notStarted'} label={s.status} />
+              <View style={styles.rowActions}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, isMobile && styles.actionBtnMobile]}
+                  onPress={() => handleViewReport(s.studentId)}
+                >
+                  <Text style={styles.actionBtnText}>View Report</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          );
-        })}
-
-        {filtered.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Feather
-              name="search"
-              size={32}
-              color={colors.mutedText}
-              style={{ marginBottom: spacing.xs }}
-            />
-            <Text style={styles.emptyText}>No students match the current filters.</Text>
-            {(statusFilter !== 'All' || search.trim() !== '') && (
-              <TouchableOpacity
-                style={styles.clearFilterBtn}
-                onPress={() => {
-                  setStatusFilter('All');
-                  setSearch('');
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Reset filters and search query"
-              >
-                <Text style={styles.clearFilterText}>Reset Filters</Text>
-              </TouchableOpacity>
-            )}
           </View>
+        ))}
+        {filtered.length === 0 && (
+          <Text
+            style={[
+              typography.body,
+              { textAlign: 'center', padding: spacing.lg, color: colors.mutedText },
+            ]}
+          >
+            No students match the current filters.
+          </Text>
         )}
       </ScrollView>
 
       <ReportModal
-        visible={Boolean(reportTarget)}
+        visible={!!reportTarget}
         report={reportTarget}
-        isSubmitting={isSubmittingReview}
         onClose={() => setReportTarget(null)}
         onMarkReviewed={handleMarkReviewed}
         onExport={handleExportPdf}
       />
 
       <ExportPreviewModal
-        visible={Boolean(exportContent)}
+        visible={!!exportContent}
         title="Assessment Summary Report"
         filename={`${reportTarget?.studentName.replace(/\s+/g, '_') ?? 'Student'}_AssessmentSummary.txt`}
         content={exportContent ?? ''}
@@ -576,10 +729,6 @@ export default function AssessmentReviewScreen({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Styles                                                            */
-/* ------------------------------------------------------------------ */
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
   header: {
@@ -588,28 +737,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  searchRow: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: colors.bgCard,
-  },
+  searchRow: { padding: spacing.md, backgroundColor: colors.bgCard, paddingBottom: 0 },
   searchInput: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: spacing.md,
     backgroundColor: colors.bgApp,
-    color: colors.navyText,
   },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    padding: spacing.md,
     backgroundColor: colors.bgCard,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   chip: {
     paddingHorizontal: spacing.md,
@@ -623,11 +764,10 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '500', color: colors.mutedText },
   chipTextActive: { color: colors.navyText, fontWeight: '700' },
   content: { padding: spacing.lg, gap: spacing.md },
+  contentMobile: { padding: spacing.md, gap: spacing.sm },
   row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.md,
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
@@ -635,17 +775,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  rowLeft: {
-    flex: 1,
-    minWidth: 200,
+  rowMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 12,
+    padding: spacing.md,
   },
-  rowRight: {
-    flexDirection: 'row',
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  rowRightMobile: {
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    gap: 8,
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.md,
+  },
+  idBadge: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  idBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1A2233',
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
   },
   progressCol: { width: 80, alignItems: 'center' },
+  progressColMobile: { width: 95, alignItems: 'flex-start' },
   progressLabel: { fontSize: 11, fontWeight: '600', color: colors.navyText },
   progressBar: {
     width: 80,
@@ -662,37 +823,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    minHeight: 34,
-    minWidth: 92,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  actionBtnLoading: {
-    backgroundColor: colors.bgApp,
+  actionBtnMobile: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
   },
   actionBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xl,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: colors.mutedText,
-    textAlign: 'center',
-  },
-  clearFilterBtn: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: '#EFF6FF',
-    borderRadius: radius.pill,
-  },
-  clearFilterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primaryBlue,
-  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -705,11 +841,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
     maxHeight: '85%',
-    maxWidth: 600,
-    width: '100%',
-    alignSelf: 'center',
   },
-  modalScroll: { maxHeight: 420 },
   domainSection: { marginTop: spacing.sm, gap: spacing.sm },
   domainCard: {
     borderWidth: 1,
@@ -743,10 +875,9 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     color: colors.navyText,
   },
-  modalFooter: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  modalFooter: { flexDirection: 'row', gap: spacing.sm },
   cancelBtn: {
     flex: 1,
-    minWidth: 80,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
@@ -756,7 +887,6 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontWeight: '600', color: colors.navyText },
   exportBtn: {
     flex: 1,
-    minWidth: 90,
     flexDirection: 'row',
     gap: spacing.xs,
     alignItems: 'center',
@@ -768,15 +898,10 @@ const styles = StyleSheet.create({
   exportBtnText: { fontWeight: '700', color: colors.navyText, fontSize: 12 },
   approveBtn: {
     flex: 2,
-    minWidth: 140,
     backgroundColor: colors.primaryYellow,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approveBtnDisabled: {
-    opacity: 0.6,
   },
   approveBtnText: { fontWeight: '700', color: colors.navyText },
 });

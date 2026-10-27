@@ -11,7 +11,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { colors, spacing } from '../../theme/colors';
+import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { PD_ROUTE_BY_TAB } from '../../components/appNavConfig';
@@ -21,6 +21,8 @@ import {
   getStudentCaseload,
   assignGoalToSlot,
   removeGoalFromSlot,
+  createGoal,
+  getStudentProfile,
   getStoredIupDraft,
   getStoredCaseloadMap,
   IUP_LIBRARY_STORAGE_KEY,
@@ -413,6 +415,21 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
           Caseload Management{selectedStudentName ? ` — ${selectedStudentName}` : ''}
         </Text>
         <Text style={styles.screenCode}>SCR-PD-005</Text>
+        {Boolean(selectedStudentId) && (
+          <TouchableOpacity
+            style={styles.profileBtn}
+            onPress={() => {
+              if (selectedStudentId) {
+                navigation?.navigate?.('StudentProfile', { studentId: selectedStudentId });
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="View Student Profile"
+          >
+            <Feather name="user" size={13} color="#0284C7" />
+            <Text style={styles.profileBtnText}>View Profile</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={{ zIndex: 100, position: 'relative' }}>
@@ -558,5 +575,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '100%',
     flex: 1,
+  },
+  profileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  profileBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0284C7',
   },
 });

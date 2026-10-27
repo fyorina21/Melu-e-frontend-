@@ -63,4 +63,68 @@ describe('summaryReportTypes and helpers', () => {
       expect(result).toHaveLength(0);
     });
   });
+
+  describe('Clinical Assessment Visual Graphs in HTML Export', () => {
+    // Dynamic import to verify generateClinicalAssessmentHtml embeds the 4 graphs
+    it('embeds all 4 clinical visual graphs into the PDF markup', async () => {
+      const { generateClinicalAssessmentHtml } =
+        await import('../../../../utils/clinicalAssessmentPdfGenerator');
+
+      const mockPayload = {
+        student: { name: 'Abebe Bikila', student_number: 'MEL-1234-26', age: 6 },
+        skills: {
+          domains: [
+            { code: 'A', name: 'Visual Performance', percentage: 75 },
+            { code: 'B', name: 'Motor Imitation', percentage: 80 },
+          ],
+        },
+        behavior: {
+          target_behaviors: [
+            {
+              behavior_name: 'Physical Aggression',
+              mas_scores: { escape: { total: 19, mean: 4.75, rank: 1 } },
+              fast_scores: {
+                social_escape: { yes_count: 7, max_points: 8, percentage: 88, dominant: true },
+              },
+            },
+          ],
+          abc_incident_log: [
+            {
+              behavior_name: 'Physical Aggression',
+              antecedent: 'Task Demand',
+              consequence: 'Task Escape',
+            },
+          ],
+        },
+        preferences: {
+          top_preferences: [
+            { rank: 1, name: 'Sensory Swing', duration_seconds: 180, context: 'Sensory Time' },
+          ],
+        },
+        sensory: {
+          activities: [
+            { code: 'SEN-001', name: 'Tactile Responsiveness', response_reaction: 'Enjoyed' },
+          ],
+        },
+      };
+
+      const html = generateClinicalAssessmentHtml(mockPayload);
+
+      // Graph 1: Skills Progress Matrix
+      expect(html).toContain('ABLLS-R Grid-Based Progress Matrix');
+      expect(html).toContain('Visual Performance');
+
+      // Graph 2: Separate MAS and FAST Summary Graphs & ABC Donut
+      expect(html).toContain('Motivation Assessment Scale (MAS) Function Graph');
+      expect(html).toContain('Functional Assessment Screening Tool (FAST) Graph');
+      expect(html).toContain('ABC Log Environmental Donut');
+
+      // Graph 3: Preference Ranked Bar Graph
+      expect(html).toContain('Ranked Choice Reinforcer Bar Graph');
+
+      // Graph 4: Sensory 5-Axis Spider Radar Chart
+      expect(html).toContain('5-Axis Sensory Spider Chart');
+      expect(html).toContain('Modulation Spectrum (Seeking vs Avoiding)');
+    });
+  });
 });
