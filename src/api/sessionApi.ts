@@ -197,49 +197,42 @@ function formatOffsetDate(daysAgo: number): string {
 const SESSION_NOTES_KEY = 'melue_session_notes_store';
 
 function getStoredNotes(): NoteRecordItem[] {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const stored = localStorage.getItem(SESSION_NOTES_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          // Purge legacy mock notes
-          const cleaned = parsed.filter(
-            (n) =>
-              n &&
-              n.id &&
-              !['sn-101', 'sn-102', 'sn-103', 'sn-104', 'sn-105'].includes(n.id) &&
-              !n.students?.some((s: any) =>
-                [
-                  'Liam Johnson',
-                  'Emma Davis',
-                  'Noah Smith',
-                  'Sophia Martinez',
-                  'Lucas Brown',
-                  'Oliver Taylor',
-                  'Ava Wilson',
-                  'Ethan Moore',
-                  'Assigned Student',
-                ].includes(s),
-              ),
-          );
-          if (cleaned.length !== parsed.length) {
-            saveStoredNotes(cleaned);
-          }
-          return cleaned;
-        }
+  try {
+    const parsed = storage.getJSONSync<NoteRecordItem[]>(SESSION_NOTES_KEY, []);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Purge legacy mock notes
+      const cleaned = parsed.filter(
+        (n) =>
+          n &&
+          n.id &&
+          !['sn-101', 'sn-102', 'sn-103', 'sn-104', 'sn-105'].includes(n.id) &&
+          !n.students?.some((s: any) =>
+            [
+              'Liam Johnson',
+              'Emma Davis',
+              'Noah Smith',
+              'Sophia Martinez',
+              'Lucas Brown',
+              'Oliver Taylor',
+              'Ava Wilson',
+              'Ethan Moore',
+              'Assigned Student',
+            ].includes(s),
+          ),
+      );
+      if (cleaned.length !== parsed.length) {
+        saveStoredNotes(cleaned);
       }
-    } catch {}
-  }
+      return cleaned;
+    }
+  } catch {}
   return [];
 }
 
 function saveStoredNotes(notes: NoteRecordItem[]) {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(SESSION_NOTES_KEY, JSON.stringify(notes));
-    } catch {}
-  }
+  try {
+    storage.setJSONSync(SESSION_NOTES_KEY, notes);
+  } catch {}
 }
 
 export const getDailyNotes = async (params?: QueryParams) => {
@@ -262,11 +255,12 @@ export const getDailyNotes = async (params?: QueryParams) => {
     if (Array.isArray(rawSummaries) && rawSummaries.length > 0) {
       backendRecords = rawSummaries.map((s: any) => {
         const sess = s.session || {};
-        const studentNames: string[] = Array.isArray(sess.students) && sess.students.length > 0
-          ? sess.students.map((st: any) => st.name || st.full_name).filter(Boolean)
-          : Array.isArray(s.students) && s.students.length > 0
-          ? s.students.map((st: any) => st.name || st.full_name).filter(Boolean)
-          : [];
+        const studentNames: string[] =
+          Array.isArray(sess.students) && sess.students.length > 0
+            ? sess.students.map((st: any) => st.name || st.full_name).filter(Boolean)
+            : Array.isArray(s.students) && s.students.length > 0
+              ? s.students.map((st: any) => st.name || st.full_name).filter(Boolean)
+              : [];
 
         const rawStatus = String(s.status || sess.status || '').toLowerCase();
         let status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft' = 'Approved';
@@ -300,7 +294,9 @@ export const getDailyNotes = async (params?: QueryParams) => {
           station: stationName,
           room: roomName,
           status,
-          coordinatorFeedback: s.reviewed_at ? `Reviewed and approved on ${new Date(s.reviewed_at).toLocaleDateString()}` : undefined,
+          coordinatorFeedback: s.reviewed_at
+            ? `Reviewed and approved on ${new Date(s.reviewed_at).toLocaleDateString()}`
+            : undefined,
           coordinatorName: s.reviewed_at ? 'Hana Kebede (Therapy Coordinator)' : undefined,
           bodyMarkdown: noteBody || 'No qualitative notes recorded for this session.',
           attachments: [],
@@ -309,13 +305,19 @@ export const getDailyNotes = async (params?: QueryParams) => {
     }
   } catch {}
 
-  const finalRecords = backendRecords.length > 0
-    ? [...localNotes.filter((ln) => !backendRecords.some((br) => br.id === ln.id)), ...backendRecords]
-    : localNotes;
+  const finalRecords =
+    backendRecords.length > 0
+      ? [
+          ...localNotes.filter((ln) => !backendRecords.some((br) => br.id === ln.id)),
+          ...backendRecords,
+        ]
+      : localNotes;
 
   // Real performance metrics from backend
   let completed = finalRecords.filter((n) => n.status === 'Approved').length;
-  let pending = finalRecords.filter((n) => n.status === 'Pending' || n.status === 'Revision Required').length;
+  let pending = finalRecords.filter(
+    (n) => n.status === 'Pending' || n.status === 'Revision Required',
+  ).length;
   let totalTrials = 0;
   let avgIndependence = 0;
 
@@ -324,15 +326,27 @@ export const getDailyNotes = async (params?: QueryParams) => {
     const coordinatorToken = await fetchCoordinatorToken().catch(() => null);
     const token = coordinatorToken || adminToken;
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const metricsRes = await client.get('/therapy_coordinator/operational_management/performance_metrics', { headers });
+    const metricsRes = await client.get(
+      '/therapy_coordinator/operational_management/performance_metrics',
+      { headers },
+    );
     if (Array.isArray(metricsRes.data) && metricsRes.data.length > 0) {
       const metrics = metricsRes.data;
       const metricCompleted = metrics.reduce((acc, m) => acc + (m.sessions_completed || 0), 0);
       const metricTrials = metrics.reduce((acc, m) => acc + (m.total_trials || 0), 0);
-      const metricPending = metrics.reduce((acc, m) => acc + (m.review_status?.pending_review_count || 0), 0);
-      const metricIndep = metricTrials > 0
-        ? Math.round(metrics.reduce((acc, m) => acc + (m.total_trials || 0) * (m.average_independence_percentage || 0), 0) / metricTrials)
-        : 0;
+      const metricPending = metrics.reduce(
+        (acc, m) => acc + (m.review_status?.pending_review_count || 0),
+        0,
+      );
+      const metricIndep =
+        metricTrials > 0
+          ? Math.round(
+              metrics.reduce(
+                (acc, m) => acc + (m.total_trials || 0) * (m.average_independence_percentage || 0),
+                0,
+              ) / metricTrials,
+            )
+          : 0;
 
       if (metricCompleted > 0 || metricTrials > 0) {
         completed = metricCompleted;
@@ -490,8 +504,18 @@ export const getWeeklySummary = async (params?: QueryParams) => {
   const monday = new Date(now.getTime() - dayOfWeek * 86400000);
   const sunday = new Date(monday.getTime() + 6 * 86400000);
   const monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   const weekRange = `${monthNames[monday.getMonth()]} ${String(monday.getDate()).padStart(2, '0')} - ${monthNames[sunday.getMonth()]} ${String(sunday.getDate()).padStart(2, '0')}, ${sunday.getFullYear()}`;
 
@@ -499,9 +523,10 @@ export const getWeeklySummary = async (params?: QueryParams) => {
   const sundayStr = sunday.toISOString().split('T')[0];
   const thisWeekNotes = records.filter((n) => n.date >= mondayStr && n.date <= sundayStr);
   const sessionsThisWeek = thisWeekNotes.length;
-  const totalTrialsThisWeek = records.length > 0 && stats?.totalTrials
-    ? Math.round((stats.totalTrials / records.length) * sessionsThisWeek)
-    : 0;
+  const totalTrialsThisWeek =
+    records.length > 0 && stats?.totalTrials
+      ? Math.round((stats.totalTrials / records.length) * sessionsThisWeek)
+      : 0;
   const avgIndependenceThisWeek = stats?.avgIndependence ?? 0;
 
   return {

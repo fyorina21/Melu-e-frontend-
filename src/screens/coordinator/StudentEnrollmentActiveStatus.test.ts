@@ -183,25 +183,24 @@ describe('Student Enrollment Active Status Management', () => {
     await deleteStudentEnrollment(studentId, studentName);
 
     // 1. Verify removed from therapist assignments
-    const thStore = JSON.parse(
-      localStorage.getItem('melue_therapist_assigned_students_v1') || '{}',
-    );
+    const thStore =
+      storage.getJSONSync<Record<string, any>>('melue_therapist_assigned_students_v1', {}) || {};
     expect(thStore['Abeba Tadesse']).not.toContain(studentId);
     expect(thStore['Abeba Tadesse']).toContain('other-student-1');
 
     // 2. Verify removed from caseload assignments
-    const csStore = JSON.parse(localStorage.getItem('melue_caseload_assignments_cache') || '{}');
+    const csStore =
+      storage.getJSONSync<Record<string, any>>('melue_caseload_assignments_cache', {}) || {};
     expect(csStore['Abeba Tadesse']).not.toContain(studentId);
 
     // 3. Verify removed from director assignments
-    const dirStore = JSON.parse(
-      localStorage.getItem('melue_director_assignments_store_v1') || '{}',
-    );
+    const dirStore =
+      storage.getJSONSync<Record<string, any>>('melue_director_assignments_store_v1', {}) || {};
     expect(dirStore['dir-1'].studentIds).not.toContain(studentId);
     expect(dirStore['dir-1'].studentIds).toContain('keep-stu-2');
 
     // 4. Verify removed from IUP drafts
-    const iupDrafts = JSON.parse(localStorage.getItem('melue_iup_drafts_cache') || '{}');
+    const iupDrafts = storage.getJSONSync<Record<string, any>>('melue_iup_drafts_cache', {}) || {};
     expect(iupDrafts[studentId]).toBeUndefined();
 
     // 5. Verify assessments cleared

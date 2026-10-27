@@ -1,3 +1,4 @@
+import { unprotectStoragePayload } from '../../utils/sensitiveDataSanitizer';
 import { describe, it, expect } from 'vitest';
 import {
   PROMPT_CONFIG,
@@ -122,7 +123,8 @@ describe('sessionSummary logic and helpers', () => {
 
       const stored = localStorage.getItem('melue_session_notes_store');
       expect(stored).toBeDefined();
-      const records = JSON.parse(stored || '[]');
+      const decoded = unprotectStoragePayload(stored) || stored;
+      const records = JSON.parse(decoded || '[]');
       const match = records.find((r: any) => r.id === testSessionId);
       expect(match).toBeDefined();
       expect(match?.status).toBe('Saved');

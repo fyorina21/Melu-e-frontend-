@@ -530,7 +530,8 @@ export function setStoredSessionStudents(
   try {
     const cleanStudents = filterOutDeletedStudents(students);
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
-    const map = raw ? JSON.parse(raw) : {};
+    const decoded = raw ? unprotectStoragePayload(raw) || raw : null;
+    const map = decoded ? JSON.parse(decoded) : {};
     map[sessionId] = cleanStudents;
     if (teacherId) {
       map[`${sessionId}_${teacherId}`] = cleanStudents;

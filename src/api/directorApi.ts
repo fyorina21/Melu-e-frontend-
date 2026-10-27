@@ -4,6 +4,7 @@ import { apiBaseUrl } from './config/env';
 import { fetchDirectorToken } from './http/client';
 import type { QueryParams, Payload } from '../types';
 import { filterOutDeletedStaff } from '../utils/deletedStaffHelper';
+import { storage } from '../utils/storage';
 import {
   getPendingMasteryChecks,
   getMasteryCheckById,
@@ -692,15 +693,9 @@ export const getDirectorStudentProgress = async (
 
   // Preference Assessment
   let prefStatus = 'Not Started';
-  let clientPref: any = null;
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const rawPref =
-        localStorage.getItem(`melue_preference_assessment_${sid}`) ||
-        (alias ? localStorage.getItem(`melue_preference_assessment_${alias}`) : null);
-      if (rawPref) clientPref = JSON.parse(rawPref);
-    } catch {}
-  }
+  const clientPref: any =
+    storage.getJSONSync(`melue_preference_assessment_${sid}`, null) ||
+    (alias ? storage.getJSONSync(`melue_preference_assessment_${alias}`, null) : null);
   if (
     isExplicitlySubmitted ||
     clientPref?.status === 'submitted' ||
@@ -801,18 +796,15 @@ export const getDirectorStudentProgress = async (
     : [];
 
   let clientRecords: any[] = [];
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const rawBehav =
-        localStorage.getItem(`melue_behavior_assessment_${sid}`) ||
-        (alias ? localStorage.getItem(`melue_behavior_assessment_${alias}`) : null);
-      if (rawBehav) {
-        const parsed = JSON.parse(rawBehav);
-        if (Array.isArray(parsed.records)) clientRecords = parsed.records;
-        else if (Array.isArray(parsed.incidents)) clientRecords = parsed.incidents;
-      }
-    } catch {}
-  }
+  try {
+    const parsed: any =
+      storage.getJSONSync(`melue_behavior_assessment_${sid}`, null) ||
+      (alias ? storage.getJSONSync(`melue_behavior_assessment_${alias}`, null) : null);
+    if (parsed) {
+      if (Array.isArray(parsed.records)) clientRecords = parsed.records;
+      else if (Array.isArray(parsed.incidents)) clientRecords = parsed.incidents;
+    }
+  } catch {}
 
   const allIncidents = [...recentIncidents, ...clientRecords];
   const tally: Record<string, number> = {};

@@ -574,7 +574,7 @@ describe('Assessment Dashboard Progress Sync', () => {
     expect(isStudentAssessmentSubmitted(studentId)).toBe(true);
     expect(storage.getSync('last_assessment_student_id')).toBe(studentId);
     if (typeof localStorage !== 'undefined') {
-      expect(localStorage.getItem('last_assessment_student_id')).toBe(studentId);
+      expect(storage.getSync('last_assessment_student_id')).toBe(studentId);
     }
   });
 
@@ -999,7 +999,9 @@ describe('Assessment Dashboard Progress Sync', () => {
       progress: 100,
       status: 'submitted',
       itemsByTab: {
-        'Sensory Time': [{ id: 'item-1', name: 'Weighted blanket', durationSeconds: 300, frequency: 3 }],
+        'Sensory Time': [
+          { id: 'item-1', name: 'Weighted blanket', durationSeconds: 300, frequency: 3 },
+        ],
         'Circle Time': [{ id: 'item-2', name: 'Visual timer', durationSeconds: 180, frequency: 2 }],
         'Play Time': [{ id: 'item-3', name: 'Kinetic sand', durationSeconds: 240, frequency: 2 }],
       },
@@ -1025,9 +1027,8 @@ describe('Assessment Dashboard Progress Sync', () => {
     expect(isStudentAssessmentSubmitted(studentId)).toBe(true);
 
     // 3. Verify it displays on Program Director's AssessmentReview page with real data
-    const { getAssessmentsForReview, getAssessmentReport, getAssessmentSummaryDashboard } = await import(
-      '../../api/programDirectorApi'
-    );
+    const { getAssessmentsForReview, getAssessmentReport, getAssessmentSummaryDashboard } =
+      await import('../../api/programDirectorApi');
     const { default: client } = await import('../../api/sessionApi');
     const spy = vi.spyOn(client, 'get').mockResolvedValue({ data: [] } as any);
 
@@ -1074,7 +1075,9 @@ describe('Assessment Dashboard Progress Sync', () => {
 
       // Real Preference observations
       expect(summaryData.preference.items.length).toBeGreaterThanOrEqual(3);
-      expect(summaryData.preference.items.some((it: any) => it.item === 'Weighted blanket')).toBe(true);
+      expect(summaryData.preference.items.some((it: any) => it.item === 'Weighted blanket')).toBe(
+        true,
+      );
 
       // Real Sensory activities
       expect(summaryData.sensory.activities).toContain('Weighted blanket during circle time');
