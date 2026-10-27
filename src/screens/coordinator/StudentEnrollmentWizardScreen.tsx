@@ -482,12 +482,20 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
     'Review',
   ];
 
+  useEffect(() => {
+    const handler = () => {
+      loadFormConfig();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('melue_therapist_assignments_updated', handler);
+      return () => window.removeEventListener('melue_therapist_assignments_updated', handler);
+    }
+  }, [loadFormConfig]);
+
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
-  // Helpers for caseload checking
   const caseloadOf = (name: string) =>
     therapists.find((t) => t.name === name)?.assignedStudents?.length ?? 0;
-  // Teachers can be assigned to more than two students at a time for assessment
   const isFull = (_name: string) => false;
 
   // Single dynamic field change handler
@@ -893,7 +901,7 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       getGuardianFieldVal('enr_guardian_phone') ||
       getGuardianFieldVal('f5') ||
       getGuardianFieldVal(/phone|telephone/i) ||
-      '555-0100';
+      '090 1020 304';
     const parentEmail =
       getGuardianFieldVal('enr_guardian_email') ||
       getGuardianFieldVal('f6') ||
@@ -1016,12 +1024,15 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
         photoBase64: studentPhoto,
         photoUri: studentPhoto,
       });
-
+      loadFormConfig();
+      showToast('Student is successfully enrolled', 'success');
       if (assignedTherapist) {
         const matchingTeacher = therapists.find(
           (t) => t.name.trim().toLowerCase() === assignedTherapist.trim().toLowerCase(),
         );
+
         assignStudentToTherapist(assignedTherapist, finalStudentFullName, matchingTeacher?.id);
+
         if (createdId) {
           assignStudentToTherapist(assignedTherapist, String(createdId), matchingTeacher?.id);
         }
@@ -1046,21 +1057,33 @@ export default function StudentEnrollmentWizardScreen({ navigation }: Props) {
       // Clear draft on successful enrollment
       try {
         storage.removeSync(ENROLLMENT_DRAFT_KEY);
+
         if (typeof localStorage !== 'undefined') {
           localStorage.removeItem(ENROLLMENT_DRAFT_KEY);
         }
       } catch {}
+
       setHasSavedDraft(false);
       draftRestoredRef.current = false;
 
       showToast(`${finalStudentFullName} enrolled in ${studentProgram}`, 'success');
+
       navigateToEnrollment();
     } catch (err: unknown) {
       const errObj = err as {
         message?: string;
-        response?: { data?: { errors?: string[]; error?: string; message?: string } };
+        response?: {
+          data?: {
+            errors?: string[];
+            error?: string;
+            message?: string;
+          };
+        };
       };
+
       markStudentActive(undefined, finalStudentFullName);
+
+      // Preserve the existing error-handling logic below this point.
       saveStudentPhoto({
         name: finalStudentFullName,
         fullName: finalStudentFullName,

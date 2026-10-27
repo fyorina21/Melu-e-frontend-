@@ -247,8 +247,8 @@ export default function StudentEnrollmentScreen({ navigation }: Props) {
       setStudents(
         (rawList as unknown as EnrollmentStudentRow[]).map((row) => ({
           id: row.id,
-          name: row.fullName || row.name || '',
-          age: Number(row.age) || 6,
+          name: row.fullName,
+          age: row.age,
           gender: row.gender || '',
           program: row.programType || row.program || 'Regular',
           therapist: row.therapist || row.therapyGroup || '',
