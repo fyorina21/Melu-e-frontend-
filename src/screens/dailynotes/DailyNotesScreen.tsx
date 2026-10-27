@@ -30,6 +30,7 @@ import {
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
 import { getStudentOptions, getRoomOptions, getStaffOptions } from '../../api/optionsApi';
 import { http, fetchAdminToken, fetchDirectorToken, fetchCoordinatorToken } from '../../api/http/client';
+import { getAccessToken } from '../../api/token';
 import { downloadTextFile } from '../../utils/webExport';
 import { useToast } from '../../context/ToastContext';
 import type { SessionStackParamList } from '../../types';
@@ -70,8 +71,27 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
   const { session } = useAuth();
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
-  const [records, setRecords] = useState<NoteRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [records, setRecords] = useState<NoteRecord[]>(() => {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('melue_session_notes_store');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.filter(
+              (n: any) =>
+                n &&
+                n.id &&
+                !['sn-101', 'sn-102', 'sn-103', 'sn-104', 'sn-105'].includes(n.id)
+            );
+          }
+        }
+      } catch {}
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
+  const isFetchingRef = React.useRef(false);
   const [summary, setSummary] = useState<WeeklySummaryData | null>(null);
   const [stats, setStats] = useState<DailyNotesStats>({
     sessionsCompleted: 0,
@@ -126,6 +146,8 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
   }, [studentId]);
 
   const load = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       // 1. Fetch real student, room, staff options + teacher dashboard in parallel
       const [studentsRes, roomsRes, dashboardRes, staffRes] = await Promise.all([
@@ -156,15 +178,19 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
 
       // 2. Fetch real session summaries from the backend API
       let backendRecords: NoteRecord[] = [];
-      const adminToken = await fetchAdminToken().catch(() => null);
-      const coordinatorToken = await fetchCoordinatorToken().catch(() => null);
-      const directorToken = await fetchDirectorToken().catch(() => null);
-      const token = coordinatorToken || adminToken || directorToken;
+      const existingToken = getAccessToken();
+      const token =
+        existingToken ||
+        (await Promise.race([
+          fetchCoordinatorToken().catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), 2000)),
+        ]));
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const fastConfig = { headers, timeout: 3500 };
 
       try {
-        const res = await http.get('/therapy_coordinator/session_summaries', { headers }).catch(async () => {
-          return await http.get('/reports/session_summaries', { headers });
+        const res = await http.get('/therapy_coordinator/session_summaries', fastConfig).catch(async () => {
+          return await http.get('/reports/session_summaries', fastConfig).catch(() => null);
         });
 
         const rawSummaries = res.data?.session_summaries || res.data?.data || [];
@@ -316,7 +342,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
       let avgIndepComputed = 0;
 
       try {
-        const metricsRes = await http.get('/therapy_coordinator/operational_management/performance_metrics', { headers });
+        const metricsRes = await http.get('/therapy_coordinator/operational_management/performance_metrics', { headers, timeout: 3000 });
         if (Array.isArray(metricsRes.data) && metricsRes.data.length > 0) {
           const metrics = metricsRes.data;
           const metricCompleted = metrics.reduce((acc: number, m: any) => acc + (m.sessions_completed || 0), 0);
@@ -371,6 +397,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
       setSummary(null);
       setStudentOptions([]);
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
   }, [routeSid]);
@@ -551,7 +578,7 @@ export default function DailyNotesScreen({ navigation, route }: Props) {
     setStudentId(undefined);
   };
 
-  if (loading) return <ScreenLoader />;
+  // render immediately without full-screen blocking
 
   return (
     <SafeAreaView style={styles.safe}>

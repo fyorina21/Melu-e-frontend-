@@ -35,7 +35,7 @@ const getFallbackApiUrl = (): string => {
 export const env = {
   apiUrl: getFallbackApiUrl(),
   apiVersion: 'v1',
-  apiTimeoutMs: process.env.VITEST ? 2000 : 60_000,
+  apiTimeoutMs: process.env.VITEST ? 2000 : 8_000,
 } as const;
 
 export const apiBaseUrl = `${env.apiUrl}/api/${env.apiVersion}`;
