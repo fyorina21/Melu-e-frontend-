@@ -47,7 +47,9 @@ function SimpleLineChart({ series }: { series: ChartPoint[] }) {
   );
 }
 
-export default function GraphChartViewScreen({ navigation }: NativeStackScreenProps<ProgramDirectorStackParamList, 'GraphChartView'>) {
+export default function GraphChartViewScreen({
+  navigation,
+}: NativeStackScreenProps<ProgramDirectorStackParamList, 'GraphChartView'>) {
   const [studentId, setStudentId] = useState('student-a');
   const [chartType, setChartType] = useState<string>(CHART_TYPES[0]);
   const [data, setData] = useState<ChartData | null>(null);
@@ -58,7 +60,7 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
     getStudentOptions()
       .then(({ data: opts }) => {
         setStudentOptions(opts);
-        if (opts.length > 0 && !opts.some((o) => o.id === studentId)) {
+        if (opts.length > 0 && !opts.some((o: any) => o.id === studentId)) {
           setStudentId(opts[0].id);
         }
       })
@@ -72,23 +74,29 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
       const goalCharts = Array.isArray(raw?.goalCharts)
         ? raw.goalCharts
         : Array.isArray(raw)
-        ? raw
-        : [];
+          ? raw
+          : [];
       setData({ goalCharts });
     } catch (err) {
       setData({ goalCharts: [] });
     }
   }, [studentId, chartType]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const handleExport = async () => {
-    try { await exportChart({ studentId, chartType }); } catch (err) {}
+    try {
+      await exportChart({ studentId, chartType });
+    } catch (err) {}
     if (!data) return;
     const studentName = studentOptions.find((s) => s.id === studentId)?.name ?? studentId;
     const lines: string[] = [];
     lines.push('GRAPH & CHART VIEW EXPORT');
-    lines.push(`Student: ${studentName} · Chart type: ${chartType} · Generated: ${new Date().toLocaleDateString()}`);
+    lines.push(
+      `Student: ${studentName} · Chart type: ${chartType} · Generated: ${new Date().toLocaleDateString()}`,
+    );
     lines.push('');
     (data?.goalCharts || []).forEach((gc) => {
       lines.push(`${gc.goalName}`);
@@ -105,7 +113,10 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Reports" onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Reports"
+        onTabPress={(t) => navigation?.navigate?.(PD_ROUTE_BY_TAB[t])}
+      />
       <View style={styles.header}>
         <Text style={typography.h1}>Graph & Chart View</Text>
         <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
@@ -117,14 +128,24 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
       <View style={styles.controlsRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {studentOptions.map((s) => (
-            <TouchableOpacity key={s.id} style={[styles.chip, studentId === s.id && styles.chipSelected]} onPress={() => setStudentId(s.id)}>
-              <Text style={[styles.chipText, studentId === s.id && styles.chipTextSelected]}>{s.name}</Text>
+            <TouchableOpacity
+              key={s.id}
+              style={[styles.chip, studentId === s.id && styles.chipSelected]}
+              onPress={() => setStudentId(s.id)}
+            >
+              <Text style={[styles.chipText, studentId === s.id && styles.chipTextSelected]}>
+                {s.name}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {CHART_TYPES.map((t) => (
-            <TouchableOpacity key={t} style={[styles.chip, chartType === t && styles.chipSelected]} onPress={() => setChartType(t)}>
+            <TouchableOpacity
+              key={t}
+              style={[styles.chip, chartType === t && styles.chipSelected]}
+              onPress={() => setChartType(t)}
+            >
               <Text style={[styles.chipText, chartType === t && styles.chipTextSelected]}>{t}</Text>
             </TouchableOpacity>
           ))}
@@ -160,16 +181,47 @@ export default function GraphChartViewScreen({ navigation }: NativeStackScreenPr
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgApp },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  exportBtn: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  exportBtn: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   exportBtnText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
   controlsRow: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.bgCard },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, marginRight: spacing.xs },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.xs,
+  },
   chipSelected: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellow },
   chipText: { fontSize: 12, fontWeight: '600', color: colors.bodyText },
   chipTextSelected: { color: colors.navyText },
   content: { padding: spacing.lg, gap: spacing.lg },
-  card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
   lineChartRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs, height: 120 },
   lineChartBarWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: spacing.xs },
   lineChartBar: { width: '70%', backgroundColor: colors.promptG, borderRadius: 2 },

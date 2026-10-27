@@ -136,7 +136,7 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
 
     // 1. Director Student Progress options dropdown reflects Completed
     const studentOpts = await getStudentOptions();
-    const optMatch = studentOpts.data.find((s) => s.id === studentId);
+    const optMatch = studentOpts.data.find((s: any) => s.id === studentId);
     expect(optMatch).toBeDefined();
     expect(optMatch?.assessmentStatus).toBe('Completed');
 
@@ -283,7 +283,9 @@ describe('AssessmentSummaryReport & Student Progress Synchronization', () => {
 
     // 4. Director Student Progress options check
     const studentOpts = await getStudentOptions();
-    const optMatch = studentOpts.data.find((s) => s.id === studentId || s.name === studentName);
+    const optMatch = studentOpts.data.find(
+      (s: any) => s.id === studentId || s.name === studentName,
+    );
     expect(optMatch?.assessmentStatus).toBe('Completed');
 
     // 5. Director Student Progress check

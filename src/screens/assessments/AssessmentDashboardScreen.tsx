@@ -19,6 +19,8 @@ import {
   isStudentAssessmentSubmitted,
   isStudentAssessmentSubmittedAsync,
   isStoredAssessmentCompleted,
+  isStudentAssessment100PercentCompleted,
+  isStudent100Completed,
   saveStudentAssessmentSubmission,
   getStudentSkillsProgress,
   getStudentBehaviorProgress,
@@ -204,12 +206,14 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       window.addEventListener?.('storage', handleSync);
       window.addEventListener?.('melue_assessment_updated' as any, handleSync);
       window.addEventListener?.('melue_therapist_assignment_updated' as any, handleSync);
+      window.addEventListener?.('melue_schedule_assignments_updated' as any, handleSync);
       window.addEventListener?.('melue_student_enrolled_updated' as any, handleSync);
       window.addEventListener?.('melue_student_deleted' as any, handleSync);
       return () => {
         window.removeEventListener?.('storage', handleSync);
         window.removeEventListener?.('melue_assessment_updated' as any, handleSync);
         window.removeEventListener?.('melue_therapist_assignment_updated' as any, handleSync);
+        window.removeEventListener?.('melue_schedule_assignments_updated' as any, handleSync);
         window.removeEventListener?.('melue_student_enrolled_updated' as any, handleSync);
         window.removeEventListener?.('melue_student_deleted' as any, handleSync);
       };
@@ -328,12 +332,13 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
     let inProgressCount = 0;
 
     filteredStudents.forEach((s) => {
-      const sid = String(s.id);
-      const isSub =
-        submittedIds.has(sid) ||
-        submittedIds.has(normalizeStudentId(sid)) ||
-        isStudentAssessmentSubmitted(sid);
+      const isComp = isStudent100Completed(s, submittedIds);
+      if (isComp) {
+        completedCount++;
+        return;
+      }
 
+      const sid = String(s.id);
       const skillsData = getStudentSkillsProgress(
         sid,
         Number(s.ablls?.progress || 0),
@@ -376,32 +381,6 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
         ),
       );
 
-      const isComp =
-        isSub ||
-        isStoredAssessmentCompleted(sid) ||
-        String(s.name || '')
-          .toLowerCase()
-          .includes('jjjj') ||
-        sid.toLowerCase().includes('jjjj') ||
-        (skProg >= 100 &&
-          bhProg >= 100 &&
-          prProg >= 100 &&
-          snProg >= 100 &&
-          checkStudentAllAssessmentsCompleted(
-            sid,
-            s.ablls,
-            s.behavior,
-            skillsData,
-            behaviorData,
-            preferenceData,
-            sensoryData,
-            { requireAllFour: true },
-          ));
-      if (isComp) {
-        completedCount++;
-        return;
-      }
-
       if (
         skProg === 0 &&
         bhProg === 0 &&
@@ -424,6 +403,11 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
       inProgress: inProgressCount,
       notStarted: notStartedCount,
     };
+  }, [filteredStudents, submittedIds]);
+
+  // Students whose assessment is 100% completed are removed from the active cards list
+  const activeStudents = useMemo(() => {
+    return filteredStudents.filter((s) => !isStudent100Completed(s, submittedIds));
   }, [filteredStudents, submittedIds]);
 
   if (loadError) return <ScreenError onRetry={load} />;
@@ -480,7 +464,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
 
         <Text style={typography.h3}>Student Assessments</Text>
 
-        {filteredStudents.length === 0 ? (
+        {activeStudents.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="clipboard" size={36} color={colors.mutedText} />
             <Text style={styles.emptyStateTitle}>No Students in Assessment</Text>
@@ -490,7 +474,7 @@ export default function AssessmentDashboardScreen({ navigation }: Props) {
           </View>
         ) : (
           <View style={styles.studentsGrid}>
-            {filteredStudents.map((s) => {
+            {activeStudents.map((s) => {
               const sid = String(s.id);
               const skillsData = getStudentSkillsProgress(
                 sid,

@@ -135,9 +135,9 @@ describe('sessionSummary logic and helpers', () => {
       const whitespaceNote = '   ';
       const validNote = 'Student was attentive';
 
-      expect(Boolean(emptyNote && emptyNote.trim().length > 0)).toBe(false);
-      expect(Boolean(whitespaceNote && whitespaceNote.trim().length > 0)).toBe(false);
-      expect(Boolean(validNote && validNote.trim().length > 0)).toBe(true);
+      expect(emptyNote.trim().length > 0).toBe(false);
+      expect(whitespaceNote.trim().length > 0).toBe(false);
+      expect(validNote.trim().length > 0).toBe(true);
     });
   });
 });

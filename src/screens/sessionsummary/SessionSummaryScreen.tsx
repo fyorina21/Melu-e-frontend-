@@ -519,7 +519,9 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
 
       // 4. Submit to backend if available
       if (sessionId) {
-        await submitSessionSummary(sessionId, { notes: trimmedNotes, status: 'saved' }).catch(() => null);
+        await submitSessionSummary(sessionId, { notes: trimmedNotes, status: 'saved' }).catch(
+          () => null,
+        );
       }
 
       resetSessionTimer();
@@ -531,9 +533,9 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
           { text: 'Stay Here', style: 'cancel' },
           {
             text: 'View Daily Notes',
-            onPress: () => navigation?.navigate?.('DailyNotes'),
+            onPress: () => navigation?.navigate?.('DailyNotes' as never),
           },
-        ]
+        ],
       );
     } catch (err) {
       setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
@@ -583,17 +585,13 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       }
 
       showToast('Session notes saved and resubmitted for review', 'success');
-      Alert.alert(
-        'Notes Saved',
-        'Session notes have been saved and displayed on Daily Notes.',
-        [
-          { text: 'Stay Here', style: 'cancel' },
-          {
-            text: 'View Daily Notes',
-            onPress: () => navigation?.navigate?.('DailyNotes'),
-          },
-        ]
-      );
+      Alert.alert('Notes Saved', 'Session notes have been saved and displayed on Daily Notes.', [
+        { text: 'Stay Here', style: 'cancel' },
+        {
+          text: 'View Daily Notes',
+          onPress: () => navigation?.navigate?.('DailyNotes' as never),
+        },
+      ]);
     } catch {
       showToast('Resubmitted and saved locally', 'info');
     }
