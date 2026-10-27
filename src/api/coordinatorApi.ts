@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   isStoredAssessmentCompleted,
   isStudentAssessmentSubmitted,
@@ -11,11 +12,7 @@ import { getEnrollmentDraft, saveEnrollmentDraft } from '../utils/enrollmentDraf
 import { registerStudentStatuses } from '../utils/studentLifecycleHelper';
 import { saveStudentPhoto } from '../utils/studentPhotoHelper';
 import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
-import {
-  DEMOGRAPHIC_KEY,
-  getStudentDemographic,
-  maskSensitiveDemographic,
-} from '../utils/sensitiveDataSanitizer';
+import { DEMOGRAPHIC_KEY, getStudentDemographic } from '../utils/sensitiveDataSanitizer';
 export {
   getProgramOptions,
   getTherapyGroupOptions,
@@ -304,7 +301,7 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
       const d = res.data;
       const teachers = Array.isArray(d.teachers) ? d.teachers : [];
       const blocks = Array.isArray(d.blocks) ? d.blocks : [];
-      const currentBlock = blocks.find((b: any) => b.is_current) || blocks[0];
+      const _currentBlock = blocks.find((b: any) => b.is_current) || blocks[0];
 
       const liveSessions: any[] = [];
       teachers.forEach((t: any, idx: number) => {
@@ -1246,7 +1243,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
 // SCR-TC-006: Parent Communication (Coordinator View)
 // ============================================================================
 export const getCoordinatorConversations = async (
-  params?: QueryParams,
+  _params?: QueryParams,
 ): Promise<{ data: any[] }> => {
   try {
     const { data: students } = await client.get<any[]>('/options/students');
@@ -2125,7 +2122,6 @@ export const markCoordinatorNotificationRead = async (
 import {
   recordDeletedStudent as recordDeletedStudentHelper,
   isStudentDeleted as isStudentDeletedHelper,
-  filterOutDeletedStudents,
 } from '../utils/deletedStudentHelper';
 
 export { isStudentDeletedHelper as isStudentDeleted };

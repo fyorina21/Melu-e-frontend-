@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import storage from '../../utils/storage';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -10,7 +11,6 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Image,
-  Platform,
   Modal,
   Switch,
 } from 'react-native';
@@ -405,43 +405,42 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
   }, [loadFormConfig]);
 
   // Dynamically map wizard steps directly to sections authored in the schema
-  const deletedSet = new Set((deletedSections || []).map((s) => s.toLowerCase().trim()));
+  const { activeSections, includeTherapistStep, steps } = React.useMemo(() => {
+    const deletedSet = new Set((deletedSections || []).map((s) => s.toLowerCase().trim()));
+    const active: string[] = [];
 
-  const activeSections: string[] = [];
+    (customSections || []).forEach((sec) => {
+      const s = (sec || '').trim();
+      if (
+        s &&
+        !deletedSet.has(s.toLowerCase()) &&
+        !active.some((a) => a.toLowerCase() === s.toLowerCase()) &&
+        !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
+      ) {
+        active.push(s);
+      }
+    });
 
-  // 1. From customSections defined in schema
-  (customSections || []).forEach((sec) => {
-    const s = (sec || '').trim();
-    if (
-      s &&
-      !deletedSet.has(s.toLowerCase()) &&
-      !activeSections.some((a) => a.toLowerCase() === s.toLowerCase()) &&
-      !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
-    ) {
-      activeSections.push(s);
-    }
-  });
+    (formFields || []).forEach((f: any) => {
+      const s = (f.section || 'General').trim();
+      if (
+        s &&
+        !deletedSet.has(s.toLowerCase()) &&
+        !active.some((a) => a.toLowerCase() === s.toLowerCase()) &&
+        !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
+      ) {
+        active.push(s);
+      }
+    });
 
-  // 2. From section attributes on fields, preserving schema ordering
-  (formFields || []).forEach((f: any) => {
-    const s = (f.section || 'General').trim();
-    if (
-      s &&
-      !deletedSet.has(s.toLowerCase()) &&
-      !activeSections.some((a) => a.toLowerCase() === s.toLowerCase()) &&
-      !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
-    ) {
-      activeSections.push(s);
-    }
-  });
+    const incTherapist = !deletedSet.has('assign therapist');
 
-  const includeTherapistStep = !deletedSet.has('assign therapist');
-
-  const steps = [
-    ...activeSections,
-    ...(includeTherapistStep ? ['Assign Therapist'] : []),
-    'Review',
-  ];
+    return {
+      activeSections: active,
+      includeTherapistStep: incTherapist,
+      steps: [...active, ...(incTherapist ? ['Assign Therapist'] : []), 'Review'],
+    };
+  }, [deletedSections, customSections, formFields]);
 
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
@@ -470,7 +469,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
     const t = therapists.find((th) => th.name === name);
     return t ? ((t as any).assignedStudentCount ?? t.assignedStudents?.length ?? 0) : 0;
   };
-  const isFull = (_name: string) => false;
+  const _isFull = (_name: string) => false;
 
   // Single dynamic field change handler
   const handleFieldChange = (fieldId: string, value: any) => {
