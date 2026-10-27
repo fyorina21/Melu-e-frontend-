@@ -140,7 +140,9 @@ export function normalizeAssessmentItem(item: any): AssessmentListItem {
   const abllsPct = !isNaN(rawPct) ? Math.min(100, Math.max(0, Math.round(rawPct))) : 0;
 
   const studentId = String(item.studentId ?? item.student_id ?? item.id ?? '');
-  const studentName = String(item.studentName ?? item.student_name ?? item.name ?? 'Unknown Student');
+  const studentName = String(
+    item.studentName ?? item.student_name ?? item.name ?? 'Unknown Student',
+  );
   const normStatus = normalizeStatus(item.status);
 
   const aliases = [studentId, ...getStudentIdAliases(studentId), studentName].filter(Boolean);
@@ -165,14 +167,36 @@ export function normalizeAssessmentItem(item: any): AssessmentListItem {
     !isCompleted &&
     (abllsPct > 0 ||
       normStatus === 'In Progress' ||
-      String(item.behaviorStatus || '').toLowerCase().includes('progress') ||
-      String(item.status || '').toLowerCase().includes('progress') ||
-      String(item.status || '').toLowerCase().includes('assessment'));
+      String(item.behaviorStatus || '')
+        .toLowerCase()
+        .includes('progress') ||
+      String(item.status || '')
+        .toLowerCase()
+        .includes('progress') ||
+      String(item.status || '')
+        .toLowerCase()
+        .includes('assessment'));
 
-  const status = isReviewed ? 'Reviewed' : isCompleted ? 'Complete' : hasProgress ? 'In Progress' : 'Not Started';
-  const finalAbllsPct = isCompleted ? (abllsPct || 100) : abllsPct;
-  const behaviorStatus = isCompleted ? 'completed' : String(item.behaviorStatus ?? item.behavior_assessment ?? (hasProgress ? 'in_progress' : 'notStarted'));
-  const dateCompleted = item.dateCompleted ?? item.completed_at ?? item.completed_on ?? (isCompleted ? new Date().toISOString().slice(0, 10) : null);
+  const status = isReviewed
+    ? 'Reviewed'
+    : isCompleted
+      ? 'Complete'
+      : hasProgress
+        ? 'In Progress'
+        : 'Not Started';
+  const finalAbllsPct = isCompleted ? abllsPct || 100 : abllsPct;
+  const behaviorStatus = isCompleted
+    ? 'completed'
+    : String(
+        item.behaviorStatus ??
+          item.behavior_assessment ??
+          (hasProgress ? 'in_progress' : 'notStarted'),
+      );
+  const dateCompleted =
+    item.dateCompleted ??
+    item.completed_at ??
+    item.completed_on ??
+    (isCompleted ? new Date().toISOString().slice(0, 10) : null);
 
   return {
     studentId,
@@ -203,7 +227,10 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
           code: String(d.code || d.domain_code || ''),
           name: String(d.name || d.domain_name || ''),
           items: Array.isArray(d.items) ? d.items : [],
-          scoredCount: Math.max(0, Number(d.scoredCount ?? d.completed_items ?? d.scored_count ?? 0)),
+          scoredCount: Math.max(
+            0,
+            Number(d.scoredCount ?? d.completed_items ?? d.scored_count ?? 0),
+          ),
           total: Math.max(0, Number(d.total ?? d.total_items ?? 0)),
         }))
       : [];
@@ -233,7 +260,12 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
       const sname = String(student.name ?? student.full_name ?? res?.studentName ?? '');
       const norm = normalizeStatus(assessment.status ?? res?.status);
       if (norm === 'Reviewed') return 'Reviewed';
-      if (isStoredAssessmentCompleted(sid) || sname.toLowerCase().includes('jjjj') || sid.toLowerCase().includes('jjjj') || norm === 'Complete') {
+      if (
+        isStoredAssessmentCompleted(sid) ||
+        sname.toLowerCase().includes('jjjj') ||
+        sid.toLowerCase().includes('jjjj') ||
+        norm === 'Complete'
+      ) {
         return 'Complete';
       }
       return norm;
@@ -242,7 +274,11 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
     skillsStatus: (() => {
       const sid = String(student.id ?? res?.studentId ?? '');
       const sname = String(student.name ?? student.full_name ?? res?.studentName ?? '');
-      if (isStoredAssessmentCompleted(sid) || sname.toLowerCase().includes('jjjj') || sid.toLowerCase().includes('jjjj')) {
+      if (
+        isStoredAssessmentCompleted(sid) ||
+        sname.toLowerCase().includes('jjjj') ||
+        sid.toLowerCase().includes('jjjj')
+      ) {
         return 'completed';
       }
       return String(skills.status ?? res?.skillsStatus ?? 'not_started');
@@ -254,7 +290,11 @@ export function normalizeAssessmentReport(res: any): AssessmentReport {
     behaviorStatus: (() => {
       const sid = String(student.id ?? res?.studentId ?? '');
       const sname = String(student.name ?? student.full_name ?? res?.studentName ?? '');
-      if (isStoredAssessmentCompleted(sid) || sname.toLowerCase().includes('jjjj') || sid.toLowerCase().includes('jjjj')) {
+      if (
+        isStoredAssessmentCompleted(sid) ||
+        sname.toLowerCase().includes('jjjj') ||
+        sid.toLowerCase().includes('jjjj')
+      ) {
         return 'completed';
       }
       return String(behavior.status ?? res?.behaviorStatus ?? 'not_started');

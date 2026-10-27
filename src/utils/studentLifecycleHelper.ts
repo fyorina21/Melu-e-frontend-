@@ -182,7 +182,9 @@ export async function saveStudentAssessmentSubmission(
     const existingSubmitted = storage.getJSONSync<any[]>(SUBMITTED_STUDENTS_LIST_KEY, []) || [];
     const filteredSubmitted = existingSubmitted.filter((s: any) => {
       const existingId = String(s.id || s.studentId || '').trim();
-      const existingName = String(s.name || s.fullName || '').trim().toLowerCase();
+      const existingName = String(s.name || s.fullName || '')
+        .trim()
+        .toLowerCase();
       return (
         existingId !== sid &&
         !aliases.includes(existingId) &&

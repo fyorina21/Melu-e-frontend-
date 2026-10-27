@@ -74,34 +74,34 @@ interface DashboardData {
 /* ------------------------------------------------------------------ */
 
 const STAGE_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  enrolled:              { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151', dot: '#9CA3AF' },
-  'not-started':         { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151', dot: '#9CA3AF' },
-  'in-assessment':       { bg: '#FEF3C7', border: '#FCD34D', text: '#92400E', dot: '#F59E0B' },
+  enrolled: { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151', dot: '#9CA3AF' },
+  'not-started': { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151', dot: '#9CA3AF' },
+  'in-assessment': { bg: '#FEF3C7', border: '#FCD34D', text: '#92400E', dot: '#F59E0B' },
   'assessment-complete': { bg: '#DBEAFE', border: '#93C5FD', text: '#1E40AF', dot: '#3B82F6' },
-  'session-assigned':    { bg: '#EDE9FE', border: '#C4B5FD', text: '#5B21B6', dot: '#8B5CF6' },
-  'in-session':          { bg: '#D1FAE5', border: '#6EE7B7', text: '#065F46', dot: '#10B981' },
+  'session-assigned': { bg: '#EDE9FE', border: '#C4B5FD', text: '#5B21B6', dot: '#8B5CF6' },
+  'in-session': { bg: '#D1FAE5', border: '#6EE7B7', text: '#065F46', dot: '#10B981' },
 };
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  'Not Started':          { bg: '#F3F4F6', text: '#6B7280' },
-  'In Assessment':        { bg: '#FEF3C7', text: '#B45309' },
-  'In Progress':          { bg: '#FEF3C7', text: '#B45309' },
+  'Not Started': { bg: '#F3F4F6', text: '#6B7280' },
+  'In Assessment': { bg: '#FEF3C7', text: '#B45309' },
+  'In Progress': { bg: '#FEF3C7', text: '#B45309' },
   'Assessment Completed': { bg: '#DBEAFE', text: '#2563EB' },
-  'Assessment Complete':  { bg: '#DBEAFE', text: '#2563EB' },
-  'Complete':             { bg: '#DBEAFE', text: '#2563EB' },
-  'Reviewed':             { bg: '#D1FAE5', text: '#059669' },
-  'Ready for IUP':        { bg: '#DBEAFE', text: '#1E40AF' },
-  'Session Assigned':     { bg: '#EDE9FE', text: '#7C3AED' },
-  'In Session':           { bg: '#D1FAE5', text: '#059669' },
+  'Assessment Complete': { bg: '#DBEAFE', text: '#2563EB' },
+  Complete: { bg: '#DBEAFE', text: '#2563EB' },
+  Reviewed: { bg: '#D1FAE5', text: '#059669' },
+  'Ready for IUP': { bg: '#DBEAFE', text: '#1E40AF' },
+  'Session Assigned': { bg: '#EDE9FE', text: '#7C3AED' },
+  'In Session': { bg: '#D1FAE5', text: '#059669' },
 };
 
 const FILTER_OPTIONS = [
-  { key: 'all',                 label: 'All Students' },
-  { key: 'enrolled',            label: 'Not Started' },
-  { key: 'in-assessment',      label: 'In Assessment' },
-  { key: 'assessment-complete',  label: 'Assessment Complete' },
-  { key: 'session-assigned',    label: 'Session Assigned' },
-  { key: 'in-session',          label: 'In Session' },
+  { key: 'all', label: 'All Students' },
+  { key: 'enrolled', label: 'Not Started' },
+  { key: 'in-assessment', label: 'In Assessment' },
+  { key: 'assessment-complete', label: 'Assessment Complete' },
+  { key: 'session-assigned', label: 'Session Assigned' },
+  { key: 'in-session', label: 'In Session' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -125,9 +125,7 @@ function matchesStage(student: DashboardStudent, filterKey: string): boolean {
       );
     case 'in-assessment':
       return (
-        currentStage === 'in-assessment' ||
-        status === 'in assessment' ||
-        status === 'in progress'
+        currentStage === 'in-assessment' || status === 'in assessment' || status === 'in progress'
       );
     case 'assessment-complete':
       return (
@@ -139,15 +137,9 @@ function matchesStage(student: DashboardStudent, filterKey: string): boolean {
         status === 'reviewed'
       );
     case 'session-assigned':
-      return (
-        currentStage === 'session-assigned' ||
-        status === 'session assigned'
-      );
+      return currentStage === 'session-assigned' || status === 'session assigned';
     case 'in-session':
-      return (
-        currentStage === 'in-session' ||
-        status === 'in session'
-      );
+      return currentStage === 'in-session' || status === 'in session';
     default:
       return currentStage === filterKey;
   }
@@ -273,7 +265,6 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safe}>
       <AppNavbar activeTab="Dashboard" onTabPress={goto} />
       <ScrollView contentContainerStyle={styles.content}>
-
         {/* ── Header ────────────────────────────────────────────── */}
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
@@ -292,9 +283,7 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
             <Feather name="bell" size={20} color={colors.navyText} />
             {badgeCount > 0 && (
               <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>
-                  {badgeCount > 99 ? '99+' : badgeCount}
-                </Text>
+                <Text style={styles.notifBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -393,9 +382,7 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
 
         {/* ── Workflow Pipeline ─────────────────────────────────── */}
         <View style={styles.card}>
-          <Text style={[typography.h3, { marginBottom: spacing.md }]}>
-            Student Workflow
-          </Text>
+          <Text style={[typography.h3, { marginBottom: spacing.md }]}>Student Workflow</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -416,7 +403,10 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
                   <TouchableOpacity
                     style={[
                       styles.pipelineStage,
-                      { backgroundColor: c.bg, borderColor: isSelected ? colors.primaryBlue : c.border },
+                      {
+                        backgroundColor: c.bg,
+                        borderColor: isSelected ? colors.primaryBlue : c.border,
+                      },
                       isSelected && styles.pipelineStageSelected,
                     ]}
                     onPress={() => setFilter(filter === stage.key ? 'all' : stage.key)}
@@ -426,9 +416,7 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
                     accessibilityHint={`Filter student list by ${displayName}`}
                   >
                     <View style={[styles.pipelineDot, { backgroundColor: c.dot }]} />
-                    <Text style={[styles.pipelineStageName, { color: c.text }]}>
-                      {displayName}
-                    </Text>
+                    <Text style={[styles.pipelineStageName, { color: c.text }]}>{displayName}</Text>
                     <Text style={[styles.pipelineStageCount, { color: c.text }]}>
                       {stage.count}
                     </Text>
@@ -510,7 +498,12 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
 
               {filteredStudents.length === 0 ? (
                 <View style={styles.emptyContainer}>
-                  <Feather name="users" size={28} color={colors.mutedText} style={{ marginBottom: spacing.xs }} />
+                  <Feather
+                    name="users"
+                    size={28}
+                    color={colors.mutedText}
+                    style={{ marginBottom: spacing.xs }}
+                  />
                   <Text style={styles.emptyText}>No students match the current filters.</Text>
                   {(filter !== 'all' || search.trim() !== '') && (
                     <TouchableOpacity
@@ -582,10 +575,14 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
           <View style={[styles.card, styles.bottomCard]}>
             <Text style={[typography.h3, { marginBottom: spacing.md }]}>Actions</Text>
             {[
-              { label: 'Review Assessments', icon: 'clipboard'   as const, tab: 'Assessment Review' },
-              { label: 'Review IUPs',        icon: 'file-text'   as const, tab: 'IUP Library Management' },
-              { label: 'View Students',      icon: 'users'       as const, tab: 'Student Caseload Management' },
-              { label: 'View Reports',       icon: 'bar-chart-2' as const, tab: 'Reports' },
+              { label: 'Review Assessments', icon: 'clipboard' as const, tab: 'Assessment Review' },
+              { label: 'Review IUPs', icon: 'file-text' as const, tab: 'IUP Library Management' },
+              {
+                label: 'View Students',
+                icon: 'users' as const,
+                tab: 'Student Caseload Management',
+              },
+              { label: 'View Reports', icon: 'bar-chart-2' as const, tab: 'Reports' },
             ].map((a) => (
               <TouchableOpacity
                 key={a.label}
@@ -606,16 +603,34 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
           <View style={[styles.card, styles.bottomCard]}>
             <View style={styles.sectionIconHeader}>
               <Feather name="activity" size={16} color={colors.purple} />
-              <Text style={[typography.h3, { marginLeft: spacing.xs }]}>
-                Clinical Overview
-              </Text>
+              <Text style={[typography.h3, { marginLeft: spacing.xs }]}>Clinical Overview</Text>
             </View>
             {[
-              { label: 'Active Students',    value: data.clinicalOverview?.activeStudents ?? 0,    icon: 'users'        as const },
-              { label: 'Assessments Pending', value: data.clinicalOverview?.assessmentsPending ?? 0, icon: 'clipboard'    as const },
-              { label: 'Sessions Assigned',   value: data.clinicalOverview?.sessionsAssigned ?? 0,   icon: 'calendar'     as const },
-              { label: 'Completed Sessions',  value: data.clinicalOverview?.completedSessions ?? 0,  icon: 'check-circle' as const },
-              { label: 'Goals in Progress',   value: data.clinicalOverview?.goalsInProgress ?? 0,    icon: 'target'       as const },
+              {
+                label: 'Active Students',
+                value: data.clinicalOverview?.activeStudents ?? 0,
+                icon: 'users' as const,
+              },
+              {
+                label: 'Assessments Pending',
+                value: data.clinicalOverview?.assessmentsPending ?? 0,
+                icon: 'clipboard' as const,
+              },
+              {
+                label: 'Sessions Assigned',
+                value: data.clinicalOverview?.sessionsAssigned ?? 0,
+                icon: 'calendar' as const,
+              },
+              {
+                label: 'Completed Sessions',
+                value: data.clinicalOverview?.completedSessions ?? 0,
+                icon: 'check-circle' as const,
+              },
+              {
+                label: 'Goals in Progress',
+                value: data.clinicalOverview?.goalsInProgress ?? 0,
+                icon: 'target' as const,
+              },
             ].map((m) => (
               <View
                 key={m.label}
@@ -637,25 +652,31 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
           <View style={styles.sectionHeader}>
             <Text style={typography.h3}>Recent Activity</Text>
             <Text style={typography.caption}>
-              {data.recentActivity?.length ?? 0} event{(data.recentActivity?.length ?? 0) !== 1 ? 's' : ''}
+              {data.recentActivity?.length ?? 0} event
+              {(data.recentActivity?.length ?? 0) !== 1 ? 's' : ''}
             </Text>
           </View>
 
-          {(!data.recentActivity || data.recentActivity.length === 0) ? (
+          {!data.recentActivity || data.recentActivity.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Feather name="clock" size={24} color={colors.mutedText} style={{ marginBottom: spacing.xs }} />
+              <Feather
+                name="clock"
+                size={24}
+                color={colors.mutedText}
+                style={{ marginBottom: spacing.xs }}
+              />
               <Text style={styles.emptyText}>No recent activity recorded.</Text>
             </View>
           ) : (
             data.recentActivity.map((a, i) => {
               const iconColor =
-                a.type === 'session' ? '#10B981'
-                : a.type === 'incident' ? '#EF4444'
-                : '#F59E0B';
+                a.type === 'session' ? '#10B981' : a.type === 'incident' ? '#EF4444' : '#F59E0B';
               const iconName =
-                a.type === 'session' ? 'check-circle'
-                : a.type === 'incident' ? 'alert-circle'
-                : 'clipboard';
+                a.type === 'session'
+                  ? 'check-circle'
+                  : a.type === 'incident'
+                    ? 'alert-circle'
+                    : 'clipboard';
               return (
                 <View
                   key={i}
@@ -665,14 +686,15 @@ export default function ProgramDirectorDashboardScreen({ navigation }: Props) {
                   <View style={[styles.activityIcon, { backgroundColor: iconColor + '18' }]}>
                     <Feather name={iconName as any} size={12} color={iconColor} />
                   </View>
-                  <Text style={styles.activityText} numberOfLines={1}>{a.text}</Text>
+                  <Text style={styles.activityText} numberOfLines={1}>
+                    {a.text}
+                  </Text>
                   <Text style={styles.activityTime}>{a.time}</Text>
                 </View>
               );
             })
           )}
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -690,27 +712,44 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   notifBell: { position: 'relative', padding: spacing.sm },
   notifBadge: {
-    position: 'absolute', top: 2, right: 0,
-    backgroundColor: '#EF4444', borderRadius: 8, minWidth: 16, height: 16,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+    position: 'absolute',
+    top: 2,
+    right: 0,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
   },
   notifBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
 
   /* Notifications */
   notifPanel: {
-    backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
   notifHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   notifHeaderText: { fontSize: 13, fontWeight: '600', color: colors.navyText },
   notifClose: { fontSize: 12, color: colors.mutedText },
   notifRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   notifRowUrgent: { backgroundColor: '#FEF2F2' },
   notifDot: { width: 6, height: 6, borderRadius: 3 },
@@ -722,22 +761,34 @@ const styles = StyleSheet.create({
   /* Stats */
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   statCard: {
-    flexGrow: 1, flexBasis: '22%', minWidth: 140,
-    backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
+    flexGrow: 1,
+    flexBasis: '22%',
+    minWidth: 140,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     ...makeShadow(1, 3, 0.04, '0, 0, 0', 1),
   },
   statIconBg: {
-    width: 36, height: 36, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
   statValue: { fontSize: 24, fontWeight: '700', color: colors.navyText },
   statLabel: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
 
   /* Card */
   card: {
-    backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     ...makeShadow(1, 3, 0.04, '0, 0, 0', 1),
   },
 
@@ -745,9 +796,12 @@ const styles = StyleSheet.create({
   pipelineScroll: { paddingVertical: spacing.xs, alignItems: 'center' },
   pipelineItem: { flexDirection: 'row', alignItems: 'center' },
   pipelineStage: {
-    alignItems: 'center', borderRadius: radius.md,
-    paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
-    minWidth: 96, borderWidth: 1,
+    alignItems: 'center',
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    minWidth: 96,
+    borderWidth: 1,
   },
   pipelineStageSelected: {
     borderWidth: 2,
@@ -770,63 +824,88 @@ const styles = StyleSheet.create({
   filterChipsScroll: { flexGrow: 0 },
   filterChips: { flexDirection: 'row', gap: spacing.xs },
   chip: {
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.bgCard,
   },
   chipActive: { backgroundColor: colors.navyText, borderColor: colors.navyText },
   chipText: { fontSize: 12, fontWeight: '500', color: colors.bodyText },
   chipTextActive: { color: '#FFF' },
   searchBox: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.bgCard, borderRadius: radius.pill,
-    borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    gap: spacing.xs, minWidth: 160, flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+    minWidth: 160,
+    flexGrow: 1,
   },
   searchInput: { fontSize: 12, color: colors.navyText, flex: 1, padding: 0 },
 
   /* Table */
   tableResponsiveContainer: { minWidth: 540, width: '100%' },
   sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   tableHeader: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     marginBottom: spacing.xs,
   },
   th: {
-    fontSize: 10, fontWeight: '700', color: colors.mutedText,
-    textTransform: 'uppercase', letterSpacing: 0.5,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   tableRow: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: spacing.md,
-    borderBottomWidth: 1, borderBottomColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F9FAFB',
   },
   cell: { fontSize: 12, color: colors.bodyText },
   cellIcon: { alignItems: 'center', justifyContent: 'center' },
   cellName: { fontSize: 13, fontWeight: '600', color: colors.navyText },
   cellSub: { fontSize: 11, color: colors.mutedText, marginTop: 1 },
   badge: {
-    borderRadius: radius.pill, paddingVertical: 3,
-    paddingHorizontal: spacing.sm, alignItems: 'center',
+    borderRadius: radius.pill,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
   },
   badgeText: { fontSize: 10, fontWeight: '600' },
   emptyContainer: {
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: spacing.xl,
   },
   emptyText: {
-    fontSize: 13, color: colors.mutedText,
+    fontSize: 13,
+    color: colors.mutedText,
     textAlign: 'center',
   },
   clearFilterBtn: {
-    marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
-    backgroundColor: '#EFF6FF', borderRadius: radius.pill,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: '#EFF6FF',
+    borderRadius: radius.pill,
   },
   clearFilterText: { fontSize: 12, fontWeight: '600', color: colors.primaryBlue },
 
@@ -836,20 +915,28 @@ const styles = StyleSheet.create({
 
   /* Actions */
   actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1, borderBottomColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F9FAFB',
   },
   actionLabel: { fontSize: 13, fontWeight: '500', color: colors.primaryBlue, flex: 1 },
 
   /* Clinical */
   sectionIconHeader: {
-    flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   clinicalRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F9FAFB',
   },
   clinicalLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   clinicalLabel: { fontSize: 12, color: colors.bodyText },
@@ -857,12 +944,17 @@ const styles = StyleSheet.create({
 
   /* Activity */
   activityRow: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: spacing.sm, paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   activityIcon: {
-    width: 26, height: 26, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   activityText: { fontSize: 12, color: colors.bodyText, flex: 1 },
   activityTime: { fontSize: 11, color: colors.mutedText },
