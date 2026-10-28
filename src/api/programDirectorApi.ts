@@ -16,7 +16,14 @@ import { unprotectStoragePayload } from '../utils/sensitiveDataSanitizer';
 // ============================================================================
 // Storage Keys
 // ============================================================================
-const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
+import {
+  IUP_DRAFTS_STORAGE_KEY,
+  getAllStoredIupDrafts,
+  getStoredIupDraft,
+  storeIupDraftLocally,
+} from '../utils/iupDraftStorage';
+
+export { IUP_DRAFTS_STORAGE_KEY, getAllStoredIupDrafts, getStoredIupDraft, storeIupDraftLocally };
 const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
 const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
 const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
@@ -327,35 +334,6 @@ const DEFAULT_IUP_LIBRARY = [
 // ============================================================================
 // Local Storage Helper Functions (Synchronous & Cross-Platform Safe)
 // ============================================================================
-export function getAllStoredIupDrafts(): Record<string, Payload> {
-  return storage.getJSONSync<Record<string, Payload>>(IUP_DRAFTS_STORAGE_KEY, {}) || {};
-}
-
-export function getStoredIupDraft(id: string): Payload | null {
-  const all = getAllStoredIupDrafts();
-  return all[id] || null;
-}
-
-export function storeIupDraftLocally(id: string, payload: Payload): void {
-  try {
-    const all = getAllStoredIupDrafts();
-    const entry = {
-      ...(all[id] || {}),
-      ...payload,
-      saved_at: new Date().toISOString(),
-    };
-    all[id] = entry;
-    if (payload.studentId && typeof payload.studentId === 'string') {
-      all[payload.studentId] = entry;
-    }
-    if (payload.student_id && typeof payload.student_id === 'string') {
-      all[payload.student_id] = entry;
-    }
-    storage.setJSONSync(IUP_DRAFTS_STORAGE_KEY, all);
-  } catch (err) {
-    console.warn('Failed to cache IUP draft locally', err);
-  }
-}
 
 function getStoredReviewedMap(): Record<
   string,
