@@ -84,6 +84,8 @@ export type ProgramDirectorStackParamList = {
   AssessmentDashboard: undefined;
   SessionDataCollection: { sessionId?: string; students?: any[]; teacherId?: string } | undefined;
   GoalDomainDefinitions?: undefined;
+  ReportsOversight?: undefined;
+  SessionSummaryReview?: undefined;
 };
 
 export type InstitutionalAdminStackParamList = {

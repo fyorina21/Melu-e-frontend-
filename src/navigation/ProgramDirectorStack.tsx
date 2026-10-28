@@ -18,6 +18,8 @@ import AssessmentDashboardScreen from '../screens/assessments/AssessmentDashboar
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 import SessionDataCollectionScreen from '../screens/session/SessionDataCollectionScreen';
 import GoalDomainDefinitionsScreen from '../screens/institutionaladmin/GoalDomainDefinitionsScreen';
+import ReportsOversightScreen from '../screens/director/ReportsOversightScreen';
+import SessionSummaryReviewScreen from '../screens/coordinator/SessionSummaryReviewScreen';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { withModuleGuard } from '../auth/withModuleGuard';
@@ -41,6 +43,8 @@ const GuardedAssessmentDashboard = withModuleGuard(AssessmentDashboardScreen, 'a
 const GuardedSessionDataCollection = withModuleGuard(SessionDataCollectionScreen, 'sessions');
 const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
 const GuardedGoalDomainDefinitions = withModuleGuard(GoalDomainDefinitionsScreen, 'iups');
+const GuardedReportsOversight = withModuleGuard(ReportsOversightScreen, 'reports');
+const GuardedSessionSummaryReview = withModuleGuard(SessionSummaryReviewScreen, 'sessions');
 
 const Stack = createNativeStackNavigator<ProgramDirectorStackParamList>();
 
@@ -73,6 +77,11 @@ export default function ProgramDirectorStack() {
         <Stack.Screen
           name="GoalDomainDefinitions"
           component={GuardedGoalDomainDefinitions as never}
+        />
+        <Stack.Screen name="ReportsOversight" component={GuardedReportsOversight as never} />
+        <Stack.Screen
+          name="SessionSummaryReview"
+          component={GuardedSessionSummaryReview as never}
         />
       </Stack.Navigator>
     </ErrorBoundary>
