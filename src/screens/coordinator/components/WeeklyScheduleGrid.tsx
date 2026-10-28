@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
-import { type Teacher, type Cell, DAYS } from '../scheduleTypes';
+import { type Teacher, type Cell, DAYS, getTeacherInitials } from '../scheduleTypes';
 
 export function StationChip({ station }: { station: string }) {
   const isStation1 = station === 'Station 1';
@@ -47,9 +47,7 @@ export function WeeklyScheduleGrid({
             <View key={teacher.id} style={styles.gridRow}>
               <View style={[styles.teacherCell, styles.gridFirstCol]}>
                 <View style={styles.avatarSmall}>
-                  <Text style={styles.avatarSmallText}>
-                    {(teacher?.name || 'Teacher').trim().slice(-1).toUpperCase()}
-                  </Text>
+                  <Text style={styles.avatarSmallText}>{getTeacherInitials(teacher?.name)}</Text>
                 </View>
                 <View>
                   <Text style={styles.gridTeacherName}>{teacher?.name || 'Teacher'}</Text>

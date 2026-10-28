@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../theme/colors';
 import type { Teacher } from '../scheduleTypes';
+import { getTeacherInitials } from '../scheduleTypes';
 
 function KpiCard({
   label,
@@ -48,9 +49,7 @@ export function TeacherMetricsCard({
       <View style={styles.metricHeader}>
         <View style={styles.metricHeaderLeft}>
           <View style={styles.avatarMedium}>
-            <Text style={styles.avatarMediumText}>
-              {(teacher?.name || 'Teacher').trim().slice(-1).toUpperCase()}
-            </Text>
+            <Text style={styles.avatarMediumText}>{getTeacherInitials(teacher?.name)}</Text>
           </View>
           <View>
             <Text style={styles.metricTeacherName}>{teacher?.name || 'Teacher'}</Text>

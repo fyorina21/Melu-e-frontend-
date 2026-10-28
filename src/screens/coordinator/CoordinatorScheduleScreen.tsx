@@ -15,8 +15,10 @@ import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import ReassignStudentsModal from './components/ReassignStudentsModal';
 import { getTeacherPerformanceMetrics, getOperationalSchedule } from '../../api/coordinatorApi';
+import { getStaffOptions } from '../../api/optionsApi';
 import { markTeacherUnavailable, reassignStudents } from '../../api/sessionApi';
 import { openPrintWindow, downloadTextFile } from '../../utils/webExport';
+import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
 import { colors, radius, spacing } from '../../theme/colors';
 
 import type { Teacher, Cell, MetricsRow, WeekAppointment } from './scheduleTypes';
@@ -50,25 +52,66 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [{ data: metrics }, { data: week }] = await Promise.all([
+      const [{ data: metrics }, { data: week }, staffRes] = await Promise.all([
         getTeacherPerformanceMetrics({}),
         getOperationalSchedule({}),
+        getStaffOptions().catch(() => ({ data: [] })),
       ]);
-      const rows = (Array.isArray(metrics) ? metrics : []) as MetricsRow[];
+      const rows = (Array.isArray(metrics) ? filterOutDeletedStaff(metrics) : []) as MetricsRow[];
       const weekRows = (week ?? {}) as Record<number, WeekAppointment[]>;
+      const staffList = (
+        Array.isArray(staffRes?.data) ? filterOutDeletedStaff(staffRes.data) : []
+      ).filter(
+        (s: any) =>
+          !s.role || s.role.toLowerCase() === 'teacher' || s.role.toLowerCase() === 'therapist',
+      );
+
+      // Map of staff by ID and lowercase name for reliable matching
+      const staffById = new Map<string, any>();
+      const staffByName = new Map<string, any>();
+      staffList.forEach((s: any) => {
+        if (s.id) staffById.set(String(s.id).toLowerCase(), s);
+        if (s.name) staffByName.set(String(s.name).trim().toLowerCase(), s);
+      });
 
       const nextTeachers: Teacher[] = [];
       const nextSchedule: Record<string, Record<string, Cell>> = {};
+      const processedTeacherIds = new Set<string>();
+
       rows.forEach((m, i) => {
+        const rawId = String(
+          m.teacherId || (m as any).teacher_id || (m as any).id || `teacher-${i}`,
+        );
+        const rawName = String(
+          m.teacherName || (m as any).teacher_name || (m as any).name || 'Teacher',
+        ).trim();
+
+        // Resolve against authentic staff account if possible
+        const matchedStaff =
+          staffById.get(rawId.toLowerCase()) || staffByName.get(rawName.toLowerCase());
+        const teacherId = matchedStaff?.id || rawId;
+        const teacherName = matchedStaff?.name || rawName;
+
+        processedTeacherIds.add(String(teacherId).toLowerCase());
+        processedTeacherIds.add(String(rawId).toLowerCase());
+
         const appts = Object.values(weekRows)
           .flat()
-          .filter((a) => a.therapistId === m.teacherId);
+          .filter((a) => {
+            const aId = String(a.therapistId || '').toLowerCase();
+            const aName = String(a.therapistName || '')
+              .trim()
+              .toLowerCase();
+            return (
+              aId === teacherId.toLowerCase() ||
+              aId === rawId.toLowerCase() ||
+              (teacherName && aName === teacherName.toLowerCase())
+            );
+          });
         const first = appts[0];
         const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
         const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
-        const teacherId = m.teacherId || (m as any).teacher_id || (m as any).id || `teacher-${i}`;
-        const teacherName =
-          m.teacherName || (m as any).teacher_name || (m as any).name || 'Teacher';
+
         nextTeachers.push({
           id: teacherId,
           name: teacherName,
@@ -82,9 +125,20 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
           incidents: m.incidents,
           available: true,
         });
-        nextSchedule[m.teacherId] = Object.fromEntries(
+
+        nextSchedule[teacherId] = Object.fromEntries(
           DAYS.map((day, di) => {
-            const dayAppt = (weekRows[di] ?? []).find((a) => a.therapistId === m.teacherId);
+            const dayAppt = (weekRows[di] ?? []).find((a) => {
+              const aId = String(a.therapistId || '').toLowerCase();
+              const aName = String(a.therapistName || '')
+                .trim()
+                .toLowerCase();
+              return (
+                aId === teacherId.toLowerCase() ||
+                aId === rawId.toLowerCase() ||
+                (teacherName && aName === teacherName.toLowerCase())
+              );
+            });
             return [
               day,
               dayAppt
@@ -94,6 +148,73 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
           }),
         );
       });
+
+      // Also ensure any active staff not in metrics are present in the list
+      staffList.forEach((s: any, idx: number) => {
+        const sId = String(s.id || '');
+        if (
+          sId &&
+          !processedTeacherIds.has(sId.toLowerCase()) &&
+          !processedTeacherIds.has(
+            String(s.name || '')
+              .trim()
+              .toLowerCase(),
+          )
+        ) {
+          processedTeacherIds.add(sId.toLowerCase());
+          const appts = Object.values(weekRows)
+            .flat()
+            .filter((a) => {
+              const aId = String(a.therapistId || '').toLowerCase();
+              const aName = String(a.therapistName || '')
+                .trim()
+                .toLowerCase();
+              return (
+                aId === sId.toLowerCase() ||
+                (s.name && aName === String(s.name).trim().toLowerCase())
+              );
+            });
+          const first = appts[0];
+          const studentNames = Array.from(new Set(appts.flatMap((a) => a.studentNames ?? [])));
+          const studentIds = Array.from(new Set(appts.flatMap((a) => a.studentIds ?? [])));
+
+          nextTeachers.push({
+            id: s.id,
+            name: s.name,
+            station: idx % 2 === 0 ? 'Station 1' : 'Station 2',
+            room: first?.roomName ?? 'Room 1',
+            students: studentNames,
+            studentIds,
+            sessions: 0,
+            trials: 0,
+            independence: 0,
+            incidents: 0,
+            available: true,
+          });
+
+          nextSchedule[s.id] = Object.fromEntries(
+            DAYS.map((day, di) => {
+              const dayAppt = (weekRows[di] ?? []).find((a) => {
+                const aId = String(a.therapistId || '').toLowerCase();
+                const aName = String(a.therapistName || '')
+                  .trim()
+                  .toLowerCase();
+                return (
+                  aId === sId.toLowerCase() ||
+                  (s.name && aName === String(s.name).trim().toLowerCase())
+                );
+              });
+              return [
+                day,
+                dayAppt
+                  ? { station: idx % 2 === 0 ? 'Station 1' : 'Station 2', room: dayAppt.roomName }
+                  : null,
+              ];
+            }),
+          );
+        }
+      });
+
       setTeachers(nextTeachers);
       setScheduleData(nextSchedule);
     } catch {
@@ -104,6 +225,13 @@ export default function CoordinatorScheduleScreen({ navigation }: Props) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const unsub = onDeletedStaffChanged(() => {
+      load();
+    });
+    return () => unsub();
   }, [load]);
 
   const filteredTeachers =
