@@ -13,12 +13,12 @@ import { registerStudentStatuses } from '../utils/studentLifecycleHelper';
 import { saveStudentPhoto } from '../utils/studentPhotoHelper';
 import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
 import { DEMOGRAPHIC_KEY, getStudentDemographic } from '../utils/sensitiveDataSanitizer';
-import { getLocalLiveSessions, StoredLiveSession } from '../utils/liveSessionSyncHelper';
+import { getLocalLiveSessions, type StoredLiveSession } from '../utils/liveSessionSyncHelper';
 import {
   getStoredSessionSummaries,
   approveSessionSummaryReview,
   rejectSessionSummaryReview,
-  StoredSessionSummaryReview,
+  type StoredSessionSummaryReview,
 } from '../utils/sessionSummaryWorkflowHelper';
 export {
   getProgramOptions,
@@ -387,10 +387,10 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
       : DEFAULT_COORDINATOR_STUDENTS.map((s) => s.name);
 
   // Derive live sessions from real active sessions started by teachers
-  const localLive = getLocalLiveSessions();
+  const localLive: StoredLiveSession[] = getLocalLiveSessions();
   const liveSessions =
     localLive.length > 0
-      ? localLive.map((s) => ({
+      ? localLive.map((s: StoredLiveSession) => ({
           id: s.id,
           teacherName: s.teacherName,
           stationName: s.stationName,
@@ -460,9 +460,9 @@ export const getActiveSessions = async (params: QueryParams): Promise<{ data: an
   } catch {}
 
   // Check locally registered live sessions (started by teachers in the app)
-  const localLive = getLocalLiveSessions();
+  const localLive: StoredLiveSession[] = getLocalLiveSessions();
   if (localLive.length > 0) {
-    const mappedLocal = localLive.map((s) => {
+    const mappedLocal = localLive.map((s: StoredLiveSession) => {
       const elapsed = Math.max(0, Math.floor((Date.now() - s.startedAt) / 1000));
       return {
         id: s.id,
@@ -642,8 +642,8 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     },
   ];
 
-  const storedSummaries = getStoredSessionSummaries();
-  const storedMapped = storedSummaries.map((s) => ({
+  const storedSummaries: StoredSessionSummaryReview[] = getStoredSessionSummaries();
+  const storedMapped = storedSummaries.map((s: StoredSessionSummaryReview) => ({
     id: s.id,
     sessionId: s.sessionId || s.id,
     teacher: s.teacherName,
@@ -670,7 +670,7 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
           : 'pending'),
   }));
 
-  const storedIds = new Set(storedMapped.map((s) => s.id));
+  const storedIds = new Set(storedMapped.map((s: any) => s.id));
   const mergedPool = [...storedMapped, ...mockSummaries.filter((m) => !storedIds.has(m.id))];
 
   return { data: filterOutDeletedStaff(mergedPool) };

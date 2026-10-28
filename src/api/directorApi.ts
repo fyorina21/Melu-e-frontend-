@@ -647,7 +647,7 @@ export const getDirectorStudentProgress = async (
     try {
       const stored = getStoredEnrolledStudents();
       const match = stored.find(
-        (s) =>
+        (s: any) =>
           String(s.id || s.studentId) === sid ||
           String(s.name || s.fullName || '').toLowerCase() === sid.toLowerCase(),
       );
