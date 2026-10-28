@@ -393,7 +393,7 @@ export interface NavGroupTab {
 export type NavTabItem = string | NavGroupTab;
 
 export const isNavGroup = (tab: NavTabItem): tab is NavGroupTab => {
-  return typeof tab !== 'string' && Array.isArray((tab as any)?.items);
+  return typeof tab !== 'string' && Boolean(tab) && Array.isArray(tab.items);
 };
 
 export const ROLE_GROUPED_TABS: Partial<Record<Role, NavTabItem[]>> = {

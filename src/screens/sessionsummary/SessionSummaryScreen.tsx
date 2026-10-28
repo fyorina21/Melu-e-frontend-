@@ -24,7 +24,9 @@ import {
   submitSessionSummary,
   saveSessionDraft,
   resubmitSessionNote,
+  createSessionNote,
 } from '../../api/sessionApi';
+import { storage } from '../../utils/storage';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
 import {
   getStoredTrials,
@@ -420,7 +422,9 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       const mergedIncidents = [...uniqueLocal, ...apiIncidents];
 
       // 6. Set notes if available
+      const storedDraft = storage.getJSONSync<any>(`melue_session_summary_draft_${sessionId}`);
       const initialNotes =
+        storedDraft?.notes ||
         summaryData?.notes ||
         notes ||
         'Session completed with active student engagement and consistent progress across goals.';
@@ -444,7 +448,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         durationMinutes: Number(
           summaryData?.durationMinutes || rosterData?.blockDurationMinutes || 90,
         ),
-        status: summaryData?.status || 'in_progress',
+        status: storedDraft?.status || summaryData?.status || 'draft',
         students: processedStudents,
         incidents: mergedIncidents,
       });
@@ -481,17 +485,115 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (!notes.trim()) {
-      Alert.alert('Notes required', 'Add qualitative notes before submitting.');
+    const trimmedNotes = notes.trim();
+    if (!trimmedNotes) {
+      Alert.alert('Notes required', 'Please enter a note before submitting.');
       return;
     }
     try {
-      if (sessionId) await submitSessionSummary(sessionId, { notes });
+      const studentNames = (summary?.students || []).map((s) => s.name).filter(Boolean);
+      const studentList = studentNames.length > 0 ? studentNames : ['Student'];
+      const station = summary?.stationName || 'Station 1';
+      const room = 'Room 1A';
+      const today = new Date().toISOString().split('T')[0];
+
+      // 1. Save note to daily notes persistent store so it displays on DailyNotes page
+      await createSessionNote(sessionId, {
+        bodyMarkdown: trimmedNotes,
+        notes: trimmedNotes,
+        students: studentList,
+        station,
+        room,
+        status: 'Saved',
+        date: today,
+      });
+
+      // 2. Persist draft status as 'saved' and notes
+      storage.setJSONSync(`melue_session_summary_draft_${sessionId}`, {
+        notes: trimmedNotes,
+        status: 'saved',
+      });
+
+      // 3. Update local screen state to 'saved'
+      setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
+
+      // 4. Submit to backend if available
+      if (sessionId) {
+        await submitSessionSummary(sessionId, { notes: trimmedNotes, status: 'saved' }).catch(
+          () => null,
+        );
+      }
+
       resetSessionTimer();
-      Alert.alert('Session submitted', 'Sent to your Program Coordinator.');
-      navigation?.navigate?.('SessionDataCollection');
+      showToast('Session status changed to Saved', 'success');
+      Alert.alert(
+        'Session Saved',
+        'Status changed from draft to saved and notes are recorded to Daily Notes.',
+        [
+          { text: 'Stay Here', style: 'cancel' },
+          {
+            text: 'View Daily Notes',
+            onPress: () => navigation?.navigate?.('DailyNotes' as never),
+          },
+        ],
+      );
     } catch (err) {
-      Alert.alert('Submitted (offline)', 'Will sync once connected.');
+      setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
+      showToast('Session status changed to Saved (offline)', 'success');
+    }
+  };
+
+  const handleResubmit = async () => {
+    const trimmedNotes = notes.trim();
+    if (!trimmedNotes) {
+      Alert.alert('Notes required', 'Please enter a note before resubmitting.');
+      return;
+    }
+    try {
+      const studentNames = (summary?.students || []).map((s) => s.name).filter(Boolean);
+      const studentList = studentNames.length > 0 ? studentNames : ['Student'];
+      const station = summary?.stationName || 'Station 1';
+      const room = 'Room 1A';
+      const today = new Date().toISOString().split('T')[0];
+
+      // 1. Save note to daily notes persistent store so it displays on DailyNotes page
+      await createSessionNote(sessionId, {
+        bodyMarkdown: trimmedNotes,
+        notes: trimmedNotes,
+        students: studentList,
+        station,
+        room,
+        status: 'Saved',
+        date: today,
+      });
+
+      // 2. Persist draft status and notes
+      storage.setJSONSync(`melue_session_summary_draft_${sessionId}`, {
+        notes: trimmedNotes,
+        status: 'saved',
+      });
+
+      // 3. Update local state
+      setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
+
+      if (sessionId) {
+        await resubmitSessionNote(sessionId, {
+          notes: trimmedNotes,
+          bodyMarkdown: trimmedNotes,
+          status: 'Saved',
+        }).catch(() => null);
+      }
+
+      showToast('Session notes saved and resubmitted for review', 'success');
+      Alert.alert('Notes Saved', 'Session notes have been saved and displayed on Daily Notes.', [
+        { text: 'Stay Here', style: 'cancel' },
+        {
+          text: 'View Daily Notes',
+          onPress: () => navigation?.navigate?.('DailyNotes' as never),
+        },
+      ]);
+    } catch {
+      showToast('Resubmitted and saved locally', 'info');
     }
   };
 
@@ -548,17 +650,21 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
   const students = Array.isArray(summary.students) ? summary.students : [];
   const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
 
-  const summaryStatus = summary.status || 'pending_review';
+  const summaryStatus = (summary.status || 'draft').toLowerCase();
   const isDraft = summaryStatus === 'draft';
+  const isSaved = summaryStatus === 'saved';
   const statusLabel =
     summaryStatus === 'approved'
       ? 'Approved'
-      : summaryStatus === 'revised_required'
-        ? 'Revision Required'
-        : isDraft
-          ? 'Draft'
-          : 'Pending Review';
-  const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft';
+      : isSaved
+        ? 'Saved'
+        : summaryStatus === 'revised_required' || summaryStatus === 'revision'
+          ? 'Revision Required'
+          : isDraft
+            ? 'Draft'
+            : 'Pending Review';
+  const isReviewed = summaryStatus !== 'pending_review' && summaryStatus !== 'draft' && !isSaved;
+  const hasNotes = Boolean(notes && notes.trim().length > 0);
   const showCoordinatorFeedback = isReviewed;
   const coordinatorFeedback = (summary as any).coordinatorFeedback || '';
 
@@ -597,11 +703,13 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
               status={
                 summaryStatus === 'approved'
                   ? 'approved'
-                  : summaryStatus === 'revised_required'
-                    ? 'revision'
-                    : isDraft
-                      ? 'draft'
-                      : 'pending'
+                  : isSaved
+                    ? 'saved'
+                    : summaryStatus === 'revised_required' || summaryStatus === 'revision'
+                      ? 'revision'
+                      : isDraft
+                        ? 'draft'
+                        : 'pending'
               }
               label={statusLabel}
             />
@@ -655,25 +763,19 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
             <Text style={styles.saveDraftText}>Save Draft</Text>
           </TouchableOpacity>
 
-          {isDraft && (
+          {(isDraft || isSaved) && (
             <TouchableOpacity
-              style={[styles.submitBtn, styles.resubmitBtn]}
-              onPress={async () => {
-                try {
-                  if (sessionId) await resubmitSessionNote(sessionId, { notes });
-                  showToast('Draft resubmitted for review', 'success');
-                } catch {
-                  showToast('Resubmitted (offline)', 'info');
-                }
-              }}
+              style={[styles.submitBtn, styles.resubmitBtn, !hasNotes && styles.submitBtnDisabled]}
+              disabled={!hasNotes}
+              onPress={handleResubmit}
             >
               <Text style={styles.submitBtnText}>Resubmit</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            style={[styles.submitBtn, !notes.trim() && styles.submitBtnDisabled]}
-            disabled={!notes.trim()}
+            style={[styles.submitBtn, !hasNotes && styles.submitBtnDisabled]}
+            disabled={!hasNotes}
             onPress={handleSubmit}
           >
             <Text style={styles.submitBtnText}>Submit & End Session</Text>

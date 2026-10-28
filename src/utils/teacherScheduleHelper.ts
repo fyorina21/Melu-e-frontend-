@@ -1,3 +1,4 @@
+import { isStudentDeleted, filterOutDeletedStudents } from './deletedStudentHelper';
 // src/utils/teacherScheduleHelper.ts
 //
 // Helper utilities to resolve the currently logged-in teacher and their assigned
@@ -362,6 +363,7 @@ export function resolveTeacherAssignedStudentIds(
     }
   }
 
+  assignedStudentIds = assignedStudentIds.filter((sid) => !isStudentDeleted(sid));
   return { assignedStudentIds, activeBlock };
 }
 
@@ -376,6 +378,7 @@ export function resolveEligibleTeacherStudents(
   if (!assignedStudentIds || assignedStudentIds.length === 0) {
     return [];
   }
+  const cleanIds = assignedStudentIds.filter((sid) => !isStudentDeleted(sid));
 
   const studentMap = new Map<string, any>(
     (studentOptions || []).map((s: any) => [String(s.id), s])
@@ -384,7 +387,7 @@ export function resolveEligibleTeacherStudents(
     (fallbackStudents || []).map((s: any) => [String(s.id), s])
   );
 
-  const mapped = assignedStudentIds.map((sid) => {
+  const mapped = cleanIds.map((sid) => {
     const opt = studentMap.get(sid);
     if (opt) {
       return {

@@ -51,7 +51,13 @@ export const SlotPickerModal: React.FC<SlotPickerModalProps> = React.memo(
             <View style={styles.slotGrid}>
               {(Object.keys(slotLabels) as SlotKey[]).map((slot) => {
                 const occupied = studentGoals[slot] !== null;
-                const disableEmpty = !occupied && isAtLimit;
+                const activeCount =
+                  assignedCount ||
+                  (Object.keys(slotLabels) as SlotKey[]).filter(
+                    (s) => studentGoals[s] !== null && studentGoals[s]?.status !== 'Mastered',
+                  ).length;
+                const isLimitReached = activeCount >= 2;
+                const disableEmpty = !occupied && isLimitReached;
                 return (
                   <TouchableOpacity
                     key={slot}
@@ -71,7 +77,11 @@ export const SlotPickerModal: React.FC<SlotPickerModalProps> = React.memo(
                       {slotLabels[slot]}
                     </Text>
                     <Text style={[styles.slotPickSub, disableEmpty && styles.slotPickTextDisabled]}>
-                      {occupied ? 'Replace existing' : disableEmpty ? 'Max 2 reached' : 'Empty'}
+                      {occupied
+                        ? 'Replace existing'
+                        : disableEmpty
+                          ? 'Limit reached (2/2)'
+                          : 'Empty slot'}
                     </Text>
                   </TouchableOpacity>
                 );

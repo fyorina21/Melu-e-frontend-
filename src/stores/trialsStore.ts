@@ -1,3 +1,4 @@
+import { filterOutDeletedStudents } from '../utils/deletedStudentHelper';
 // src/stores/trialsStore.ts
 //
 // Persistent local store for session trials. Ensures that trials recorded
@@ -527,14 +528,16 @@ export function setStoredSessionStudents(
 ): void {
   if (typeof localStorage === 'undefined' || !Array.isArray(students)) return;
   try {
+    const cleanStudents = filterOutDeletedStudents(students);
     const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
-    const map = raw ? JSON.parse(raw) : {};
-    map[sessionId] = students;
+    const decoded = raw ? unprotectStoragePayload(raw) || raw : null;
+    const map = decoded ? JSON.parse(decoded) : {};
+    map[sessionId] = cleanStudents;
     if (teacherId) {
-      map[`${sessionId}_${teacherId}`] = students;
-      map[`teacher_${teacherId}`] = students;
+      map[`${sessionId}_${teacherId}`] = cleanStudents;
+      map[`teacher_${teacherId}`] = cleanStudents;
     } else {
-      map['active'] = students;
+      map['active'] = cleanStudents;
     }
     const protectedVal = sanitizeStoragePayload(JSON.stringify(map));
     localStorage.setItem(STUDENTS_STORAGE_KEY, protectedVal);
@@ -552,11 +555,15 @@ export function getStoredSessionStudents(
     const decoded = unprotectStoragePayload(raw) || raw;
     const map = JSON.parse(decoded);
     if (teacherId) {
-      const scoped = map[`${sessionId}_${teacherId}`] || map[`teacher_${teacherId}`];
-      if (Array.isArray(scoped)) return scoped;
+      const scoped = map[`${sessionId}_${teacherId}`] ?? map[`teacher_${teacherId}`];
+      if (Array.isArray(scoped)) return filterOutDeletedStudents(scoped);
     }
     const list = map[sessionId] || map['active'];
-    return Array.isArray(list) && list.length > 0 ? list : null;
+    if (Array.isArray(list)) {
+      const clean = filterOutDeletedStudents(list);
+      return clean.length > 0 ? clean : null;
+    }
+    return null;
   } catch {
     return null;
   }

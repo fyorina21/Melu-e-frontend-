@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, TextInput, Text, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../../../theme/colors';
-import { typography } from '../../../../theme/typography';
 import StudentAvatar from '../../../../components/StudentAvatar';
 import type { StudentOption } from '../../../../api/optionsApi';
 
@@ -14,115 +13,123 @@ interface StudentSelectorRowProps {
 
 export const StudentSelectorRow: React.FC<StudentSelectorRowProps> = React.memo(
   ({ students, selectedStudentId, onSelectStudent }) => {
-    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const list = students.length > 0 ? students : [{ id: 's1', name: 'Student A', age: 0 }];
+    const list: StudentOption[] =
+      students.length > 0
+        ? students
+        : [{ id: 's1', name: 'Student A', age: 6, program: 'Comprehensive ABA' }];
 
-    const selectedStudent = useMemo(() => {
-      return list.find((s) => s.id === selectedStudentId) || list[0] || null;
-    }, [list, selectedStudentId]);
+    const selectedStudent = useMemo(
+      () => list.find((s) => s.id === selectedStudentId) || list[0],
+      [list, selectedStudentId],
+    );
 
     const filteredStudents = useMemo(() => {
       const q = searchQuery.trim().toLowerCase();
       if (!q) return list;
-      return list.filter((s) => s.name?.toLowerCase().includes(q));
+      return list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.program && s.program.toLowerCase().includes(q)) ||
+          s.id.toLowerCase().includes(q),
+      );
     }, [list, searchQuery]);
-
-    const handleSelect = (id: string) => {
-      onSelectStudent(id);
-      setDropdownOpen(false);
-      setSearchQuery('');
-    };
 
     return (
       <View style={styles.container}>
-        <View style={styles.triggerWrapper}>
+        <View style={styles.topRow}>
+          <Text style={styles.sectionLabel}>Select Student</Text>
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{list.length} Students</Text>
+          </View>
+        </View>
+
+        <View style={styles.dropdownWrap}>
           <TouchableOpacity
-            style={styles.dropdownTrigger}
-            onPress={() => setDropdownOpen((prev) => !prev)}
+            style={[styles.dropdownTrigger, isOpen && styles.dropdownTriggerOpen]}
+            onPress={() => setIsOpen((prev) => !prev)}
             activeOpacity={0.8}
             accessibilityRole="combobox"
-            accessibilityState={{ expanded: dropdownOpen }}
-            accessibilityLabel={`Selected student: ${selectedStudent?.name ?? 'None'}. Click to choose another student.`}
+            accessibilityLabel={`Select student dropdown, currently selected ${selectedStudent?.name}`}
+            accessibilityState={{ expanded: isOpen }}
           >
             <View style={styles.triggerLeft}>
               <StudentAvatar
-                name={selectedStudent?.name}
-                studentId={selectedStudent?.id}
+                name={selectedStudent?.name || 'Student'}
+                studentId={selectedStudent?.id || ''}
                 photoUrl={
                   (selectedStudent as any)?.photoUrl ||
                   (selectedStudent as any)?.headshotUrl ||
                   (selectedStudent as any)?.photo
                 }
-                size={36}
-                style={{ marginRight: 10 }}
+                size={34}
               />
-              <View style={styles.nameBlock}>
-                <Text style={styles.selectedName} numberOfLines={1}>
-                  {selectedStudent ? selectedStudent.name : 'Choose a student...'}
+              <View style={styles.triggerMeta}>
+                <Text style={styles.selectedStudentName} numberOfLines={1}>
+                  {selectedStudent?.name || 'Select a student'}
                 </Text>
-                <Text style={styles.selectedMeta} numberOfLines={1}>
-                  {selectedStudent
-                    ? `${selectedStudent.phase ? `${selectedStudent.phase} · ` : ''}${selectedStudent.program || 'Caseload'}${selectedStudent.status ? ` · ${selectedStudent.status}` : ''}`
-                    : 'Click to select from student caseload'}
+                <Text style={styles.selectedStudentSub} numberOfLines={1}>
+                  {selectedStudent?.program || 'Comprehensive ABA'}
+                  {selectedStudent?.age ? ` · Age ${selectedStudent.age}` : ''}
+                  {selectedStudent?.phase ? ` · ${selectedStudent.phase}` : ''}
                 </Text>
               </View>
             </View>
+
             <View style={styles.triggerRight}>
-              <Text style={styles.dropdownHint}>Select Student</Text>
               <Feather
-                name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
+                name={isOpen ? 'chevron-up' : 'chevron-down'}
                 size={18}
-                color={colors.bodyText}
+                color={colors.navyText}
               />
             </View>
           </TouchableOpacity>
-        </View>
 
-        {dropdownOpen && (
-          <View style={styles.dropdownMenu}>
-            <View style={styles.searchRow}>
-              <Feather
-                name="search"
-                size={14}
-                color={colors.mutedText}
-                style={{ marginRight: 6 }}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search students by name..."
-                placeholderTextColor={colors.mutedText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                accessibilityLabel="Search students"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => setSearchQuery('')}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityLabel="Clear search"
-                >
-                  <Feather name="x" size={14} color={colors.mutedText} />
-                </TouchableOpacity>
-              )}
-            </View>
+          {isOpen && (
+            <View style={styles.dropdownMenu}>
+              <View style={styles.searchBox}>
+                <Feather
+                  name="search"
+                  size={15}
+                  color={colors.mutedText}
+                  style={{ marginRight: 8 }}
+                />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search students by name, program..."
+                  placeholderTextColor={colors.mutedText}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoFocus
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setSearchQuery('')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Clear search"
+                  >
+                    <Feather name="x" size={14} color={colors.mutedText} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-            <ScrollView
-              style={styles.listScroll}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-            >
-              {filteredStudents.length === 0 ? (
-                <Text style={styles.emptyText}>No students found</Text>
-              ) : (
-                filteredStudents.map((s) => {
+              <ScrollView
+                style={styles.listScroll}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+              >
+                {filteredStudents.map((s) => {
                   const isSelected = s.id === selectedStudentId;
                   return (
                     <TouchableOpacity
                       key={s.id}
                       style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
-                      onPress={() => handleSelect(s.id)}
+                      onPress={() => {
+                        onSelectStudent(s.id);
+                        setIsOpen(false);
+                      }}
                       accessibilityRole="button"
                       accessibilityLabel={`Select student ${s.name}`}
                     >
@@ -132,39 +139,41 @@ export const StudentSelectorRow: React.FC<StudentSelectorRowProps> = React.memo(
                         photoUrl={
                           (s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo
                         }
-                        size={32}
+                        size={28}
                         style={{ marginRight: 10 }}
                       />
                       <View style={{ flex: 1 }}>
                         <Text
                           style={[
-                            styles.dropdownItemText,
-                            isSelected && styles.dropdownItemTextActive,
+                            styles.itemStudentName,
+                            isSelected && styles.itemStudentNameActive,
                           ]}
                         >
                           {s.name}
                         </Text>
-                        <Text style={styles.dropdownItemSub}>
-                          {s.phase ? `${s.phase} · ` : ''}
-                          {s.program || 'Caseload'}
-                          {s.status ? ` · ${s.status}` : ''}
+                        <Text style={styles.itemStudentSub}>
+                          {s.program || 'Comprehensive ABA'}
+                          {s.age ? ` · Age ${s.age}` : ''}
                         </Text>
                       </View>
-                      {isSelected && (
-                        <Feather
-                          name="check"
-                          size={18}
-                          color={colors.navyText}
-                          style={{ marginLeft: 8 }}
-                        />
-                      )}
+                      {isSelected ? (
+                        <View style={styles.selectedCheckWrap}>
+                          <Feather name="check" size={15} color={colors.navyText} />
+                        </View>
+                      ) : null}
                     </TouchableOpacity>
                   );
-                })
-              )}
-            </ScrollView>
-          </View>
-        )}
+                })}
+
+                {filteredStudents.length === 0 && (
+                  <View style={styles.emptyWrap}>
+                    <Text style={styles.emptyText}>No students found</Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          )}
+        </View>
       </View>
     );
   },
@@ -172,28 +181,59 @@ export const StudentSelectorRow: React.FC<StudentSelectorRowProps> = React.memo(
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%',
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    zIndex: 50,
+    zIndex: 100,
+    position: 'relative',
   },
-  triggerWrapper: {
-    width: '100%',
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  countBadge: {
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.bodyText,
+  },
+  dropdownWrap: {
+    position: 'relative',
+    zIndex: 100,
   },
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
+  },
+  dropdownTriggerOpen: {
+    borderColor: colors.navyText,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   triggerLeft: {
     flexDirection: 'row',
@@ -201,90 +241,104 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
-  nameBlock: {
+  triggerMeta: {
+    marginLeft: spacing.sm,
     flex: 1,
   },
-  selectedName: {
-    ...typography.bodyBold,
+  selectedStudentName: {
     fontSize: 15,
+    fontWeight: '700',
     color: colors.navyText,
   },
-  selectedMeta: {
+  selectedStudentSub: {
     fontSize: 12,
-    color: colors.mutedText,
-    marginTop: 1,
+    color: colors.bodyText,
+    marginTop: 2,
   },
   triggerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dropdownHint: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.mutedText,
+    paddingLeft: spacing.xs,
   },
   dropdownMenu: {
-    marginTop: spacing.sm,
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderTopWidth: 0,
+    borderColor: colors.navyText,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    padding: spacing.xs,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 1000,
   },
-  searchRow: {
+  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 6,
-    marginBottom: 6,
+    marginHorizontal: spacing.xs,
+    marginBottom: spacing.xs,
   },
   searchInput: {
+    flex: 1,
     fontSize: 13,
     color: colors.navyText,
-    flex: 1,
-    padding: 0,
+    paddingVertical: 0,
   },
   listScroll: {
-    maxHeight: 220,
+    maxHeight: 240,
   },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 9,
     borderRadius: radius.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    marginVertical: 1,
   },
   dropdownItemActive: {
     backgroundColor: '#FEF9C3',
   },
-  dropdownItemText: {
+  itemStudentName: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.bodyText,
-  },
-  dropdownItemTextActive: {
     color: colors.navyText,
-    fontWeight: '700',
   },
-  dropdownItemSub: {
+  itemStudentNameActive: {
+    fontWeight: '700',
+    color: colors.navyText,
+  },
+  itemStudentSub: {
     fontSize: 11,
     color: colors.mutedText,
-    marginTop: 2,
+    marginTop: 1,
+  },
+  selectedCheckWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primaryYellow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.xs,
+  },
+  emptyWrap: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     fontSize: 13,
     color: colors.mutedText,
-    textAlign: 'center',
-    paddingVertical: 16,
   },
 });

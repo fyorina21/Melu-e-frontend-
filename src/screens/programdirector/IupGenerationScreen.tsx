@@ -16,7 +16,6 @@ import {
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
-import { typography } from '../../theme/typography';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
@@ -26,8 +25,8 @@ import { useAuth, ROLES } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import {
   getIupCandidates,
+  getIupLibrary,
   getIupContext,
-  getAssessmentReport,
   saveIupDraft,
   finalizeIup,
   getGoalBank,
@@ -37,44 +36,19 @@ import {
   getStoredIupDraft,
   isCandidateInSession,
   isEligibleIupCandidate,
+  IUP_LIBRARY_STORAGE_KEY,
   type IupCandidate,
 } from '../../api/programDirectorApi';
+import { storage } from '../../utils/storage';
 import DynamicFormFields from '../../components/DynamicFormFields';
 import {
   getStoredGoalDomains,
   getStoredGoalBank,
   type GoalDomain,
 } from '../../stores/goalBankStore';
+import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
+import { AssessmentSummaryTab } from './iup/components/AssessmentSummaryTab';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
-import { AbllsGridSheet, AbllsItemInspectorModal } from '../assessments/components';
-import {
-  DEFAULT_ABLLS_DOMAINS,
-  buildAbllsDomainsFromConfig,
-  loadStorageAssessment,
-  type AbllsDomainDef,
-  type Score,
-} from '../assessments/abllsConfigHelper';
-import {
-  computeAbllsSummaryData,
-  computePriorityAreas,
-} from '../assessments/abllsCalculationHelper';
-import { type SelectedItemState } from '../assessments/types';
-import {
-  getSkillsAssessment,
-  getBehaviorAssessment,
-  getSensoryAssessment,
-} from '../../api/teacherExtrasApi';
-import {
-  MASS_ITEMS,
-  FAST_ITEMS,
-  calculateMassCategoryScores,
-  calculateFastCategoryScores,
-  type MassItem,
-  type FastItem,
-  type BehaviorTargetAssessmentData,
-} from '../assessments/behavior/behaviorTypes';
-import type { SensoryActivityItem } from '../assessments/sensory/types';
-import { getFormConfig } from '../../api/institutionalAdminApi';
 
 interface GoalBankItem {
   id: string;
@@ -101,6 +75,67 @@ interface IupContext {
 type StationKey = 'station1' | 'station2';
 type Slots = Record<StationKey, (GoalBankItem | null)[]>;
 
+interface CachedIupRecord {
+  id?: string;
+  studentId?: string;
+  isFinalized?: boolean;
+  status?: string;
+  slots?: Slots | Record<string, unknown>;
+  reinforcementSchedule?: string;
+  crisisProtocol?: string;
+  accommodations?: string;
+  reviewCycle?: string;
+  customFields?: Record<string, unknown>;
+  saved_at?: string;
+  finalizedAt?: string;
+}
+
+function isStudentIupFinalizedAndActive(
+  student: { id?: string; studentId?: string; name?: string; fullName?: string },
+  libraryRecords: any[] = [],
+): boolean {
+  const sid = String(student.id || student.studentId || '').trim();
+  const sName = String(student.name || student.fullName || '')
+    .toLowerCase()
+    .trim();
+
+  // 1. Check stored local draft
+  if (sid) {
+    const draft = getStoredIupDraft(sid) as any;
+    if (draft?.isFinalized || draft?.status === 'finalized' || draft?.status === 'Active') {
+      return true;
+    }
+  }
+
+  // 2. Check IUP library in storage & fetched pool
+  const storedLib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+  const allRecords = [...libraryRecords, ...storedLib];
+
+  return allRecords.some((rec) => {
+    if (!rec) return false;
+    const recStatus = String(rec.status || '')
+      .toLowerCase()
+      .trim();
+    const isFinal = rec.isFinalized === true || recStatus === 'active' || recStatus === 'finalized';
+
+    if (!isFinal || recStatus === 'archived' || recStatus === 'draft') {
+      return false;
+    }
+
+    const recSid = String(rec.studentId || rec.student_id || rec.id || '').trim();
+    const recName = String(rec.studentName || rec.student_name || rec.name || '')
+      .toLowerCase()
+      .trim();
+
+    const idMatches =
+      Boolean(sid && recSid) &&
+      (sid === recSid || normalizeStudentId(sid) === normalizeStudentId(recSid));
+    const nameMatches = Boolean(sName && recName) && sName === recName;
+
+    return idMatches || nameMatches;
+  });
+}
+
 export default function IupGenerationScreen({
   navigation,
   route,
@@ -122,23 +157,6 @@ export default function IupGenerationScreen({
   const [candidates, setCandidates] = useState<IupCandidate[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(initialStudentId);
   const [context, setContext] = useState<IupContext | null>(null);
-  const [assessmentReport, setAssessmentReport] = useState<any>(null);
-  const [abllsDomains, setAbllsDomains] = useState<AbllsDomainDef[]>(DEFAULT_ABLLS_DOMAINS);
-  const [abllsScores, setAbllsScores] = useState<Record<string, Score>>({});
-  const [selectedAbllsItem, setSelectedAbllsItem] = useState<SelectedItemState | null>(null);
-  const [targetBehaviors, setTargetBehaviors] = useState<BehaviorTargetAssessmentData[]>([
-    {
-      id: 'default-1',
-      behaviorName: 'Aggression',
-      definition: 'Physical or verbal acts directed toward others',
-      massAnswers: {},
-      fastAnswers: {},
-      abcNotes: '',
-    },
-  ]);
-  const [massItems] = useState<MassItem[]>(MASS_ITEMS);
-  const [fastItems] = useState<FastItem[]>(FAST_ITEMS);
-  const [sensoryActivities, setSensoryActivities] = useState<SensoryActivityItem[]>([]);
   const [goalBank, setGoalBank] = useState<GoalBankItem[]>([]);
   const [domains, setDomains] = useState<GoalDomain[]>(getStoredGoalDomains());
   const [slots, setSlots] = useState<Slots>({ station1: [null], station2: [null] });
@@ -147,11 +165,16 @@ export default function IupGenerationScreen({
   >('goals');
 
   // Custom Strategies State
-  const [reinforcementSchedule, setReinforcementSchedule] = useState('');
-  const [crisisProtocol, setCrisisProtocol] = useState('');
-  const [accommodations, setAccommodations] = useState('');
+  const [reinforcementSchedule, setReinforcementSchedule] = useState('Fixed Ratio (FR-2)');
+  const [crisisProtocol, setCrisisProtocol] = useState(
+    'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
+  );
+  const [accommodations, setAccommodations] = useState(
+    'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
+  );
   const [reviewCycle, setReviewCycle] = useState('6 Weeks');
-  const [customIupValues, setCustomIupValues] = useState<Record<string, any>>({});
+  const [customIupValues, setCustomIupValues] = useState<Record<string, unknown>>({});
+  const [isFinalizedRecord, setIsFinalizedRecord] = useState(false);
 
   // Dropdown Selector State
   const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
@@ -190,12 +213,14 @@ export default function IupGenerationScreen({
 
     try {
       const { data: res } = await getGoalBank({});
+      const resObj =
+        typeof res === 'object' && res !== null ? (res as Record<string, unknown>) : null;
       const loadedGoals = Array.isArray(res)
-        ? res
-        : Array.isArray((res as any)?.goals)
-          ? (res as any).goals
-          : Array.isArray((res as any)?.data)
-            ? (res as any).data
+        ? (res as GoalBankItem[])
+        : Array.isArray(resObj?.goals)
+          ? (resObj.goals as GoalBankItem[])
+          : Array.isArray(resObj?.data)
+            ? (resObj.data as GoalBankItem[])
             : [];
       if (loadedGoals.length > 0) {
         setGoalBank(loadedGoals);
@@ -211,27 +236,56 @@ export default function IupGenerationScreen({
   const loadData = useCallback(async () => {
     setLoading(true);
     let loadedCandidates: IupCandidate[] = [];
-    try {
-      const response = await getIupCandidates();
-      const raw = (response as any)?.data ?? response;
+    let libraryList: any[] = [];
+
+    const [candidatesResponse, iupLibResponse] = await Promise.allSettled([
+      getIupCandidates(),
+      getIupLibrary().catch(() => null),
+    ]);
+
+    if (candidatesResponse.status === 'fulfilled' && candidatesResponse.value) {
+      const response = candidatesResponse.value;
+      const responseObj =
+        typeof response === 'object' && response !== null
+          ? (response as Record<string, unknown>)
+          : null;
+      const raw = responseObj?.data ?? response;
+      const rawObj =
+        typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
       loadedCandidates = Array.isArray(raw)
-        ? raw
-        : Array.isArray((raw as any)?.candidates)
-          ? (raw as any).candidates
+        ? (raw as IupCandidate[])
+        : Array.isArray(rawObj?.candidates)
+          ? (rawObj.candidates as IupCandidate[])
           : [];
-    } catch {
-      loadedCandidates = [];
     }
-    const eligibleCandidates = loadedCandidates.filter(isEligibleIupCandidate);
+
+    if (iupLibResponse.status === 'fulfilled' && iupLibResponse.value) {
+      const libRaw = iupLibResponse.value?.data || iupLibResponse.value?.iups;
+      if (Array.isArray(libRaw)) {
+        libraryList = libRaw;
+      }
+    }
+
+    // Filter out students who already have a finalized and active IUP
+    const eligibleCandidates = loadedCandidates
+      .filter(isEligibleIupCandidate)
+      .filter((c) => !isStudentIupFinalizedAndActive(c, libraryList));
+
     setCandidates(eligibleCandidates);
 
     try {
       const response = await getGoalBank({});
-      const rawRes = response?.data || response?.goals || response;
+      const responseObj =
+        typeof response === 'object' && response !== null
+          ? (response as Record<string, unknown>)
+          : null;
+      const rawRes = responseObj?.data || responseObj?.goals || response;
+      const rawResObj =
+        typeof rawRes === 'object' && rawRes !== null ? (rawRes as Record<string, unknown>) : null;
       const loadedGoals = Array.isArray(rawRes)
-        ? rawRes
-        : Array.isArray((rawRes as any)?.goals)
-          ? (rawRes as any).goals
+        ? (rawRes as GoalBankItem[])
+        : Array.isArray(rawResObj?.goals)
+          ? (rawResObj.goals as GoalBankItem[])
           : [];
       setGoalBank(loadedGoals.length > 0 ? loadedGoals : getStoredGoalBank());
     } catch {
@@ -240,20 +294,22 @@ export default function IupGenerationScreen({
 
     setDomains(getStoredGoalDomains());
 
-    const currentUrlSid =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('studentId')
-        : null;
-    const preId = (route.params as { studentId?: string })?.studentId || currentUrlSid;
-    if (preId) {
-      setSelectedStudentId(preId);
+    const preId = (route.params as { studentId?: string })?.studentId;
+    const match = preId
+      ? eligibleCandidates.find(
+          (c) => c.id === preId || normalizeStudentId(c.id) === normalizeStudentId(preId),
+        )
+      : null;
+
+    if (match) {
+      setSelectedStudentId(match.id);
     } else if (eligibleCandidates.length > 0) {
       setSelectedStudentId(eligibleCandidates[0].id);
     } else {
       setSelectedStudentId(null);
     }
     setLoading(false);
-  }, [route.params]);
+  }, [(route?.params as { studentId?: string })?.studentId]);
 
   useEffect(() => {
     loadData();
@@ -261,11 +317,19 @@ export default function IupGenerationScreen({
     const handleBankChange = async () => {
       try {
         const response = await getGoalBank({});
-        const rawRes = response?.data || response?.goals || response;
+        const responseObj =
+          typeof response === 'object' && response !== null
+            ? (response as Record<string, unknown>)
+            : null;
+        const rawRes = responseObj?.data || responseObj?.goals || response;
+        const rawResObj =
+          typeof rawRes === 'object' && rawRes !== null
+            ? (rawRes as Record<string, unknown>)
+            : null;
         const loadedGoals = Array.isArray(rawRes)
-          ? rawRes
-          : Array.isArray((rawRes as any)?.goals)
-            ? (rawRes as any).goals
+          ? (rawRes as GoalBankItem[])
+          : Array.isArray(rawResObj?.goals)
+            ? (rawResObj.goals as GoalBankItem[])
             : [];
         setGoalBank(loadedGoals.length > 0 ? loadedGoals : getStoredGoalBank());
       } catch {
@@ -319,213 +383,123 @@ export default function IupGenerationScreen({
   useEffect(() => {
     if (!selectedStudentId) return;
 
-    // Clear slots and fields when student changes (2 goals assigned at a time)
+    // Clear slots and fields when student changes
     setSlots({ station1: [null], station2: [null] });
-    setReinforcementSchedule('');
-    setCrisisProtocol('');
-    setAccommodations('');
+    setReinforcementSchedule('Fixed Ratio (FR-2)');
+    setCrisisProtocol(
+      'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
+    );
+    setAccommodations(
+      'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
+    );
     setReviewCycle('6 Weeks');
     setCustomIupValues({});
     setLastSavedTimestamp(null);
 
-    // Restore cached draft if available
-    const cachedDraft = getStoredIupDraft(selectedStudentId);
-    if (cachedDraft) {
-      if (cachedDraft.slots) {
-        const s1 = Array.isArray((cachedDraft.slots as any).station1)
-          ? (cachedDraft.slots as any).station1
+    // Check if IUP is already finalized (permanent non-editable record)
+    const cachedDraft = getStoredIupDraft(selectedStudentId) as CachedIupRecord | null;
+    const lib = storage.getJSONSync<CachedIupRecord[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+    const inLib = lib.find(
+      (item) => item.studentId === selectedStudentId || item.id === selectedStudentId,
+    );
+    const finalized = Boolean(
+      cachedDraft?.isFinalized ||
+      cachedDraft?.status === 'finalized' ||
+      inLib?.isFinalized ||
+      inLib?.status === 'Active',
+    );
+    setIsFinalizedRecord(finalized);
+
+    // Restore cached draft or finalized library record if available
+    const activeRecord = cachedDraft || inLib;
+    if (activeRecord) {
+      if (activeRecord.slots) {
+        const slotsRecord = activeRecord.slots as Record<string, unknown>;
+        const s1 = Array.isArray(slotsRecord.station1)
+          ? (slotsRecord.station1 as (GoalBankItem | null)[])
           : [];
-        const s2 = Array.isArray((cachedDraft.slots as any).station2)
-          ? (cachedDraft.slots as any).station2
+        const s2 = Array.isArray(slotsRecord.station2)
+          ? (slotsRecord.station2 as (GoalBankItem | null)[])
           : [];
         setSlots({
-          station1: [s1[0] || null],
-          station2: [s2[0] || null],
+          station1: s1.length > 0 ? s1 : [null],
+          station2: s2.length > 0 ? s2 : [null],
         });
       }
-      if (cachedDraft.reinforcementSchedule) {
-        setReinforcementSchedule(String(cachedDraft.reinforcementSchedule));
+      if (activeRecord.reinforcementSchedule) {
+        setReinforcementSchedule(String(activeRecord.reinforcementSchedule));
       }
-      if (cachedDraft.crisisProtocol) {
-        setCrisisProtocol(String(cachedDraft.crisisProtocol));
+      if (activeRecord.crisisProtocol) {
+        setCrisisProtocol(String(activeRecord.crisisProtocol));
       }
-      if (cachedDraft.accommodations) {
-        setAccommodations(String(cachedDraft.accommodations));
+      if (activeRecord.accommodations) {
+        setAccommodations(String(activeRecord.accommodations));
       }
-      if (cachedDraft.reviewCycle) {
-        setReviewCycle(String(cachedDraft.reviewCycle));
+      if (activeRecord.reviewCycle) {
+        setReviewCycle(String(activeRecord.reviewCycle));
       }
-      if (cachedDraft.customFields) {
-        setCustomIupValues(cachedDraft.customFields as Record<string, any>);
+      if (activeRecord.customFields) {
+        setCustomIupValues(activeRecord.customFields);
       }
-      if (cachedDraft.saved_at) {
+      if (activeRecord.saved_at || activeRecord.finalizedAt) {
         setLastSavedTimestamp(
-          new Date(cachedDraft.saved_at as string).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
+          new Date(
+            (activeRecord.saved_at || activeRecord.finalizedAt) as string,
+          ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         );
       }
     }
 
-    // Fetch context & clinical assessment report
+    // Fetch context
     getIupContext(selectedStudentId)
       .then(({ data }) => setContext(data))
       .catch(() => setContext(null));
 
-    getAssessmentReport(selectedStudentId)
-      .then(({ data }) => setAssessmentReport(data))
-      .catch(() => setAssessmentReport(null));
-
-    // Fetch Behavior Assessment data
-    getBehaviorAssessment(selectedStudentId)
-      .then(({ data: saved }) => {
-        const savedData = (saved?.data ?? saved ?? {}) as any;
-        if (Array.isArray(savedData.target_behaviors) && savedData.target_behaviors.length > 0) {
-          const parsed: BehaviorTargetAssessmentData[] = savedData.target_behaviors.map(
-            (b: any, idx: number) => ({
-              id: b.id || `target-${idx}-${Date.now()}`,
-              behaviorName: b.behavior_name || b.behaviorName || `Target ${idx + 1}`,
-              definition: b.definition || b.behaviorDefinition || '',
-              massAnswers: b.mass_responses || b.massAnswers || {},
-              fastAnswers: b.fast_responses || b.fastAnswers || {},
-              abcNotes: b.abc_notes || b.abcNotes || '',
-              dominantFunction: b.dominant_function,
-              hypothesizedFunction: b.hypothesized_function,
-              status: b.status,
-            }),
-          );
-          setTargetBehaviors(parsed);
-        } else if (savedData.massAnswers || savedData.fastAnswers) {
-          setTargetBehaviors([
-            {
-              id: 'legacy-1',
-              behaviorName: 'Aggression',
-              definition: 'Physical or verbal acts directed toward others',
-              massAnswers: savedData.massAnswers || {},
-              fastAnswers: savedData.fastAnswers || {},
-              abcNotes: '',
-            },
-          ]);
-        } else {
-          setTargetBehaviors([
-            {
-              id: 'default-1',
-              behaviorName: 'Aggression',
-              definition: 'Physical or verbal acts directed toward others',
-              massAnswers: {},
-              fastAnswers: {},
-              abcNotes: '',
-            },
-          ]);
-        }
-      })
-      .catch(() => {
-        setTargetBehaviors([
-          {
-            id: 'default-1',
-            behaviorName: 'Aggression',
-            definition: 'Physical or verbal acts directed toward others',
-            massAnswers: {},
-            fastAnswers: {},
-            abcNotes: '',
-          },
-        ]);
-      });
-
-    // Fetch Sensory Assessment data
-    getSensoryAssessment(selectedStudentId)
-      .then(({ data: res }) => {
-        const savedData = (res?.data ?? res ?? {}) as any;
-        if (Array.isArray(savedData.activities) && savedData.activities.length > 0) {
-          setSensoryActivities(savedData.activities);
-        } else {
-          setSensoryActivities([]);
-        }
-      })
-      .catch(() => {
-        setSensoryActivities([]);
-      });
-
-    // Fetch ABLLS-R Need Map configuration and student scores
-    getFormConfig('ABLLS Assessment Form')
-      .then(({ data: cfg }) => {
-        if (cfg && Array.isArray(cfg.fields) && cfg.fields.length > 0) {
-          setAbllsDomains(buildAbllsDomainsFromConfig(cfg.fields));
-        } else {
-          setAbllsDomains(DEFAULT_ABLLS_DOMAINS);
-        }
-      })
-      .catch(() => setAbllsDomains(DEFAULT_ABLLS_DOMAINS));
-
-    getSkillsAssessment(selectedStudentId)
-      .then(({ data: saved }) => {
-        const savedData = (saved?.data ?? saved ?? {}) as { scores?: Record<string, Score> };
-        const apiScores = savedData.scores ?? (saved as any)?.scores ?? {};
-        const localData = loadStorageAssessment(selectedStudentId);
-        const mergedScores: Record<string, Score> = {
-          ...apiScores,
-          ...(localData?.scores ?? {}),
-        };
-        setAbllsScores(mergedScores);
-      })
-      .catch(() => {
-        const localData = loadStorageAssessment(selectedStudentId);
-        if (localData?.scores) setAbllsScores(localData.scores);
-        else setAbllsScores({});
-      });
-
-    // Fetch existing assigned goals to populate slots (max 2 goals: 1 per station)
-    if (goalBank.length > 0) {
+    // Fetch existing assigned goals to populate slots if not already restored from draft or library
+    const currentBank = goalBank.length > 0 ? goalBank : getStoredGoalBank();
+    if (currentBank.length > 0) {
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
-          if (data?.goals) {
+          if (data?.goals && !finalized) {
             setSlots((prev) => {
-              const next: Slots = { station1: [null], station2: [null] };
-              data.goals.forEach((g: any) => {
-                const gbGoal = goalBank.find((b) => b.id === g.id);
+              // If user or activeRecord already has goals assigned in state, preserve them
+              const hasExistingGoals = [...prev.station1, ...prev.station2].some(Boolean);
+              if (hasExistingGoals) return prev;
+
+              const next: Slots = {
+                station1: [],
+                station2: [],
+              };
+              data.goals.forEach((g: { id?: string; station?: number; slot?: number }) => {
+                const gbGoal = currentBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
-                  if (next[stationKey][0] === null) {
-                    next[stationKey][0] = gbGoal;
+                  const slotIdx = typeof g.slot === 'number' ? g.slot : next[stationKey].length;
+                  while (next[stationKey].length <= slotIdx) {
+                    next[stationKey].push(null);
                   }
+                  next[stationKey][slotIdx] = gbGoal;
                 }
               });
+              if (next.station1.length === 0) next.station1 = [null];
+              if (next.station2.length === 0) next.station2 = [null];
               return next;
             });
           }
         })
         .catch(console.error);
     }
-  }, [selectedStudentId, goalBank]);
+  }, [selectedStudentId]);
 
   const completedCandidates = useMemo(() => {
-    return candidates.filter(isEligibleIupCandidate);
+    return candidates
+      .filter(isEligibleIupCandidate)
+      .filter((c) => !isStudentIupFinalizedAndActive(c));
   }, [candidates]);
 
-  const selectedCandidate = useMemo(() => {
-    const found = completedCandidates.find((c) => c.id === selectedStudentId);
-    if (found) return found;
-    if (selectedStudentId) {
-      return {
-        id: selectedStudentId,
-        name: context?.studentName || 'Student',
-        age: context?.age || 7,
-        status: 'Ready for IUP',
-        program: context?.program || 'Comprehensive ABA',
-      };
-    }
-    return null;
-  }, [completedCandidates, selectedStudentId, context]);
-
-  const abllsSummaryData = useMemo(
-    () => computeAbllsSummaryData(abllsDomains, abllsScores),
-    [abllsDomains, abllsScores],
-  );
-
-  const { priorityAreas, rows: abllsRows } = useMemo(
-    () => computePriorityAreas(abllsSummaryData),
-    [abllsSummaryData],
+  const selectedCandidate = useMemo(
+    () => completedCandidates.find((c) => c.id === selectedStudentId) || null,
+    [completedCandidates, selectedStudentId],
   );
 
   const filteredCandidates = useMemo(() => {
@@ -535,157 +509,38 @@ export default function IupGenerationScreen({
     );
   }, [completedCandidates, searchStudentText]);
 
-  const skillDomains = useMemo(() => {
-    const raw = assessmentReport?.skills?.domains;
-    if (Array.isArray(raw) && raw.length > 0) {
-      const colorsList = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
-      return raw.map((d: any, idx: number) => {
-        const scored = Number(
-          d.scoredCount ??
-            d.scored_items ??
-            (d.items ? d.items.filter((i: any) => i.score != null && i.score !== 'NA').length : 0),
-        );
-        const total = Number(d.total ?? d.total_items ?? (d.items ? d.items.length : 10)) || 10;
-        const pct = Math.min(100, Math.round((scored / total) * 100));
-        return {
-          code: d.code || String.fromCharCode(65 + idx),
-          name: d.name || 'Skill Domain',
-          scored,
-          total,
-          pct,
-          color: colorsList[idx % colorsList.length],
-        };
-      });
-    }
-    return [
-      {
-        code: 'A',
-        name: 'Cooperation & Reinforcer Effectiveness',
-        scored: 14,
-        total: 15,
-        pct: 93,
-        color: '#3B82F6',
-      },
-      { code: 'B', name: 'Visual Performance', scored: 12, total: 12, pct: 100, color: '#10B981' },
-      { code: 'C', name: 'Receptive Language', scored: 16, total: 20, pct: 80, color: '#F59E0B' },
-      { code: 'D', name: 'Motor Imitation', scored: 10, total: 10, pct: 100, color: '#8B5CF6' },
-    ];
-  }, [assessmentReport]);
-
-  const behaviorFunctions = useMemo(() => {
-    const massScores = assessmentReport?.behavior?.mass?.scores || {};
-    const fastScores = assessmentReport?.behavior?.fast?.scores || {};
-    const escapeVal = Number(fastScores.escape ?? massScores.task_transition ?? 3);
-    const attentionVal = Number(fastScores.attention ?? 4);
-    const tangibleVal = Number(massScores.tangible ?? 2);
-    const sensoryVal = Number(massScores.sensory ?? 1);
-
-    return [
-      {
-        name: 'Escape / Task Avoidance',
-        score: escapeVal,
-        max: 4,
-        pct: Math.round((escapeVal / 4) * 100),
-        color: '#EF4444',
-      },
-      {
-        name: 'Attention Seeking',
-        score: attentionVal,
-        max: 4,
-        pct: Math.round((attentionVal / 4) * 100),
-        color: '#F97316',
-      },
-      {
-        name: 'Access to Tangibles / Activities',
-        score: tangibleVal,
-        max: 4,
-        pct: Math.round((tangibleVal / 4) * 100),
-        color: '#F59E0B',
-      },
-      {
-        name: 'Sensory / Automatic Stimulation',
-        score: sensoryVal,
-        max: 4,
-        pct: Math.round((sensoryVal / 4) * 100),
-        color: '#8B5CF6',
-      },
-    ];
-  }, [assessmentReport]);
-
-  const preferenceItems = useMemo(() => {
-    const raw = assessmentReport?.preferences?.top_items || context?.topReinforcers;
-    const items =
-      Array.isArray(raw) && raw.length > 0
-        ? raw
-        : ['Sensory swing', 'Visual timer', 'Kinetic sand', 'Bubbles'];
-    const pcts = [95, 80, 65, 50, 40];
-    const levels = [
-      'High Preference',
-      'High Preference',
-      'Moderate Preference',
-      'Moderate Preference',
-      'Low Preference',
-    ];
-    const colorsList = ['#10B981', '#10B981', '#F59E0B', '#F59E0B', '#6B7280'];
-    return items.slice(0, 5).map((name: string, idx: number) => ({
-      name,
-      level: levels[idx] || 'Moderate',
-      pct: pcts[idx] || 50,
-      color: colorsList[idx] || '#F59E0B',
-    }));
-  }, [assessmentReport, context]);
-
-  const sensoryQuadrants = useMemo(() => {
-    return [
-      {
-        name: 'Proprioceptive / Deep Pressure Seeking',
-        level: 'High Responsiveness',
-        pct: 85,
-        color: '#8B5CF6',
-      },
-      {
-        name: 'Vestibular / Gross Motor Integration',
-        level: 'Moderate Sensitivity',
-        pct: 70,
-        color: '#3B82F6',
-      },
-      { name: 'Tactile Sensory Tolerance', level: 'Stable Baseline', pct: 60, color: '#10B981' },
-      {
-        name: 'Auditory Sensitivity & Filtering',
-        level: 'Low Registration',
-        pct: 40,
-        color: '#F59E0B',
-      },
-    ];
-  }, [assessmentReport, context]);
-
-  const countSensoryEngagement = useCallback(
-    (level: string) => sensoryActivities.filter((a) => a.engagementLevel === level).length,
-    [sensoryActivities],
-  );
-
-  const countSensoryReaction = useCallback(
-    (reaction: string) => sensoryActivities.filter((a) => a.responseReaction === reaction).length,
-    [sensoryActivities],
-  );
-
-  const handleUpdateItemScore = (itemId: string, newScore: Score) => {
-    setAbllsScores((prev) => ({
-      ...prev,
-      [itemId]: newScore,
-    }));
-    if (selectedAbllsItem && selectedAbllsItem.id === itemId) {
-      setSelectedAbllsItem((prev) => (prev ? { ...prev, score: newScore } : null));
-    }
-  };
-
   const handleSelectGoal = async (goal: GoalBankItem) => {
     if (!selectorTarget || goal.active === false) return;
     const { station, slotIndex } = selectorTarget;
 
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+
+    // Check duplicate goal assignment
+    const isDuplicate = [...slots.station1, ...slots.station2].some(
+      (existing) => existing && existing.id === goal.id,
+    );
+    if (isDuplicate) {
+      const msg = `"${goal.name}" is already assigned to this student.`;
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Duplicate Goal', msg);
+      return;
+    }
+
+    const currentStationSlots = [...(slots[station] || [null])];
+    while (currentStationSlots.length <= slotIndex) {
+      currentStationSlots.push(null);
+    }
+    currentStationSlots[slotIndex] = goal;
+
     const updatedSlots: Slots = {
       ...slots,
-      [station]: slots[station].map((item, idx) => (idx === slotIndex ? goal : item)),
+      [station]: currentStationSlots,
     };
     setSlots(updatedSlots);
 
@@ -702,10 +557,12 @@ export default function IupGenerationScreen({
           masteryCriteria: goal.masteryCriteria,
           station: stationNumber,
           slot: slotIndex,
+          source: 'iup_generation',
+          allowMultipleGoals: true,
         });
 
         const targetIupId =
-          selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+          selectedCandidate?.iupId || selectedCandidate?.iup_id || selectedStudentId;
         await saveIupDraft(targetIupId, {
           studentId: selectedStudentId,
           slots: updatedSlots,
@@ -735,6 +592,14 @@ export default function IupGenerationScreen({
   };
 
   const handleRemoveGoal = (station: StationKey, slotIndex: number) => {
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+
     Alert.alert('Remove Goal', 'Remove this goal from the IUP?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -764,11 +629,85 @@ export default function IupGenerationScreen({
     ]);
   };
 
+  const handleAddSlot = (station: StationKey) => {
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+    setSlots((prev) => {
+      const nextIndex = prev[station].length;
+      const next = {
+        ...prev,
+        [station]: [...prev[station], null],
+      };
+      setTimeout(() => {
+        handleOpenGoalSelector(station, nextIndex);
+      }, 50);
+      return next;
+    });
+  };
+
+  const handleRemoveSlot = (station: StationKey, slotIndex: number) => {
+    if (isFinalizedRecord) {
+      const msg =
+        'This IUP has already been finalized and activated. It is a permanent, non-editable record.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Permanent Record', msg);
+      return;
+    }
+    const hadGoal = Boolean(slots[station]?.[slotIndex]);
+    setSlots((prev) => {
+      const list = prev[station];
+      if (list.length <= 1) {
+        return {
+          ...prev,
+          [station]: [null],
+        };
+      }
+      return {
+        ...prev,
+        [station]: list.filter((_, idx) => idx !== slotIndex),
+      };
+    });
+
+    if (hadGoal && selectedStudentId) {
+      const stationNumber = station === 'station1' ? 1 : 2;
+      removeGoalFromSlot(selectedStudentId, {
+        station: stationNumber,
+        slot: slotIndex,
+      }).catch((err) => {
+        console.error('Failed to remove goal from slot:', err);
+      });
+    }
+  };
+
+  const hasAssignedGoal = (slots.station1?.some(Boolean) || slots.station2?.some(Boolean)) ?? false;
+
+  const handlePreviewOpen = () => {
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal to preview the IUP.', 'error');
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
+    if (isFinalizedRecord) {
+      showToast('This finalized IUP is permanent and non-editable.', 'info');
+      return;
+    }
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal before saving draft.', 'error');
+      return;
+    }
+
     try {
       const targetIupId =
-        selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+        selectedCandidate?.iupId || selectedCandidate?.iup_id || selectedStudentId;
       await saveIupDraft(targetIupId, {
         studentId: selectedStudentId,
         slots,
@@ -794,15 +733,18 @@ export default function IupGenerationScreen({
 
   const handleFinalize = async () => {
     if (!selectedStudentId) return;
+    if (isFinalizedRecord) {
+      showToast('This IUP has already been finalized and activated.', 'info');
+      return;
+    }
+
     const allAssigned = [...slots.station1, ...slots.station2].filter(Boolean);
     if (allAssigned.length === 0) {
+      const msg = 'Please assign at least one target goal before finalizing the IUP.';
       if (typeof window !== 'undefined') {
-        window.alert('Please assign at least one target goal before finalizing the IUP.');
+        window.alert(msg);
       } else {
-        Alert.alert(
-          'Goal Assignment Required',
-          'Please assign at least one target goal before finalizing the IUP.',
-        );
+        Alert.alert('Goal Assignment Required', msg);
       }
       return;
     }
@@ -810,8 +752,14 @@ export default function IupGenerationScreen({
     const doFinalize = async () => {
       try {
         const targetIupId =
-          selectedCandidate?.iupId || (selectedCandidate as any)?.iup_id || selectedStudentId;
+          selectedCandidate?.iupId || selectedCandidate?.iup_id || selectedStudentId;
+        const studentName = context?.studentName || selectedCandidate?.name || 'Student';
+        const program = context?.program || selectedCandidate?.program || 'ABA Therapy';
+
         await finalizeIup(targetIupId, {
+          studentId: selectedStudentId,
+          studentName,
+          program,
           slots,
           goals: allAssigned.map((g) => g?.id).filter(Boolean),
           reinforcementSchedule,
@@ -820,17 +768,46 @@ export default function IupGenerationScreen({
           reviewCycle,
           customFields: customIupValues,
           form_values: customIupValues,
+          isFinalized: true,
+          isPermanent: true,
+          editable: false,
+          status: 'finalized',
         });
-        const studentName = context?.studentName || selectedCandidate?.name || 'Student';
+        setIsFinalizedRecord(true);
         showToast(
           `IUP for ${studentName} has been finalized and activated successfully.`,
           'success',
         );
         Alert.alert(
           'IUP Finalized & Activated',
-          `The Individualized Unit Plan for ${studentName} has been finalized and activated successfully.`,
+          `The Individualized Unit Plan for ${studentName} has been finalized and activated. It has been moved to the IUP Library.`,
+          [
+            {
+              text: 'View in IUP Library',
+              onPress: () => navigation?.navigate?.('IupLibrary' as never),
+            },
+            {
+              text: 'OK',
+              style: 'cancel',
+            },
+          ],
         );
-        // Remain on the IUP Generation page without navigating away
+
+        // Remove finalized student from IUP Generation page
+        setCandidates((prev) => {
+          const remaining = prev.filter(
+            (c) =>
+              c.id !== selectedStudentId &&
+              normalizeStudentId(c.id) !== normalizeStudentId(selectedStudentId) &&
+              c.name.toLowerCase().trim() !== studentName.toLowerCase().trim(),
+          );
+          if (remaining.length > 0) {
+            setSelectedStudentId(remaining[0].id);
+          } else {
+            setSelectedStudentId(null);
+          }
+          return remaining;
+        });
       } catch {
         showToast('Failed to finalize IUP.', 'error');
       }
@@ -965,7 +942,12 @@ export default function IupGenerationScreen({
             </View>
           </View>
           <View style={styles.headerRightActions}>
-            <TouchableOpacity style={styles.headerOutlineBtn} onPress={() => setPreviewOpen(true)}>
+            <TouchableOpacity
+              style={[styles.headerOutlineBtn, !hasAssignedGoal && { opacity: 0.5 }]}
+              onPress={handlePreviewOpen}
+              disabled={!hasAssignedGoal}
+              accessibilityState={{ disabled: !hasAssignedGoal }}
+            >
               <Feather name="eye" size={14} color={colors.navyText} />
               <Text style={styles.headerOutlineBtnText}>Preview IUP</Text>
             </TouchableOpacity>
@@ -999,9 +981,9 @@ export default function IupGenerationScreen({
                   name={selectedCandidate?.name}
                   studentId={selectedCandidate?.id}
                   photoUrl={
-                    (selectedCandidate as any)?.photoUrl ||
-                    (selectedCandidate as any)?.headshotUrl ||
-                    (selectedCandidate as any)?.photo
+                    selectedCandidate?.photoUrl ||
+                    selectedCandidate?.headshotUrl ||
+                    selectedCandidate?.photo
                   }
                   size={36}
                   style={{ marginRight: 10 }}
@@ -1060,9 +1042,7 @@ export default function IupGenerationScreen({
                         <StudentAvatar
                           name={c.name}
                           studentId={c.id}
-                          photoUrl={
-                            (c as any)?.photoUrl || (c as any)?.headshotUrl || (c as any)?.photo
-                          }
+                          photoUrl={c.photoUrl || c.headshotUrl || c.photo}
                           size={32}
                           style={{ marginRight: 8 }}
                         />
@@ -1104,481 +1084,472 @@ export default function IupGenerationScreen({
           )}
         </View>
 
-        {/* Workbench Tab Navigation */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeWorkbenchTab === 'goals' && styles.tabBtnActive]}
-            onPress={() => setActiveWorkbenchTab('goals')}
-          >
-            <Feather
-              name="target"
-              size={15}
-              color={activeWorkbenchTab === 'goals' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[styles.tabBtnText, activeWorkbenchTab === 'goals' && styles.tabBtnTextActive]}
-            >
-              Goal Assignment ({assignedGoalCount}/2)
+        {/* Finalized Banner if record is permanent & active */}
+        {isFinalizedRecord && (
+          <View style={styles.finalizedBanner}>
+            <Feather name="lock" size={14} color="#1E40AF" />
+            <Text style={styles.finalizedBannerText}>
+              Finalized & Active IUP — Saved to IUP Library as a permanent, non-editable record.
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeWorkbenchTab === 'assessment' && styles.tabBtnActive]}
-            onPress={() => setActiveWorkbenchTab('assessment')}
-          >
-            <Feather
-              name="activity"
-              size={15}
-              color={activeWorkbenchTab === 'assessment' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeWorkbenchTab === 'assessment' && styles.tabBtnTextActive,
-              ]}
-            >
-              Assessment Summary
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeWorkbenchTab === 'strategies' && styles.tabBtnActive]}
-            onPress={() => setActiveWorkbenchTab('strategies')}
-          >
-            <Feather
-              name="sliders"
-              size={15}
-              color={activeWorkbenchTab === 'strategies' ? colors.navyText : colors.bodyText}
-            />
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeWorkbenchTab === 'strategies' && styles.tabBtnTextActive,
-              ]}
-            >
-              Implementation & Protocols
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* TAB 1: GOAL ASSIGNMENT */}
-        {activeWorkbenchTab === 'goals' && (
-          <View style={styles.tabContentWrap}>
-            {/* Station 1 Card */}
-            <View style={styles.card}>
-              <View style={styles.stationHeader}>
-                <View style={styles.stationNumberBadge}>
-                  <Text style={styles.stationNumberText}>1</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>Station 1 — Basic Skills</Text>
-                  <Text style={styles.stationSub}>
-                    Foundational acquisition, receptive language, and early imitation
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.slotList}>
-                {slots.station1.map((goal, idx) => (
-                  <View key={`s1-${idx}`} style={styles.slotContainer}>
-                    <Text style={styles.slotTag}>Slot {idx + 1}</Text>
-                    {goal ? (
-                      <View style={styles.filledGoalCard}>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.goalTitleRow}>
-                            <Text style={styles.goalName}>{goal.name}</Text>
-                            <View style={styles.domainChip}>
-                              <Text style={styles.domainChipText}>{goal.domain}</Text>
-                            </View>
-                            {goal.goalType === 'task_analysis' && (
-                              <View style={styles.taskChip}>
-                                <Text style={styles.taskChipText}>Task Analysis</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.goalDesc} numberOfLines={2}>
-                            {goal.description}
-                          </Text>
-                          <View style={styles.masteryRow}>
-                            <Feather name="check-circle" size={12} color={colors.successGreen} />
-                            <Text style={styles.masteryText}>
-                              Mastery Criteria: {goal.masteryCriteria}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.goalActions}>
-                          <TouchableOpacity
-                            style={styles.changeGoalBtn}
-                            onPress={() => {
-                              if (typeof window !== 'undefined') {
-                                window.location.href = '/GoalDomainDefinitions';
-                              } else {
-                                navigation?.navigate?.('GoalDomainDefinitions' as never);
-                              }
-                            }}
-                          >
-                            <Feather name="edit-2" size={14} color={colors.navyText} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.changeGoalBtn}
-                            onPress={() => handleOpenGoalSelector('station1', idx)}
-                          >
-                            <Feather name="refresh-cw" size={14} color={colors.navyText} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.removeGoalBtn}
-                            onPress={() => handleRemoveGoal('station1', idx)}
-                          >
-                            <Feather name="trash-2" size={14} color="#EF4444" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.emptyGoalSlot}
-                        onPress={() => handleOpenGoalSelector('station1', idx)}
-                      >
-                        <View style={styles.plusIconWrap}>
-                          <Feather name="plus" size={16} color={colors.navyText} />
-                        </View>
-                        <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {/* Station 2 Card */}
-            <View style={styles.card}>
-              <View style={styles.stationHeader}>
-                <View style={[styles.stationNumberBadge, { backgroundColor: '#DBEAFE' }]}>
-                  <Text style={[styles.stationNumberText, { color: '#1E40AF' }]}>2</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>Station 2 — Advanced Skills</Text>
-                  <Text style={styles.stationSub}>
-                    Expressive language, academic readiness, and generalization
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.slotList}>
-                {slots.station2.map((goal, idx) => (
-                  <View key={`s2-${idx}`} style={styles.slotContainer}>
-                    <Text style={styles.slotTag}>Slot {idx + 1}</Text>
-                    {goal ? (
-                      <View style={styles.filledGoalCard}>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.goalTitleRow}>
-                            <Text style={styles.goalName}>{goal.name}</Text>
-                            <View style={styles.domainChip}>
-                              <Text style={styles.domainChipText}>{goal.domain}</Text>
-                            </View>
-                            {goal.goalType === 'task_analysis' && (
-                              <View style={styles.taskChip}>
-                                <Text style={styles.taskChipText}>Task Analysis</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.goalDesc} numberOfLines={2}>
-                            {goal.description}
-                          </Text>
-                          <View style={styles.masteryRow}>
-                            <Feather name="check-circle" size={12} color={colors.successGreen} />
-                            <Text style={styles.masteryText}>
-                              Mastery Criteria: {goal.masteryCriteria}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.goalActions}>
-                          <TouchableOpacity
-                            style={styles.changeGoalBtn}
-                            onPress={() => {
-                              if (typeof window !== 'undefined') {
-                                window.location.href = '/GoalDomainDefinitions';
-                              } else {
-                                navigation?.navigate?.('GoalDomainDefinitions' as never);
-                              }
-                            }}
-                          >
-                            <Feather name="edit-2" size={14} color={colors.navyText} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.changeGoalBtn}
-                            onPress={() => handleOpenGoalSelector('station2', idx)}
-                          >
-                            <Feather name="refresh-cw" size={14} color={colors.navyText} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.removeGoalBtn}
-                            onPress={() => handleRemoveGoal('station2', idx)}
-                          >
-                            <Feather name="trash-2" size={14} color="#EF4444" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.emptyGoalSlot}
-                        onPress={() => handleOpenGoalSelector('station2', idx)}
-                      >
-                        <View style={styles.plusIconWrap}>
-                          <Feather name="plus" size={16} color={colors.navyText} />
-                        </View>
-                        <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
           </View>
         )}
 
-        {/* TAB 2: ASSESSMENT SUMMARY */}
-        {activeWorkbenchTab === 'assessment' && (
-          <View style={styles.tabContentWrap}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Student Demographics & Intake Context</Text>
-              <View style={styles.demoGrid}>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Student Name</Text>
-                  <Text style={styles.demoValue}>
-                    {context?.studentName || selectedCandidate?.name || '—'}
-                  </Text>
-                </View>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Age / DOB</Text>
-                  <Text style={styles.demoValue}>
-                    Age {context?.age ?? selectedCandidate?.age ?? '—'} · {context?.dob || '—'}
-                  </Text>
-                </View>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Program</Text>
-                  <Text style={styles.demoValue}>
-                    {context?.program || selectedCandidate?.program || 'ABA Therapy'}
-                  </Text>
-                </View>
-                <View style={styles.demoItem}>
-                  <Text style={styles.demoLabel}>Enrolled Date</Text>
-                  <Text style={styles.demoValue}>{context?.enrollmentDate || '—'}</Text>
-                </View>
-              </View>
+        {!selectedCandidate ? (
+          <View style={styles.emptyWorkbenchCard}>
+            <View style={styles.emptyWorkbenchIcon}>
+              <Feather name="check-circle" size={32} color={colors.successGreen} />
             </View>
-
-            {/* 1. ABLLS-R Skill Tracking System & Color Need Map */}
-            <View style={styles.card}>
-              <View style={styles.contextHeaderRow}>
-                <Feather name="grid" size={16} color={colors.primaryBlue} />
-                <Text style={styles.cardTitle}>
-                  Skills Assessment (ABLLS-R Skill Tracking & Color Need Map)
+            <Text style={styles.emptyWorkbenchTitle}>No Students Awaiting IUP Generation</Text>
+            <Text style={styles.emptyWorkbenchSub}>
+              All eligible students currently have finalized and activated IUPs. You can review,
+              search, and export permanent plans in the IUP Library.
+            </Text>
+            <TouchableOpacity
+              style={styles.goToLibraryBtn}
+              onPress={() => navigation?.navigate?.('IupLibrary' as never)}
+              accessibilityRole="button"
+              accessibilityLabel="View IUP Library"
+            >
+              <Feather name="book-open" size={15} color={colors.navyText} />
+              <Text style={styles.goToLibraryBtnText}>Go to IUP Library</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* Workbench Tab Navigation */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity
+                style={[styles.tabBtn, activeWorkbenchTab === 'goals' && styles.tabBtnActive]}
+                onPress={() => setActiveWorkbenchTab('goals')}
+              >
+                <Feather
+                  name="target"
+                  size={15}
+                  color={activeWorkbenchTab === 'goals' ? colors.navyText : colors.bodyText}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    activeWorkbenchTab === 'goals' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Goal Assignment ({assignedGoalCount})
                 </Text>
-              </View>
-              <AbllsGridSheet summaryData={abllsSummaryData} onSelectItem={setSelectedAbllsItem} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tabBtn, activeWorkbenchTab === 'assessment' && styles.tabBtnActive]}
+                onPress={() => setActiveWorkbenchTab('assessment')}
+              >
+                <Feather
+                  name="activity"
+                  size={15}
+                  color={activeWorkbenchTab === 'assessment' ? colors.navyText : colors.bodyText}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    activeWorkbenchTab === 'assessment' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Assessment Summary
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tabBtn, activeWorkbenchTab === 'strategies' && styles.tabBtnActive]}
+                onPress={() => setActiveWorkbenchTab('strategies')}
+              >
+                <Feather
+                  name="sliders"
+                  size={15}
+                  color={activeWorkbenchTab === 'strategies' ? colors.navyText : colors.bodyText}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    activeWorkbenchTab === 'strategies' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Implementation & Protocols
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {/* 2. Assessment Summary by Target Behavior */}
-            <View style={styles.card}>
-              <View style={styles.contextHeaderRow}>
-                <Feather name="alert-triangle" size={16} color="#EF4444" />
-                <Text style={styles.cardTitle}>Assessment Summary by Target Behavior</Text>
-              </View>
-              <Text style={styles.cardSubtitle}>
-                Review computed function rankings and maintaining variables across all evaluated
-                target behaviors.
-              </Text>
-
-              {targetBehaviors.map((b, idx) => {
-                const mCount = massItems.filter((i) => {
-                  const val = b.massAnswers?.[i.id] ?? b.massAnswers?.[String(i.questionNumber)];
-                  return val !== undefined && val !== null && val !== '';
-                }).length;
-                const fCount = fastItems.filter((i) => {
-                  const val = b.fastAnswers?.[i.id] ?? b.fastAnswers?.[String(i.questionNumber)];
-                  return val !== undefined && val !== null && val !== '';
-                }).length;
-
-                const bMassScores = calculateMassCategoryScores(b.massAnswers || {});
-                const bFastScores = calculateFastCategoryScores(b.fastAnswers || {});
-
-                return (
-                  <View key={b.id || idx} style={styles.behaviorSummaryCard}>
-                    <View style={styles.behaviorSummaryRow}>
-                      <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                        <Text style={styles.behaviorSummaryTitle}>{b.behaviorName}</Text>
-                        {b.definition ? (
-                          <Text style={styles.behaviorSummaryDef}>{b.definition}</Text>
-                        ) : null}
-                      </View>
-                      <View style={styles.summaryBadgeRow}>
-                        <View style={styles.miniBadge}>
-                          <Text style={styles.miniBadgeText}>
-                            MASS: {mCount}/{massItems.length}
-                          </Text>
-                        </View>
-                        <View style={styles.miniBadge}>
-                          <Text style={styles.miniBadgeText}>
-                            FAST: {fCount}/{fastItems.length}
-                          </Text>
-                        </View>
-                      </View>
+            {/* TAB 1: GOAL ASSIGNMENT */}
+            {activeWorkbenchTab === 'goals' && (
+              <View style={styles.tabContentWrap}>
+                {/* Station 1 Card */}
+                <View style={styles.card}>
+                  <View style={styles.stationHeader}>
+                    <View style={styles.stationNumberBadge}>
+                      <Text style={styles.stationNumberText}>1</Text>
                     </View>
-
-                    {(mCount > 0 || fCount > 0) && (
-                      <View style={styles.summaryBox}>
-                        {mCount > 0 && (
-                          <View style={styles.summaryLine}>
-                            <Text style={styles.summaryLineLabel}>MAS-II Primary Function:</Text>
-                            <Text style={styles.summaryLineValue}>
-                              {bMassScores.primaryMaintainingVariable} (Mean:{' '}
-                              {bMassScores.scores[
-                                bMassScores.primaryMaintainingVariable
-                              ]?.mean.toFixed(2)}
-                              )
-                            </Text>
-                          </View>
-                        )}
-                        {fCount > 0 && (
-                          <View style={styles.summaryLine}>
-                            <Text style={styles.summaryLineLabel}>FAST Dominant Variable:</Text>
-                            <Text style={styles.summaryLineValue}>
-                              {bFastScores.dominantVariables.join(', ') || 'None flagged'} (
-                              {bFastScores.maxPercentage}%)
-                            </Text>
-                          </View>
-                        )}
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.stationTitleRow}>
+                        <Text style={styles.cardTitle}>Station 1 — Basic Skills</Text>
+                        <View style={styles.stationCountBadge}>
+                          <Text style={styles.stationCountBadgeText}>
+                            {slots.station1.filter(Boolean).length} / {slots.station1.length}{' '}
+                            Assigned
+                          </Text>
+                        </View>
                       </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-
-            {/* 3. Preference & Reinforcement Assessment */}
-            <View style={styles.card}>
-              <View style={styles.contextHeaderRow}>
-                <Feather name="star" size={16} color="#F59E0B" />
-                <Text style={styles.cardTitle}>Preference & Reinforcement Assessment</Text>
-              </View>
-              <View style={styles.graphContainer}>
-                {preferenceItems.map((p: any) => (
-                  <View key={p.name} style={styles.chartBarRow}>
-                    <View style={styles.chartBarHeader}>
-                      <Text style={styles.chartBarLabel}>{p.name}</Text>
-                      <Text style={styles.chartBarValue}>
-                        {p.level} · {p.pct}%
+                      <Text style={styles.stationSub}>
+                        Foundational acquisition, receptive language, and early imitation
                       </Text>
                     </View>
-                    <View style={styles.progressBarBg}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          { width: `${p.pct}%`, backgroundColor: p.color },
-                        ]}
-                      />
+                    <TouchableOpacity
+                      style={styles.addSlotHeaderBtn}
+                      onPress={() => handleAddSlot('station1')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 1"
+                    >
+                      <Feather name="plus" size={13} color={colors.navyText} />
+                      <Text style={styles.addSlotHeaderBtnText}>Add Goal</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.slotList}>
+                    {slots.station1.map((goal, idx) => (
+                      <View key={`s1-${idx}`} style={styles.slotContainer}>
+                        <View style={styles.slotHeaderRow}>
+                          <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                          {slots.station1.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.removeSlotBtn}
+                              onPress={() => handleRemoveSlot('station1', idx)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove Station 1 Slot ${idx + 1}`}
+                            >
+                              <Feather name="x" size={13} color={colors.mutedText} />
+                              <Text style={styles.removeSlotBtnText}>Remove Slot</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        {goal ? (
+                          <View style={styles.filledGoalCard}>
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.goalTitleRow}>
+                                <Text style={styles.goalName}>{goal.name}</Text>
+                                <View style={styles.domainChip}>
+                                  <Text style={styles.domainChipText}>{goal.domain}</Text>
+                                </View>
+                                {goal.goalType === 'task_analysis' && (
+                                  <View style={styles.taskChip}>
+                                    <Text style={styles.taskChipText}>Task Analysis</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.goalDesc} numberOfLines={2}>
+                                {goal.description}
+                              </Text>
+                              <View style={styles.masteryRow}>
+                                <Feather
+                                  name="check-circle"
+                                  size={12}
+                                  color={colors.successGreen}
+                                />
+                                <Text style={styles.masteryText}>
+                                  Mastery Criteria: {goal.masteryCriteria}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.goalActions}>
+                              <TouchableOpacity
+                                style={styles.changeGoalBtn}
+                                onPress={() => handleOpenGoalSelector('station1', idx)}
+                              >
+                                <Feather name="refresh-cw" size={14} color={colors.navyText} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.removeGoalBtn}
+                                onPress={() => handleRemoveGoal('station1', idx)}
+                              >
+                                <Feather name="trash-2" size={14} color="#EF4444" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.emptyGoalSlot}
+                            onPress={() => handleOpenGoalSelector('station1', idx)}
+                          >
+                            <View style={styles.plusIconWrap}>
+                              <Feather name="plus" size={16} color={colors.navyText} />
+                            </View>
+                            <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={styles.addSlotFooterBtn}
+                      onPress={() => handleAddSlot('station1')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 1"
+                    >
+                      <Feather name="plus-circle" size={15} color={colors.navyText} />
+                      <Text style={styles.addSlotFooterBtnText}>+ Add Goal to Station 1</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Station 2 Card */}
+                <View style={styles.card}>
+                  <View style={styles.stationHeader}>
+                    <View style={[styles.stationNumberBadge, { backgroundColor: '#DBEAFE' }]}>
+                      <Text style={[styles.stationNumberText, { color: '#1E40AF' }]}>2</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.stationTitleRow}>
+                        <Text style={styles.cardTitle}>Station 2 — Advanced Skills</Text>
+                        <View style={styles.stationCountBadge}>
+                          <Text style={styles.stationCountBadgeText}>
+                            {slots.station2.filter(Boolean).length} / {slots.station2.length}{' '}
+                            Assigned
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.stationSub}>
+                        Expressive language, academic readiness, and generalization
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.addSlotHeaderBtn}
+                      onPress={() => handleAddSlot('station2')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 2"
+                    >
+                      <Feather name="plus" size={13} color={colors.navyText} />
+                      <Text style={styles.addSlotHeaderBtnText}>Add Goal</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.slotList}>
+                    {slots.station2.map((goal, idx) => (
+                      <View key={`s2-${idx}`} style={styles.slotContainer}>
+                        <View style={styles.slotHeaderRow}>
+                          <Text style={styles.slotTag}>Slot {idx + 1}</Text>
+                          {slots.station2.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.removeSlotBtn}
+                              onPress={() => handleRemoveSlot('station2', idx)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove Station 2 Slot ${idx + 1}`}
+                            >
+                              <Feather name="x" size={13} color={colors.mutedText} />
+                              <Text style={styles.removeSlotBtnText}>Remove Slot</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        {goal ? (
+                          <View style={styles.filledGoalCard}>
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.goalTitleRow}>
+                                <Text style={styles.goalName}>{goal.name}</Text>
+                                <View style={styles.domainChip}>
+                                  <Text style={styles.domainChipText}>{goal.domain}</Text>
+                                </View>
+                                {goal.goalType === 'task_analysis' && (
+                                  <View style={styles.taskChip}>
+                                    <Text style={styles.taskChipText}>Task Analysis</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.goalDesc} numberOfLines={2}>
+                                {goal.description}
+                              </Text>
+                              <View style={styles.masteryRow}>
+                                <Feather
+                                  name="check-circle"
+                                  size={12}
+                                  color={colors.successGreen}
+                                />
+                                <Text style={styles.masteryText}>
+                                  Mastery Criteria: {goal.masteryCriteria}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.goalActions}>
+                              <TouchableOpacity
+                                style={styles.changeGoalBtn}
+                                onPress={() => handleOpenGoalSelector('station2', idx)}
+                              >
+                                <Feather name="refresh-cw" size={14} color={colors.navyText} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.removeGoalBtn}
+                                onPress={() => handleRemoveGoal('station2', idx)}
+                              >
+                                <Feather name="trash-2" size={14} color="#EF4444" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.emptyGoalSlot}
+                            onPress={() => handleOpenGoalSelector('station2', idx)}
+                          >
+                            <View style={styles.plusIconWrap}>
+                              <Feather name="plus" size={16} color={colors.navyText} />
+                            </View>
+                            <Text style={styles.emptySlotText}>Assign Goal from Goal Bank</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={styles.addSlotFooterBtn}
+                      onPress={() => handleAddSlot('station2')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add Goal to Station 2"
+                    >
+                      <Feather name="plus-circle" size={15} color={colors.navyText} />
+                      <Text style={styles.addSlotFooterBtnText}>+ Add Goal to Station 2</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* TAB 2: ASSESSMENT SUMMARY */}
+            {activeWorkbenchTab === 'assessment' && (
+              <AssessmentSummaryTab context={context} selectedCandidate={selectedCandidate} />
+            )}
+
+            {/* TAB 3: IMPLEMENTATION STRATEGIES & PROTOCOLS */}
+            {activeWorkbenchTab === 'strategies' && (
+              <View style={styles.tabContentWrap}>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Implementation Strategy Configuration</Text>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Reinforcement Schedule & Prompt Fading</Text>
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={reinforcementSchedule}
+                      onChangeText={setReinforcementSchedule}
+                      placeholder="e.g. FR-1 transitioning to VR-3 upon 80% accuracy"
+                      placeholderTextColor={colors.mutedText}
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>
+                      Environmental Accommodations & Visual Supports
+                    </Text>
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={accommodations}
+                      onChangeText={setAccommodations}
+                      placeholder="e.g. Visual timer, quiet study cubicle, token board"
+                      placeholderTextColor={colors.mutedText}
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Crisis De-escalation Protocol</Text>
+                    <TextInput
+                      style={[styles.fieldInput, styles.fieldTextArea]}
+                      value={crisisProtocol}
+                      onChangeText={setCrisisProtocol}
+                      multiline
+                      placeholder="Steps to take during behavioral escalation..."
+                      placeholderTextColor={colors.mutedText}
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Clinical Progress Review Cycle</Text>
+                    <View style={styles.cycleRow}>
+                      {['4 Weeks', '6 Weeks', '8 Weeks', 'Quarterly'].map((cycle) => (
+                        <TouchableOpacity
+                          key={cycle}
+                          style={[
+                            styles.cycleChip,
+                            reviewCycle === cycle && styles.cycleChipSelected,
+                          ]}
+                          onPress={() => setReviewCycle(cycle)}
+                        >
+                          <Text
+                            style={[
+                              styles.cycleChipText,
+                              reviewCycle === cycle && styles.cycleChipTextSelected,
+                            ]}
+                          >
+                            {cycle}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   </View>
-                ))}
-              </View>
-            </View>
 
-            {/* 4. Sensory Assessment Summary */}
-            <View style={styles.card}>
-              <View style={styles.contextHeaderRow}>
-                <Feather name="feather" size={16} color="#8B5CF6" />
-                <Text style={styles.cardTitle}>Summary</Text>
-              </View>
-
-              <Text style={styles.sensorySummarySubtitle}>BY ENGAGEMENT LEVEL</Text>
-              <View style={styles.sensoryBadgeRow}>
-                <View style={styles.blueBadge}>
-                  <Text style={styles.badgeValBlue}>{countSensoryEngagement('Independent')}</Text>
-                  <Text style={styles.badgeLabelBlue}>Independent</Text>
-                </View>
-                <View style={styles.blueBadge}>
-                  <Text style={styles.badgeValBlue}>
-                    {countSensoryEngagement('Partial Physical Prompt')}
-                  </Text>
-                  <Text style={styles.badgeLabelBlue}>Partial Physical Prompt</Text>
-                </View>
-                <View style={styles.blueBadge}>
-                  <Text style={styles.badgeValBlue}>
-                    {countSensoryEngagement('Full Physical Prompt')}
-                  </Text>
-                  <Text style={styles.badgeLabelBlue}>Full Physical Prompt</Text>
-                </View>
-                <View style={styles.blueBadge}>
-                  <Text style={styles.badgeValBlue}>
-                    {countSensoryEngagement('Not Applicable')}
-                  </Text>
-                  <Text style={styles.badgeLabelBlue}>Not Applicable</Text>
+                  <DynamicFormFields
+                    formName="IUP Form"
+                    values={customIupValues}
+                    onChange={(key, val) => setCustomIupValues((prev) => ({ ...prev, [key]: val }))}
+                    excludeStandardLabels={[
+                      'Student Name',
+                      'Target Skill Domain',
+                      'Baseline Mastery (%)',
+                      'Target Objective',
+                      'Environmental Accommodations & Visual Supports',
+                      'Crisis De-escalation Protocol',
+                    ]}
+                  />
                 </View>
               </View>
+            )}
 
-              <Text style={[styles.sensorySummarySubtitle, { marginTop: 16 }]}>
-                BY RESPONSE / REACTION
-              </Text>
-              <View style={styles.sensoryBadgeRow}>
-                <View style={styles.yellowBadge}>
-                  <Text style={styles.badgeValYellow}>{countSensoryReaction('Enjoyed')}</Text>
-                  <Text style={styles.badgeLabelYellow}>Enjoyed</Text>
-                </View>
-                <View style={styles.yellowBadge}>
-                  <Text style={styles.badgeValYellow}>{countSensoryReaction('Neutral')}</Text>
-                  <Text style={styles.badgeLabelYellow}>Neutral</Text>
-                </View>
-                <View style={styles.yellowBadge}>
-                  <Text style={styles.badgeValYellow}>{countSensoryReaction('Refused')}</Text>
-                  <Text style={styles.badgeLabelYellow}>Refused</Text>
-                </View>
-                <View style={styles.yellowBadge}>
-                  <Text style={styles.badgeValYellow}>{countSensoryReaction('Not Observed')}</Text>
-                  <Text style={styles.badgeLabelYellow}>Not Observed</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* TAB 3: IMPLEMENTATION STRATEGIES & PROTOCOLS */}
-        {activeWorkbenchTab === 'strategies' && (
-          <View style={styles.tabContentWrap}>
-            <View style={styles.card}>
-              <DynamicFormFields
-                formName="IUP Form"
-                values={customIupValues}
-                onChange={(key, val) => setCustomIupValues((prev) => ({ ...prev, [key]: val }))}
-                excludeStandardLabels={[
-                  'Student Name',
-                  'Target Skill Domain',
-                  'Baseline Mastery (%)',
-                  'Target Objective',
-                  'Environmental Accommodations & Visual Supports',
-                  'Crisis De-escalation Protocol',
+            {/* Bottom Action Bar */}
+            <View style={styles.bottomBar}>
+              <TouchableOpacity
+                style={[
+                  styles.saveDraftBtn,
+                  (isFinalizedRecord || !hasAssignedGoal) && { opacity: 0.5 },
                 ]}
-              />
+                onPress={handleDraftSave}
+                disabled={isFinalizedRecord || !hasAssignedGoal}
+                accessibilityState={{ disabled: isFinalizedRecord || !hasAssignedGoal }}
+              >
+                <Feather
+                  name={isFinalizedRecord ? 'lock' : 'save'}
+                  size={15}
+                  color={colors.navyText}
+                />
+                <Text style={styles.saveDraftBtnText}>
+                  {isFinalizedRecord ? 'Draft Locked' : 'Save Draft'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.previewBtn, !hasAssignedGoal && { opacity: 0.5 }]}
+                onPress={handlePreviewOpen}
+                disabled={!hasAssignedGoal}
+                accessibilityState={{ disabled: !hasAssignedGoal }}
+              >
+                <Feather name="eye" size={15} color={colors.navyText} />
+                <Text style={styles.previewBtnText}>Full Preview</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.finalizeBtn, isFinalizedRecord && { backgroundColor: '#E2E8F0' }]}
+                onPress={handleFinalize}
+                disabled={isFinalizedRecord}
+              >
+                <Feather
+                  name={isFinalizedRecord ? 'lock' : 'check-circle'}
+                  size={16}
+                  color={colors.navyText}
+                />
+                <Text style={styles.finalizeBtnText}>
+                  {isFinalizedRecord ? 'Finalized & Active' : 'Finalize & Activate IUP'}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          </>
         )}
-
-        {/* Bottom Action Bar */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.saveDraftBtn} onPress={handleDraftSave}>
-            <Feather name="save" size={15} color={colors.navyText} />
-            <Text style={styles.saveDraftBtnText}>Save Draft</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.previewBtn} onPress={() => setPreviewOpen(true)}>
-            <Feather name="eye" size={15} color={colors.navyText} />
-            <Text style={styles.previewBtnText}>Full Preview</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.finalizeBtn} onPress={handleFinalize}>
-            <Feather name="check-circle" size={16} color={colors.navyText} />
-            <Text style={styles.finalizeBtnText}>Finalize & Activate IUP</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
       {/* GOAL SELECTOR MODAL */}
@@ -1601,20 +1572,6 @@ export default function IupGenerationScreen({
                   · Slot {(selectorTarget?.slotIndex ?? 0) + 1}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={styles.manageGoalsLinkBtn}
-                onPress={() => {
-                  setSelectorTarget(null);
-                  if (typeof window !== 'undefined') {
-                    window.location.href = '/GoalDomainDefinitions';
-                  } else {
-                    navigation?.navigate?.('GoalDomainDefinitions' as never);
-                  }
-                }}
-              >
-                <Feather name="settings" size={12} color={colors.navyText} />
-                <Text style={styles.manageGoalsLinkText}>Edit in Admin</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setSelectorTarget(null)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1831,13 +1788,6 @@ export default function IupGenerationScreen({
         content={exportContent ?? ''}
         onClose={() => setExportContent(null)}
       />
-
-      {/* SKILL ITEM INSPECTOR MODAL */}
-      <AbllsItemInspectorModal
-        selectedItem={selectedAbllsItem}
-        onClose={() => setSelectedAbllsItem(null)}
-        onUpdateScore={handleUpdateItemScore}
-      />
     </SafeAreaView>
   );
 }
@@ -1852,6 +1802,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.md,
+  },
+  finalizedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    padding: 12,
+  },
+  finalizedBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E40AF',
   },
   headerTitleWrap: {
     flexDirection: 'row',
@@ -2002,7 +1967,57 @@ const styles = StyleSheet.create({
   tabContentWrap: { gap: spacing.lg },
 
   /* Station Cards & Goal Slots */
+  goalsIntroBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  goalsIntroIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalsIntroTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF' },
+  goalsIntroText: { fontSize: 12, color: '#3B82F6', marginTop: 2, lineHeight: 17 },
+
   stationHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  stationCountBadge: {
+    backgroundColor: colors.bgApp,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  stationCountBadgeText: { fontSize: 11, fontWeight: '700', color: colors.bodyText },
+
+  addSlotHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primaryYellow,
+    borderWidth: 1,
+    borderColor: colors.primaryYellowDark,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  addSlotHeaderBtnText: { fontSize: 12, fontWeight: '700', color: colors.navyText },
+
   stationNumberBadge: {
     width: 32,
     height: 32,
@@ -2016,7 +2031,34 @@ const styles = StyleSheet.create({
 
   slotList: { gap: spacing.md },
   slotContainer: { gap: spacing.xs },
+  slotHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  removeSlotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  removeSlotBtnText: { fontSize: 11, color: colors.mutedText, fontWeight: '500' },
   slotTag: { fontSize: 11, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase' },
+  addSlotFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.bgApp,
+    marginTop: spacing.xs,
+  },
+  addSlotFooterBtnText: { fontSize: 13, fontWeight: '700', color: colors.navyText },
   filledGoalCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2118,101 +2160,6 @@ const styles = StyleSheet.create({
   },
   reinforcerRank: { fontSize: 10, fontWeight: '700', color: colors.primaryYellowDark },
   reinforcerChipText: { fontSize: 12, fontWeight: '600', color: colors.navyText },
-
-  /* Assessment Summary Graph Visuals */
-  cardSubtitle: { fontSize: 13, color: colors.mutedText, marginTop: 2 },
-  behaviorSummaryCard: {
-    backgroundColor: colors.bgApp,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  behaviorSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  behaviorSummaryTitle: { fontSize: 15, fontWeight: '700', color: colors.navyText },
-  behaviorSummaryDef: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
-  summaryBadgeRow: { flexDirection: 'row', gap: 6 },
-  miniBadge: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-  },
-  miniBadgeText: { fontSize: 11, fontWeight: '600', color: colors.navyText },
-  summaryBox: {
-    backgroundColor: '#FFFFFF',
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 4,
-  },
-  summaryLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryLineLabel: {
-    fontSize: 12,
-    color: colors.mutedText,
-    fontWeight: '600',
-  },
-  summaryLineValue: {
-    fontSize: 12,
-    color: colors.navyText,
-    fontWeight: '700',
-  },
-  sensorySummarySubtitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-    letterSpacing: 0.5,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  sensoryBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  blueBadge: {
-    backgroundColor: '#F0F9FF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    minWidth: 110,
-  },
-  badgeValBlue: { fontSize: 20, fontWeight: '700', color: '#0284C7' },
-  badgeLabelBlue: { fontSize: 11, color: '#0369A1', marginTop: 2, textAlign: 'center' },
-  yellowBadge: {
-    backgroundColor: '#FEFCE8',
-    borderWidth: 1,
-    borderColor: '#FEF08A',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    minWidth: 100,
-  },
-  badgeValYellow: { fontSize: 20, fontWeight: '700', color: '#D97706' },
-  badgeLabelYellow: { fontSize: 11, color: '#B45309', marginTop: 2, textAlign: 'center' },
-  graphContainer: { gap: spacing.md, marginTop: spacing.md },
-  chartBarRow: { gap: 4 },
-  chartBarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  chartBarLabel: { fontSize: 13, fontWeight: '600', color: colors.navyText },
-  chartBarValue: { fontSize: 12, fontWeight: '700', color: colors.mutedText },
-  progressBarBg: {
-    height: 10,
-    backgroundColor: '#E2E8F0',
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
-  progressBarFill: { height: '100%', borderRadius: radius.pill },
 
   /* Strategies Tab */
   fieldBlock: { gap: spacing.xs },
@@ -2407,4 +2354,51 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   previewExportBtnText: { fontWeight: '700', color: colors.navyText },
+  emptyWorkbenchCard: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  emptyWorkbenchIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyWorkbenchTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.navyText,
+    textAlign: 'center',
+  },
+  emptyWorkbenchSub: {
+    fontSize: 14,
+    color: colors.mutedText,
+    textAlign: 'center',
+    maxWidth: 480,
+    lineHeight: 20,
+  },
+  goToLibraryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primaryYellow,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+  },
+  goToLibraryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.navyText,
+  },
 });

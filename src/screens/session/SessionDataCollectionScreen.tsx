@@ -19,6 +19,12 @@ import ScreenError from '../../components/ScreenError';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { usePermission } from '../../auth/usePermission';
+import { useFocusEffect } from '@react-navigation/native';
+import {
+  isStudentDeleted,
+  filterOutDeletedStudents,
+  onDeletedStudentChanged,
+} from '../../utils/deletedStudentHelper';
 import { handleTeacherTabPress } from '../../navigation/teacherTabNavigation';
 import { secureRandomId } from '../../utils/cryptoRandom';
 import StudentSessionCard from './components/StudentSessionCard';
@@ -362,10 +368,12 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           : null;
 
         // 2. Check if students were explicitly assigned or passed for this specific teacher
-        let assignedStudentIds = strictlyAssignedIds;
+        let assignedStudentIds = strictlyAssignedIds.filter((sid) => !isStudentDeleted(sid));
 
         if (directorAssignedIds !== null) {
-          assignedStudentIds = directorAssignedIds.slice(0, 2);
+          assignedStudentIds = directorAssignedIds
+            .filter((sid) => !isStudentDeleted(sid))
+            .slice(0, 2);
         } else if (
           route.params?.students &&
           Array.isArray(route.params.students) &&
@@ -422,6 +430,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
         // Filter assigned students strictly by session eligibility
         const eligibleStudents: any[] = [];
         for (const sid of assignedStudentIds) {
+          if (isStudentDeleted(sid)) continue;
           const opt = studentMap.get(sid);
           const reg = getRegisteredStudentStatus(sid);
           const fromRoster = sessionRosterStudents.find((s: any) => String(s.id) === sid);
@@ -433,7 +442,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
             sessionAssigned: true,
           };
 
-          if (isStudentEligibleForSession(candidate)) {
+          if (!isStudentDeleted(candidate) && isStudentEligibleForSession(candidate)) {
             eligibleStudents.push({
               ...candidate,
               status: 'in_session',
@@ -442,7 +451,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
         }
 
         // Limit strictly to at most 2 students per station
-        const cappedStudents = eligibleStudents.slice(0, 2);
+        const cappedStudents = filterOutDeletedStudents(eligibleStudents).slice(0, 2);
 
         // Fetch real backend student detail goals for assigned students if not present in draft or roster
         const studentProfileMap = new Map<string, any>();
@@ -692,6 +701,31 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
       loadRoster(selectedTeacherIdRef.current, true);
     });
   }, [loadRoster]);
+
+  useEffect(() => {
+    return onDeletedStudentChanged(() => {
+      loadRoster(selectedTeacherIdRef.current, true);
+    });
+  }, [loadRoster]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleStudentDeleted = () => {
+      loadRoster(selectedTeacherIdRef.current, true);
+    };
+    window.addEventListener('melue_student_deleted', handleStudentDeleted);
+    window.addEventListener('melue_session_updated', handleStudentDeleted);
+    return () => {
+      window.removeEventListener('melue_student_deleted', handleStudentDeleted);
+      window.removeEventListener('melue_session_updated', handleStudentDeleted);
+    };
+  }, [loadRoster]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRoster(selectedTeacherIdRef.current, true);
+    }, [loadRoster]),
+  );
 
   useEffect(() => {
     if (!isRunning) return undefined;
@@ -1239,25 +1273,27 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           </View>
         ) : (
           <View style={[styles.studentsRow, isLandscape && styles.studentsRowLandscape]}>
-            {session.students.slice(0, 2).map((student) => (
-              <TouchableOpacity
-                key={student.id}
-                style={styles.studentCardWrapper}
-                activeOpacity={0.9}
-                onPress={() => handleActivate(student.id)}
-              >
-                <StudentSessionCard
-                  student={student}
-                  onSelectPromptLevel={handleSelectPromptLevel}
-                  onRecordIncident={handleOpenIncidentModal}
-                  onMasteryCheck={handleMasteryCheck}
-                  onActivate={handleActivate}
-                  onViewGoalProgress={handleViewGoalProgress}
-                  onViewProfile={handleViewProfile}
-                  onUndo={(goalId) => handleUndoTrial(student.id, goalId)}
-                />
-              </TouchableOpacity>
-            ))}
+            {filterOutDeletedStudents(session.students || [])
+              .slice(0, 2)
+              .map((student) => (
+                <TouchableOpacity
+                  key={student.id}
+                  style={styles.studentCardWrapper}
+                  activeOpacity={0.9}
+                  onPress={() => handleActivate(student.id)}
+                >
+                  <StudentSessionCard
+                    student={student}
+                    onSelectPromptLevel={handleSelectPromptLevel}
+                    onRecordIncident={handleOpenIncidentModal}
+                    onMasteryCheck={handleMasteryCheck}
+                    onActivate={handleActivate}
+                    onViewGoalProgress={handleViewGoalProgress}
+                    onViewProfile={handleViewProfile}
+                    onUndo={(goalId) => handleUndoTrial(student.id, goalId)}
+                  />
+                </TouchableOpacity>
+              ))}
           </View>
         )}
       </ScrollView>

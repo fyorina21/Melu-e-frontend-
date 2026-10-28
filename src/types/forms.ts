@@ -9,7 +9,9 @@ export interface FormField {
   level?: string;
   placeholder?: string;
   helpText?: string;
+  help_text?: string;
   defaultValue?: string;
+  default_value?: string;
   allowOther?: boolean;
   minValue?: number | string;
   maxValue?: number | string;
