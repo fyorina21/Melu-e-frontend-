@@ -5,6 +5,7 @@ import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import StudentAvatar from '../../components/StudentAvatar';
 import { getCoordinatorDashboard, getCoordinatorNotifications } from '../../api/coordinatorApi';
+import { subscribeToLiveSessions } from '../../utils/liveSessionSyncHelper';
 import { colors, spacing } from '../../theme/colors';
 
 import {
@@ -46,18 +47,28 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
       const { data } = await getCoordinatorDashboard();
       const payload = (data ?? {}) as DashboardPayload;
       setSessions(
-        (payload.liveSessions ?? []).map((row) => ({
-          id: row.id,
-          teacher: row.teacherName,
-          station: row.stationName,
-          students:
-            row.studentCount > 0
-              ? [`${row.studentCount} student${row.studentCount > 1 ? 's' : ''}`]
-              : [],
-          timer: 0,
-          trials: 0,
-          status: STATUS_FROM_API[row.status] ?? 'on-track',
-        })),
+        (payload.liveSessions ?? []).map((row) => {
+          const elapsed =
+            row.startedAt && row.startedAt > 0
+              ? Math.max(0, Math.floor((Date.now() - row.startedAt) / 1000))
+              : 0;
+          const studentList =
+            Array.isArray(row.studentNames) && row.studentNames.length > 0
+              ? row.studentNames
+              : row.studentCount > 0
+                ? [`${row.studentCount} student${row.studentCount > 1 ? 's' : ''}`]
+                : [];
+          return {
+            id: row.id,
+            teacher: row.teacherName,
+            station: row.stationName,
+            students: studentList,
+            timer: elapsed,
+            trials: 0,
+            status: STATUS_FROM_API[row.status] ?? 'on-track',
+            startedAt: row.startedAt,
+          };
+        }),
       );
       setPendingReviews(
         (payload.pendingReviews ?? []).map((row) => ({
@@ -90,6 +101,10 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
 
   useEffect(() => {
     loadDashboard();
+    const unsubscribe = subscribeToLiveSessions(() => {
+      loadDashboard();
+    });
+    return () => unsubscribe();
   }, [loadDashboard]);
 
   useEffect(() => {
@@ -111,7 +126,13 @@ export default function CoordinatorDashboardScreen({ navigation }: Props) {
     const id = setInterval(() => {
       setSessions((prev) => {
         if (prev.length === 0) return prev;
-        return prev.map((s) => ({ ...s, timer: s.timer + 1 }));
+        return prev.map((s) => {
+          if (s.startedAt && s.startedAt > 0) {
+            const realElapsed = Math.max(0, Math.floor((Date.now() - s.startedAt) / 1000));
+            return { ...s, timer: realElapsed };
+          }
+          return { ...s, timer: s.timer + 1 };
+        });
       });
     }, 1000);
     return () => clearInterval(id);

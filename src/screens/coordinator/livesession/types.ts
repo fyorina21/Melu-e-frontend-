@@ -29,6 +29,8 @@ export interface ActiveSessionRow {
   incidents?: unknown[] | number;
   incidents_count?: number;
   incidentsCount?: number;
+  started_at?: number | string;
+  startedAt?: number | string;
 }
 
 export interface Session {
@@ -44,6 +46,7 @@ export interface Session {
   trials: number;
   status: SessionStatus;
   incidents: number;
+  startedAt?: number;
 }
 
 export const STATUS_FROM_API: Record<string, SessionStatus> = {
@@ -222,6 +225,19 @@ export function mapActiveSession(row: ActiveSessionRow): Session {
     });
   }
 
+  let parsedStartedAt: number | undefined;
+  if (typeof row.startedAt === 'number') {
+    parsedStartedAt = row.startedAt;
+  } else if (typeof row.started_at === 'number') {
+    parsedStartedAt = row.started_at;
+  } else if (typeof row.started_at === 'string') {
+    const t = new Date(row.started_at).getTime();
+    if (!isNaN(t) && t > 0) parsedStartedAt = t;
+  } else if (typeof row.startedAt === 'string') {
+    const t = new Date(row.startedAt).getTime();
+    if (!isNaN(t) && t > 0) parsedStartedAt = t;
+  }
+
   return {
     id: row.id,
     teacher,
@@ -235,6 +251,7 @@ export function mapActiveSession(row: ActiveSessionRow): Session {
     trials,
     status,
     incidents,
+    startedAt: parsedStartedAt,
   };
 }
 

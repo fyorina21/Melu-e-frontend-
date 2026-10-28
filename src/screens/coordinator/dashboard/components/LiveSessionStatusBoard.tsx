@@ -71,10 +71,6 @@ export const LiveSessionStatusBoard: React.FC<LiveSessionStatusBoardProps> = Rea
                         </View>
                       ))}
                     </View>
-                    <View style={styles.timerRow}>
-                      <Text style={styles.timerText}>{formatTimer(session.timer)}</Text>
-                      <Text style={styles.trialsText}>{session.trials}T</Text>
-                    </View>
                   </View>
                 </TouchableOpacity>
               );

@@ -35,6 +35,8 @@ import {
 } from '../../stores/trialsStore';
 import { openPrintWindow } from '../../utils/webExport';
 import { resetSessionTimer } from '../../stores/sessionTimerStore';
+import { unregisterLiveSession } from '../../utils/liveSessionSyncHelper';
+import { saveSubmittedSessionSummary } from '../../utils/sessionSummaryWorkflowHelper';
 import StatusPill from '../../components/StatusPill';
 import { useToast } from '../../context/ToastContext';
 import StudentAvatar from '../../components/StudentAvatar';
@@ -490,6 +492,42 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       Alert.alert('Notes required', 'Please enter a note before submitting.');
       return;
     }
+    const studentNamesList = Array.isArray(summary?.students)
+      ? summary.students.map((st) => st.name)
+      : [];
+
+    // Calculate aggregated metrics across all students and goals in this session
+    let calcTrialsCount = 0;
+    let totalIndepPctSum = 0;
+    let goalsWithIndepCount = 0;
+
+    (summary?.students || []).forEach((st) => {
+      (st.goals || []).forEach((g) => {
+        calcTrialsCount += Number(g.totalTrials || g.trialLog?.length || 0);
+        if (typeof g.independencePercent === 'number') {
+          totalIndepPctSum += g.independencePercent;
+          goalsWithIndepCount += 1;
+        }
+      });
+    });
+
+    const calcIndependence =
+      goalsWithIndepCount > 0 ? Math.round(totalIndepPctSum / goalsWithIndepCount) : 80;
+    const calcIncidentsCount = Array.isArray(summary?.incidents) ? summary.incidents.length : 0;
+
+    const effectiveId = sessionId || `sum-${Date.now()}`;
+    saveSubmittedSessionSummary({
+      id: effectiveId,
+      sessionId: sessionId || undefined,
+      teacherName: summary?.teacherName || 'Teacher',
+      stationName: summary?.stationName || 'Station 1',
+      studentNames: studentNamesList,
+      notes: notes.trim(),
+      trialsCount: calcTrialsCount,
+      independence: calcIndependence,
+      incidentsCount: calcIncidentsCount,
+    });
+
     try {
       const studentNames = (summary?.students || []).map((s) => s.name).filter(Boolean);
       const studentList = studentNames.length > 0 ? studentNames : ['Student'];
@@ -525,21 +563,24 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       }
 
       resetSessionTimer();
-      showToast('Session status changed to Saved', 'success');
+      unregisterLiveSession(sessionId);
+      unregisterLiveSession('active');
+      showToast('Session successfully ended and summary submitted for review!', 'success');
       Alert.alert(
-        'Session Saved',
-        'Status changed from draft to saved and notes are recorded to Daily Notes.',
-        [
-          { text: 'Stay Here', style: 'cancel' },
-          {
-            text: 'View Daily Notes',
-            onPress: () => navigation?.navigate?.('DailyNotes' as never),
-          },
-        ],
+        'Session Submitted Successfully',
+        'Your session has ended and the summary report was sent to the Director and Program Coordinator for review.',
+        [{ text: 'OK', onPress: () => navigation?.navigate?.('SessionDataCollection') }],
       );
     } catch (err) {
-      setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
-      showToast('Session status changed to Saved (offline)', 'success');
+      resetSessionTimer();
+      unregisterLiveSession(sessionId);
+      unregisterLiveSession('active');
+      showToast('Session ended and summary saved locally (offline)', 'success');
+      Alert.alert(
+        'Session Submitted Successfully',
+        'Your session has ended. Your summary report has been saved and submitted for review.',
+        [{ text: 'OK', onPress: () => navigation?.navigate?.('SessionDataCollection') }],
+      );
     }
   };
 
@@ -556,7 +597,6 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
       const room = 'Room 1A';
       const today = new Date().toISOString().split('T')[0];
 
-      // 1. Save note to daily notes persistent store so it displays on DailyNotes page
       await createSessionNote(sessionId, {
         bodyMarkdown: trimmedNotes,
         notes: trimmedNotes,
@@ -567,13 +607,11 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         date: today,
       });
 
-      // 2. Persist draft status and notes
       storage.setJSONSync(`melue_session_summary_draft_${sessionId}`, {
         notes: trimmedNotes,
         status: 'saved',
       });
 
-      // 3. Update local state
       setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
 
       if (sessionId) {
@@ -589,7 +627,7 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
         { text: 'Stay Here', style: 'cancel' },
         {
           text: 'View Daily Notes',
-          onPress: () => navigation?.navigate?.('DailyNotes' as never),
+          onPress: () => (navigation as any)?.navigate?.('DailyNotes'),
         },
       ]);
     } catch {

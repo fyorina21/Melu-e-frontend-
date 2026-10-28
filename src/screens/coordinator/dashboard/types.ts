@@ -6,6 +6,7 @@ export interface LiveSession {
   timer: number;
   trials: number;
   status: 'on-track' | 'needs-attention' | 'overdue';
+  startedAt?: number;
 }
 
 export interface PendingReview {
@@ -44,6 +45,8 @@ export interface DashboardPayload {
     stationName: string;
     status: 'green' | 'yellow' | 'red';
     studentCount: number;
+    studentNames?: string[];
+    startedAt?: number;
   }[];
   pendingReviews?: {
     id: string;

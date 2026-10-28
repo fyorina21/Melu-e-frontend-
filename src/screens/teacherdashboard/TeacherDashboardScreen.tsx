@@ -26,6 +26,8 @@ import { getSessionRoster } from '../../api/sessionApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { getDirectorSchedule } from '../../api/directorApi';
 import { setStoredSessionStudents } from '../../stores/trialsStore';
+import { startSessionTimer, resetSessionTimer } from '../../stores/sessionTimerStore';
+import { registerLiveSession } from '../../utils/liveSessionSyncHelper';
 import { getPendingMasteryChecks } from '../../stores/goalMasteryStore';
 import {
   isStudentEligibleForSession,
@@ -180,6 +182,13 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
   const [data, setData] = useState<TeacherDashboardData | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -455,6 +464,29 @@ export default function TeacherDashboardScreen({ navigation }: Props) {
         ? localStorage.getItem('melue_session_selected_teacher_id') || undefined
         : undefined;
     setStoredSessionStudents('active', eligibleSessionStudents, teacherId);
+
+    // Initialize timer for this session
+    const startTimeNow = Date.now();
+    resetSessionTimer();
+    startSessionTimer('active', 90 * 60);
+
+    // Register active live session immediately for coordinator visibility
+    try {
+      const activeTeacherName =
+        session?.userName || (data?.todaySchedule as any)?.teacherName || 'Teacher';
+      registerLiveSession({
+        id: 'active',
+        teacherId: teacherId || session?.userId || 'teacher-active',
+        teacherName: activeTeacherName,
+        stationName: data?.todaySchedule?.stationName || 'Station 1',
+        roomName: data?.todaySchedule?.roomName || 'Room 1',
+        students: eligibleSessionStudents,
+        startedAt: startTimeNow,
+        durationMinutes: 90,
+        status: 'on-track',
+      });
+    } catch {}
+
     navigation?.navigate?.('SessionDataCollection', {
       sessionId: 'active',
       teacherId,

@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import StudentAvatar from '../../../components/StudentAvatar';
 import { colors, radius, spacing } from '../../../theme/colors';
 import type { Teacher } from '../scheduleTypes';
+import { getTeacherInitials } from '../scheduleTypes';
 
 interface TeacherSummaryModalProps {
   selectedTeacher: Teacher | null;
@@ -24,7 +25,7 @@ export function TeacherSummaryModal({ selectedTeacher, onClose }: TeacherSummary
             <View style={styles.summaryHeaderLeft}>
               <View style={styles.avatarMedium}>
                 <Text style={styles.avatarMediumText}>
-                  {selectedTeacher?.name.charAt(selectedTeacher.name.length - 1)}
+                  {getTeacherInitials(selectedTeacher?.name)}
                 </Text>
               </View>
               <View>

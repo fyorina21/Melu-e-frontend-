@@ -34,3 +34,10 @@ export interface WeekAppointment {
   studentNames: string[];
   status?: string;
 }
+
+export function getTeacherInitials(name?: string): string {
+  if (!name || !name.trim()) return 'T';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}

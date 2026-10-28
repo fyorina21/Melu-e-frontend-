@@ -34,12 +34,26 @@ import {
 // ============================================================================
 
 // ============================================================================
-export const IUP_DRAFTS_STORAGE_KEY = 'melue_iup_drafts_cache';
-export const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
-export const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
-export const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
-export const ARCHIVED_IUPS_STORAGE_KEY = 'melue_archived_iups_cache';
-export const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
+import {
+  IUP_DRAFTS_STORAGE_KEY,
+  getAllStoredIupDrafts,
+  getStoredIupDraft,
+  storeIupDraftLocally,
+} from '../utils/iupDraftStorage';
+
+export {
+  IUP_DRAFTS_STORAGE_KEY,
+  getAllStoredIupDrafts,
+  getStoredIupDraft,
+  storeIupDraftLocally,
+  CASELOAD_ASSIGNMENTS_STORAGE_KEY,
+  IUP_LIBRARY_STORAGE_KEY,
+};
+const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
+const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
+const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';
+const ARCHIVED_IUPS_STORAGE_KEY = 'melue_archived_iups_cache';
+const IUP_LIBRARY_STORAGE_KEY = 'melue_iup_library_cache';
 
 // ============================================================================
 // Default Datasets for Resilient Fallbacks
@@ -345,41 +359,6 @@ const DEFAULT_IUP_LIBRARY = [
 // ============================================================================
 // Local Storage Helper Functions (Synchronous & Cross-Platform Safe)
 // ============================================================================
-export function getAllStoredIupDrafts(): Record<string, Payload> {
-  return storage.getJSONSync<Record<string, Payload>>(IUP_DRAFTS_STORAGE_KEY, {}) || {};
-}
-
-export function getStoredIupDraft(id: string): Payload | null {
-  const all = getAllStoredIupDrafts();
-  return all[id] || null;
-}
-
-export function storeIupDraftLocally(id: string, payload: Payload): void {
-  try {
-    const all = getAllStoredIupDrafts();
-    const existing = all[id] || {};
-    // Prevent unauthorized overwrite if record is marked finalized/permanent/non-editable
-    if (existing.isFinalized && !payload.isFinalized && payload.status !== 'finalized') {
-      console.warn('Blocked unauthorized modification to finalized permanent IUP draft:', id);
-      return;
-    }
-    const entry = {
-      ...existing,
-      ...payload,
-      saved_at: new Date().toISOString(),
-    };
-    all[id] = entry;
-    if (payload.studentId && typeof payload.studentId === 'string') {
-      all[payload.studentId] = entry;
-    }
-    if (payload.student_id && typeof payload.student_id === 'string') {
-      all[payload.student_id] = entry;
-    }
-    storage.setJSONSync(IUP_DRAFTS_STORAGE_KEY, all);
-  } catch (err) {
-    console.warn('Failed to cache IUP draft locally', err);
-  }
-}
 
 function getStoredReviewedMap(): Record<
   string,

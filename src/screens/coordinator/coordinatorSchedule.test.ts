@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DAYS, type Teacher } from './scheduleTypes';
+import { DAYS, type Teacher, getTeacherInitials } from './scheduleTypes';
 
 describe('Coordinator Schedule Utilities & Models', () => {
   const mockTeachers: Teacher[] = [
@@ -50,5 +50,15 @@ describe('Coordinator Schedule Utilities & Models', () => {
     expect(filterAll('t-1')).toHaveLength(1);
     expect(filterAll('t-1')[0].name).toBe('Teacher One');
     expect(filterAll('unknown')).toHaveLength(0);
+  });
+
+  it('correctly formats teacher avatar initials using getTeacherInitials', () => {
+    expect(getTeacherInitials('Abeba Tadesse')).toBe('AT');
+    expect(getTeacherInitials('Dawit Bekele')).toBe('DB');
+    expect(getTeacherInitials('Selam Tesfaye')).toBe('ST');
+    expect(getTeacherInitials('Michael Brown')).toBe('MB');
+    expect(getTeacherInitials('Teacher')).toBe('TE');
+    expect(getTeacherInitials('')).toBe('T');
+    expect(getTeacherInitials(undefined)).toBe('T');
   });
 });
