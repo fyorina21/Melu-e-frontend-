@@ -41,7 +41,14 @@ import {
   storeIupDraftLocally,
 } from '../utils/iupDraftStorage';
 
-export { IUP_DRAFTS_STORAGE_KEY, getAllStoredIupDrafts, getStoredIupDraft, storeIupDraftLocally };
+export {
+  IUP_DRAFTS_STORAGE_KEY,
+  getAllStoredIupDrafts,
+  getStoredIupDraft,
+  storeIupDraftLocally,
+  CASELOAD_ASSIGNMENTS_STORAGE_KEY,
+  IUP_LIBRARY_STORAGE_KEY,
+};
 const ASSESSMENT_REVIEWED_STORAGE_KEY = 'melue_assessment_reviewed_cache';
 const CASELOAD_ASSIGNMENTS_STORAGE_KEY = 'melue_caseload_assignments_cache';
 const CUSTOM_GOALS_STORAGE_KEY = 'melue_custom_goals_cache';

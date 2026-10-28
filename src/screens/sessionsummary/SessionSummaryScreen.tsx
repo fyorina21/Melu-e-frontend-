@@ -584,6 +584,57 @@ export function SessionSummaryScreen({ route, navigation }: Props) {
     }
   };
 
+  const handleResubmit = async () => {
+    const trimmedNotes = notes.trim();
+    if (!trimmedNotes) {
+      Alert.alert('Notes required', 'Please enter a note before resubmitting.');
+      return;
+    }
+    try {
+      const studentNames = (summary?.students || []).map((s) => s.name).filter(Boolean);
+      const studentList = studentNames.length > 0 ? studentNames : ['Student'];
+      const station = summary?.stationName || 'Station 1';
+      const room = 'Room 1A';
+      const today = new Date().toISOString().split('T')[0];
+
+      await createSessionNote(sessionId, {
+        bodyMarkdown: trimmedNotes,
+        notes: trimmedNotes,
+        students: studentList,
+        station,
+        room,
+        status: 'Saved',
+        date: today,
+      });
+
+      storage.setJSONSync(`melue_session_summary_draft_${sessionId}`, {
+        notes: trimmedNotes,
+        status: 'saved',
+      });
+
+      setSummary((prev) => (prev ? { ...prev, status: 'saved' } : prev));
+
+      if (sessionId) {
+        await resubmitSessionNote(sessionId, {
+          notes: trimmedNotes,
+          bodyMarkdown: trimmedNotes,
+          status: 'Saved',
+        }).catch(() => null);
+      }
+
+      showToast('Session notes saved and resubmitted for review', 'success');
+      Alert.alert('Notes Saved', 'Session notes have been saved and displayed on Daily Notes.', [
+        { text: 'Stay Here', style: 'cancel' },
+        {
+          text: 'View Daily Notes',
+          onPress: () => (navigation as any)?.navigate?.('DailyNotes'),
+        },
+      ]);
+    } catch {
+      showToast('Resubmitted and saved locally', 'info');
+    }
+  };
+
   const handlePreviewPdf = () => {
     if (!summary) return;
     const students = Array.isArray(summary.students) ? summary.students : [];

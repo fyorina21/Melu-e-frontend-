@@ -5,6 +5,7 @@
 
 import { getStoredIupDraft } from './iupDraftStorage';
 import { sanitizeStoragePayload, unprotectStoragePayload } from './sensitiveDataSanitizer';
+import { storage } from './storage';
 
 export interface StudentLifecycleRecord {
   id: string | number;
