@@ -60,7 +60,9 @@ import {
   pauseSessionTimer,
   remainingSeconds,
   isTimerRunning,
+  useSessionTimerStore,
 } from '../../stores/sessionTimerStore';
+import { registerLiveSession } from '../../utils/liveSessionSyncHelper';
 import {
   getStoredTrials,
   recordTrialInStore,
@@ -655,6 +657,22 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
 
         // Start session timer safely (no-op if already running or paused for this sessionId)
         startSessionTimer(sessionId, (parsedRoster.blockDurationMinutes || 90) * 60);
+
+        // Synchronize active live session metadata for Coordinator page
+        try {
+          const timerStartedAt = useSessionTimerStore.getState().startedAt || Date.now();
+          registerLiveSession({
+            id: sessionId,
+            teacherId: targetTeacherId,
+            teacherName: currentTeacherName,
+            stationName: currentStationName,
+            roomName: currentRoomName,
+            students: finalStudents,
+            startedAt: timerStartedAt,
+            durationMinutes: parsedRoster.blockDurationMinutes || 90,
+            status: 'on-track',
+          });
+        } catch {}
 
         if (requestId !== fetchRequestIdRef.current) return;
         setSecondsRemaining(remainingSeconds());

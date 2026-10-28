@@ -12,6 +12,12 @@ import {
   getStudentDemographic,
   maskSensitiveDemographic,
 } from '../utils/sensitiveDataSanitizer';
+import { getLocalLiveSessions, StoredLiveSession } from '../utils/liveSessionSyncHelper';
+import {
+  getStoredSessionSummaries,
+  approveSessionSummaryReview,
+  rejectSessionSummaryReview,
+} from '../utils/sessionSummaryWorkflowHelper';
 export {
   getProgramOptions,
   getTherapyGroupOptions,
@@ -378,30 +384,20 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
       ? realStudents.map((s: any) => s.name)
       : DEFAULT_COORDINATOR_STUDENTS.map((s) => s.name);
 
-  // Real live sessions with authentic students and assigned teachers
-  const liveSessions = [
-    {
-      id: 'sess-active-1',
-      teacherName: teacherNames[0] || 'Abeba Tadesse',
-      stationName: 'Station 1 · Early Learners',
-      studentCount: 2,
-      status: 'on_track',
-    },
-    {
-      id: 'sess-active-2',
-      teacherName: teacherNames[1] || 'Dawit Bekele',
-      stationName: 'Station 2 · Social Play',
-      studentCount: 2,
-      status: 'needs_attention',
-    },
-    {
-      id: 'sess-active-3',
-      teacherName: teacherNames[2] || 'Selam Tesfaye',
-      stationName: 'Station 3 · Academic Prep',
-      studentCount: 1,
-      status: 'on_track',
-    },
-  ];
+  // Derive live sessions from real active sessions started by teachers
+  const localLive = getLocalLiveSessions();
+  const liveSessions =
+    localLive.length > 0
+      ? localLive.map((s) => ({
+          id: s.id,
+          teacherName: s.teacherName,
+          stationName: s.stationName,
+          studentCount: s.studentNames.length,
+          studentNames: s.studentNames,
+          startedAt: s.startedAt,
+          status: s.status === 'needs-attention' ? 'needs_attention' : 'on_track',
+        }))
+      : [];
 
   const pendingReviews = [
     {
@@ -449,120 +445,55 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
 export const getActiveSessions = async (params: QueryParams): Promise<{ data: any }> => {
   try {
     const res = await client.get('/coordinator/sessions/active', { params });
-    if (Array.isArray(res?.data) && res.data.length > 0) {
-      return res;
-    }
-    const list = res?.data?.data?.sessions || res?.data?.sessions;
-    if (Array.isArray(list) && list.length > 0) {
-      return { ...res, data: list };
+    const list = Array.isArray(res?.data)
+      ? res.data
+      : res?.data?.data?.sessions || res?.data?.sessions;
+    if (Array.isArray(list)) {
+      const filtered = filterOutDeletedStaff(list);
+      // If backend returned active sessions, return them!
+      if (filtered.length > 0) {
+        return { ...res, data: filtered };
+      }
     }
   } catch {}
 
-  let realStudents: any[] = [];
-  try {
-    const { data: sData } = await client.get<any[]>('/options/students');
-    if (Array.isArray(sData) && sData.length > 0) realStudents = sData;
-  } catch {}
+  // Check locally registered live sessions (started by teachers in the app)
+  const localLive = getLocalLiveSessions();
+  if (localLive.length > 0) {
+    const mappedLocal = localLive.map((s) => {
+      const elapsed = Math.max(0, Math.floor((Date.now() - s.startedAt) / 1000));
+      return {
+        id: s.id,
+        teacherId: s.teacherId,
+        teacherName: s.teacherName,
+        therapistId: s.teacherId,
+        therapistName: s.teacherName,
+        teacher: { id: s.teacherId, full_name: s.teacherName, name: s.teacherName },
+        station: s.stationName,
+        stationName: s.stationName,
+        room: s.roomName,
+        roomName: s.roomName,
+        status: s.status,
+        started_at: s.startedAt,
+        startedAt: s.startedAt,
+        elapsed_seconds: elapsed,
+        timer: elapsed,
+        trialsCount: s.trialsCount || 0,
+        trialCount: s.trialsCount || 0,
+        trials: s.trialsCount || 0,
+        incidentsCount: s.incidentsCount || 0,
+        incidents: [],
+        studentNames: s.studentNames,
+        students: s.students,
+        studentCount: s.studentNames.length,
+      };
+    });
+    return { data: filterOutDeletedStaff(mappedLocal) };
+  }
 
-  const pool = realStudents.length > 0 ? realStudents : DEFAULT_COORDINATOR_STUDENTS;
-
-  const activeSessions = [
-    {
-      id: 'sess-live-1',
-      therapistId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
-      therapistName: 'Abeba Tadesse',
-      teacherName: 'Abeba Tadesse',
-      station: 'Station 1',
-      stationName: 'Station 1 · Early Learners',
-      room: 'Room 1',
-      roomName: 'Room 1',
-      status: 'on-track',
-      timer: '23:40',
-      trialsCount: 38,
-      trialCount: 38,
-      incidentsCount: 0,
-      incidents: [],
-      studentNames: [
-        pool[0]?.name || pool[0]?.fullName || 'Amir Hassan',
-        pool[1]?.name || pool[1]?.fullName || 'Tigist Bekele',
-      ],
-      students: [
-        {
-          id: String(pool[0]?.id),
-          name: pool[0]?.name || pool[0]?.fullName || 'Amir Hassan',
-          trials: 20,
-          independence: 85,
-        },
-        {
-          id: String(pool[1]?.id),
-          name: pool[1]?.name || pool[1]?.fullName || 'Tigist Bekele',
-          trials: 18,
-          independence: 80,
-        },
-      ],
-    },
-    {
-      id: 'sess-live-2',
-      therapistId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
-      therapistName: 'Dawit Bekele',
-      teacherName: 'Dawit Bekele',
-      station: 'Station 2',
-      stationName: 'Station 2 · Social Play',
-      room: 'Room 2',
-      roomName: 'Room 2',
-      status: 'needs-attention',
-      timer: '14:50',
-      trialsCount: 19,
-      trialCount: 19,
-      incidentsCount: 1,
-      incidents: [{ id: 'inc-1' }],
-      studentNames: [
-        pool[2]?.name || pool[2]?.fullName || 'Saron Tekle',
-        pool[3]?.name || pool[3]?.fullName || 'Biniam Hailu',
-      ],
-      students: [
-        {
-          id: String(pool[2]?.id),
-          name: pool[2]?.name || pool[2]?.fullName || 'Saron Tekle',
-          trials: 12,
-          independence: 65,
-        },
-        {
-          id: String(pool[3]?.id),
-          name: pool[3]?.name || pool[3]?.fullName || 'Biniam Hailu',
-          trials: 7,
-          independence: 75,
-        },
-      ],
-    },
-    {
-      id: 'sess-live-3',
-      therapistId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
-      therapistName: 'Selam Tesfaye',
-      teacherName: 'Selam Tesfaye',
-      station: 'Station 3',
-      stationName: 'Station 3 · Academic Prep',
-      room: 'Room 3',
-      roomName: 'Room 3',
-      status: 'on-track',
-      timer: '35:00',
-      trialsCount: 42,
-      trialCount: 42,
-      incidentsCount: 0,
-      incidents: [],
-      studentNames: [pool[4]?.name || pool[4]?.fullName || 'Yonas Girma'],
-      students: [
-        {
-          id: String(pool[4]?.id),
-          name: pool[4]?.name || pool[4]?.fullName || 'Yonas Girma',
-          trials: 42,
-          independence: 90,
-        },
-      ],
-    },
-  ];
-
-  return { data: activeSessions };
+  // If no backend active sessions and no teacher has started one yet, return empty list!
+  // A live session must only appear when a teacher actually starts it.
+  return { data: [] };
 };
 
 export const sendAlertToTeacher = async (
@@ -640,15 +571,31 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
       }
       return item;
     });
-    return { data: merged };
+    return { data: filterOutDeletedStaff(merged) };
   }
 
-  // Resilient fallback pool of session summaries using real students
+  // Fetch real staff options to resolve active teacher names
+  let staffList: any[] = [];
+  try {
+    const { data: stData } = await client.get<any[]>('/options/staff');
+    if (Array.isArray(stData) && stData.length > 0) {
+      staffList = filterOutDeletedStaff(stData).filter(
+        (s: any) =>
+          !s.role || s.role.toLowerCase() === 'teacher' || s.role.toLowerCase() === 'therapist',
+      );
+    }
+  } catch {}
+
+  const t1 = staffList[0]?.name || 'Abeba Tadesse';
+  const t2 = staffList[1]?.name || 'Dawit Bekele';
+  const t3 = staffList[2]?.name || 'Selam Tesfaye';
+
+  // Resilient fallback pool of session summaries using real students and real teachers
   const mockSummaries = [
     {
       id: 'sum-1',
-      teacher: 'Abeba Tadesse',
-      teacherName: 'Abeba Tadesse',
+      teacher: t1,
+      teacherName: t1,
       date: 'Today, 10:45 AM',
       station: 'Station 1',
       students: ['Amir Hassan', 'Tigist Bekele'],
@@ -663,8 +610,8 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     },
     {
       id: 'sum-2',
-      teacher: 'Dawit Bekele',
-      teacherName: 'Dawit Bekele',
+      teacher: t2,
+      teacherName: t2,
       date: 'Today, 11:30 AM',
       station: 'Station 2',
       students: ['Saron Tekle'],
@@ -678,8 +625,8 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     },
     {
       id: 'sum-3',
-      teacher: 'Selam Tesfaye',
-      teacherName: 'Selam Tesfaye',
+      teacher: t3,
+      teacherName: t3,
       date: 'Yesterday, 02:15 PM',
       station: 'Station 3',
       students: ['Yonas Girma'],
@@ -693,7 +640,38 @@ export const getPendingSummaries = async (params: QueryParams): Promise<{ data: 
     },
   ];
 
-  return { data: mockSummaries };
+  const storedSummaries = getStoredSessionSummaries();
+  const storedMapped = storedSummaries.map((s) => ({
+    id: s.id,
+    sessionId: s.sessionId || s.id,
+    teacher: s.teacherName,
+    teacherName: s.teacherName,
+    station: s.stationName,
+    stationName: s.stationName,
+    room: s.roomName || 'Room 1',
+    roomName: s.roomName || 'Room 1',
+    date: s.submittedAt ? s.submittedAt.slice(0, 10) : 'Today',
+    students: s.studentNames,
+    studentNames: s.studentNames,
+    trials: s.trialsCount ?? 24,
+    independence: s.independence ?? 80,
+    independencePercent: s.independence ?? 80,
+    incidents: s.incidentsCount ?? 0,
+    notes: s.notes,
+    bodyPreview: s.notes,
+    status:
+      statusMap[s.id] ||
+      (s.status === 'rejected'
+        ? 'revision-required'
+        : s.status === 'approved'
+          ? 'approved'
+          : 'pending'),
+  }));
+
+  const storedIds = new Set(storedMapped.map((s) => s.id));
+  const mergedPool = [...storedMapped, ...mockSummaries.filter((m) => !storedIds.has(m.id))];
+
+  return { data: filterOutDeletedStaff(mergedPool) };
 };
 
 export const approveSummary = async (
@@ -701,6 +679,7 @@ export const approveSummary = async (
   payload: Payload,
 ): Promise<{ data: any }> => {
   setSummaryStatusLocally(summaryId, 'approved');
+  approveSessionSummaryReview(summaryId, 'coordinator', (payload?.notes as string) || undefined);
 
   try {
     const res = await client.post(`/coordinator/summaries/${summaryId}/approve`, payload);
@@ -723,6 +702,13 @@ export const requestSummaryChanges = async (
   payload: Payload,
 ): Promise<{ data: any }> => {
   setSummaryStatusLocally(summaryId, 'revision-required');
+  const reason =
+    (payload?.reason as string) ||
+    (payload?.notes as string) ||
+    'Changes requested by coordinator.';
+  try {
+    rejectSessionSummaryReview(summaryId, reason, 'coordinator', payload?.notes as string);
+  } catch {}
 
   try {
     const res = await client.post(`/coordinator/summaries/${summaryId}/request-changes`, payload);
@@ -1183,9 +1169,35 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
     }
   } catch {}
 
-  const metricsRows = [
+  // Fetch active real staff options or cached sysadmin staff accounts to resolve real teachers dynamically
+  let dynamicStaff: any[] = [];
+  try {
+    const { data: stData } = await client.get<any[]>('/options/staff');
+    if (Array.isArray(stData) && stData.length > 0) {
+      dynamicStaff = filterOutDeletedStaff(stData).filter(
+        (s: any) =>
+          !s.role || s.role.toLowerCase() === 'teacher' || s.role.toLowerCase() === 'therapist',
+      );
+    }
+  } catch {}
+
+  if (dynamicStaff.length === 0) {
+    try {
+      const cached = storage.getJSONSync<any[]>('sysadmin_staff_accounts') || [];
+      dynamicStaff = filterOutDeletedStaff(cached).filter(
+        (s: any) =>
+          !s.role ||
+          s.role?.toLowerCase() === 'teacher' ||
+          s.role?.toLowerCase() === 'therapist' ||
+          (Array.isArray(s.roles) &&
+            s.roles.some((r: string) => ['teacher', 'therapist'].includes(r.toLowerCase()))),
+      );
+    } catch {}
+  }
+
+  const defaultTemplates = [
     {
-      teacherId: 'th-1',
+      teacherId: '18ece4d2-915f-4f03-9f27-98f8a30a518f',
       teacherName: 'Abeba Tadesse',
       sessions: 16,
       trials: 145,
@@ -1193,7 +1205,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
       incidents: 1,
     },
     {
-      teacherId: 'th-2',
+      teacherId: 'ebdc7d3b-a0a5-4005-bcc8-d00fc6ad0ab1',
       teacherName: 'Dawit Bekele',
       sessions: 14,
       trials: 110,
@@ -1201,7 +1213,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
       incidents: 2,
     },
     {
-      teacherId: 'th-3',
+      teacherId: 'c8dbc511-7318-4aa1-bcf3-0d474d109af3',
       teacherName: 'Selam Tesfaye',
       sessions: 15,
       trials: 132,
@@ -1217,6 +1229,23 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
       incidents: 0,
     },
   ];
+
+  let metricsRows: any[] = [];
+  if (dynamicStaff.length > 0) {
+    metricsRows = dynamicStaff.map((staff, idx) => {
+      const template = defaultTemplates[idx % defaultTemplates.length];
+      return {
+        teacherId: staff.id || staff.staffId || template.teacherId,
+        teacherName: staff.name || staff.fullName || template.teacherName,
+        sessions: template.sessions,
+        trials: template.trials,
+        independencePercent: template.independencePercent,
+        incidents: template.incidents,
+      };
+    });
+  } else {
+    metricsRows = defaultTemplates;
+  }
 
   return { data: filterOutDeletedStaff(metricsRows) };
 };

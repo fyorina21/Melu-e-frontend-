@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CoordinatorStackParamList } from '../../types';
 import AppNavbar from '../../components/AppNavbar';
 import { getActiveSessions, sendAlertToTeacher, exportSessionLog } from '../../api/coordinatorApi';
+import { subscribeToLiveSessions } from '../../utils/liveSessionSyncHelper';
 import { downloadTextFile } from '../../utils/webExport';
 import { colors, radius, spacing } from '../../theme/colors';
 import { useToast } from '../../context/ToastContext';
@@ -51,11 +52,23 @@ export default function LiveSessionMonitoringScreen({ navigation }: Props) {
 
   useEffect(() => {
     loadSessions();
+    const unsubscribe = subscribeToLiveSessions(() => {
+      loadSessions();
+    });
+    return () => unsubscribe();
   }, [loadSessions]);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setSessions((prev) => prev.map((s) => ({ ...s, timer: s.timer + 1 })));
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.startedAt && s.startedAt > 0) {
+            const realElapsed = Math.max(0, Math.floor((Date.now() - s.startedAt) / 1000));
+            return { ...s, timer: realElapsed };
+          }
+          return { ...s, timer: s.timer + 1 };
+        }),
+      );
     }, 1000);
     return () => clearInterval(interval);
   }, []);
