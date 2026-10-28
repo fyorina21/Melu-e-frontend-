@@ -204,7 +204,7 @@ export async function saveStudentAssessmentSubmission(
       program: extra.program || 'Comprehensive ABA',
       therapyGroup: extra.therapyGroup || '',
       photoUrl: extra.photoUrl || '',
-      dateOfBirth: extra.dateOfBirth,
+      dateOfBirth: '',
       parentGuardian: extra.parentGuardian,
     });
     storage.setJSONSync(SUBMITTED_STUDENTS_LIST_KEY, filteredSubmitted);
@@ -254,7 +254,8 @@ export function getSubmittedStudents(): any[] {
 export function registerStudentStatuses(students: any[]): void {
   if (!Array.isArray(students)) return;
   try {
-    const registry = storage.getJSONSync<Record<string, any>>(STUDENT_STATUS_REGISTRY_KEY, {}) || {};
+    const registry =
+      storage.getJSONSync<Record<string, any>>(STUDENT_STATUS_REGISTRY_KEY, {}) || {};
     students.forEach((s) => {
       if (!s || !s.id) return;
       const sid = String(s.id);
@@ -276,7 +277,8 @@ export function registerStudentStatuses(students: any[]): void {
 export function getRegisteredStudentStatus(studentId: string | number): any {
   if (!studentId) return null;
   try {
-    const registry = storage.getJSONSync<Record<string, any>>(STUDENT_STATUS_REGISTRY_KEY, {}) || {};
+    const registry =
+      storage.getJSONSync<Record<string, any>>(STUDENT_STATUS_REGISTRY_KEY, {}) || {};
     return registry[String(studentId)] || null;
   } catch {
     return null;
