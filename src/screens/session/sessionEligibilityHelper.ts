@@ -1,8 +1,33 @@
 // src/screens/session/sessionEligibilityHelper.ts
 
-import { getStoredIupDraft } from '../../api/programDirectorApi';
+import { getStoredIupDraft, getStoredCaseload } from '../../api/programDirectorApi';
 
 export function getStudentAssignedGoals(studentId: string, rawGoals: any[] = []): any[] {
+  // 1. Check Student Caseload assignments first (direct source of truth from /StudentCaseload)
+  try {
+    const caseload = getStoredCaseload(studentId);
+    if (caseload && typeof caseload === 'object') {
+      const slotKeys = ['station1-0', 'station1-1', 'station2-0', 'station2-1'];
+      const caseloadGoals = slotKeys
+        .map((k) => caseload[k])
+        .filter((g) => g && typeof g === 'object' && g.id)
+        .map((g: any, idx: number) => ({
+          id: String(g.id || `${studentId}-caseload-g-${idx}`),
+          name: String(g.name || g.title || g.description || 'Assigned Goal'),
+          category: g.domain || g.category || 'Adaptive',
+          goalType: g.goalType || g.goal_type || 'standard',
+          totalTrials: 0,
+          independencePercent: Number(g.progress ?? 0),
+          trialLog: [],
+        }));
+
+      // If the caseload was initialized or has goals, use it directly as source of truth
+      if (caseload._initialized || caseloadGoals.length > 0) {
+        return caseloadGoals;
+      }
+    }
+  } catch {}
+
   const draft = getStoredIupDraft(studentId);
   const extractedGoals: any[] = [];
 

@@ -380,10 +380,19 @@ function getStoredCaseloadMap(): Record<string, any> {
   return storage.getJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, {}) || {};
 }
 
-function setStoredCaseload(studentId: string, data: any): void {
+export function getStoredCaseload(studentId: string): Record<string, any> | null {
   try {
     const all = getStoredCaseloadMap();
-    all[studentId] = data;
+    return all[studentId] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredCaseload(studentId: string, data: any): void {
+  try {
+    const all = getStoredCaseloadMap();
+    all[studentId] = { ...(all[studentId] || {}), ...data, _initialized: true };
     storage.setJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, all);
   } catch {}
 }
@@ -1699,20 +1708,24 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
   // Populate from local caseload assignments if present
   if (localCaseload && typeof localCaseload === 'object') {
     Object.keys(slots).forEach((k) => {
-      if (localCaseload[k]) slots[k] = localCaseload[k];
+      if (localCaseload[k] !== undefined) slots[k] = localCaseload[k];
     });
   }
 
-  // Populate from draft IUP slots
-  if (draftSlots.station1?.[0]) slots['station1-0'] = draftSlots.station1[0];
-  if (draftSlots.station1?.[1]) slots['station1-1'] = draftSlots.station1[1];
-  if (draftSlots.station2?.[0]) slots['station2-0'] = draftSlots.station2[0];
-  if (draftSlots.station2?.[1]) slots['station2-1'] = draftSlots.station2[1];
+  // Populate from draft IUP slots only if local slot was not explicitly set
+  if (localCaseload?.['station1-0'] === undefined && draftSlots.station1?.[0])
+    slots['station1-0'] = draftSlots.station1[0];
+  if (localCaseload?.['station1-1'] === undefined && draftSlots.station1?.[1])
+    slots['station1-1'] = draftSlots.station1[1];
+  if (localCaseload?.['station2-0'] === undefined && draftSlots.station2?.[0])
+    slots['station2-0'] = draftSlots.station2[0];
+  if (localCaseload?.['station2-1'] === undefined && draftSlots.station2?.[1])
+    slots['station2-1'] = draftSlots.station2[1];
 
-  // Populate from backend goals
+  // Populate from backend goals only if local slot was not explicitly set
   backendGoals.forEach((bg) => {
     const key = `station${bg.station}-${bg.slot}`;
-    if (!slots[key]) {
+    if (!slots[key] && localCaseload?.[key] === undefined) {
       slots[key] = {
         id: bg.id,
         name: bg.name,
@@ -1724,8 +1737,9 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
     }
   });
 
-  // If entirely empty, supply a realistic default assigned goal in Station 1
+  // If entirely empty and not user-configured, supply a realistic default assigned goal in Station 1
   if (
+    !localCaseload?._initialized &&
     !slots['station1-0'] &&
     !slots['station1-1'] &&
     !slots['station2-0'] &&
@@ -1863,7 +1877,8 @@ export const removeGoalFromSlot = async (
   // 1. Update local caseload assignments
   const caseloadMap = getStoredCaseloadMap();
   const studentSlots = caseloadMap[studentId] || {};
-  delete studentSlots[slotKey];
+  studentSlots[slotKey] = null;
+  studentSlots._initialized = true;
   setStoredCaseload(studentId, studentSlots);
 
   // 2. Sync with local IUP draft
@@ -1882,6 +1897,16 @@ export const removeGoalFromSlot = async (
       });
     }
   } catch {}
+
+  // 3. Attempt live API call if available
+  const goalId = payload.goalId || payload.goal_id || payload.id;
+  if (goalId) {
+    try {
+      await client.delete(`/goal_assignments/${goalId}`, {
+        params: { confirmation: true },
+      });
+    } catch {}
+  }
 
   return { data: { success: true, studentId, slotKey } };
 };

@@ -7,11 +7,14 @@ import * as pdApi from '../../../api/programDirectorApi';
 vi.mock('../../../api/programDirectorApi', () => ({
   getStoredIupDraft: vi.fn(),
   getAllStoredIupDrafts: vi.fn(() => ({})),
+  getStoredCaseload: vi.fn(),
 }));
 
 describe('sessionEligibilityHelper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(pdApi.getStoredCaseload).mockReturnValue(null);
+    vi.mocked(pdApi.getStoredIupDraft).mockReturnValue(null);
   });
 
   describe('checkStudentEligibility', () => {
@@ -72,6 +75,50 @@ describe('sessionEligibilityHelper', () => {
   });
 
   describe('getStudentAssignedGoals', () => {
+    it('prioritizes goals assigned in Student Caseload across station slots', () => {
+      vi.mocked(pdApi.getStoredCaseload).mockReturnValue({
+        _initialized: true,
+        'station1-0': {
+          id: 'g-meron-1',
+          name: 'Take turns in structured play',
+          domain: 'Adaptive',
+          progress: 55,
+        },
+        'station1-1': null,
+        'station2-0': {
+          id: 'g-meron-2',
+          name: 'Maintain pencil grip for 3 minutes',
+          domain: 'Motor',
+          progress: 0,
+        },
+        'station2-1': null,
+      });
+
+      const goals = getStudentAssignedGoals('stu-meron');
+      expect(goals).toHaveLength(2);
+      expect(goals[0].id).toBe('g-meron-1');
+      expect(goals[0].name).toBe('Take turns in structured play');
+      expect(goals[0].category).toBe('Adaptive');
+      expect(goals[0].independencePercent).toBe(55);
+      expect(goals[1].id).toBe('g-meron-2');
+      expect(goals[1].name).toBe('Maintain pencil grip for 3 minutes');
+      expect(goals[1].category).toBe('Motor');
+      expect(goals[1].independencePercent).toBe(0);
+    });
+
+    it('returns empty array if Student Caseload was initialized with all slots cleared/null', () => {
+      vi.mocked(pdApi.getStoredCaseload).mockReturnValue({
+        _initialized: true,
+        'station1-0': null,
+        'station1-1': null,
+        'station2-0': null,
+        'station2-1': null,
+      });
+
+      const goals = getStudentAssignedGoals('stu-cleared');
+      expect(goals).toEqual([]);
+    });
+
     it('extracts goals from draft station slots when available', () => {
       vi.mocked(pdApi.getStoredIupDraft).mockReturnValue({
         slots: {

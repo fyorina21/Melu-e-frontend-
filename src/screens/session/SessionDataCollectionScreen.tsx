@@ -34,6 +34,7 @@ import {
 } from '../../api/sessionApi';
 import { studentsApi } from '../../api/resources/students';
 import { getStoredIupDraft } from '../../api/programDirectorApi';
+import { getStudentAssignedGoals } from './sessionEligibilityHelper';
 import { getTeacherDashboard } from '../../api/teacherExtrasApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { getDirectorSchedule } from '../../api/directorApi';
@@ -86,73 +87,7 @@ interface IncidentModalState {
   goalName?: string;
 }
 
-function getStudentAssignedGoals(studentId: string, rawGoals: any[] = []): any[] {
-  const draft = getStoredIupDraft(studentId);
-  const extractedGoals: any[] = [];
-
-  if (draft) {
-    if (draft.slots && typeof draft.slots === 'object') {
-      const s1 = Array.isArray((draft.slots as any).station1) ? (draft.slots as any).station1 : [];
-      const s2 = Array.isArray((draft.slots as any).station2) ? (draft.slots as any).station2 : [];
-      [...s1, ...s2].filter(Boolean).forEach((g: any, idx: number) => {
-        extractedGoals.push({
-          id: String(g.id || `${studentId}-draft-g-${idx}`),
-          name: String(g.name || g.title || g.description || 'Assigned Goal'),
-          category: g.domain || g.category || 'Adaptive',
-          goalType: g.goalType || g.goal_type || 'standard',
-          totalTrials: 0,
-          independencePercent: 0,
-          trialLog: [],
-        });
-      });
-    }
-
-    if (extractedGoals.length === 0 && Array.isArray(draft.goals) && draft.goals.length > 0) {
-      draft.goals.forEach((g: any, idx: number) => {
-        if (typeof g === 'object' && g !== null) {
-          extractedGoals.push({
-            id: String(g.id || `${studentId}-draft-g-${idx}`),
-            name: String(g.name || g.title || g.description || 'Assigned Goal'),
-            category: g.domain || g.category || 'Adaptive',
-            goalType: g.goalType || g.goal_type || 'standard',
-            totalTrials: 0,
-            independencePercent: 0,
-            trialLog: [],
-          });
-        } else if (typeof g === 'string' && g.trim()) {
-          extractedGoals.push({
-            id: g.trim(),
-            name: 'Assigned Goal',
-            category: 'Adaptive',
-            goalType: 'standard',
-            totalTrials: 0,
-            independencePercent: 0,
-            trialLog: [],
-          });
-        }
-      });
-    }
-  }
-
-  if (extractedGoals.length > 0) {
-    return extractedGoals;
-  }
-
-  // Filter out default synthetic backend fallback IDs (e.g., studentId-g1, studentId-g2)
-  const realBackendGoals = (Array.isArray(rawGoals) ? rawGoals : []).filter((g: any) => {
-    const gid = String(g.id || '');
-    const isFallbackId =
-      gid === `${studentId}-g1` ||
-      gid === `${studentId}-g2` ||
-      gid.endsWith('-g1') ||
-      gid.endsWith('-g2');
-    return !isFallbackId && gid.trim() !== '';
-  });
-
-  return realBackendGoals;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 5000, fallback: T): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 2000, fallback: T): Promise<T> {
   let timer: any;
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => resolve(fallback), timeoutMs);
@@ -169,9 +104,34 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
   const canCreateTrial = usePermission('sessions', 'create');
   const canEditSession = usePermission('sessions', 'edit');
 
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<SessionRoster | null>(() => {
+    const initialTeacherId =
+      (route.params as any)?.teacherId ||
+      (typeof localStorage !== 'undefined'
+        ? localStorage.getItem('melue_session_selected_teacher_id') || undefined
+        : undefined);
+    const stored = getStoredSessionStudents(sessionId, initialTeacherId);
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      return {
+        teacherName: 'Teacher',
+        stationName: 'Station 1',
+        roomName: 'Room 101',
+        blockDurationMinutes: 90,
+        students: stored.map((s: any, idx: number) => ({
+          id: String(s.id),
+          name: String(s.name || '').trim(),
+          initial: String(s.initial || (String(s.name || '').slice(0, 2) || 'ST').toUpperCase()),
+          program: String(s.program || 'Regular'),
+          active: idx === 0,
+          goals: Array.isArray(s.goals) ? s.goals : [],
+          trials: Array.isArray(s.trials) ? s.trials : [],
+        })),
+      };
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState<boolean>(() => !session);
   const [loadError, setLoadError] = useState(false);
-  const [session, setSession] = useState<SessionRoster | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(() => {
     const rem = remainingSeconds();
     return rem > 0 ? rem : null;
@@ -275,7 +235,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
     async (teacherIdToLoad?: string, silent = false) => {
       const requestId = ++fetchRequestIdRef.current;
       try {
-        if (!silent) {
+        if (!silent && !session) {
           setLoading(true);
           setLoadError(false);
         }
@@ -290,7 +250,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           try {
             const staffRes = await withTimeout<any>(
               getStaffOptions().catch(() => null),
-              4000,
+              2000,
               null,
             );
             const teacherRows: Array<{ id: string; name: string }> = (
@@ -333,34 +293,34 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
           }
         }
 
-        // Parallel fetch with 5000ms timeout: director schedule for target teacher, all director schedule blocks, student options, dashboard, and session roster
+        // Parallel fetch with fast 2000ms timeout
         const [schedRes, allSchedRes, studentOptsRes, dashRes, sessionRosterRes] =
           await Promise.all([
             targetTeacherId
               ? withTimeout(
                   getDirectorSchedule({ teacherId: targetTeacherId }).catch(() => null),
-                  5000,
+                  2000,
                   null,
                 )
               : null,
             withTimeout(
               getDirectorSchedule({}).catch(() => null),
-              5000,
+              2000,
               null,
             ),
             withTimeout(
               getStudentOptions().catch(() => null),
-              5000,
+              2000,
               null,
             ),
             withTimeout(
               getTeacherDashboard().catch(() => null),
-              5000,
+              2000,
               null,
             ),
             withTimeout(
               getSessionRoster(sessionId).catch(() => null),
-              5000,
+              2000,
               null,
             ),
           ]);
@@ -492,7 +452,7 @@ export default function SessionDataCollectionScreen({ route, navigation }: Props
             try {
               const detailRes = await withTimeout(
                 studentsApi.show(sid).catch(() => null),
-                3000,
+                1500,
                 null,
               );
               const sData = (detailRes as any)?.data || detailRes;
