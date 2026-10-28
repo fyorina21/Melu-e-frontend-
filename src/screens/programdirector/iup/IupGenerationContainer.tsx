@@ -51,13 +51,9 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
   >('goals');
 
   // Custom Strategies State
-  const [reinforcementSchedule, setReinforcementSchedule] = useState('Fixed Ratio (FR-2)');
-  const [crisisProtocol, setCrisisProtocol] = useState(
-    'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
-  );
-  const [accommodations, setAccommodations] = useState(
-    'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
-  );
+  const [reinforcementSchedule, setReinforcementSchedule] = useState('');
+  const [crisisProtocol, setCrisisProtocol] = useState('');
+  const [accommodations, setAccommodations] = useState('');
   const [reviewCycle, setReviewCycle] = useState('6 Weeks');
   const [customIupValues, setCustomIupValues] = useState<Record<string, any>>({});
 
@@ -111,13 +107,9 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     if (!selectedStudentId) return;
 
     setSlots({ station1: [null, null], station2: [null, null] });
-    setReinforcementSchedule('Fixed Ratio (FR-2)');
-    setCrisisProtocol(
-      'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
-    );
-    setAccommodations(
-      'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
-    );
+    setReinforcementSchedule('');
+    setCrisisProtocol('');
+    setAccommodations('');
     setReviewCycle('6 Weeks');
     setCustomIupValues({});
     setLastSavedTimestamp(null);
