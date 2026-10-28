@@ -12,14 +12,26 @@ interface StationGoalsPanelProps {
   onRemove: (slot: SlotKey) => void;
   onViewProgress: (goal: GoalWithStatus) => void;
   onSave: () => void;
+  assignedCount?: number;
 }
 
 export const StationGoalsPanel: React.FC<StationGoalsPanelProps> = React.memo(
-  ({ studentGoals, savedFeedback, onRemove, onViewProgress, onSave }) => {
+  ({ studentGoals, savedFeedback, onRemove, onViewProgress, onSave, assignedCount }) => {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={typography.label}>ASSIGNED GOALS & STATIONS</Text>
+          <View style={styles.headerRow}>
+            <Text style={typography.label}>ASSIGNED GOALS & STATIONS</Text>
+            {assignedCount !== undefined && (
+              <View style={[styles.countBadge, assignedCount >= 2 && styles.countBadgeMax]}>
+                <Text
+                  style={[styles.countBadgeText, assignedCount >= 2 && styles.countBadgeTextMax]}
+                >
+                  {assignedCount}/2 Goals
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -93,6 +105,31 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  countBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  countBadgeMax: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  countBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  countBadgeTextMax: {
+    color: '#B45309',
   },
   content: {
     padding: spacing.md,

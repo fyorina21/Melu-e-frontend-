@@ -69,6 +69,79 @@ describe('caseloadTypes - domain and slot configuration', () => {
   });
 });
 
+describe('caseload - 2-goal assignment limit constraint', () => {
+  it('counts assigned goals and correctly determines if assignment limit of 2 goals is reached', () => {
+    const goals = { ...emptyStudentGoals };
+    const countGoals = (g: typeof emptyStudentGoals) =>
+      (Object.keys(g) as (keyof typeof emptyStudentGoals)[]).filter((k) => g[k] !== null).length;
+
+    expect(countGoals(goals)).toBe(0);
+    expect(countGoals(goals) >= 2).toBe(false);
+
+    goals['station1-0'] = goalToWithStatus({
+      id: 'g-1',
+      name: 'Goal 1',
+      domain: 'Communication',
+      description: 'Desc 1',
+    });
+    expect(countGoals(goals)).toBe(1);
+    expect(countGoals(goals) >= 2).toBe(false);
+
+    goals['station2-0'] = goalToWithStatus({
+      id: 'g-2',
+      name: 'Goal 2',
+      domain: 'Adaptive',
+      description: 'Desc 2',
+    });
+    expect(countGoals(goals)).toBe(2);
+    expect(countGoals(goals) >= 2).toBe(true);
+  });
+});
+
+describe('caseload - student dropdown selection & filtering helper logic', () => {
+  const students = [
+    {
+      id: 's1',
+      name: 'Liam Davis',
+      age: 7,
+      phase: 'Phase 1',
+      program: 'Early Intervention',
+      status: 'Active',
+    },
+    {
+      id: 's2',
+      name: 'Emma Watson',
+      age: 6,
+      phase: 'Phase 2',
+      program: 'Therapy',
+      status: 'Active',
+    },
+    { id: 's3', name: 'Oliver Smith', age: 8, phase: 'Phase 1', program: 'ABA', status: 'Pending' },
+  ];
+
+  it('filters students by search query matching name case-insensitively', () => {
+    const filter = (query: string) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return students;
+      return students.filter((s) => s.name.toLowerCase().includes(q));
+    };
+
+    expect(filter('')).toHaveLength(3);
+    expect(filter('liam')).toHaveLength(1);
+    expect(filter('liam')[0].id).toBe('s1');
+    expect(filter('EMMA')).toHaveLength(1);
+    expect(filter('EMMA')[0].id).toBe('s2');
+    expect(filter('nonexistent')).toHaveLength(0);
+  });
+
+  it('selects student by id or falls back to first student', () => {
+    const getSelected = (id: string) => students.find((s) => s.id === id) || students[0] || null;
+
+    expect(getSelected('s2')?.name).toBe('Emma Watson');
+    expect(getSelected('s999')?.name).toBe('Liam Davis');
+  });
+});
+
 describe('StudentCaseload - Goal Bank Student-Specific Isolation', () => {
   it('strictly isolates goals per student from IUP draft and library records', () => {
     const student1 = 'student-alpha';

@@ -14,14 +14,58 @@ interface GoalBankPanelProps {
   onDomainFilterChange: (domain: string) => void;
   onAddNewGoal?: () => void;
   onAssignGoal: (goal: Goal) => void;
+  isAssignDisabled?: boolean;
+  assignedCount?: number;
+  assignedGoalIds?: string[];
 }
 
 export const GoalBankPanel: React.FC<GoalBankPanelProps> = React.memo(
-  ({ goals, searchTerm, domainFilter, onSearchChange, onDomainFilterChange, onAssignGoal }) => {
+  ({
+    goals,
+    searchTerm,
+    domainFilter,
+    onSearchChange,
+    onDomainFilterChange,
+    onAddNewGoal,
+    onAssignGoal,
+    isAssignDisabled = false,
+    assignedCount,
+    assignedGoalIds = [],
+  }) => {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={typography.h3}>Goal Bank</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <View style={styles.titleWithBadge}>
+              <Text style={typography.h3}>Goal Bank</Text>
+              {assignedCount !== undefined && (
+                <View style={[styles.countBadge, isAssignDisabled && styles.countBadgeMax]}>
+                  <Text
+                    style={[styles.countBadgeText, isAssignDisabled && styles.countBadgeTextMax]}
+                  >
+                    {assignedCount}/2 Assigned
+                  </Text>
+                </View>
+              )}
+            </View>
+            {isAssignDisabled && (
+              <Text style={styles.maxGoalsNotice}>
+                Maximum 2 goals assigned at a time. Remove a goal to assign another.
+              </Text>
+            )}
+          </View>
+          {onAddNewGoal && (
+            <TouchableOpacity
+              style={styles.addGoalBtn}
+              onPress={onAddNewGoal}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Add new goal to bank"
+            >
+              <Feather name="plus" size={14} color={colors.navyText} />
+              <Text style={styles.addGoalBtnText}>Add New Goal to Bank</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.searchBlock}>
@@ -68,7 +112,20 @@ export const GoalBankPanel: React.FC<GoalBankPanelProps> = React.memo(
               </Text>
             </View>
           ) : (
-            goals.map((goal) => <GoalCard key={goal.id} goal={goal} onAssign={onAssignGoal} />)
+            goals.map((goal) => {
+              const isAlreadyAssigned = assignedGoalIds.includes(goal.id);
+              const disabled = isAssignDisabled || isAlreadyAssigned;
+              const buttonText = isAlreadyAssigned ? 'Assigned' : 'Assign';
+              return (
+                <GoalCard
+                  key={goal.id}
+                  goal={goal}
+                  onAssign={onAssignGoal}
+                  disabled={disabled}
+                  buttonText={buttonText}
+                />
+              );
+            })
           )}
         </ScrollView>
       </View>
@@ -90,6 +147,36 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  titleWithBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  countBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  countBadgeMax: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  countBadgeTextMax: {
+    color: '#B45309',
+  },
+  maxGoalsNotice: {
+    fontSize: 11,
+    color: '#D97706',
+    fontWeight: '500',
   },
   addGoalBtn: {
     flexDirection: 'row',

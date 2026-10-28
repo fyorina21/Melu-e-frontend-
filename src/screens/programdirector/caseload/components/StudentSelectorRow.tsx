@@ -129,7 +129,6 @@ export const StudentSelectorRow: React.FC<StudentSelectorRowProps> = React.memo(
                       onPress={() => {
                         onSelectStudent(s.id);
                         setIsOpen(false);
-                        setSearchQuery('');
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={`Select student ${s.name}`}
@@ -140,7 +139,7 @@ export const StudentSelectorRow: React.FC<StudentSelectorRowProps> = React.memo(
                         photoUrl={
                           (s as any)?.photoUrl || (s as any)?.headshotUrl || (s as any)?.photo
                         }
-                        size={30}
+                        size={28}
                         style={{ marginRight: 10 }}
                       />
                       <View style={{ flex: 1 }}>

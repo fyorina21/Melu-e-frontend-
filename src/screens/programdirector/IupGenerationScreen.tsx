@@ -47,6 +47,7 @@ import {
   type GoalDomain,
 } from '../../stores/goalBankStore';
 import { normalizeStudentId } from '../../utils/studentLifecycleHelper';
+import { AssessmentSummaryTab } from './iup/components/AssessmentSummaryTab';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../types';
 
 interface GoalBankItem {
@@ -146,9 +147,15 @@ export default function IupGenerationScreen({
   const isCoordinator = session?.role === ROLES.COORDINATOR;
   const { showToast } = useToast();
 
+  const urlSid =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('studentId')
+      : null;
+  const initialStudentId = (route?.params as { studentId?: string })?.studentId || urlSid || null;
+
   const [loading, setLoading] = useState(true);
   const [candidates, setCandidates] = useState<IupCandidate[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(initialStudentId);
   const [context, setContext] = useState<IupContext | null>(null);
   const [goalBank, setGoalBank] = useState<GoalBankItem[]>([]);
   const [domains, setDomains] = useState<GoalDomain[]>(getStoredGoalDomains());
@@ -1408,97 +1415,7 @@ export default function IupGenerationScreen({
 
             {/* TAB 2: ASSESSMENT SUMMARY */}
             {activeWorkbenchTab === 'assessment' && (
-              <View style={styles.tabContentWrap}>
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Student Demographics & Intake Context</Text>
-                  <View style={styles.demoGrid}>
-                    <View style={styles.demoItem}>
-                      <Text style={styles.demoLabel}>Student Name</Text>
-                      <Text style={styles.demoValue}>
-                        {context?.studentName || selectedCandidate?.name || '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.demoItem}>
-                      <Text style={styles.demoLabel}>Age / DOB</Text>
-                      <Text style={styles.demoValue}>
-                        Age {context?.age ?? selectedCandidate?.age ?? '—'} · {context?.dob || '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.demoItem}>
-                      <Text style={styles.demoLabel}>Program</Text>
-                      <Text style={styles.demoValue}>
-                        {context?.program || selectedCandidate?.program || 'ABA Therapy'}
-                      </Text>
-                    </View>
-                    <View style={styles.demoItem}>
-                      <Text style={styles.demoLabel}>Enrolled Date</Text>
-                      <Text style={styles.demoValue}>{context?.enrollmentDate || '—'}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Baseline Assessment Strengths & Needs</Text>
-
-                  <View style={styles.contextSection}>
-                    <View style={styles.contextHeaderRow}>
-                      <Feather name="award" size={15} color={colors.primaryYellowDark} />
-                      <Text style={styles.contextSectionTitle}>Skills & Strengths</Text>
-                    </View>
-                    <Text style={styles.contextText}>
-                      {context?.skillsStrengths ||
-                        'Demonstrates strong visual-spatial matching, basic receptive identification of familiar items, and cooperative response to high-preference items.'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.contextSection}>
-                    <View style={styles.contextHeaderRow}>
-                      <Feather name="alert-triangle" size={15} color="#EF4444" />
-                      <Text style={styles.contextSectionTitle}>
-                        Behavioral Functions & Triggers
-                      </Text>
-                    </View>
-                    <Text style={styles.contextText}>
-                      {context?.behaviorFunctions ||
-                        'Primary function is escape/avoidance of novel non-preferred motor tasks. Exhibits mild vocal protest when demands escalate.'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.contextSection}>
-                    <View style={styles.contextHeaderRow}>
-                      <Feather name="star" size={15} color="#F59E0B" />
-                      <Text style={styles.contextSectionTitle}>Top Reinforcement Inventory</Text>
-                    </View>
-                    <View style={styles.reinforcerChipsWrap}>
-                      {(
-                        context?.topReinforcers || [
-                          'Bubbles',
-                          'Musical Toy',
-                          'Token Stars',
-                          'Edible Treat',
-                          'Spinning Wheel',
-                        ]
-                      ).map((r, i) => (
-                        <View key={i} style={styles.reinforcerChip}>
-                          <Text style={styles.reinforcerRank}>#{i + 1}</Text>
-                          <Text style={styles.reinforcerChipText}>{r}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-
-                  <View style={styles.contextSection}>
-                    <View style={styles.contextHeaderRow}>
-                      <Feather name="feather" size={15} color="#8B5CF6" />
-                      <Text style={styles.contextSectionTitle}>Sensory Engagement Profile</Text>
-                    </View>
-                    <Text style={styles.contextText}>
-                      {context?.sensorySummary ||
-                        'Calmed by deep pressure stimulation. Benefits from scheduled 3-minute sensory gross motor movement between trial rounds.'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+              <AssessmentSummaryTab context={context} selectedCandidate={selectedCandidate} />
             )}
 
             {/* TAB 3: IMPLEMENTATION STRATEGIES & PROTOCOLS */}

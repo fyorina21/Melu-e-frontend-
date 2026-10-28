@@ -33,66 +33,6 @@ export function StrategiesProtocolsTab({
   return (
     <View style={styles.tabContentWrap}>
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Implementation Strategy Configuration</Text>
-
-        <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Reinforcement Schedule & Prompt Fading</Text>
-          <TextInput
-            style={styles.fieldInput}
-            value={reinforcementSchedule}
-            onChangeText={onReinforcementScheduleChange}
-            placeholder="e.g. FR-1 transitioning to VR-3 upon 80% accuracy"
-            placeholderTextColor={colors.mutedText}
-          />
-        </View>
-
-        <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Environmental Accommodations & Visual Supports</Text>
-          <TextInput
-            style={styles.fieldInput}
-            value={accommodations}
-            onChangeText={onAccommodationsChange}
-            placeholder="e.g. Visual timer, quiet study cubicle, token board"
-            placeholderTextColor={colors.mutedText}
-          />
-        </View>
-
-        <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Crisis De-escalation Protocol</Text>
-          <TextInput
-            style={[styles.fieldInput, styles.fieldTextArea]}
-            value={crisisProtocol}
-            onChangeText={onCrisisProtocolChange}
-            multiline
-            placeholder="Steps to take during behavioral escalation..."
-            placeholderTextColor={colors.mutedText}
-          />
-        </View>
-
-        <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Clinical Progress Review Cycle</Text>
-          <View style={styles.cycleRow}>
-            {REVIEW_CYCLES.map((cycle) => (
-              <TouchableOpacity
-                key={cycle}
-                style={[styles.cycleChip, reviewCycle === cycle && styles.cycleChipSelected]}
-                onPress={() => onReviewCycleChange(cycle)}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: reviewCycle === cycle }}
-              >
-                <Text
-                  style={[
-                    styles.cycleChipText,
-                    reviewCycle === cycle && styles.cycleChipTextSelected,
-                  ]}
-                >
-                  {cycle}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
         <DynamicFormFields
           formName="IUP Form"
           values={customIupValues}

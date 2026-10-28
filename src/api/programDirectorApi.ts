@@ -417,10 +417,19 @@ export function getStoredCaseloadMap(): Record<string, any> {
   return storage.getJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, {}) || {};
 }
 
+export function getStoredCaseload(studentId: string): Record<string, any> | null {
+  try {
+    const all = getStoredCaseloadMap();
+    return all[studentId] || null;
+  } catch {
+    return null;
+  }
+}
+
 export function setStoredCaseload(studentId: string, data: any): void {
   try {
     const all = getStoredCaseloadMap();
-    all[studentId] = data;
+    all[studentId] = { ...(all[studentId] || {}), ...data, _initialized: true };
     storage.setJSONSync(CASELOAD_ASSIGNMENTS_STORAGE_KEY, all);
   } catch {}
 }
@@ -459,7 +468,7 @@ export function unassignApprovedGoalFromCaseload(
       goalName && slotGoal.name && slotGoal.name.toLowerCase() === goalName.toLowerCase();
 
     if (matchesId || matchesName) {
-      delete studentSlots[k];
+      studentSlots[k] = null;
       removedFromCaseload = true;
     }
   });
@@ -2612,11 +2621,11 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
   // Populate from local caseload assignments if present
   if (localCaseload && typeof localCaseload === 'object') {
     Object.keys(slots).forEach((k) => {
-      slots[k] = localCaseload[k] || null;
+      if (localCaseload[k] !== undefined) slots[k] = localCaseload[k];
     });
     // Also include any additional station slots beyond standard 0 and 1
     Object.entries(localCaseload).forEach(([k, val]) => {
-      if (val) slots[k] = val;
+      if (val && !k.startsWith('_')) slots[k] = val;
     });
   } else {
     // Only initialize from draft or finalized IUP slots if no explicit caseload record exists yet
@@ -2643,17 +2652,17 @@ export const getStudentCaseload = async (studentId: string): Promise<{ data: any
     }
   }
 
-  // Populate from backend goals
+  // Populate from backend goals only if local slot was not explicitly set
   backendGoals.forEach((bg) => {
     const key = `station${bg.station}-${bg.slot}`;
-    if (!slots[key]) {
+    if (!slots[key] && localCaseload?.[key] === undefined) {
       slots[key] = {
         id: bg.id,
         name: bg.name,
-        domain: bg.domain,
-        description: bg.description,
-        status: 'Active',
-        progress: 50,
+        domain: bg.domain || 'Communication',
+        description: bg.description || '',
+        status: bg.status || 'Active',
+        progress: bg.progress ?? 0,
       };
     }
   });
@@ -2723,7 +2732,11 @@ export const assignGoalToSlot = async (
   // Check duplicate goal assignment for this student
   const isDuplicate = Object.entries(studentSlots).some(
     ([k, g]: [string, any]) =>
-      k !== slotKey && g && (String(g.id) === goalId || g.name === goalObj.name),
+      !k.startsWith('_') &&
+      k !== slotKey &&
+      g &&
+      typeof g === 'object' &&
+      (String(g.id) === goalId || g.name === goalObj.name),
   );
   if (isDuplicate) {
     const err = new Error(
@@ -2735,7 +2748,12 @@ export const assignGoalToSlot = async (
 
   // Check two-goal limit when assigning to a new / empty slot
   const currentActiveKeys = Object.keys(studentSlots).filter(
-    (k) => k !== slotKey && studentSlots[k] && studentSlots[k].status !== 'Mastered',
+    (k) =>
+      !k.startsWith('_') &&
+      k !== slotKey &&
+      studentSlots[k] &&
+      typeof studentSlots[k] === 'object' &&
+      studentSlots[k].status !== 'Mastered',
   );
   if (
     !payload.allowMultipleGoals &&
@@ -2833,6 +2851,7 @@ export const removeGoalFromSlot = async (
 
   delete studentSlots[slotKey];
   studentSlots[slotKey] = null;
+  studentSlots._initialized = true;
   setStoredCaseload(studentId, studentSlots);
 
   // 2. Sync with local IUP draft
@@ -2872,7 +2891,17 @@ export const removeGoalFromSlot = async (
     }
   } catch {}
 
-  // 3. Dispatch caseload update event
+  // 3. Attempt live API call if available
+  const goalId = payload.goalId || payload.goal_id || payload.id;
+  if (goalId) {
+    try {
+      await client.delete(`/goal_assignments/${goalId}`, {
+        params: { confirmation: true },
+      });
+    } catch {}
+  }
+
+  // 4. Dispatch caseload update event
   dispatchCaseloadEvent('melue_caseload_updated', {
     studentId,
     slotKey,

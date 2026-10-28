@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  Alert,
   useWindowDimensions,
   TouchableOpacity,
 } from 'react-native';
@@ -21,13 +20,14 @@ import {
   getStudentCaseload,
   assignGoalToSlot,
   removeGoalFromSlot,
-  createGoal,
   getStudentProfile,
+  setStoredCaseload,
   getStoredIupDraft,
   getStoredCaseloadMap,
   IUP_LIBRARY_STORAGE_KEY,
 } from '../../api/programDirectorApi';
 import storage from '../../utils/storage';
+import { useToast } from '../../context/ToastContext';
 import { confirmAction, notify } from '../../utils/dialogs';
 import { onMasteryChecksChanged } from '../../stores/goalMasteryStore';
 import type { ProgramDirectorStackParamList } from '../../types';
@@ -40,6 +40,7 @@ import {
   domainFilterMap,
   emptyStudentGoals,
   goalToWithStatus,
+  slotLabels,
 } from './caseload/caseloadTypes';
 import { StudentSelectorRow } from './caseload/components/StudentSelectorRow';
 import { StationGoalsPanel } from './caseload/components/StationGoalsPanel';
@@ -51,6 +52,7 @@ type Props = NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentCasel
 export default function StudentCaseloadScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
+  const { showToast } = useToast();
 
   const [mobileTab, setMobileTab] = useState<'slots' | 'bank'>('slots');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
@@ -265,6 +267,20 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
     });
   }, [studentGoalsForBank, searchTerm, domainFilter]);
 
+  const assignedGoalsCount = useMemo(() => {
+    return (['station1-0', 'station1-1', 'station2-0', 'station2-1'] as SlotKey[]).filter(
+      (key) => studentGoals[key] !== null,
+    ).length;
+  }, [studentGoals]);
+
+  const assignedGoalIds = useMemo(() => {
+    return (['station1-0', 'station1-1', 'station2-0', 'station2-1'] as SlotKey[])
+      .map((key) => studentGoals[key]?.id)
+      .filter(Boolean) as string[];
+  }, [studentGoals]);
+
+  const isMaxGoalsReached = assignedGoalsCount >= 2;
+
   const handleSelectStudent = useCallback(
     (id: string) => {
       setSelectedStudentId(id);
@@ -277,13 +293,13 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
   );
 
   const handleRemoveGoal = useCallback(
-    async (slot: SlotKey) => {
+    (slot: SlotKey) => {
       const goal = studentGoals[slot];
       if (!goal) return;
 
       confirmAction({
         title: 'Remove Goal',
-        message: `Remove "${goal.name}" from this slot?`,
+        message: `Are you sure you want to remove "${goal.name}" from ${slotLabels[slot]}?`,
         confirmLabel: 'Remove',
         destructive: true,
         onConfirm: async () => {
@@ -293,14 +309,21 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
               goalId: goal.id,
             }).catch(() => {});
           }
-          setStudentGoals((prev) => ({
-            ...prev,
-            [slot]: null,
-          }));
+          setStudentGoals((prev) => {
+            const next = {
+              ...prev,
+              [slot]: null,
+            };
+            if (selectedStudentId) {
+              setStoredCaseload(selectedStudentId, next);
+            }
+            return next;
+          });
+          showToast?.(`Removed "${goal.name}"`, 'info');
         },
       });
     },
-    [studentGoals, selectedStudentId],
+    [studentGoals, selectedStudentId, showToast],
   );
 
   const handleAssignGoal = useCallback(
@@ -314,10 +337,14 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
         return;
       }
 
+      if (assignedGoalsCount >= 2) {
+        showToast?.('Maximum 2 goals assigned at a time. Remove an existing goal first.', 'error');
+        return;
+      }
       setSlotPickerGoal(goal);
       setSlotPickerOpen(true);
     },
-    [studentGoals],
+    [assignedGoalsCount, showToast, studentGoals],
   );
 
   const handleSlotPick = useCallback(
@@ -340,30 +367,29 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
                 name: slotPickerGoal.name,
                 domain: slotPickerGoal.domain,
                 description: slotPickerGoal.description,
+                progress: newGoalWithStatus.progress,
               }).catch(() => {});
             }
-            setStudentGoals((prev) => ({
-              ...prev,
-              [slot]: newGoalWithStatus,
-            }));
+            setStudentGoals((prev) => {
+              const next = {
+                ...prev,
+                [slot]: newGoalWithStatus,
+              };
+              if (selectedStudentId) {
+                setStoredCaseload(selectedStudentId, next);
+              }
+              return next;
+            });
             setSlotPickerOpen(false);
             setSlotPickerGoal(null);
+            showToast?.(`Assigned "${slotPickerGoal.name}"`, 'success');
           },
         });
         return;
       }
 
-      // Enforce maximum of 2 active assigned goals per student
-      const activeCount = Object.keys(studentGoals).filter(
-        (k) =>
-          studentGoals[k as SlotKey] !== null && studentGoals[k as SlotKey]?.status !== 'Mastered',
-      ).length;
-
-      if (activeCount >= 2) {
-        notify(
-          'Two-Goal Limit Reached',
-          'Each student can have a maximum of two active assigned goals at a time. Please replace an existing goal or remove one to free up a slot.',
-        );
+      if (assignedGoalsCount >= 2) {
+        showToast?.('Maximum 2 goals assigned at a time. Remove an existing goal first.', 'error');
         return;
       }
 
@@ -375,6 +401,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
             name: slotPickerGoal.name,
             domain: slotPickerGoal.domain,
             description: slotPickerGoal.description,
+            progress: newGoalWithStatus.progress,
           });
         } catch (err: any) {
           notify('Assignment Error', err?.message || 'Failed to assign goal.');
@@ -382,21 +409,32 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
         }
       }
 
-      setStudentGoals((prev) => ({
-        ...prev,
-        [slot]: newGoalWithStatus,
-      }));
+      setStudentGoals((prev) => {
+        const next = {
+          ...prev,
+          [slot]: newGoalWithStatus,
+        };
+        if (selectedStudentId) {
+          setStoredCaseload(selectedStudentId, next);
+        }
+        return next;
+      });
 
       setSlotPickerOpen(false);
       setSlotPickerGoal(null);
+      showToast?.(`Assigned "${slotPickerGoal.name}"`, 'success');
     },
-    [slotPickerGoal, studentGoals, selectedStudentId],
+    [slotPickerGoal, studentGoals, selectedStudentId, assignedGoalsCount, showToast],
   );
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
+    if (selectedStudentId) {
+      setStoredCaseload(selectedStudentId, studentGoals);
+    }
     setSavedFeedback(true);
+    showToast?.('Caseload changes saved successfully', 'success');
     setTimeout(() => setSavedFeedback(false), 2000);
-  }, []);
+  }, [selectedStudentId, studentGoals, showToast]);
 
   const handleViewProgress = useCallback(() => {
     navigation?.navigate?.('GraphChartView');
@@ -480,6 +518,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
               onRemove={handleRemoveGoal}
               onViewProgress={handleViewProgress}
               onSave={handleSave}
+              assignedCount={assignedGoalsCount}
             />
           </View>
         )}
@@ -493,6 +532,9 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
               onSearchChange={setSearchTerm}
               onDomainFilterChange={setDomainFilter}
               onAssignGoal={handleAssignGoal}
+              isAssignDisabled={isMaxGoalsReached}
+              assignedCount={assignedGoalsCount}
+              assignedGoalIds={assignedGoalIds}
             />
           </View>
         )}
@@ -503,6 +545,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
         goal={slotPickerGoal}
         studentGoals={studentGoals}
         onSelectSlot={handleSlotPick}
+        assignedCount={assignedGoalsCount}
         onClose={() => {
           setSlotPickerOpen(false);
           setSlotPickerGoal(null);
