@@ -11,10 +11,13 @@ interface SlotPickerModalProps {
   studentGoals: StudentGoals;
   onSelectSlot: (slot: SlotKey) => void;
   onClose: () => void;
+  assignedCount?: number;
 }
 
 export const SlotPickerModal: React.FC<SlotPickerModalProps> = React.memo(
-  ({ visible, goal, studentGoals, onSelectSlot, onClose }) => {
+  ({ visible, goal, studentGoals, onSelectSlot, onClose, assignedCount = 0 }) => {
+    const isAtLimit = assignedCount >= 2;
+
     return (
       <Modal
         visible={visible && goal !== null}
@@ -39,23 +42,36 @@ export const SlotPickerModal: React.FC<SlotPickerModalProps> = React.memo(
               Assigning: <Text style={typography.bodyBold}>{goal?.name}</Text>
             </Text>
 
+            {isAtLimit && (
+              <Text style={styles.limitNotice}>
+                Maximum 2 goals assigned. Select an existing goal to replace it.
+              </Text>
+            )}
+
             <View style={styles.slotGrid}>
               {(Object.keys(slotLabels) as SlotKey[]).map((slot) => {
                 const occupied = studentGoals[slot] !== null;
+                const disableEmpty = !occupied && isAtLimit;
                 return (
                   <TouchableOpacity
                     key={slot}
+                    disabled={disableEmpty}
                     style={[
                       styles.slotPickBtn,
                       occupied ? styles.slotPickOccupied : styles.slotPickEmpty,
+                      disableEmpty && styles.slotPickDisabled,
                     ]}
                     onPress={() => onSelectSlot(slot)}
                     accessibilityRole="button"
                     accessibilityLabel={`Assign to ${slotLabels[slot]}`}
                   >
-                    <Text style={styles.slotPickLabel}>{slotLabels[slot]}</Text>
-                    <Text style={styles.slotPickSub}>
-                      {occupied ? 'Replace existing' : 'Empty'}
+                    <Text
+                      style={[styles.slotPickLabel, disableEmpty && styles.slotPickTextDisabled]}
+                    >
+                      {slotLabels[slot]}
+                    </Text>
+                    <Text style={[styles.slotPickSub, disableEmpty && styles.slotPickTextDisabled]}>
+                      {occupied ? 'Replace existing' : disableEmpty ? 'Max 2 reached' : 'Empty'}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -89,6 +105,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
+  limitNotice: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D97706',
+    backgroundColor: '#FEF3C7',
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+  },
   slotGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -111,13 +136,24 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.bgApp,
   },
+  slotPickDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+    opacity: 0.5,
+  },
   slotPickLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.navyText,
   },
+  slotPickLabelDisabled: {
+    color: '#94A3B8',
+  },
   slotPickSub: {
     fontSize: 12,
     color: colors.mutedText,
+  },
+  slotPickTextDisabled: {
+    color: '#94A3B8',
   },
 });

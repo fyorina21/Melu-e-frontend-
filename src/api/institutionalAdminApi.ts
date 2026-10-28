@@ -1439,8 +1439,15 @@ export const getGoalDomains = async () => {
   try {
     const res = await client.get('/admin/goal_domains');
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-      setStoredGoalDomains(res.data);
-      return res;
+      const stored = getStoredGoalDomains();
+      const combined = [...res.data];
+      stored.forEach((sd) => {
+        if (!combined.some((cd) => cd.id === sd.id || cd.name === sd.name)) {
+          combined.push(sd);
+        }
+      });
+      setStoredGoalDomains(combined);
+      return { data: combined };
     }
   } catch {}
   return { data: getStoredGoalDomains() };
