@@ -23,6 +23,13 @@ export interface SessionReport {
   teacherName: string;
   stationName?: string;
   studentNames: string[];
+  status?: 'submitted' | 'approved' | 'rejected' | 'draft';
+  notes?: string;
+  trialsCount?: number;
+  independence?: number;
+  incidentsCount?: number;
+  rejectionReason?: string;
+  directorNotes?: string;
 }
 
 export interface FoundationOverview {

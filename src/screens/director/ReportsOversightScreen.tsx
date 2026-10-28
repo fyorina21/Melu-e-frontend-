@@ -17,11 +17,14 @@ import { typography } from '../../theme/typography';
 import AppNavbar from '../../components/AppNavbar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import ExportPreviewModal from '../../components/ExportPreviewModal';
+import DirectorSessionSummaryReviewModal from './components/DirectorSessionSummaryReviewModal';
 import {
   getSessionReports,
   generateBiAnnualReport,
   getFoundationOverview,
   getDirectorStudentProgress,
+  approveDirectorSessionSummary,
+  rejectDirectorSessionSummary,
 } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
 import { filterOutDeletedStaff, onDeletedStaffChanged } from '../../utils/deletedStaffHelper';
@@ -78,6 +81,7 @@ export default function ReportsOversightScreen({
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [selectedStation, setSelectedStation] = useState<string>('');
   const [filterDate, setFilterDate] = useState<string>('');
+  const [selectedReviewReport, setSelectedReviewReport] = useState<SessionReport | null>(null);
 
   // Dropdown Picker Modals
   const [showStudentPicker, setShowStudentPicker] = useState(false);
@@ -97,7 +101,6 @@ export default function ReportsOversightScreen({
         }
       })
       .catch(() => {});
-
   }, []);
 
   const loadTeachers = useCallback(() => {
@@ -106,7 +109,9 @@ export default function ReportsOversightScreen({
         const clean = filterOutDeletedStaff(data || []);
         const cleanTeachers = clean.filter((t: any) => t.role === 'teacher');
         setTeachers(cleanTeachers);
-        setSelectedTeacherId((prev) => (!prev || cleanTeachers.some((t: any) => t.id === prev) ? prev : ''));
+        setSelectedTeacherId((prev) =>
+          !prev || cleanTeachers.some((t: any) => t.id === prev) ? prev : '',
+        );
       })
       .catch(() => {});
   }, []);
@@ -124,7 +129,8 @@ export default function ReportsOversightScreen({
       const { data } = await getSessionReports({
         student_id: selectedStudentId || undefined,
         teacher_id: selectedTeacherId || undefined,
-        station_id: selectedStation && selectedStation !== 'All Stations' ? selectedStation : undefined,
+        station_id:
+          selectedStation && selectedStation !== 'All Stations' ? selectedStation : undefined,
         start_date: filterDate || undefined,
       });
       setSessionReports(Array.isArray(data) ? data : []);
@@ -142,6 +148,47 @@ export default function ReportsOversightScreen({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleUpdate = () => {
+      load();
+    };
+    window.addEventListener('melue_session_summaries_updated', handleUpdate);
+    return () => window.removeEventListener('melue_session_summaries_updated', handleUpdate);
+  }, [load]);
+
+  const handleApproveReport = useCallback(
+    async (reportId: string, notes?: string) => {
+      try {
+        await approveDirectorSessionSummary(reportId, { notes });
+        Alert.alert(
+          'Session Summary Approved',
+          'The session summary has been successfully approved.',
+        );
+        load();
+      } catch {
+        Alert.alert('Error', 'Could not record approval.');
+      }
+    },
+    [load],
+  );
+
+  const handleRejectReport = useCallback(
+    async (reportId: string, rejectionReason: string, notes?: string) => {
+      try {
+        await rejectDirectorSessionSummary(reportId, { rejectionReason, notes });
+        Alert.alert(
+          'Session Summary Rejected',
+          'The session summary was rejected and returned with the feedback note.',
+        );
+        load();
+      } catch {
+        Alert.alert('Error', 'Could not record rejection.');
+      }
+    },
+    [load],
+  );
 
   // Load selected student progress for the Student Progress tab
   useEffect(() => {
@@ -191,14 +238,22 @@ export default function ReportsOversightScreen({
       }
       return true;
     });
-  }, [sessionReports, selectedStudentId, selectedTeacherId, selectedStation, filterDate, students, teachers]);
+  }, [
+    sessionReports,
+    selectedStudentId,
+    selectedTeacherId,
+    selectedStation,
+    filterDate,
+    students,
+    teachers,
+  ]);
 
   const buildStudentProgressText = (): string => {
     if (!studentProgressData) return '';
     const goals = studentProgressData.goals || [];
     return [
       '================================================================',
-      '      MELU\'E FOUNDATION — STUDENT PROGRESS MONITORING           ',
+      "      MELU'E FOUNDATION — STUDENT PROGRESS MONITORING           ",
       '================================================================',
       `STUDENT: ${studentProgressData.name || 'Student'}`,
       `AGE: ${studentProgressData.age || 'N/A'}  |  PROGRAM: ${studentProgressData.program || 'N/A'}`,
@@ -207,7 +262,10 @@ export default function ReportsOversightScreen({
       '----------------------------------------------------------------',
       '',
       'IEP / IUP GOALS MASTERY PROGRESSION:',
-      ...goals.map((g: any, i: number) => `  ${i + 1}. ${g.name}: ${g.percent || 0}% Mastery (${g.status || 'In Progress'})`),
+      ...goals.map(
+        (g: any, i: number) =>
+          `  ${i + 1}. ${g.name}: ${g.percent || 0}% Mastery (${g.status || 'In Progress'})`,
+      ),
       '',
       'CLINICAL SESSIONS & ATTENDANCE:',
       `  • Total Sessions Attended: ${studentProgressData.sessionsAttended || studentProgressData.sessionHistory?.length || 0}`,
@@ -225,7 +283,7 @@ export default function ReportsOversightScreen({
   const buildBiAnnualText = (): string => {
     return [
       '================================================================',
-      '      MELU\'E FOUNDATION — BI-ANNUAL PROGRESS OVERSIGHT          ',
+      "      MELU'E FOUNDATION — BI-ANNUAL PROGRESS OVERSIGHT          ",
       '================================================================',
       `GENERATED: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
       'PERIOD: 6-Month Comprehensive Clinical Summary',
@@ -234,7 +292,7 @@ export default function ReportsOversightScreen({
       'SUMMARY OF CLINICAL SESSIONS & THERAPY:',
       ...sessionReports.map(
         (r, i) =>
-          `  ${i + 1}. Session Date: ${r.date} | Lead Therapist: ${r.teacherName}\n     Students: ${r.studentNames.join(', ')}`
+          `  ${i + 1}. Session Date: ${r.date} | Lead Therapist: ${r.teacherName}\n     Students: ${r.studentNames.join(', ')}`,
       ),
       '',
       '----------------------------------------------------------------',
@@ -253,17 +311,14 @@ export default function ReportsOversightScreen({
   const handlePreview = () => setBiAnnualContent(buildBiAnnualText());
 
   const handleEmailParent = () =>
-    Alert.alert(
-      'Email to Parents',
-      'Bi-annual progress packet queued for parent portal delivery.'
-    );
+    Alert.alert('Email to Parents', 'Bi-annual progress packet queued for parent portal delivery.');
 
   const handleExportOverview = () => {
     if (!overview) return;
     setOverviewContent(
       [
         '================================================================',
-        '      MELU\'E FOUNDATION — EXECUTIVE ANALYTICS OVERVIEW          ',
+        "      MELU'E FOUNDATION — EXECUTIVE ANALYTICS OVERVIEW          ",
         '================================================================',
         `GENERATED: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
         '----------------------------------------------------------------',
@@ -274,13 +329,16 @@ export default function ReportsOversightScreen({
         `• Average Goal Progress (Foundation-Wide): ${overview.avgGoalProgress}%`,
         '',
         '================================================================',
-      ].join('\n')
+      ].join('\n'),
     );
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Reports" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
+      <AppNavbar
+        activeTab="Reports"
+        onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])}
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Page Header */}
@@ -352,9 +410,21 @@ export default function ReportsOversightScreen({
               style={[styles.filterSelector, !!selectedStudentId && styles.filterSelectorActive]}
               onPress={() => setShowStudentPicker(true)}
             >
-              <Feather name="user" size={13} color={selectedStudentId ? colors.navyText : colors.mutedText} />
-              <Text style={[styles.filterSelectorText, !!selectedStudentId && styles.filterSelectorTextActive]} numberOfLines={1}>
-                {selectedStudentId ? (students.find((s) => s.id === selectedStudentId)?.name || 'Selected Student') : 'All Students'}
+              <Feather
+                name="user"
+                size={13}
+                color={selectedStudentId ? colors.navyText : colors.mutedText}
+              />
+              <Text
+                style={[
+                  styles.filterSelectorText,
+                  !!selectedStudentId && styles.filterSelectorTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedStudentId
+                  ? students.find((s) => s.id === selectedStudentId)?.name || 'Selected Student'
+                  : 'All Students'}
               </Text>
               <Feather name="chevron-down" size={13} color={colors.mutedText} />
             </TouchableOpacity>
@@ -364,9 +434,21 @@ export default function ReportsOversightScreen({
               style={[styles.filterSelector, !!selectedTeacherId && styles.filterSelectorActive]}
               onPress={() => setShowTeacherPicker(true)}
             >
-              <Feather name="users" size={13} color={selectedTeacherId ? colors.navyText : colors.mutedText} />
-              <Text style={[styles.filterSelectorText, !!selectedTeacherId && styles.filterSelectorTextActive]} numberOfLines={1}>
-                {selectedTeacherId ? (teachers.find((t) => t.id === selectedTeacherId)?.name || 'Selected Teacher') : 'All Teachers'}
+              <Feather
+                name="users"
+                size={13}
+                color={selectedTeacherId ? colors.navyText : colors.mutedText}
+              />
+              <Text
+                style={[
+                  styles.filterSelectorText,
+                  !!selectedTeacherId && styles.filterSelectorTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedTeacherId
+                  ? teachers.find((t) => t.id === selectedTeacherId)?.name || 'Selected Teacher'
+                  : 'All Teachers'}
               </Text>
               <Feather name="chevron-down" size={13} color={colors.mutedText} />
             </TouchableOpacity>
@@ -376,8 +458,18 @@ export default function ReportsOversightScreen({
               style={[styles.filterSelector, !!selectedStation && styles.filterSelectorActive]}
               onPress={() => setShowStationPicker(true)}
             >
-              <Feather name="map-pin" size={13} color={selectedStation ? colors.navyText : colors.mutedText} />
-              <Text style={[styles.filterSelectorText, !!selectedStation && styles.filterSelectorTextActive]} numberOfLines={1}>
+              <Feather
+                name="map-pin"
+                size={13}
+                color={selectedStation ? colors.navyText : colors.mutedText}
+              />
+              <Text
+                style={[
+                  styles.filterSelectorText,
+                  !!selectedStation && styles.filterSelectorTextActive,
+                ]}
+                numberOfLines={1}
+              >
                 {selectedStation || 'All Stations'}
               </Text>
               <Feather name="chevron-down" size={13} color={colors.mutedText} />
@@ -385,7 +477,11 @@ export default function ReportsOversightScreen({
 
             {/* Date Filter */}
             <View style={[styles.filterDateInputWrap, !!filterDate && styles.filterSelectorActive]}>
-              <Feather name="calendar" size={13} color={filterDate ? colors.navyText : colors.mutedText} />
+              <Feather
+                name="calendar"
+                size={13}
+                color={filterDate ? colors.navyText : colors.mutedText}
+              />
               <TextInput
                 style={styles.filterDateInput}
                 placeholder="Date (YYYY-MM-DD)"
@@ -411,22 +507,61 @@ export default function ReportsOversightScreen({
             </View>
 
             <View style={styles.reportList}>
-              {filteredSessionReports.map((r) => (
-                <View key={r.id} style={styles.sessionItem}>
-                  <View style={styles.sessionIconWrap}>
-                    <Feather name="file-text" size={16} color={colors.navyText} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.sessionTitleRow}>
-                      <Text style={styles.sessionDate}>{r.date}</Text>
-                      <Text style={styles.sessionTeacher}>Lead: {r.teacherName}</Text>
+              {filteredSessionReports.map((r) => {
+                const status = (r as any).status || 'submitted';
+                const isApproved = status === 'approved';
+                const isRejected = status === 'rejected';
+
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={styles.sessionItem}
+                    onPress={() => setSelectedReviewReport(r)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Review session report by ${r.teacherName}`}
+                  >
+                    <View style={styles.sessionIconWrap}>
+                      <Feather name="file-text" size={16} color={colors.navyText} />
                     </View>
-                    <Text style={styles.sessionStudents}>
-                      Students: {r.studentNames.join(', ')}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.sessionTitleRow}>
+                        <Text style={styles.sessionDate}>{r.date}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View
+                            style={[
+                              styles.miniStatusBadge,
+                              isApproved
+                                ? styles.miniBadgeApproved
+                                : isRejected
+                                  ? styles.miniBadgeRejected
+                                  : styles.miniBadgeSubmitted,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.miniStatusText,
+                                isApproved
+                                  ? styles.miniTextApproved
+                                  : isRejected
+                                    ? styles.miniTextRejected
+                                    : styles.miniTextSubmitted,
+                              ]}
+                            >
+                              {isApproved ? 'Approved' : isRejected ? 'Rejected' : 'Submitted'}
+                            </Text>
+                          </View>
+                          <Text style={styles.sessionTeacher}>Lead: {r.teacherName}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.sessionStudents}>
+                        Students: {r.studentNames.join(', ')}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color={colors.mutedText} />
+                  </TouchableOpacity>
+                );
+              })}
 
               {filteredSessionReports.length === 0 && (
                 <View style={styles.emptyWrap}>
@@ -449,7 +584,10 @@ export default function ReportsOversightScreen({
                 </Text>
               </View>
               {studentProgressData && (
-                <TouchableOpacity style={styles.smallExportBtn} onPress={handlePreviewStudentProgress}>
+                <TouchableOpacity
+                  style={styles.smallExportBtn}
+                  onPress={handlePreviewStudentProgress}
+                >
                   <Feather name="printer" size={13} color={colors.navyText} />
                   <Text style={styles.smallExportBtnText}>Print / Export PDF</Text>
                 </TouchableOpacity>
@@ -468,7 +606,8 @@ export default function ReportsOversightScreen({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.studentNameHeader}>{studentProgressData.name}</Text>
                     <Text style={styles.studentSubHeader}>
-                      Age: {studentProgressData.age} | Program: {studentProgressData.program} | Diagnosis: {studentProgressData.diagnosis || 'Autism Spectrum Disorder'}
+                      Age: {studentProgressData.age} | Program: {studentProgressData.program} |
+                      Diagnosis: {studentProgressData.diagnosis || 'Autism Spectrum Disorder'}
                     </Text>
                   </View>
                   <View style={styles.sufficientBadge}>
@@ -487,28 +626,42 @@ export default function ReportsOversightScreen({
                     <Text style={[styles.analyticVal, { color: colors.successGreen }]}>
                       {studentProgressData.goals && studentProgressData.goals.length > 0
                         ? Math.round(
-                            studentProgressData.goals.reduce((acc: number, g: any) => acc + (g.percent || 0), 0) /
-                              studentProgressData.goals.length
+                            studentProgressData.goals.reduce(
+                              (acc: number, g: any) => acc + (g.percent || 0),
+                              0,
+                            ) / studentProgressData.goals.length,
                           )
-                        : 0}%
+                        : 0}
+                      %
                     </Text>
                     <Text style={styles.analyticLabel}>Avg Goal Mastery</Text>
                   </View>
                   <View style={styles.analyticCard}>
-                    <Text style={styles.analyticVal}>{studentProgressData.sessionsAttended || studentProgressData.sessionHistory?.length || 18}</Text>
+                    <Text style={styles.analyticVal}>
+                      {studentProgressData.sessionsAttended ||
+                        studentProgressData.sessionHistory?.length ||
+                        18}
+                    </Text>
                     <Text style={styles.analyticLabel}>Sessions Completed</Text>
                   </View>
                 </View>
 
                 {/* Goals Breakdown */}
                 <View style={{ marginTop: spacing.sm }}>
-                  <Text style={[typography.h3, { marginBottom: spacing.sm }]}>Goal Mastery Progression</Text>
+                  <Text style={[typography.h3, { marginBottom: spacing.sm }]}>
+                    Goal Mastery Progression
+                  </Text>
                   {(studentProgressData.goals || []).map((g: any) => (
                     <View key={g.id} style={styles.goalProgressRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.goalNameText}>{g.name}</Text>
                         <View style={styles.progressBarTrack}>
-                          <View style={[styles.progressBarFill, { width: `${Math.min(100, g.percent || 0)}%` }]} />
+                          <View
+                            style={[
+                              styles.progressBarFill,
+                              { width: `${Math.min(100, g.percent || 0)}%` },
+                            ]}
+                          />
                         </View>
                       </View>
                       <Text style={styles.goalPercentText}>{g.percent || 0}%</Text>
@@ -524,7 +677,9 @@ export default function ReportsOversightScreen({
             ) : (
               <View style={styles.emptyWrap}>
                 <Feather name="user-check" size={32} color={colors.mutedText} />
-                <Text style={styles.emptyTitle}>Select a student in filter above to inspect progress</Text>
+                <Text style={styles.emptyTitle}>
+                  Select a student in filter above to inspect progress
+                </Text>
               </View>
             )}
           </View>
@@ -596,6 +751,14 @@ export default function ReportsOversightScreen({
         )}
       </ScrollView>
 
+      {/* Director Review Modal */}
+      <DirectorSessionSummaryReviewModal
+        report={selectedReviewReport}
+        onApprove={handleApproveReport}
+        onReject={handleRejectReport}
+        onClose={() => setSelectedReviewReport(null)}
+      />
+
       {/* Export Modals */}
       <ExportPreviewModal
         visible={!!studentProgressContent}
@@ -622,7 +785,12 @@ export default function ReportsOversightScreen({
       />
 
       {/* Student Picker Modal */}
-      <Modal visible={showStudentPicker} transparent animationType="fade" onRequestClose={() => setShowStudentPicker(false)}>
+      <Modal
+        visible={showStudentPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStudentPicker(false)}
+      >
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerCard}>
             <View style={styles.pickerHeader}>
@@ -639,7 +807,11 @@ export default function ReportsOversightScreen({
                   setShowStudentPicker(false);
                 }}
               >
-                <Text style={[styles.pickerItemText, !selectedStudentId && styles.pickerItemTextActive]}>All Students</Text>
+                <Text
+                  style={[styles.pickerItemText, !selectedStudentId && styles.pickerItemTextActive]}
+                >
+                  All Students
+                </Text>
                 {!selectedStudentId && <Feather name="check" size={16} color={colors.navyText} />}
               </TouchableOpacity>
               {students.map((s) => {
@@ -653,7 +825,11 @@ export default function ReportsOversightScreen({
                       setShowStudentPicker(false);
                     }}
                   >
-                    <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}>{s.name}</Text>
+                    <Text
+                      style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}
+                    >
+                      {s.name}
+                    </Text>
                     {isSelected && <Feather name="check" size={16} color={colors.navyText} />}
                   </TouchableOpacity>
                 );
@@ -664,7 +840,12 @@ export default function ReportsOversightScreen({
       </Modal>
 
       {/* Teacher Picker Modal */}
-      <Modal visible={showTeacherPicker} transparent animationType="fade" onRequestClose={() => setShowTeacherPicker(false)}>
+      <Modal
+        visible={showTeacherPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTeacherPicker(false)}
+      >
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerCard}>
             <View style={styles.pickerHeader}>
@@ -681,7 +862,11 @@ export default function ReportsOversightScreen({
                   setShowTeacherPicker(false);
                 }}
               >
-                <Text style={[styles.pickerItemText, !selectedTeacherId && styles.pickerItemTextActive]}>All Teachers</Text>
+                <Text
+                  style={[styles.pickerItemText, !selectedTeacherId && styles.pickerItemTextActive]}
+                >
+                  All Teachers
+                </Text>
                 {!selectedTeacherId && <Feather name="check" size={16} color={colors.navyText} />}
               </TouchableOpacity>
               {teachers.map((t) => {
@@ -695,7 +880,11 @@ export default function ReportsOversightScreen({
                       setShowTeacherPicker(false);
                     }}
                   >
-                    <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}>{t.name}</Text>
+                    <Text
+                      style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}
+                    >
+                      {t.name}
+                    </Text>
                     {isSelected && <Feather name="check" size={16} color={colors.navyText} />}
                   </TouchableOpacity>
                 );
@@ -706,7 +895,12 @@ export default function ReportsOversightScreen({
       </Modal>
 
       {/* Station Picker Modal */}
-      <Modal visible={showStationPicker} transparent animationType="fade" onRequestClose={() => setShowStationPicker(false)}>
+      <Modal
+        visible={showStationPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStationPicker(false)}
+      >
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerCard}>
             <View style={styles.pickerHeader}>
@@ -717,7 +911,8 @@ export default function ReportsOversightScreen({
             </View>
             <ScrollView style={{ maxHeight: 300 }}>
               {STATIONS.map((st) => {
-                const isSelected = (!selectedStation && st === 'All Stations') || selectedStation === st;
+                const isSelected =
+                  (!selectedStation && st === 'All Stations') || selectedStation === st;
                 return (
                   <TouchableOpacity
                     key={st}
@@ -727,7 +922,11 @@ export default function ReportsOversightScreen({
                       setShowStationPicker(false);
                     }}
                   >
-                    <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}>{st}</Text>
+                    <Text
+                      style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}
+                    >
+                      {st}
+                    </Text>
                     {isSelected && <Feather name="check" size={16} color={colors.navyText} />}
                   </TouchableOpacity>
                 );
@@ -751,7 +950,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 280 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -829,7 +1034,12 @@ const styles = StyleSheet.create({
   sessionTeacher: { fontSize: 12, color: colors.bodyText },
   sessionStudents: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
 
-  emptyWrap: { padding: spacing.xxl, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
+  emptyWrap: {
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
   emptyTitle: { fontSize: 14, fontWeight: '700', color: colors.mutedText },
 
   generateBtn: {
@@ -1084,5 +1294,37 @@ const styles = StyleSheet.create({
   pickerItemTextActive: {
     fontWeight: '700',
   },
+  miniStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  miniBadgeSubmitted: {
+    backgroundColor: '#FEF3C7',
+  },
+  miniTextSubmitted: {
+    color: '#B45309',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  miniBadgeApproved: {
+    backgroundColor: '#DCFCE7',
+  },
+  miniTextApproved: {
+    color: '#15803D',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  miniBadgeRejected: {
+    backgroundColor: '#FEE2E2',
+  },
+  miniTextRejected: {
+    color: '#B91C1C',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  miniStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
 });
-

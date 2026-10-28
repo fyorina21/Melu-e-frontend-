@@ -16,6 +16,11 @@ import {
   getStudentBehaviorProgress,
 } from '../utils/studentLifecycleHelper';
 import { getStoredIupDraft } from './programDirectorApi';
+import {
+  getStoredSessionSummaries,
+  approveSessionSummaryReview,
+  rejectSessionSummaryReview,
+} from '../utils/sessionSummaryWorkflowHelper';
 
 // SCR-DIR-001: Director Dashboard
 export const getDirectorDashboard = async () => {
@@ -437,14 +442,61 @@ const mapSessionSummary = (row: RawSessionSummary) => ({
 });
 
 export const getSessionReports = async (params: QueryParams) => {
+  let backendReports: any[] = [];
   try {
     const { data } = await client.get<RawSessionSummary[]>('/reports/session_summaries', {
       params,
     });
-    return { data: Array.isArray(data) ? data.map(mapSessionSummary) : [] };
-  } catch {
-    return { data: [] };
-  }
+    if (Array.isArray(data)) {
+      backendReports = data.map(mapSessionSummary);
+    }
+  } catch {}
+
+  const stored = getStoredSessionSummaries();
+  const storedMapped = stored.map((s) => ({
+    id: s.id,
+    date: s.submittedAt ? s.submittedAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    teacherName: s.teacherName,
+    stationName: s.stationName,
+    studentNames: s.studentNames,
+    status: s.status,
+    notes: s.notes,
+    trialsCount: s.trialsCount,
+    independence: s.independence,
+    incidentsCount: s.incidentsCount,
+    rejectionReason: s.rejectionReason,
+    directorNotes: s.directorNotes,
+  }));
+
+  // Merge stored reviews with backend reports, prioritizing stored state for matched IDs
+  const storedIds = new Set(storedMapped.map((s) => s.id));
+  const merged = [...storedMapped, ...backendReports.filter((b) => !storedIds.has(b.id))];
+
+  return { data: merged };
+};
+
+export const approveDirectorSessionSummary = async (summaryId: string, payload?: Payload) => {
+  approveSessionSummaryReview(summaryId, 'director', (payload?.notes as string) || undefined);
+  try {
+    const res = await client.post(`/coordinator/summaries/${summaryId}/approve`, payload);
+    if (res?.data) return res;
+  } catch {}
+  return { data: { success: true, summaryId, status: 'approved' } };
+};
+
+export const rejectDirectorSessionSummary = async (
+  summaryId: string,
+  payload: { rejectionReason: string; notes?: string },
+) => {
+  rejectSessionSummaryReview(summaryId, payload.rejectionReason, 'director', payload.notes);
+  try {
+    const res = await client.post(`/coordinator/summaries/${summaryId}/request-changes`, {
+      reason: payload.rejectionReason,
+      notes: payload.notes,
+    });
+    if (res?.data) return res;
+  } catch {}
+  return { data: { success: true, summaryId, status: 'rejected' } };
 };
 
 // There is no backend route for a director bi-annual report export
