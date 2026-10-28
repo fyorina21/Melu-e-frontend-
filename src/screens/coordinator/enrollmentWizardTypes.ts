@@ -77,3 +77,5 @@ export function getTherapyGroupAgeWarning(therapyGroup: string, age: number | nu
   }
   return null;
 }
+
+export const MAX_CASELOAD = 2;

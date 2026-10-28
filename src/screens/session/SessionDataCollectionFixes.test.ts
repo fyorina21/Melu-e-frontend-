@@ -1,3 +1,4 @@
+import { recordDeletedStudent, isStudentDeleted, filterOutDeletedStudents } from '../../utils/deletedStudentHelper';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   startSessionTimer,
@@ -312,6 +313,32 @@ describe('SessionDataCollectionScreen Fixes Verification', () => {
       await expect(recordBehaviorIncident('sess-1', { behavior: 'Aggression' })).rejects.toThrow(
         /valid studentId/i
       );
+    });
+  });
+  describe('7. Deleted Student Purge from Session', () => {
+    it('filters out deleted students from stored session cache and assignments', () => {
+      const sessionId = 'session-del-test';
+      const teacherId = 't-del-1';
+      const students = [
+        { id: 'stu-del-keep', name: 'Keeping Student' },
+        { id: 'stu-del-remove', name: 'Removing Student' },
+      ];
+
+      setStoredSessionStudents(sessionId, students, teacherId);
+
+      // Verify initial presence
+      const initial = getStoredSessionStudents(sessionId, teacherId);
+      expect(initial?.map((s) => s.id)).toContain('stu-del-remove');
+
+      // Purge student
+      recordDeletedStudent({ id: 'stu-del-remove', name: 'Removing Student' });
+
+      expect(isStudentDeleted('stu-del-remove')).toBe(true);
+
+      // Verify filtered out
+      const updated = getStoredSessionStudents(sessionId, teacherId);
+      expect(updated?.map((s) => s.id)).toEqual(['stu-del-keep']);
+      expect(updated?.some((s) => s.id === 'stu-del-remove')).toBe(false);
     });
   });
 });

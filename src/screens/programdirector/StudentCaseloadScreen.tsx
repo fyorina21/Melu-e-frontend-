@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -22,7 +23,13 @@ import {
   removeGoalFromSlot,
   createGoal,
   getStudentProfile,
+  getStoredIupDraft,
+  getStoredCaseloadMap,
+  IUP_LIBRARY_STORAGE_KEY,
 } from '../../api/programDirectorApi';
+import storage from '../../utils/storage';
+import { confirmAction, notify } from '../../utils/dialogs';
+import { onMasteryChecksChanged } from '../../stores/goalMasteryStore';
 import type { ProgramDirectorStackParamList } from '../../types';
 import {
   type Goal,
@@ -38,7 +45,6 @@ import { StudentSelectorRow } from './caseload/components/StudentSelectorRow';
 import { StationGoalsPanel } from './caseload/components/StationGoalsPanel';
 import { GoalBankPanel } from './caseload/components/GoalBankPanel';
 import { SlotPickerModal } from './caseload/components/SlotPickerModal';
-import { NewGoalModal } from './caseload/components/NewGoalModal';
 
 type Props = NativeStackScreenProps<ProgramDirectorStackParamList, 'StudentCaseload'>;
 
@@ -55,16 +61,15 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
   const [domainFilter, setDomainFilter] = useState('All');
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
   const [slotPickerGoal, setSlotPickerGoal] = useState<Goal | null>(null);
-  const [newGoalModalOpen, setNewGoalModalOpen] = useState(false);
-  const [goalBank, setGoalBank] = useState<Goal[]>([]);
+  const [masterGoalBank, setMasterGoalBank] = useState<Goal[]>([]);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
-  // Fetch goal bank and student options
+  // Fetch master goal bank catalog and student options
   useEffect(() => {
     getGoalBank({})
       .then(({ data }) => {
         const rawGoals = Array.isArray(data) ? data : (data as any)?.goals || [];
-        setGoalBank(
+        setMasterGoalBank(
           rawGoals.map((g: any) => ({
             id: String(g.id),
             name: g.name || g.title || '',
@@ -87,7 +92,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
   }, []);
 
   // Fetch the selected student's assigned goals
-  useEffect(() => {
+  const loadCaseload = useCallback(() => {
     if (!selectedStudentId) return;
 
     getStudentCaseload(selectedStudentId)
@@ -116,9 +121,140 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       .catch(() => {});
   }, [selectedStudentId]);
 
+  useEffect(() => {
+    loadCaseload();
+  }, [loadCaseload]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCaseload();
+    }, [loadCaseload]),
+  );
+
+  useEffect(() => {
+    const unsubMastery = onMasteryChecksChanged(() => {
+      loadCaseload();
+    });
+
+    const handleCaseloadSync = () => {
+      loadCaseload();
+    };
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('melue_caseload_updated', handleCaseloadSync);
+    }
+
+    return () => {
+      unsubMastery();
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('melue_caseload_updated', handleCaseloadSync);
+      }
+    };
+  }, [loadCaseload]);
+
+  // In the Goal Bank, display only the goals assigned to the specific student during IUP Creation/Generation
+  const studentGoalsForBank = useMemo(() => {
+    if (!selectedStudentId) return [];
+
+    const map = new Map<string, Goal>();
+
+    // 1. From active/cached IUP draft for this specific student
+    const draft = getStoredIupDraft(selectedStudentId);
+    if (draft?.slots) {
+      const draftSlots = (draft.slots as any) || {};
+      const s1 = Array.isArray(draftSlots.station1) ? draftSlots.station1 : [];
+      const s2 = Array.isArray(draftSlots.station2) ? draftSlots.station2 : [];
+      [...s1, ...s2].filter(Boolean).forEach((g: any) => {
+        const id = String(g.id || g.goalId || g.goal_id);
+        if (id && !map.has(id)) {
+          map.set(id, {
+            id,
+            name: g.name || g.title || 'Assigned Goal',
+            domain: g.domain || g.domainName || 'Cognitive',
+            description: g.description || '',
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(draft?.goals)) {
+      draft.goals.forEach((g: any) => {
+        const id = typeof g === 'string' ? g : String(g?.id || g?.goalId);
+        if (id && !map.has(id)) {
+          const master = masterGoalBank.find((b) => b.id === id);
+          map.set(id, {
+            id,
+            name: (typeof g === 'object' && g.name) || master?.name || 'Assigned Goal',
+            domain: (typeof g === 'object' && g.domain) || master?.domain || 'Cognitive',
+            description: (typeof g === 'object' && g.description) || master?.description || '',
+          });
+        }
+      });
+    }
+
+    // 2. From finalized IUP library for this specific student
+    const lib = storage.getJSONSync<any[]>(IUP_LIBRARY_STORAGE_KEY, []) || [];
+    const studentRecords = lib.filter(
+      (item) =>
+        item.studentId === selectedStudentId ||
+        item.id === selectedStudentId ||
+        item.student_id === selectedStudentId,
+    );
+    studentRecords.forEach((item) => {
+      const itemSlots = (item.slots as any) || {};
+      const s1 = Array.isArray(itemSlots.station1) ? itemSlots.station1 : [];
+      const s2 = Array.isArray(itemSlots.station2) ? itemSlots.station2 : [];
+      [...s1, ...s2].filter(Boolean).forEach((g: any) => {
+        const id = String(g.id || g.goalId || g.goal_id);
+        if (id && !map.has(id)) {
+          map.set(id, {
+            id,
+            name: g.name || g.title || 'Assigned Goal',
+            domain: g.domain || g.domainName || 'Cognitive',
+            description: g.description || '',
+          });
+        }
+      });
+
+      if (Array.isArray(item?.goals)) {
+        item.goals.forEach((g: any) => {
+          const id = typeof g === 'string' ? g : String(g?.id || g?.goalId);
+          if (id && !map.has(id)) {
+            const master = masterGoalBank.find((b) => b.id === id);
+            map.set(id, {
+              id,
+              name: (typeof g === 'object' && g.name) || master?.name || 'Assigned Goal',
+              domain: (typeof g === 'object' && g.domain) || master?.domain || 'Cognitive',
+              description: (typeof g === 'object' && g.description) || master?.description || '',
+            });
+          }
+        });
+      }
+    });
+
+    // 3. From caseload slot assignments for this specific student
+    const caseloadMap = getStoredCaseloadMap();
+    const studentSlots = caseloadMap[selectedStudentId] || {};
+    Object.values(studentSlots).forEach((g: any) => {
+      if (g) {
+        const id = String(g.id || g.goalId);
+        if (id && !map.has(id)) {
+          map.set(id, {
+            id,
+            name: g.name || 'Assigned Goal',
+            domain: g.domain || 'Cognitive',
+            description: g.description || '',
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [selectedStudentId, masterGoalBank, studentGoals]);
+
   const filteredGoals = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return goalBank.filter((g) => {
+    return studentGoalsForBank.filter((g) => {
       const matchSearch =
         g.name.toLowerCase().includes(term) || g.description.toLowerCase().includes(term);
 
@@ -127,7 +263,7 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
 
       return matchSearch && matchDomain;
     });
-  }, [goalBank, searchTerm, domainFilter]);
+  }, [studentGoalsForBank, searchTerm, domainFilter]);
 
   const handleSelectStudent = useCallback(
     (id: string) => {
@@ -145,33 +281,44 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       const goal = studentGoals[slot];
       if (!goal) return;
 
-      Alert.alert('Remove Goal', `Remove "${goal.name}" from this slot?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            if (selectedStudentId) {
-              await removeGoalFromSlot(selectedStudentId, {
-                slot,
-                goalId: goal.id,
-              }).catch(() => {});
-            }
-            setStudentGoals((prev) => ({
-              ...prev,
-              [slot]: null,
-            }));
-          },
+      confirmAction({
+        title: 'Remove Goal',
+        message: `Remove "${goal.name}" from this slot?`,
+        confirmLabel: 'Remove',
+        destructive: true,
+        onConfirm: async () => {
+          if (selectedStudentId) {
+            await removeGoalFromSlot(selectedStudentId, {
+              slot,
+              goalId: goal.id,
+            }).catch(() => {});
+          }
+          setStudentGoals((prev) => ({
+            ...prev,
+            [slot]: null,
+          }));
         },
-      ]);
+      });
     },
     [studentGoals, selectedStudentId],
   );
 
-  const handleAssignGoal = useCallback((goal: Goal) => {
-    setSlotPickerGoal(goal);
-    setSlotPickerOpen(true);
-  }, []);
+  const handleAssignGoal = useCallback(
+    (goal: Goal) => {
+      // Check duplicate goal assignment
+      const alreadyAssigned = Object.values(studentGoals).some(
+        (g) => g && (g.id === goal.id || g.name === goal.name),
+      );
+      if (alreadyAssigned) {
+        notify('Duplicate Goal', `"${goal.name}" is already assigned to this student.`);
+        return;
+      }
+
+      setSlotPickerGoal(goal);
+      setSlotPickerOpen(true);
+    },
+    [studentGoals],
+  );
 
   const handleSlotPick = useCallback(
     async (slot: SlotKey) => {
@@ -181,34 +328,58 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       const newGoalWithStatus: GoalWithStatus = goalToWithStatus(slotPickerGoal, 'Active', 0);
 
       if (current) {
-        Alert.alert('Replace Goal', `Replace "${current.name}" with "${slotPickerGoal.name}"?`, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Replace',
-            onPress: async () => {
-              if (selectedStudentId) {
-                await assignGoalToSlot(selectedStudentId, {
-                  slot,
-                  goalId: slotPickerGoal.id,
-                }).catch(() => {});
-              }
-              setStudentGoals((prev) => ({
-                ...prev,
-                [slot]: newGoalWithStatus,
-              }));
-              setSlotPickerOpen(false);
-              setSlotPickerGoal(null);
-            },
+        confirmAction({
+          title: 'Replace Goal',
+          message: `Replace "${current.name}" with "${slotPickerGoal.name}"?`,
+          confirmLabel: 'Replace',
+          onConfirm: async () => {
+            if (selectedStudentId) {
+              await assignGoalToSlot(selectedStudentId, {
+                slot,
+                goalId: slotPickerGoal.id,
+                name: slotPickerGoal.name,
+                domain: slotPickerGoal.domain,
+                description: slotPickerGoal.description,
+              }).catch(() => {});
+            }
+            setStudentGoals((prev) => ({
+              ...prev,
+              [slot]: newGoalWithStatus,
+            }));
+            setSlotPickerOpen(false);
+            setSlotPickerGoal(null);
           },
-        ]);
+        });
+        return;
+      }
+
+      // Enforce maximum of 2 active assigned goals per student
+      const activeCount = Object.keys(studentGoals).filter(
+        (k) =>
+          studentGoals[k as SlotKey] !== null && studentGoals[k as SlotKey]?.status !== 'Mastered',
+      ).length;
+
+      if (activeCount >= 2) {
+        notify(
+          'Two-Goal Limit Reached',
+          'Each student can have a maximum of two active assigned goals at a time. Please replace an existing goal or remove one to free up a slot.',
+        );
         return;
       }
 
       if (selectedStudentId) {
-        await assignGoalToSlot(selectedStudentId, {
-          slot,
-          goalId: slotPickerGoal.id,
-        }).catch(() => {});
+        try {
+          await assignGoalToSlot(selectedStudentId, {
+            slot,
+            goalId: slotPickerGoal.id,
+            name: slotPickerGoal.name,
+            domain: slotPickerGoal.domain,
+            description: slotPickerGoal.description,
+          });
+        } catch (err: any) {
+          notify('Assignment Error', err?.message || 'Failed to assign goal.');
+          return;
+        }
       }
 
       setStudentGoals((prev) => ({
@@ -220,36 +391,6 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
       setSlotPickerGoal(null);
     },
     [slotPickerGoal, studentGoals, selectedStudentId],
-  );
-
-  const handleAddGoal = useCallback(
-    async (goalData: { name: string; domain: string; description: string }) => {
-      try {
-        const res = await createGoal(goalData);
-        const created = res.data;
-        setGoalBank((prev) => [
-          ...prev,
-          {
-            id: String(created?.id ?? Date.now()),
-            name: created?.name ?? goalData.name,
-            domain: created?.domain ?? goalData.domain,
-            description: created?.description ?? goalData.description,
-          },
-        ]);
-      } catch {
-        setGoalBank((prev) => [
-          ...prev,
-          {
-            id: `custom-${Date.now()}`,
-            name: goalData.name,
-            domain: goalData.domain,
-            description: goalData.description,
-          },
-        ]);
-      }
-      setNewGoalModalOpen(false);
-    },
-    [],
   );
 
   const handleSave = useCallback(() => {
@@ -291,11 +432,13 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
         )}
       </View>
 
-      <StudentSelectorRow
-        students={studentOptions}
-        selectedStudentId={selectedStudentId}
-        onSelectStudent={handleSelectStudent}
-      />
+      <View style={{ zIndex: 100, position: 'relative' }}>
+        <StudentSelectorRow
+          students={studentOptions}
+          selectedStudentId={selectedStudentId}
+          onSelectStudent={handleSelectStudent}
+        />
+      </View>
 
       {!isTablet && (
         <View style={styles.mobileTabBar}>
@@ -349,7 +492,6 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
               domainFilter={domainFilter}
               onSearchChange={setSearchTerm}
               onDomainFilterChange={setDomainFilter}
-              onAddNewGoal={() => setNewGoalModalOpen(true)}
               onAssignGoal={handleAssignGoal}
             />
           </View>
@@ -365,12 +507,6 @@ export default function StudentCaseloadScreen({ navigation }: Props) {
           setSlotPickerOpen(false);
           setSlotPickerGoal(null);
         }}
-      />
-
-      <NewGoalModal
-        visible={newGoalModalOpen}
-        onSaveGoal={handleAddGoal}
-        onClose={() => setNewGoalModalOpen(false)}
       />
     </SafeAreaView>
   );

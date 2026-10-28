@@ -184,6 +184,7 @@ export default function RootNavigator() {
       return;
     }
 
+    if (!nav?.isReady?.()) return;
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const sid =

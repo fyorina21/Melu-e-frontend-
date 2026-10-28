@@ -18,7 +18,7 @@ export default function CoordinatorNotificationsScreen({ navigation }: Props) {
         subtitle="Session alerts and review requests"
         fetchData={async () => {
           const res = await getCoordinatorNotifications();
-          const list = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+          const list = Array.isArray(res?.data) ? res.data : [];
           return list.map(toAppNotification);
         }}
         demoData={[]}

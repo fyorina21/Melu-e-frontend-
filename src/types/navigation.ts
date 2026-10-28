@@ -26,6 +26,7 @@ export type SessionStackParamList = {
   StudentEditProfile: { studentId?: string } | undefined;
   StudentEnrollmentWizard: { draftId?: string } | undefined;
   StudentEnrollment?: undefined;
+
   IupGeneration: { studentId?: string } | undefined;
   GoalMasteryApproval?: undefined;
   ChildProgress?: undefined;
@@ -60,9 +61,11 @@ export type DirectorStackParamList = {
   ReportsOversight: undefined;
   DirectorStudentProgress: { studentId?: string } | undefined;
   ReportBuilder: undefined;
-  AssessmentSummaryReport?: { studentId?: string } | undefined;
   StudentEnrollment?: undefined;
-  StudentProfile: { studentId?: string } | undefined;
+  StudentEnrollmentWizard?: undefined;
+  StudentProfile?: { studentId?: string } | undefined;
+
+  AssessmentSummaryReport?: { studentId?: string } | undefined;
   StudentEditProfile: { studentId?: string } | undefined;
 };
 

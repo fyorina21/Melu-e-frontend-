@@ -38,7 +38,7 @@ export default function SessionSummaryReviewScreen({
   const load = useCallback(async () => {
     try {
       const { data } = await getPendingSummaries({});
-      setSummaries(((Array.isArray(data) ? data : []) as ApiSummaryRow[]).map(mapSummary));
+      setSummaries((((Array.isArray(data) ? data : []) as unknown) as ApiSummaryRow[]).map(mapSummary));
     } catch {
       setSummaries([]);
     }

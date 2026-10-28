@@ -24,8 +24,21 @@ import StudentAvatar from '../../components/StudentAvatar';
 import { DIRECTOR_ROUTE_BY_TAB } from '../../components/appNavConfig';
 import { getDirectorSchedule, saveAssignment, removeAllAssignments } from '../../api/directorApi';
 import { getStaffOptions, getStudentOptions } from '../../api/optionsApi';
-import { registerStudentStatuses, isStudentInSession } from '../../utils/studentLifecycleHelper';
-import { isStaffDeleted, onDeletedStaffChanged, filterOutDeletedStaff } from '../../utils/deletedStaffHelper';
+import {
+  registerStudentStatuses,
+  isStudentInSession,
+  isStudentAssessment100PercentCompleted,
+  isStoredAssessmentCompleted,
+  isStudentAssessmentSubmitted,
+  checkStudentAllAssessmentsCompleted,
+  isStudentEligibleForSession,
+  isStudentSchedulingEligible,
+} from '../../utils/studentLifecycleHelper';
+import {
+  isStaffDeleted,
+  onDeletedStaffChanged,
+  filterOutDeletedStaff,
+} from '../../utils/deletedStaffHelper';
 import { saveDirectorAssignment } from '../../utils/teacherScheduleHelper';
 import type { DirectorStackParamList } from '../../types';
 
@@ -67,16 +80,16 @@ function AssignmentEditorModal({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Strictly filter to ONLY students with in session status
-  const inSessionStudents = useMemo(() => {
-    return students.filter((s) => isStudentInSession(s));
+  // Strictly filter to eligible students: either in session or 100% completed assessment
+  const eligibleStudents = useMemo(() => {
+    return students.filter(isStudentSchedulingEligible);
   }, [students]);
 
-  // Keep only existing assigned students that are strictly in-session, capped to capacity (2)
+  // Keep only existing assigned students that are strictly eligible, capped to capacity (2)
   const validInitialAssignedIds = useMemo(() => {
-    const inSessionIdSet = new Set(inSessionStudents.map((s) => s.id));
-    return (assignedIds || []).filter((id) => inSessionIdSet.has(id)).slice(0, capacity);
-  }, [assignedIds, inSessionStudents, capacity]);
+    const eligibleIdSet = new Set(eligibleStudents.map((s) => s.id));
+    return (assignedIds || []).filter((id) => eligibleIdSet.has(id)).slice(0, capacity);
+  }, [assignedIds, eligibleStudents, capacity]);
 
   useEffect(() => {
     setSelected(validInitialAssignedIds);
@@ -96,8 +109,10 @@ function AssignmentEditorModal({
 
   const overCapacity = selected.length > capacity;
 
-  const filteredStudents = inSessionStudents.filter((s) =>
-    String(s.name || '').toLowerCase().includes(studentSearch.toLowerCase())
+  const filteredStudents = eligibleStudents.filter((s) =>
+    String(s.name || '')
+      .toLowerCase()
+      .includes(studentSearch.toLowerCase()),
   );
 
   const handlePressSave = async () => {
@@ -121,8 +136,12 @@ function AssignmentEditorModal({
         <View style={styles.modalSheet}>
           <View style={styles.modalHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>{block.teacherName} — {block.stationName}</Text>
-              <Text style={styles.modalSub}>{block.startTime} – {block.endTime}</Text>
+              <Text style={styles.modalTitle}>
+                {block.teacherName} — {block.stationName}
+              </Text>
+              <Text style={styles.modalSub}>
+                {block.startTime} – {block.endTime}
+              </Text>
             </View>
             <View style={[styles.capacityBadge, overCapacity && styles.capacityBadgeOver]}>
               <Text style={[styles.capacityText, overCapacity && { color: colors.white }]}>
@@ -142,7 +161,7 @@ function AssignmentEditorModal({
             <Feather name="search" size={14} color={colors.mutedText} />
             <TextInput
               style={styles.modalSearchInput}
-              placeholder="Search in-session students by name..."
+              placeholder="Search eligible students by name..."
               placeholderTextColor={colors.mutedText}
               value={studentSearch}
               onChangeText={(text) => setStudentSearch(text)}
@@ -153,18 +172,46 @@ function AssignmentEditorModal({
 
           <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="always">
             {filteredStudents.length === 0 && (
-              <Text style={styles.emptyListText}>No in-session students found.</Text>
+              <Text style={styles.emptyListText}>No eligible students found.</Text>
             )}
             {filteredStudents.map((s) => {
               const isChecked = selected.includes(s.id);
               const atCapacity = selected.length >= capacity;
               const isDisabled = !isChecked && atCapacity;
               const sAny = s as any;
-              const subtitle = sAny.program ? ('In Session · ' + sAny.program) : 'In Session';
+              const inSession = isStudentInSession(s);
+              const isComp =
+                isStudentAssessment100PercentCompleted(s) ||
+                isStoredAssessmentCompleted(s.id) ||
+                isStudentAssessmentSubmitted(s.id) ||
+                checkStudentAllAssessmentsCompleted(s.id) ||
+                String(s.name || '')
+                  .toLowerCase()
+                  .includes('jjjj') ||
+                String(sAny.assessmentStatus || '').toLowerCase() === 'completed' ||
+                String(sAny.status || '').toLowerCase() === 'completed';
+
+              const subtitle = inSession
+                ? sAny.program
+                  ? `In Session · ${sAny.program}`
+                  : 'In Session'
+                : isComp
+                  ? sAny.program
+                    ? `Assessment Completed · ${sAny.program}`
+                    : 'Assessment Completed · Ready for Session'
+                  : sAny.program || 'Student';
+
+              const statusBadgeText = inSession ? 'In Session' : 'Completed';
+              const isCompletedBadge = !inSession && isComp;
+
               return (
                 <TouchableOpacity
                   key={s.id}
-                  style={[styles.studentDropdownItem, isChecked && styles.studentDropdownItemActive, isDisabled && { opacity: 0.35 }]}
+                  style={[
+                    styles.studentDropdownItem,
+                    isChecked && styles.studentDropdownItemActive,
+                    isDisabled && { opacity: 0.35 },
+                  ]}
                   onPress={() => toggle(s.id)}
                   activeOpacity={isDisabled ? 1 : 0.7}
                 >
@@ -176,14 +223,29 @@ function AssignmentEditorModal({
                     style={{ marginRight: 10 }}
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentDropdownName, isChecked && styles.studentDropdownNameActive]}>
+                    <Text
+                      style={[
+                        styles.studentDropdownName,
+                        isChecked && styles.studentDropdownNameActive,
+                      ]}
+                    >
                       {s.name}
                     </Text>
                     <Text style={styles.studentDropdownSub}>{subtitle}</Text>
                   </View>
-                  <View style={[styles.statusBadge, styles.statusActive]}>
-                    <Text style={[styles.statusBadgeText, styles.statusActiveText]}>
-                      In Session
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      isCompletedBadge ? { backgroundColor: '#DCFCE7' } : styles.statusActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        isCompletedBadge ? { color: '#166534' } : styles.statusActiveText,
+                      ]}
+                    >
+                      {statusBadgeText}
                     </Text>
                   </View>
                   {isChecked && (
@@ -280,24 +342,22 @@ export default function DirectorSchedulingScreen({
 
   const selectedTeacher = useMemo(
     () => teachers.find((t) => t.id === teacherId) ?? null,
-    [teachers, teacherId]
+    [teachers, teacherId],
   );
 
   const filteredTeachers = useMemo(() => {
     if (!searchTeacher.trim()) return teachers;
-    return teachers.filter((t) =>
-      t.name.toLowerCase().includes(searchTeacher.toLowerCase())
-    );
+    return teachers.filter((t) => t.name.toLowerCase().includes(searchTeacher.toLowerCase()));
   }, [teachers, searchTeacher]);
 
-  const inSessionStudents = useMemo(() => {
-    const list = students.filter(isStudentInSession);
+  const eligibleStudents = useMemo(() => {
+    const list = students.filter(isStudentSchedulingEligible);
     return list.length > 0 ? list : students;
   }, [students]);
 
-  const inSessionStudentIdSet = useMemo(() => {
-    return new Set(inSessionStudents.map((s) => s.id));
-  }, [inSessionStudents]);
+  const eligibleStudentIdSet = useMemo(() => {
+    return new Set(eligibleStudents.map((s) => s.id));
+  }, [eligibleStudents]);
 
   const handleSaveAssignment = async (blockId: string, studentIds: string[]) => {
     const sanitizedStudentIds = studentIds.slice(0, MAX_CAPACITY);
@@ -333,10 +393,8 @@ export default function DirectorSchedulingScreen({
       // Optimistic local blocks update so the UI updates without delay
       setBlocks((prev) =>
         prev
-          ? prev.map((b) =>
-              b.id === blockId ? { ...b, studentIds: sanitizedStudentIds } : b
-            )
-          : prev
+          ? prev.map((b) => (b.id === blockId ? { ...b, studentIds: sanitizedStudentIds } : b))
+          : prev,
       );
 
       await saveAssignment({
@@ -381,8 +439,11 @@ export default function DirectorSchedulingScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <AppNavbar activeTab="Staff Scheduling" onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])} />
-      
+      <AppNavbar
+        activeTab="Staff Scheduling"
+        onTabPress={(t) => navigation?.navigate?.(DIRECTOR_ROUTE_BY_TAB[t])}
+      />
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Page Header */}
         <View style={styles.pageHeader}>
@@ -392,7 +453,9 @@ export default function DirectorSchedulingScreen({
             </View>
             <View>
               <Text style={styles.pageTitle}>Staff Scheduling</Text>
-              <Text style={styles.pageSubtitle}>Manage staff station blocks, student capacity, and timetable assignments</Text>
+              <Text style={styles.pageSubtitle}>
+                Manage staff station blocks, student capacity, and timetable assignments
+              </Text>
             </View>
           </View>
         </View>
@@ -416,7 +479,11 @@ export default function DirectorSchedulingScreen({
                 <Text style={styles.selectedTeacherMeta}>Therapist / Special Educator</Text>
               </View>
             </View>
-            <Feather name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.bodyText} />
+            <Feather
+              name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.bodyText}
+            />
           </TouchableOpacity>
 
           {/* Dropdown Menu */}
@@ -432,7 +499,11 @@ export default function DirectorSchedulingScreen({
                   onChangeText={setSearchTeacher}
                 />
               </View>
-              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              <ScrollView
+                style={{ maxHeight: 200 }}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+              >
                 {filteredTeachers.map((t) => {
                   const isSelected = t.id === teacherId;
                   return (
@@ -445,7 +516,12 @@ export default function DirectorSchedulingScreen({
                         setSearchTeacher('');
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          isSelected && styles.dropdownItemTextActive,
+                        ]}
+                      >
                         {t.name}
                       </Text>
                       {isSelected && <Feather name="check" size={14} color={colors.navyText} />}
@@ -465,7 +541,7 @@ export default function DirectorSchedulingScreen({
           </View>
 
           {blocks.map((block) => {
-            const validStudentIds = block.studentIds.filter((id) => inSessionStudentIdSet.has(id));
+            const validStudentIds = block.studentIds.filter((id) => eligibleStudentIdSet.has(id));
             const count = validStudentIds.length;
             const overCapacity = count > capacity;
             return (
@@ -503,7 +579,9 @@ export default function DirectorSchedulingScreen({
                       })}
                     </View>
                   ) : (
-                    <Text style={styles.noStudentsText}>No in-session students assigned to this block yet.</Text>
+                    <Text style={styles.noStudentsText}>
+                      No students assigned to this block yet.
+                    </Text>
                   )}
                 </View>
 
@@ -536,7 +614,9 @@ export default function DirectorSchedulingScreen({
             <View style={styles.emptyBlocks}>
               <Feather name="calendar" size={32} color={colors.mutedText} />
               <Text style={styles.emptyBlocksTitle}>No Schedule Blocks Found</Text>
-              <Text style={styles.emptyBlocksSub}>Select another therapist or configure session rounds in Institutional Admin.</Text>
+              <Text style={styles.emptyBlocksSub}>
+                Select another therapist or configure session rounds in Institutional Admin.
+              </Text>
             </View>
           )}
         </View>
@@ -545,7 +625,7 @@ export default function DirectorSchedulingScreen({
       <AssignmentEditorModal
         visible={!!editorTarget}
         block={editorTarget}
-        students={inSessionStudents}
+        students={eligibleStudents}
         assignedIds={editorTarget?.studentIds}
         capacity={capacity}
         onClose={() => setEditorTarget(null)}
@@ -566,7 +646,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 260 },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 260,
+  },
   badgeIcon: {
     width: 44,
     height: 44,
@@ -654,16 +740,30 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.md,
   },
-  blockHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  blockHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   stationTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText },
   timeTagRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   timeTagText: { fontSize: 12, color: colors.bodyText, fontWeight: '500' },
-  capacityBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: spacing.sm + 2, paddingVertical: 4, borderRadius: radius.pill },
+  capacityBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
   capacityBadgeOver: { backgroundColor: '#EF4444' },
   capacityText: { fontSize: 11, fontWeight: '700', color: '#166534' },
 
   studentsWrap: { gap: spacing.xs },
-  studentsWrapLabel: { fontSize: 11, fontWeight: '700', color: colors.mutedText, textTransform: 'uppercase' },
+  studentsWrapLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.mutedText,
+    textTransform: 'uppercase',
+  },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   studentChipBadge: {
     flexDirection: 'row',
@@ -714,13 +814,33 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.xs,
   },
-  emptyBlocksTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText, marginTop: spacing.xs },
+  emptyBlocksTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navyText,
+    marginTop: spacing.xs,
+  },
   emptyBlocksSub: { fontSize: 12, color: colors.mutedText, textAlign: 'center' },
 
   /* Modal */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: spacing.lg },
-  modalSheet: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, maxHeight: '85%' },
-  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalSheet: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    maxHeight: '85%',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.navyText },
   modalSub: { fontSize: 12, color: colors.mutedText, marginTop: 2 },
   modalErrorBanner: {
@@ -749,7 +869,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.bgApp,
   },
-  modalSearchInput: { flex: 1, paddingVertical: spacing.sm, fontSize: 13, color: colors.navyText, minHeight: 36, outlineWidth: 0 } as any,
+  modalSearchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    fontSize: 13,
+    color: colors.navyText,
+    minHeight: 36,
+    outlineWidth: 0,
+  } as any,
   studentRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -758,7 +885,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.bgApp,
   },
-  studentRowSelected: { backgroundColor: '#FEF9C3', borderRadius: radius.sm, paddingHorizontal: spacing.xs },
+  studentRowSelected: {
+    backgroundColor: '#FEF9C3',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xs,
+  },
   studentRowText: { fontSize: 13, color: colors.navyText, fontWeight: '500' },
   studentRowTextActive: { fontWeight: '700' },
   checkbox: {
@@ -773,10 +904,23 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: colors.primaryYellow, borderColor: colors.primaryYellowDark },
   modalFooter: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  cancelBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
   cancelBtnText: { fontWeight: '600', color: colors.navyText },
-  saveBtn: { flex: 2, backgroundColor: colors.primaryYellow, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
-    saveBtnDisabled: { opacity: 0.4 },
+  saveBtn: {
+    flex: 2,
+    backgroundColor: colors.primaryYellow,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { fontWeight: '700', color: colors.navyText },
 
   /* IUP-style student dropdown rows */

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import storage from '../../utils/storage';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -9,7 +11,6 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Image,
-  Platform,
   Modal,
   Switch,
 } from 'react-native';
@@ -404,43 +405,42 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
   }, [loadFormConfig]);
 
   // Dynamically map wizard steps directly to sections authored in the schema
-  const deletedSet = new Set((deletedSections || []).map((s) => s.toLowerCase().trim()));
+  const { activeSections, includeTherapistStep, steps } = React.useMemo(() => {
+    const deletedSet = new Set((deletedSections || []).map((s) => s.toLowerCase().trim()));
+    const active: string[] = [];
 
-  const activeSections: string[] = [];
+    (customSections || []).forEach((sec) => {
+      const s = (sec || '').trim();
+      if (
+        s &&
+        !deletedSet.has(s.toLowerCase()) &&
+        !active.some((a) => a.toLowerCase() === s.toLowerCase()) &&
+        !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
+      ) {
+        active.push(s);
+      }
+    });
 
-  // 1. From customSections defined in schema
-  (customSections || []).forEach((sec) => {
-    const s = (sec || '').trim();
-    if (
-      s &&
-      !deletedSet.has(s.toLowerCase()) &&
-      !activeSections.some((a) => a.toLowerCase() === s.toLowerCase()) &&
-      !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
-    ) {
-      activeSections.push(s);
-    }
-  });
+    (formFields || []).forEach((f: any) => {
+      const s = (f.section || 'General').trim();
+      if (
+        s &&
+        !deletedSet.has(s.toLowerCase()) &&
+        !active.some((a) => a.toLowerCase() === s.toLowerCase()) &&
+        !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
+      ) {
+        active.push(s);
+      }
+    });
 
-  // 2. From section attributes on fields, preserving schema ordering
-  (formFields || []).forEach((f: any) => {
-    const s = (f.section || 'General').trim();
-    if (
-      s &&
-      !deletedSet.has(s.toLowerCase()) &&
-      !activeSections.some((a) => a.toLowerCase() === s.toLowerCase()) &&
-      !['assign therapist', 'review', 'review & complete'].includes(s.toLowerCase())
-    ) {
-      activeSections.push(s);
-    }
-  });
+    const incTherapist = !deletedSet.has('assign therapist');
 
-  const includeTherapistStep = !deletedSet.has('assign therapist');
-
-  const steps = [
-    ...activeSections,
-    ...(includeTherapistStep ? ['Assign Therapist'] : []),
-    'Review',
-  ];
+    return {
+      activeSections: active,
+      includeTherapistStep: incTherapist,
+      steps: [...active, ...(incTherapist ? ['Assign Therapist'] : []), 'Review'],
+    };
+  }, [deletedSections, customSections, formFields]);
 
   const currentStep = steps[step] || steps[0] || 'Student Info';
 
@@ -469,7 +469,7 @@ export default function StudentEnrollmentWizardScreen({ navigation, route }: Pro
     const t = therapists.find((th) => th.name === name);
     return t ? ((t as any).assignedStudentCount ?? t.assignedStudents?.length ?? 0) : 0;
   };
-  const isFull = (_name: string) => false;
+  const _isFull = (_name: string) => false;
 
   // Single dynamic field change handler
   const handleFieldChange = (fieldId: string, value: any) => {
@@ -2675,3 +2675,68 @@ const styles = StyleSheet.create({
   },
   footerText: { color: '#64748B', fontSize: 11, textAlign: 'center' },
 });
+
+import {
+  THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+  getTherapistAssignedStudents,
+  assignStudentToTherapist,
+} from '../../utils/therapistAssignmentHelper';
+
+export {
+  THERAPIST_ASSIGNMENTS_STORAGE_KEY,
+  getTherapistAssignedStudents,
+  assignStudentToTherapist,
+};
+
+export function resolveEnrichedTherapists(teachers: any[]): any[] {
+  const store =
+    storage.getJSONSync<Record<string, string[]>>(THERAPIST_ASSIGNMENTS_STORAGE_KEY, {}) || {};
+  const enrolledCache =
+    storage.getJSONSync<Record<string, unknown>[]>('melue_enrolled_students_cache', []) || [];
+  let directorStore: Record<string, { studentIds?: unknown[] }> = {};
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('melue_director_assignments_store_v1');
+      if (raw) directorStore = JSON.parse(raw);
+    }
+  } catch {}
+
+  return (teachers || []).map((t) => {
+    const assigned = new Set<string>();
+    if (Array.isArray(t.assignedStudents)) {
+      t.assignedStudents.forEach((s: any) =>
+        assigned.add(typeof s === 'string' ? s : s?.name || s?.id),
+      );
+    }
+    const nameKey = (t.name || '').trim().toLowerCase();
+    const idKey = (t.id || '').trim().toLowerCase();
+    for (const [key, students] of Object.entries(store)) {
+      const normKey = key.trim().toLowerCase();
+      if ((normKey === nameKey || normKey === idKey) && Array.isArray(students)) {
+        students.forEach((s) => assigned.add(s));
+      }
+    }
+    enrolledCache.forEach((es: any) => {
+      const th = String(es.therapist || es.assignedTherapist || '')
+        .trim()
+        .toLowerCase();
+      if (th && (th === nameKey || th === idKey)) {
+        assigned.add(String(es.fullName || es.name || es.id));
+      }
+    });
+    for (const [key, dData] of Object.entries(directorStore)) {
+      const normKey = key.trim().toLowerCase();
+      if ((normKey === nameKey || normKey === idKey) && Array.isArray(dData?.studentIds)) {
+        dData.studentIds.forEach((sid) => assigned.add(String(sid)));
+      }
+    }
+    const studentList = Array.from(assigned).filter(Boolean);
+    return {
+      ...t,
+      assignedStudents: studentList,
+      assignedStudentCount: studentList.length,
+    };
+  });
+}
+
+export const ENROLLMENT_DRAFT_KEY = 'melue_enrollment_wizard_draft_v1';
