@@ -171,4 +171,54 @@ describe('Program Director Dashboard Student Numbers and Directory', () => {
     expect(data.students[10].fullName).toBe('new student');
     expect(data.students[10].currentStage).toBe('enrolled');
   });
+
+  it('displays newly enrolled student on Program Director Dashboard', async () => {
+    const { storage } = await import('../../../../utils/storage');
+    const newEnrolledStudent = {
+      id: 'enrolled-stu-999',
+      studentId: 'enrolled-stu-999',
+      fullName: 'Yared Tesfaye Enrolled',
+      name: 'Yared Tesfaye Enrolled',
+      age: 6,
+      program: 'Comprehensive ABA',
+      programType: 'Comprehensive ABA',
+      therapyGroup: 'Station 1 · Early Learners',
+      therapist: 'Bethlehem Lead Therapist',
+      status: 'enrolled',
+      currentStage: 'enrolled',
+    };
+
+    storage.setJSONSync('melue_enrolled_students_cache', [newEnrolledStudent]);
+
+    try {
+      vi.spyOn(client, 'get').mockResolvedValue({ data: [] } as any);
+
+      const res = await getProgramDirectorDashboard();
+      const data = res.data;
+
+      // Check student is in the list
+      const found = data.students.find(
+        (s: any) => s.id === 'enrolled-stu-999' || s.fullName === 'Yared Tesfaye Enrolled',
+      );
+      expect(found).toBeDefined();
+      expect(found.fullName).toBe('Yared Tesfaye Enrolled');
+      expect(found.therapist).toBe('Bethlehem Lead Therapist');
+      expect(found.programType).toBe('Comprehensive ABA');
+      expect(found.therapyGroup).toBe('Station 1 · Early Learners');
+      expect(found.currentStage).toBe('enrolled');
+      expect(found.status).toBe('Not Started');
+      expect(found.assessmentStatus).toBe('not-started');
+      expect(found.sessionAssigned).toBe(false);
+
+      // Workflow stages includes the enrolled count
+      const enrolledStage = data.workflowStages.find((st: any) => st.key === 'enrolled');
+      expect(enrolledStage).toBeDefined();
+      expect(enrolledStage.count).toBeGreaterThanOrEqual(1);
+
+      // Total students includes the newly enrolled student
+      expect(data.totalStudents).toBe(data.students.length);
+    } finally {
+      storage.setJSONSync('melue_enrolled_students_cache', []);
+    }
+  });
 });

@@ -26,18 +26,50 @@ export default function RootLayout() {
       window.addEventListener('pageshow', handlePageShow);
     }
 
-    // Filter out false-alarm Metro disconnect warnings emitted during bfcache / pagehide transitions
+    // Filter out false-alarm Metro disconnect and WebSocket bfcache warnings/errors
     const originalWarn = console.warn;
     console.warn = (...args: any[]) => {
       const msg = typeof args[0] === 'string' ? args[0] : '';
       if (
-        msg.includes('Cannot connect to Metro') &&
-        (document.visibilityState === 'hidden' || msg.includes('Error: undefined'))
+        (msg.includes('Cannot connect to Metro') &&
+          (document.visibilityState === 'hidden' || msg.includes('Error: undefined'))) ||
+        msg.includes('Back-Forward Cache') ||
+        (msg.includes('WebSocket') && msg.includes('/hot')) ||
+        msg.includes('pointerEvents is deprecated') ||
+        msg.includes('Blocked aria-hidden')
       ) {
         return;
       }
       originalWarn.apply(console, args);
     };
+
+    const originalError = console.error;
+    console.error = (...args: any[]) => {
+      const msg = typeof args[0] === 'string' ? args[0] : String(args[0] || '');
+      if (
+        (msg.includes('WebSocket') || msg.includes('ws://')) &&
+        (msg.includes('Back-Forward Cache') ||
+          msg.includes('/hot') ||
+          msg.includes('failed: Page entered'))
+      ) {
+        return;
+      }
+      originalError.apply(console, args);
+    };
+
+    const handleGlobalError = (event: ErrorEvent) => {
+      const msg = String(event?.message || '');
+      if (
+        (msg.includes('WebSocket') || msg.includes('ws://')) &&
+        (msg.includes('Back-Forward Cache') ||
+          msg.includes('/hot') ||
+          msg.includes('failed: Page entered'))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener('error', handleGlobalError, true);
 
     // Inject runtime font-display: swap for any dynamically generated web font styles
     if (typeof document !== 'undefined' && !document.getElementById('font-swap-enforcer')) {
@@ -52,12 +84,38 @@ export default function RootLayout() {
       document.head.appendChild(fontStyle);
     }
 
+    // Prevent focus from being retained inside aria-hidden / display:none containers on web
+    let ariaObserver: MutationObserver | null = null;
+    if (
+      typeof MutationObserver !== 'undefined' &&
+      typeof document !== 'undefined' &&
+      document.body
+    ) {
+      ariaObserver = new MutationObserver(() => {
+        const active = document.activeElement as HTMLElement | null;
+        if (active && active !== document.body) {
+          const hiddenAncestor = active.closest('[aria-hidden="true"], [style*="display: none"]');
+          if (hiddenAncestor) {
+            active.blur();
+          }
+        }
+      });
+      ariaObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['aria-hidden', 'style'],
+        subtree: true,
+      });
+    }
+
     return () => {
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('pagehide', handlePageHide);
         window.removeEventListener('pageshow', handlePageShow);
       }
       console.warn = originalWarn;
+      console.error = originalError;
+      ariaObserver?.disconnect();
+      window.removeEventListener('error', handleGlobalError, true);
     };
   }, []);
 

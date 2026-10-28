@@ -20,6 +20,7 @@ import {
 import ScreenLoader from '../../../components/ScreenLoader';
 import { routeMapForRole } from '../../../components/appNavConfig';
 import type { ProgramDirectorStackParamList, CoordinatorStackParamList } from '../../../types';
+import { normalizeStudentId } from '../../../utils/studentLifecycleHelper';
 
 import IupGenerationPresenter, {
   type GoalBankItem,
@@ -45,19 +46,15 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
   const { showToast } = useToast();
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [slots, setSlots] = useState<Slots>({ station1: [null, null], station2: [null, null] });
+  const [slots, setSlots] = useState<Slots>({ station1: [null], station2: [null] });
   const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<
     'assessment' | 'goals' | 'strategies'
   >('goals');
 
   // Custom Strategies State
-  const [reinforcementSchedule, setReinforcementSchedule] = useState('Fixed Ratio (FR-2)');
-  const [crisisProtocol, setCrisisProtocol] = useState(
-    'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
-  );
-  const [accommodations, setAccommodations] = useState(
-    'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
-  );
+  const [reinforcementSchedule, setReinforcementSchedule] = useState('');
+  const [crisisProtocol, setCrisisProtocol] = useState('');
+  const [accommodations, setAccommodations] = useState('');
   const [reviewCycle, setReviewCycle] = useState('6 Weeks');
   const [customIupValues, setCustomIupValues] = useState<Record<string, any>>({});
 
@@ -100,9 +97,18 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
 
   useEffect(() => {
     const preId = (route.params as { studentId?: string })?.studentId;
-    if (preId) {
-      setSelectedStudentId(preId);
-    } else if (candidates.length > 0 && !selectedStudentId) {
+    const match = preId
+      ? candidates.find(
+          (c) => c.id === preId || normalizeStudentId(c.id) === normalizeStudentId(preId),
+        )
+      : null;
+
+    if (match) {
+      setSelectedStudentId(match.id);
+    } else if (
+      candidates.length > 0 &&
+      (!selectedStudentId || !candidates.some((c) => c.id === selectedStudentId))
+    ) {
       setSelectedStudentId(candidates[0].id);
     }
   }, [route.params, candidates, selectedStudentId]);
@@ -111,13 +117,9 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     if (!selectedStudentId) return;
 
     setSlots({ station1: [null, null], station2: [null, null] });
-    setReinforcementSchedule('Fixed Ratio (FR-2)');
-    setCrisisProtocol(
-      'Redirect to calm zone, offer deep pressure sensory mat, minimal verbal engagement.',
-    );
-    setAccommodations(
-      'Visual schedule, 2-minute transition warnings, preferential seating near exit.',
-    );
+    setReinforcementSchedule('');
+    setCrisisProtocol('');
+    setAccommodations('');
     setReviewCycle('6 Weeks');
     setCustomIupValues({});
     setLastSavedTimestamp(null);
@@ -126,16 +128,17 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       getStudentCaseload(selectedStudentId)
         .then(({ data }) => {
           if (data?.goals) {
-            setSlots((_prev) => {
-              const next: Slots = { station1: [null, null], station2: [null, null] };
+            setSlots((prev) => {
+              const hasExistingGoals = [...prev.station1, ...prev.station2].some(Boolean);
+              if (hasExistingGoals) return prev;
+
+              const next: Slots = { station1: [null], station2: [null] };
               data.goals.forEach((g: any) => {
                 const gbGoal = goalBank.find((b) => b.id === g.id);
                 if (gbGoal) {
                   const stationKey = g.station === 2 ? 'station2' : 'station1';
-                  const slotIndex =
-                    typeof g.slot === 'number' ? g.slot : next[stationKey][0] === null ? 0 : 1;
-                  if (slotIndex >= 0 && slotIndex <= 1) {
-                    next[stationKey][slotIndex] = gbGoal;
+                  if (next[stationKey][0] === null) {
+                    next[stationKey][0] = gbGoal;
                   }
                 }
               });
@@ -182,6 +185,9 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     setSlots((prev) => {
       const next: Slots = { ...prev };
       next[station] = [...prev[station]];
+      while (next[station].length <= slotIndex) {
+        next[station].push(null);
+      }
       next[station][slotIndex] = goal;
       return next;
     });
@@ -231,10 +237,49 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
     ]);
   };
 
+  const handleAddSlot = (station: StationKey) => {
+    setSlots((prev) => {
+      const nextIndex = prev[station].length;
+      const next = {
+        ...prev,
+        [station]: [...prev[station], null],
+      };
+      setTimeout(() => {
+        setSelectorTarget({ station, slotIndex: nextIndex });
+      }, 50);
+      return next;
+    });
+  };
+
+  const handleRemoveSlot = (station: StationKey, slotIndex: number) => {
+    setSlots((prev) => {
+      const list = prev[station];
+      if (list.length <= 1) return prev;
+      return {
+        ...prev,
+        [station]: list.filter((_, idx) => idx !== slotIndex),
+      };
+    });
+  };
+
+  const hasAssignedGoal = (slots.station1?.some(Boolean) || slots.station2?.some(Boolean)) ?? false;
+
+  const handleOpenPreview = () => {
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal to preview the IUP.', 'error');
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
   const handleDraftSave = async () => {
     if (!selectedStudentId) return;
     if (!canEdit) {
       showToast('You do not have permission to edit or save IUP drafts.', 'error');
+      return;
+    }
+    if (!hasAssignedGoal) {
+      showToast('Please assign at least one target goal before saving draft.', 'error');
       return;
     }
     try {
@@ -443,9 +488,11 @@ export default function IupGenerationContainer({ navigation, route }: IupGenerat
       onCloseGoalSelector={() => setSelectorTarget(null)}
       onSelectGoal={handleSelectGoal}
       onRemoveGoal={handleRemoveGoal}
+      onAddSlot={handleAddSlot}
+      onRemoveSlot={handleRemoveSlot}
       onDraftSave={handleDraftSave}
       onFinalize={handleFinalize}
-      onOpenPreview={() => setPreviewOpen(true)}
+      onOpenPreview={handleOpenPreview}
       onClosePreview={() => setPreviewOpen(false)}
       onExport={handleExport}
       onCloseExport={() => setExportContent(null)}

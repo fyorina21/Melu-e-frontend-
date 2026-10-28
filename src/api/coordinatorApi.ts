@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  isStoredAssessmentCompleted,
+  isStudentAssessmentSubmitted,
+} from '../utils/studentLifecycleHelper';
 import client from './sessionApi';
 import { storage } from '../utils/storage';
 import type { QueryParams, Payload } from '../types';
@@ -7,17 +12,7 @@ import { getEnrollmentDraft, saveEnrollmentDraft } from '../utils/enrollmentDraf
 import { registerStudentStatuses } from '../utils/studentLifecycleHelper';
 import { saveStudentPhoto } from '../utils/studentPhotoHelper';
 import { secureRandomId, secureRandomDigits } from '../utils/cryptoRandom';
-import {
-  DEMOGRAPHIC_KEY,
-  getStudentDemographic,
-  maskSensitiveDemographic,
-} from '../utils/sensitiveDataSanitizer';
-import { getLocalLiveSessions, StoredLiveSession } from '../utils/liveSessionSyncHelper';
-import {
-  getStoredSessionSummaries,
-  approveSessionSummaryReview,
-  rejectSessionSummaryReview,
-} from '../utils/sessionSummaryWorkflowHelper';
+import { DEMOGRAPHIC_KEY, getStudentDemographic } from '../utils/sensitiveDataSanitizer';
 export {
   getProgramOptions,
   getTherapyGroupOptions,
@@ -306,7 +301,7 @@ export const getCoordinatorDashboard = async (): Promise<{ data: any }> => {
       const d = res.data;
       const teachers = Array.isArray(d.teachers) ? d.teachers : [];
       const blocks = Array.isArray(d.blocks) ? d.blocks : [];
-      const currentBlock = blocks.find((b: any) => b.is_current) || blocks[0];
+      const _currentBlock = blocks.find((b: any) => b.is_current) || blocks[0];
 
       const liveSessions: any[] = [];
       teachers.forEach((t: any, idx: number) => {
@@ -822,9 +817,20 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
           age: Number(student.age) || 6,
           program: String(student.program_type || 'Comprehensive ABA'),
           assessmentSummary: {
-            skills: assessmentLabel(assessment.ablls),
-            behavior: hasCycle ? 'In Progress' : 'Not Started',
-            preferences: assessmentLabel(assessment.preference),
+            skills:
+              isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+                ? 'Completed'
+                : assessmentLabel(assessment.ablls),
+            behavior:
+              isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+                ? 'Completed'
+                : hasCycle
+                  ? 'In Progress'
+                  : 'Not Started',
+            preferences:
+              isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+                ? 'Completed'
+                : assessmentLabel(assessment.preference),
           },
           goals,
           sessionHistory,
@@ -853,8 +859,14 @@ export const getStudentProgressOverview = async (studentId: string): Promise<{ d
     program: match?.program || 'Comprehensive ABA',
     flagged: isFlagged,
     assessmentSummary: {
-      skills: 'In Progress',
-      behavior: 'In Progress',
+      skills:
+        isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+          ? 'Completed'
+          : 'In Progress',
+      behavior:
+        isStoredAssessmentCompleted(studentId) || isStudentAssessmentSubmitted(studentId)
+          ? 'Completed'
+          : 'In Progress',
       preferences: 'Completed',
     },
     abllsProgress: {
@@ -1254,7 +1266,7 @@ export const getTeacherPerformanceMetrics = async (params: QueryParams): Promise
 // SCR-TC-006: Parent Communication (Coordinator View)
 // ============================================================================
 export const getCoordinatorConversations = async (
-  params?: QueryParams,
+  _params?: QueryParams,
 ): Promise<{ data: any[] }> => {
   try {
     const { data: students } = await client.get<any[]>('/options/students');
@@ -1381,7 +1393,26 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
   } catch {}
 
   const pool = [...storedEnrolled, ...backendStudents];
-  if (pool.length === 0) {
+  if (storedEnrolled.length > 0) {
+    DEFAULT_COORDINATOR_STUDENTS.forEach((d) => {
+      const dId = String(d.id || '').toLowerCase();
+      const dName = String(d.fullName || d.name || '')
+        .toLowerCase()
+        .trim();
+      if (isStudentDeletedHelper(dId) || isStudentDeletedHelper(dName)) return;
+      if (
+        !pool.some(
+          (p) =>
+            String(p.id || '').toLowerCase() === dId ||
+            String(p.fullName || p.name || '')
+              .toLowerCase()
+              .trim() === dName,
+        )
+      ) {
+        pool.push({ ...d });
+      }
+    });
+  } else if (pool.length === 0) {
     if (optionsPool.length > 0) {
       optionsPool.forEach((o) => {
         pool.push({
@@ -1416,6 +1447,8 @@ export const getEnrollmentStudents = async (params: QueryParams): Promise<{ data
       fullName: String(s.fullName || s.name || `Student ${idx + 1}`),
       name: String(s.fullName || s.name || `Student ${idx + 1}`),
       age: Number(s.age || 6),
+      gender: String(s.gender || s.demographic || s[DEMOGRAPHIC_KEY] || 'Female'),
+      demographic: String(s.gender || s.demographic || s[DEMOGRAPHIC_KEY] || 'Female'),
       programType: String(s.programType || s.program || 'Comprehensive ABA'),
       therapyGroup: String(s.therapyGroup || s.therapy_group || `Station ${(idx % 3) + 1}`),
       therapist: String(s.therapist || 'Abeba Tadesse'),
@@ -2107,4 +2140,30 @@ export const markCoordinatorNotificationRead = async (
     if (res?.data) return res;
   } catch {}
   return { data: { success: true, notificationId, read: true } };
+};
+
+import {
+  recordDeletedStudent as recordDeletedStudentHelper,
+  isStudentDeleted as isStudentDeletedHelper,
+} from '../utils/deletedStudentHelper';
+
+export { isStudentDeletedHelper as isStudentDeleted };
+
+export function markStudentDeleted(id?: string, name?: string): void {
+  recordDeletedStudentHelper({ id, fullName: name });
+}
+
+export const deleteStudentEnrollment = async (
+  studentId: string,
+  studentName?: string,
+): Promise<{ data: { success: boolean; id: string } }> => {
+  recordDeletedStudentHelper({ id: studentId, fullName: studentName });
+  try {
+    await client.delete(`/coordinator/students/${studentId}`);
+  } catch {
+    try {
+      await client.delete(`/students/${studentId}`);
+    } catch {}
+  }
+  return { data: { success: true, id: studentId } };
 };

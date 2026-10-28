@@ -9,6 +9,10 @@ import {
   onScheduleAssignmentsChanged,
 } from '../../utils/teacherScheduleHelper';
 import { isStudentEligibleForSession } from '../../utils/studentLifecycleHelper';
+import {
+  isStudentSchedulingEligible,
+  isStudent100Completed,
+} from '../../utils/studentLifecycleHelper';
 import { saveAssignment, getDirectorSchedule } from '../../api/directorApi';
 
 describe('Director Scheduling to Teacher Session Sync', () => {
@@ -33,7 +37,12 @@ describe('Director Scheduling to Teacher Session Sync', () => {
     expect(savedIds).toEqual(['stu-yonas', 'stu-meron']);
 
     const blocks = [
-      { id: 'block-morning-1', teacherId: 'teacher-101', teacherName: 'Teacher Abeba', studentIds: [] },
+      {
+        id: 'block-morning-1',
+        teacherId: 'teacher-101',
+        teacherName: 'Teacher Abeba',
+        studentIds: [],
+      },
     ];
     const applied = applyDirectorAssignmentsToBlocks(blocks, teacherId);
     expect(applied[0].studentIds).toEqual(['stu-yonas', 'stu-meron']);
@@ -113,5 +122,59 @@ describe('Director Scheduling to Teacher Session Sync', () => {
 
     expect(saved).toHaveLength(2);
     expect(saved).toEqual(['s-1', 's-2']);
+  });
+  it('displays 100% completed assessment students on DirectorScheduling screen for therapist assignment', () => {
+    const studentCompletedAssessment = {
+      id: 'stu-comp-1',
+      name: 'Hana Kebede',
+      status: 'in_assessment',
+      assessmentStatus: 'Completed',
+    };
+    const student100Ablls = {
+      id: 'stu-comp-2',
+      name: 'Yared Tadesse',
+      ablls: { status: 'completed', progress: 100 },
+      behavior: { status: 'completed', progress: 100 },
+    };
+    const studentNotStarted = {
+      id: 'stu-active-1',
+      name: 'Abebe Bikila',
+      status: 'in_assessment',
+      assessmentStatus: 'Not Started',
+    };
+
+    expect(isStudentSchedulingEligible(studentCompletedAssessment)).toBe(true);
+    expect(isStudentSchedulingEligible(student100Ablls)).toBe(true);
+    expect(isStudentSchedulingEligible(studentNotStarted)).toBe(false);
+  });
+
+  it('removes 100% completed student from active AssessmentDashboard cards while counting them in completed metric', () => {
+    const studentComp = {
+      id: 'stu-comp-1',
+      name: 'Hana Kebede',
+      status: 'in_assessment',
+      assessmentStatus: 'Completed',
+    };
+    const studentNotComp = {
+      id: 'stu-active-1',
+      name: 'Abebe Bikila',
+      status: 'in_assessment',
+      assessmentStatus: 'Not Started',
+    };
+
+    const students = [studentComp, studentNotComp];
+
+    // isStudent100Completed returns true for studentComp and false for studentNotComp
+    expect(isStudent100Completed(studentComp)).toBe(true);
+    expect(isStudent100Completed(studentNotComp)).toBe(false);
+
+    // Active students grid removes the completed student
+    const activeStudents = students.filter((s) => !isStudent100Completed(s));
+    expect(activeStudents).toHaveLength(1);
+    expect(activeStudents[0].id).toBe('stu-active-1');
+
+    // Completed metric still counts all completed students
+    const completedCount = students.filter((s) => isStudent100Completed(s)).length;
+    expect(completedCount).toBe(1);
   });
 });

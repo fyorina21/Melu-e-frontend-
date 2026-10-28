@@ -80,9 +80,9 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
   const loadList = useCallback(async () => {
     try {
       const { data } = await getCoordinatorConversations({});
-      setConversations(data);
-      if (!activeId && data.length) setActiveId(data[0].id);
-    } catch (err) {
+      setConversations(data as unknown as Conversation[]);
+      if (!activeId && data.length) setActiveId(String(data[0].id));
+    } catch {
       setConversations([]);
     }
   }, [activeId]);
@@ -95,8 +95,8 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
     if (!activeId) return;
     try {
       const { data } = await getConversationThread(activeId);
-      setThread(data.messages ?? []);
-    } catch (err) {
+      setThread((data.messages as unknown as ThreadMessage[]) ?? []);
+    } catch {
       setThread([]);
     }
   }, [activeId]);
@@ -121,7 +121,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
     if (!draft.trim() && pendingAttachments.length === 0) return;
     try {
       await sendCoordinatorMessage(activeId, { text: draft, attachments: pendingAttachments });
-    } catch (err) {}
+    } catch {}
     setDraft('');
     setPendingAttachments([]);
     await loadThread();
@@ -143,7 +143,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
       {
         text: 'Escalate',
         onPress: async () => {
-          try { await escalateConversation(activeId, { to }); } catch (err) {}
+          try { await escalateConversation(activeId, { to }); } catch {}
           Alert.alert('Escalated', `${to === 'program_director' ? 'Program Director' : 'Director'} notified.`);
         },
       },
@@ -155,7 +155,7 @@ export default function CoordinatorParentCommunicationScreen({ navigation }: Nat
     try {
       await markConversationResolved(activeId);
       await loadList();
-    } catch (err) {}
+    } catch {}
     Alert.alert('Marked as resolved');
   };
 

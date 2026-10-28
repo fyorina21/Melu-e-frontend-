@@ -54,7 +54,7 @@ export function useTeacherAssessments() {
         setLoading(true);
       }
       setError(false);
-      const { data: res } = await getAssessmentDashboard();
+      const { data: res } = (await getAssessmentDashboard()) as { data: any };
 
       const rawStudents = Array.isArray(res?.students) ? res.students : [];
       const clinicianName =

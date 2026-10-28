@@ -57,7 +57,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
     let cancelled = false;
     getEnrollmentStudents({})
       .then(({ data }) => {
-        if (!cancelled) setStudents(Array.isArray(data) ? data : []);
+        if (!cancelled) setStudents(((Array.isArray(data) ? data : []) as unknown) as StudentListItem[]);
       })
       .catch(() => {
         if (!cancelled) setStudents([]);
@@ -76,7 +76,7 @@ export default function CoordinatorStudentProgressScreen({ navigation }: Props) 
     setOverview(null);
     getStudentProgressOverview(selectedStudentId)
       .then(({ data }) => {
-        if (!cancelled) setOverview(data as ProgressOverview);
+        if (!cancelled) setOverview((data as unknown) as ProgressOverview);
       })
       .catch(() => {
         if (!cancelled) setOverview(null);

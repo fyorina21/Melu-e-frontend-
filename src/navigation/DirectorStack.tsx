@@ -11,6 +11,7 @@ import DirectorStudentProgressScreen from '../screens/director/DirectorStudentPr
 import ReportBuilderScreen from '../screens/director/ReportBuilderScreen';
 import AssessmentSummaryReportScreen from '../screens/programdirector/AssessmentSummaryReport';
 import StudentEnrollmentScreen from '../screens/coordinator/StudentEnrollmentScreen';
+import StudentEnrollmentWizardScreen from '../screens/coordinator/StudentEnrollmentWizardScreen';
 import StudentProfileScreen from '../screens/coordinator/StudentProfileScreen';
 import StudentEditProfileScreen from '../screens/coordinator/StudentEditProfileScreen';
 
@@ -31,6 +32,7 @@ const GuardedAssessmentSummaryReport = withModuleGuard(
   'assessments',
 );
 const GuardedStudentEnrollment = withModuleGuard(StudentEnrollmentScreen, 'students');
+const GuardedStudentEnrollmentWizard = withModuleGuard(StudentEnrollmentWizardScreen, 'students');
 const GuardedStudentProfile = withModuleGuard(StudentProfileScreen, 'students');
 const GuardedStudentEditProfile = withModuleGuard(StudentEditProfileScreen, 'students');
 
@@ -61,11 +63,12 @@ export default function DirectorStack() {
           name="AssessmentSummaryReport"
           component={GuardedAssessmentSummaryReport as never}
         />
-
         <Stack.Screen name="StudentEnrollment" component={GuardedStudentEnrollment as never} />
-
+        <Stack.Screen
+          name="StudentEnrollmentWizard"
+          component={GuardedStudentEnrollmentWizard as never}
+        />
         <Stack.Screen name="StudentProfile" component={GuardedStudentProfile as never} />
-
         <Stack.Screen name="StudentEditProfile" component={GuardedStudentEditProfile as never} />
       </Stack.Navigator>
     </ErrorBoundary>

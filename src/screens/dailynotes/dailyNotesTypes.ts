@@ -4,7 +4,7 @@ export interface NoteRecord {
   students: string[];
   station: string;
   room: string;
-  status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft';
+  status: 'Approved' | 'Pending' | 'Revision Required' | 'Draft' | 'Saved';
   coordinatorFeedback?: string;
 }
 

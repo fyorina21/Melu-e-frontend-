@@ -1,6 +1,15 @@
 // src/screens/coordinator/StudentEnrollmentActiveStatus.test.ts
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import storage from '../../utils/storage';
+import {
+  saveEnrolledStudentLocally,
+  getEnrollmentStudents,
+  getStoredEnrolledStudents,
+  deleteStudentEnrollment,
+  isStudentDeleted,
+  markStudentDeleted,
+} from '../../api/coordinatorApi';
 import {
   markStudentActive,
   resolveStudentStatus,
@@ -65,5 +74,141 @@ describe('Student Enrollment Active Status Management', () => {
     const next2 = toggleStudentStatus(studentId, studentName, 'Inactive');
     expect(next2).toBe('Active');
     expect(resolveStudentStatus(studentId, studentName, 'inactive')).toBe('Active');
+  });
+
+  it('saves newly enrolled student locally and displays them at top of getEnrollmentStudents', async () => {
+    const student = {
+      id: 'stu-test-enrolled-1',
+      studentId: 'stu-test-enrolled-1',
+      name: 'Zara Williams',
+      fullName: 'Zara Williams',
+      age: 7,
+      gender: 'Female',
+      program: 'Comprehensive ABA',
+      programType: 'Comprehensive ABA',
+      therapyGroup: 'Basic',
+      therapist: 'Abeba Tadesse',
+      status: 'active',
+    };
+
+    saveEnrolledStudentLocally(student);
+
+    const stored = getStoredEnrolledStudents();
+    expect(stored.some((s) => s.fullName === 'Zara Williams')).toBe(true);
+
+    const { data } = await getEnrollmentStudents({});
+    expect(data.length).toBeGreaterThan(1);
+    // Newly enrolled student should be at the top of the roster list
+    const first = data[0];
+    expect(first.fullName).toBe('Zara Williams');
+    expect(first.age).toBe(7);
+    expect(first.gender).toBe('Female');
+    expect(first.therapist).toBe('Abeba Tadesse');
+    expect(first.status).toBe('active');
+    // Existing students are preserved
+    expect(data.some((s) => s.fullName === 'Amir Hassan' || s.name === 'Amir Hassan')).toBe(true);
+  });
+  it('deletes a student, permanently removing them from stored cache and roster list', async () => {
+    const student = {
+      id: 'stu-delete-target-99',
+      studentId: 'stu-delete-target-99',
+      name: 'Jonah Miller',
+      fullName: 'Jonah Miller',
+      age: 6,
+      gender: 'Male',
+      program: 'Regular',
+      programType: 'Regular',
+      therapyGroup: 'Basic',
+      therapist: 'Abeba Tadesse',
+      status: 'active',
+    };
+
+    saveEnrolledStudentLocally(student);
+    const { data: initialList } = await getEnrollmentStudents({});
+    expect(initialList.some((s) => s.fullName === 'Jonah Miller')).toBe(true);
+
+    // Delete student
+    const res = await deleteStudentEnrollment('stu-delete-target-99', 'Jonah Miller');
+    expect(res.data.success).toBe(true);
+    expect(isStudentDeleted('stu-delete-target-99', 'Jonah Miller')).toBe(true);
+
+    // Verify removed from cache
+    const stored = getStoredEnrolledStudents();
+    expect(stored.some((s) => s.fullName === 'Jonah Miller')).toBe(false);
+
+    // Verify removed from getEnrollmentStudents
+    const { data: updatedList } = await getEnrollmentStudents({});
+    expect(
+      updatedList.some((s) => s.fullName === 'Jonah Miller' || s.name === 'Jonah Miller'),
+    ).toBe(false);
+  });
+
+  it('filters out deleted default students from the roster list', async () => {
+    // Delete Amir Hassan from default list
+    markStudentDeleted('e12bff1b-a000-4fcd-ab3b-f8d035e45ba8', 'Amir Hassan');
+    expect(isStudentDeleted('e12bff1b-a000-4fcd-ab3b-f8d035e45ba8', 'Amir Hassan')).toBe(true);
+
+    const { data } = await getEnrollmentStudents({});
+    expect(data.some((s) => s.fullName === 'Amir Hassan' || s.name === 'Amir Hassan')).toBe(false);
+  });
+
+  it('completely purges student across therapist assignments, caseload, iup drafts, and assessments upon deletion', async () => {
+    const studentId = 'stu-complete-purge-1';
+    const studentName = 'Elena Rostova';
+
+    // Seed student in various caches
+    saveEnrolledStudentLocally({
+      id: studentId,
+      name: studentName,
+      fullName: studentName,
+      status: 'active',
+    });
+
+    storage.setJSONSync('melue_therapist_assigned_students_v1', {
+      'Abeba Tadesse': [studentId, 'other-student-1'],
+    });
+    storage.setJSONSync('melue_caseload_assignments_cache', {
+      'Abeba Tadesse': [studentId],
+    });
+    storage.setJSONSync('melue_director_assignments_store_v1', {
+      'dir-1': { studentIds: [studentId, 'keep-stu-2'] },
+    });
+    storage.setJSONSync('melue_iup_drafts_cache', {
+      [studentId]: { goals: ['Goal 1'] },
+    });
+    storage.setJSONSync(`melue_skills_assessment_${studentId}`, { progress: 50 });
+    storage.setJSONSync(`melue_behavior_assessment_${studentId}`, { progress: 30 });
+
+    // Perform complete deletion
+    await deleteStudentEnrollment(studentId, studentName);
+
+    // 1. Verify removed from therapist assignments
+    const thStore =
+      storage.getJSONSync<Record<string, any>>('melue_therapist_assigned_students_v1', {}) || {};
+    expect(thStore['Abeba Tadesse']).not.toContain(studentId);
+    expect(thStore['Abeba Tadesse']).toContain('other-student-1');
+
+    // 2. Verify removed from caseload assignments
+    const csStore =
+      storage.getJSONSync<Record<string, any>>('melue_caseload_assignments_cache', {}) || {};
+    expect(csStore['Abeba Tadesse']).not.toContain(studentId);
+
+    // 3. Verify removed from director assignments
+    const dirStore =
+      storage.getJSONSync<Record<string, any>>('melue_director_assignments_store_v1', {}) || {};
+    expect(dirStore['dir-1'].studentIds).not.toContain(studentId);
+    expect(dirStore['dir-1'].studentIds).toContain('keep-stu-2');
+
+    // 4. Verify removed from IUP drafts
+    const iupDrafts = storage.getJSONSync<Record<string, any>>('melue_iup_drafts_cache', {}) || {};
+    expect(iupDrafts[studentId]).toBeUndefined();
+
+    // 5. Verify assessments cleared
+    expect(localStorage.getItem(`melue_skills_assessment_${studentId}`)).toBeNull();
+    expect(localStorage.getItem(`melue_behavior_assessment_${studentId}`)).toBeNull();
+
+    // 6. Verify removed from enrollment roster list
+    const { data } = await getEnrollmentStudents({});
+    expect(data.some((s) => s.id === studentId || s.name === studentName)).toBe(false);
   });
 });

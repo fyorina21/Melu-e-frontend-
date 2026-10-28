@@ -7,38 +7,46 @@ import type { Goal } from '../caseloadTypes';
 interface GoalCardProps {
   goal: Goal;
   onAssign: (goal: Goal) => void;
+  disabled?: boolean;
+  buttonText?: string;
 }
 
-export const GoalCard: React.FC<GoalCardProps> = React.memo(({ goal, onAssign }) => {
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardBody}>
-        <View style={styles.titleRow}>
-          <Text style={typography.bodyBold} numberOfLines={1}>
-            {goal.name}
-          </Text>
-          <View style={styles.domainBadge}>
-            <Text style={styles.domainBadgeText}>{goal.domain}</Text>
+export const GoalCard: React.FC<GoalCardProps> = React.memo(
+  ({ goal, onAssign, disabled = false, buttonText = 'Assign' }) => {
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardBody}>
+          <View style={styles.titleRow}>
+            <Text style={typography.bodyBold} numberOfLines={1}>
+              {goal.name}
+            </Text>
+            <View style={styles.domainBadge}>
+              <Text style={styles.domainBadgeText}>{goal.domain}</Text>
+            </View>
           </View>
+
+          <Text style={typography.caption} numberOfLines={2}>
+            {goal.description}
+          </Text>
         </View>
 
-        <Text style={typography.caption} numberOfLines={2}>
-          {goal.description}
-        </Text>
+        <TouchableOpacity
+          style={[styles.assignBtn, disabled && styles.assignBtnDisabled]}
+          onPress={() => onAssign(goal)}
+          disabled={disabled}
+          activeOpacity={disabled ? 1 : 0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`${buttonText} goal ${goal.name}`}
+          accessibilityState={{ disabled }}
+        >
+          <Text style={[styles.assignBtnText, disabled && styles.assignBtnTextDisabled]}>
+            {buttonText}
+          </Text>
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        style={styles.assignBtn}
-        onPress={() => onAssign(goal)}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={`Assign goal ${goal.name}`}
-      >
-        <Text style={styles.assignBtnText}>Assign</Text>
-      </TouchableOpacity>
-    </View>
-  );
-});
+    );
+  },
+);
 
 const styles = StyleSheet.create({
   card: {
@@ -80,9 +88,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
+  assignBtnDisabled: {
+    backgroundColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    opacity: 0.65,
+  },
   assignBtnText: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.white,
+  },
+  assignBtnTextDisabled: {
+    color: '#94A3B8',
   },
 });

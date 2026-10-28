@@ -5,6 +5,7 @@ import {
   getGroupedTabsForSession,
   isNavGroup,
   PD_ROUTE_BY_TAB,
+  type NavGroupTab,
 } from '../appNavConfig';
 import type { AuthSession } from '../../types';
 
@@ -288,10 +289,10 @@ describe('getTabsForSession dynamic module filtering', () => {
 
     // Sessions group is present
     const sessionsGroup = groupedTabs.find(
-      (item) => typeof item !== 'string' && item.label === 'Sessions',
-    ) as any;
+      (item): item is NavGroupTab => typeof item !== 'string' && item.label === 'Sessions',
+    );
     expect(sessionsGroup).toBeDefined();
-    expect(sessionsGroup.items).toContain('Live Session Monitoring');
+    expect(sessionsGroup?.items).toContain('Live Session Monitoring');
 
     // Reports tab is dynamically injected
     expect(groupedTabs).toContain('Reports & Executive Oversight');
@@ -309,10 +310,10 @@ describe('hasModuleAccess route guard alignment', () => {
     const { hasModuleAccess } = await import('../../auth/permissions');
 
     // When session.modules is empty but session.permissions has 'reports:view'
-    expect(hasModuleAccess([], 'reports' as any, ['reports:view'])).toBe(true);
-    expect(hasModuleAccess([], 'reports' as any, ['oversight:view'])).toBe(true);
+    expect(hasModuleAccess([], 'reports', ['reports:view'])).toBe(true);
+    expect(hasModuleAccess([], 'reports', ['oversight:view'])).toBe(true);
 
     // Denies when ungranted
-    expect(hasModuleAccess([], 'reports' as any, ['sessions:view'])).toBe(false);
+    expect(hasModuleAccess([], 'reports', ['sessions:view'])).toBe(false);
   });
 });

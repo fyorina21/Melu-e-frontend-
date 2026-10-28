@@ -65,7 +65,7 @@ export const authApi = {
       email: payload.email,
       password: payload.password,
       remember_device: payload.rememberDevice,
-    });
+    }, { timeout: 60_000 });
     const token = data.token ?? (data as any).access_token ?? extractBearer(headers.authorization);
     const refreshToken =
       (data as any).refresh_token ??

@@ -55,10 +55,10 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     try {
       const { data } = await getRoomsResources({});
-      setRooms(data.rooms);
-      setResources(data.resources);
-      setMaintenance(data.maintenance ?? []);
-    } catch (err) {
+      setRooms((data.rooms as unknown as Room[]) ?? []);
+      setResources((data.resources as unknown as Resource[]) ?? []);
+      setMaintenance(((data.maintenance as unknown) as { id: string; room: string; detail: string; date: string }[]) ?? []);
+    } catch {
       setRooms([]);
       setResources([]);
       setMaintenance([]);
@@ -79,7 +79,7 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
     try {
       await updateRoomStatus(room.id, { status: next });
       await load();
-    } catch (err) {}
+    } catch {}
   };
 
   const toggleResource = async (resource: Resource) => {
@@ -87,7 +87,7 @@ export default function RoomResourceSchedulingScreen({ navigation }: Props) {
     try {
       await updateResourceStatus(resource.id, { inUse: next });
       await load();
-    } catch (err) {}
+    } catch {}
   };
 
   return (
