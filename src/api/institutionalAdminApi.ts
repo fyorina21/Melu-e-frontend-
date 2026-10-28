@@ -1436,23 +1436,46 @@ export const saveScheduleCapacityConfig = async (payload: Payload) => {
 
 // SCR-ADMIN-005: Goal Domain Definitions
 export const getGoalDomains = async () => {
+  let backendDomains: any[] = [];
   try {
     const res = await client.get('/admin/goal_domains');
     if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-      setStoredGoalDomains(res.data);
-      return res;
+      backendDomains = res.data;
     }
   } catch {}
-  return { data: getStoredGoalDomains() };
+
+  const stored = getStoredGoalDomains();
+  if (backendDomains.length > 0) {
+    // Merge: backend domains + any custom locally added/edited domains
+    const backendNames = new Set(
+      backendDomains.map((d: any) => String(d.name).toLowerCase().trim()),
+    );
+    const customStored = stored.filter(
+      (s: any) => !backendNames.has(String(s.name).toLowerCase().trim()),
+    );
+    const merged = [...backendDomains, ...customStored];
+    setStoredGoalDomains(merged);
+    return { data: merged };
+  }
+
+  return { data: stored };
 };
 
 export const saveGoalDomains = async (domains: Payload[]) => {
   setStoredGoalDomains(domains as any);
-  try {
-    return await client.post('/admin/goal_domains', { domains });
-  } catch {
-    return { data: { success: true, domains } };
+  // Synchronize new domains to backend if possible
+  for (const dom of domains) {
+    try {
+      await client.post('/admin/goal_domains', {
+        goal_domain: {
+          name: dom.name,
+          description: dom.description,
+          is_active: dom.active ?? dom.is_active ?? true,
+        },
+      });
+    } catch {}
   }
+  return { data: { success: true, domains } };
 };
 
 export const deleteGoalDomainApi = async (idOrName: string | number, cascade = false) => {
